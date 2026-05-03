@@ -74,6 +74,15 @@ public class PipelineEventBus {
         emit(new PipelineEvent.AwaitingOfficer(sessionId, stage, java.time.Instant.now()));
     }
 
+    public void reconcileCellDecided(String sessionId, String fieldKey, String docType,
+                                      String decision, String note, String officerId) {
+        emit(new PipelineEvent.ReconcileCellDecided(sessionId, fieldKey, docType, decision, note, officerId, java.time.Instant.now()));
+    }
+
+    public void reconcileCellCleared(String sessionId, String fieldKey, String docType, String officerId) {
+        emit(new PipelineEvent.ReconcileCellCleared(sessionId, fieldKey, docType, officerId, java.time.Instant.now()));
+    }
+
     // ── Officer-action helpers ─────────────────────────────────────────────
     public void docTypeChanged(String sessionId, String docId, String newType, String officerId) {
         emit(new PipelineEvent.DocTypeChanged(sessionId, docId, newType, officerId, java.time.Instant.now()));

@@ -57,6 +57,20 @@ export function EventHistory({ events = [], onFormat }) {
     } catch { return ''; }
   }
 
+  /** Compact relative time: 12s, 4m, 2h, 3d. */
+  function fmtAgo(ts) {
+    if (!ts) return '';
+    const t = typeof ts === 'number' ? ts : new Date(ts).getTime();
+    if (!Number.isFinite(t)) return '';
+    const sec = Math.max(0, Math.floor((Date.now() - t) / 1000));
+    if (sec < 60) return `${sec}s`;
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}m`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr}h`;
+    return `${Math.floor(hr / 24)}d`;
+  }
+
   return (
     <div className="relative">
       <button
@@ -87,7 +101,7 @@ export function EventHistory({ events = [], onFormat }) {
 
             {/* Column header — clarifies the compact metadata cluster */}
             <div className="flex items-center gap-2 px-3 py-1 border-b border-line bg-slate2/60 text-[9px] font-mono uppercase tracking-wider text-muted">
-              <span className="w-[140px] shrink-0">seq · time · type</span>
+              <span className="w-[160px] shrink-0">seq · time · ago · type</span>
               <span className="flex-1">description</span>
             </div>
 
@@ -99,10 +113,11 @@ export function EventHistory({ events = [], onFormat }) {
                 <div className="divide-y divide-line">
                   {sorted.map((msg, i) => (
                     <div key={i} className="flex items-start gap-2 px-3 py-1.5 hover:bg-slate2">
-                      {/* Compact metadata: seq · time · type in one tight cluster */}
-                      <div className="w-[140px] shrink-0 flex flex-col gap-0 pt-0.5">
+                      {/* Compact metadata: seq · time · ago · type in one tight cluster */}
+                      <div className="w-[160px] shrink-0 flex flex-col gap-0 pt-0.5">
                         <span className="text-[10px] font-mono text-[#a1a1a6] truncate">
                           #{msg.seq ?? '—'} · {fmtTs(msg.ts)}
+                          {fmtAgo(msg.ts) && <span className="text-muted"> · {fmtAgo(msg.ts)}</span>}
                         </span>
                         <span className="text-[9px] font-mono font-semibold text-muted truncate">
                           {msg.type}

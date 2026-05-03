@@ -77,11 +77,38 @@ public class SessionStore {
     }
 
     public void updateCompleted(String sessionId, Boolean compliant, String finalReportJson) {
+        // Merge SignoffStage's keys into the existing final_report JSONB rather
+        // than overwriting it. Reconcile + Examine stages persist their sections
+        // progressively (mergeFinalReportSection) and we must not clobber them
+        // when the pipeline finalises at sign-off.
+        if (finalReportJson == null) finalReportJson = "{}";
         jdbc.update("""
                 UPDATE lc_v2.check_sessions
-                SET status = 'COMPLETED', compliant = ?, final_report = ?::jsonb, completed_at = NOW()
+                SET status = 'COMPLETED',
+                    compliant = ?,
+                    final_report = COALESCE(final_report, '{}'::jsonb) || ?::jsonb,
+                    completed_at = NOW()
                 WHERE id = ?::uuid
                 """, compliant, finalReportJson, sessionId);
+    }
+
+    /**
+     * Progressively merge a stage's result section into final_report JSONB.
+     * Keys: "lc", "parse", "reconcile", "examine". Each stage calls this at its
+     * end so officers can reload past sessions and see what each stage produced
+     * — even when the in-memory StageContext has been evicted.
+     *
+     * @param sectionKey  top-level key inside final_report JSONB (e.g. "reconcile")
+     * @param sectionJson JSON string for the section's value
+     */
+    public void mergeFinalReportSection(String sessionId, String sectionKey, String sectionJson) {
+        if (sectionJson == null) sectionJson = "null";
+        jdbc.update("""
+                UPDATE lc_v2.check_sessions
+                SET final_report = COALESCE(final_report, '{}'::jsonb)
+                                   || jsonb_build_object(?, ?::jsonb)
+                WHERE id = ?::uuid
+                """, sectionKey, sectionJson, sessionId);
     }
 
     public void updateFailed(String sessionId, String error) {
@@ -130,7 +157,8 @@ public class SessionStore {
     public List<Map<String, Object>> listSessions(int limit) {
         return jdbc.queryForList("""
                 SELECT s.id, s.status, s.compliant, s.doc_count, s.created_at, s.completed_at,
-                       s.error,
+                       s.error, s.next_stage, s.awaiting_officer,
+                       s.stage_completed_at::text AS stage_completed_at,
                        (SELECT er.fields->>'lc_number'
                         FROM lc_v2.documents d
                         JOIN lc_v2.extraction_results er ON er.document_id = d.id AND er.is_consensus
@@ -328,6 +356,38 @@ public class SessionStore {
                 UPDATE lc_v2.reconcile_state
                 SET locked = false, locked_at = NULL, locked_by_officer = NULL
                 WHERE session_id = ?::uuid
+                """, sessionId);
+    }
+
+    // ── Per-cell decisions (matrix UI) ────────────────────────────────────
+
+    public void upsertCellDecision(String sessionId, String fieldKey, String docType,
+                                    String decision, String note, String officerId) {
+        jdbc.update("""
+                INSERT INTO lc_v2.reconcile_cell_decisions
+                  (session_id, field_key, doc_type, decision, note, officer_id, decided_at)
+                VALUES (?::uuid, ?, ?, ?, ?, ?, NOW())
+                ON CONFLICT (session_id, field_key, doc_type) DO UPDATE
+                SET decision = EXCLUDED.decision,
+                    note = EXCLUDED.note,
+                    officer_id = EXCLUDED.officer_id,
+                    decided_at = NOW()
+                """, sessionId, fieldKey, docType, decision, note, officerId);
+    }
+
+    public void deleteCellDecision(String sessionId, String fieldKey, String docType) {
+        jdbc.update("""
+                DELETE FROM lc_v2.reconcile_cell_decisions
+                WHERE session_id = ?::uuid AND field_key = ? AND doc_type = ?
+                """, sessionId, fieldKey, docType);
+    }
+
+    public List<Map<String, Object>> getCellDecisions(String sessionId) {
+        return jdbc.queryForList("""
+                SELECT field_key, doc_type, decision, note, officer_id, decided_at
+                FROM lc_v2.reconcile_cell_decisions
+                WHERE session_id = ?::uuid
+                ORDER BY decided_at
                 """, sessionId);
     }
 

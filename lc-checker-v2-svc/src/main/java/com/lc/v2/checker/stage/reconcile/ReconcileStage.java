@@ -1,14 +1,14 @@
 package com.lc.v2.checker.stage.reconcile;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lc.v2.checker.domain.common.DocType;
-import com.lc.v2.checker.domain.common.FieldType;
 import com.lc.v2.checker.domain.reconcile.ReconField;
 import com.lc.v2.checker.infra.fields.FieldDefinition;
 import com.lc.v2.checker.infra.fields.FieldPoolRegistry;
 import com.lc.v2.checker.infra.observability.PipelineStage;
+import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.pipeline.Stage;
 import com.lc.v2.checker.pipeline.StageContext;
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -20,19 +20,18 @@ import org.springframework.stereotype.Component;
 /**
  * Stage 2 — Reconcile.
  *
- * Pivots all {@code reconcile_canonical} fields from field-pool.yaml across the LC
- * and all submitted documents. Computes a status per field:
+ * Builds a matrix of reconcile_canonical fields × {LC, each present doc}.
  *
- *   NA          — field absent in LC (no reference value to compare against)
- *   MATCH       — all doc values equal the LC value (string: case-insensitive; amount: exact)
- *   TOLERANCE   — amount fields differ but within ±10%
- *   DISCREPANCY — values present and conflicting
+ * <p><b>Mechanical, not semantic.</b> This stage answers
+ * "are values literally consistent across documents after stripping cosmetic
+ * differences?" — it does NOT make UCP/ISBP rule judgements. Tolerance per
+ * UCP 30(b) is the only domain rule applied here. Goods-description
+ * correspondence (ISBP C3) and other soft semantic compliance lives in
+ * ExamineStage as AGENT rules, not here.</p>
  *
- * Results are written to {@code ctx.reconFields} for downstream use by ExamineStage
- * (NOT_APPLICABLE shortcut when LC field absent) and the UI reconcile table.
- *
- * The pipeline auto-advances past this stage. Officer lock/triage is handled via
- * the PATCH /api/v2/sessions/{id}/reconcile/lock endpoint (out-of-band from pipeline).
+ * <p>Per-cell verdicts feed the matrix UI; row-level verdict (worst-of)
+ * remains in {@code status} so ExamineStage's NOT_APPLICABLE shortcut still
+ * works without change.</p>
  */
 @PipelineStage(name = "reconcile")
 @Component
@@ -41,9 +40,16 @@ public class ReconcileStage implements Stage {
     private static final Logger log = LoggerFactory.getLogger(ReconcileStage.class);
 
     private final FieldPoolRegistry fieldPool;
+    private final ReconcileNormaliser normaliser;
+    private final SessionStore sessionStore;
+    private final ObjectMapper objectMapper;
 
-    public ReconcileStage(FieldPoolRegistry fieldPool) {
+    public ReconcileStage(FieldPoolRegistry fieldPool, ReconcileNormaliser normaliser,
+                           SessionStore sessionStore, ObjectMapper objectMapper) {
         this.fieldPool = fieldPool;
+        this.normaliser = normaliser;
+        this.sessionStore = sessionStore;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -59,81 +65,130 @@ public class ReconcileStage implements Stage {
 
         for (FieldDefinition fd : canonical) {
             Map<DocType, Object> valueByDocType = new LinkedHashMap<>();
+            Map<DocType, ReconField.ReconStatus> cellStatus = new LinkedHashMap<>();
+            Map<DocType, String> cellDetail = new LinkedHashMap<>();
 
+            // 1. Pull LC reference value (if present)
+            Object lcVal = null;
             if (ctx.lc != null) {
-                Object lcVal = ctx.lc.envelope().get(fd.key());
-                if (lcVal != null && !lcVal.toString().isBlank()) {
-                    valueByDocType.put(DocType.LC, lcVal);
+                Object v = ctx.lc.envelope().get(fd.key());
+                if (v != null && !v.toString().isBlank()) {
+                    lcVal = v;
+                    valueByDocType.put(DocType.LC, v);
+                    cellStatus.put(DocType.LC, ReconField.ReconStatus.MATCH); // LC is the reference
                 }
             }
 
-            ctx.extracts.forEach((dt, extract) -> {
-                Object val = extract.consensus().get(fd.key());
-                if (val != null && !val.toString().isBlank()) {
-                    valueByDocType.put(dt, val);
+            // 2. Pull each doc's value, compare to LC
+            for (var entry : ctx.extracts.entrySet()) {
+                DocType dt = entry.getKey();
+                Object docVal = entry.getValue().consensus().get(fd.key());
+                if (docVal != null && !docVal.toString().isBlank()) {
+                    valueByDocType.put(dt, docVal);
                 }
-            });
 
-            ReconField.ReconStatus status = computeStatus(fd, valueByDocType);
-            String detail = status == ReconField.ReconStatus.DISCREPANCY
-                    ? buildDetail(valueByDocType) : null;
-            fields.add(new ReconField(fd.key(), fd.nameEn(), valueByDocType, status, detail, null));
+                if (lcVal == null) {
+                    // No reference to compare against
+                    cellStatus.put(dt, ReconField.ReconStatus.NA);
+                } else if (docVal == null || docVal.toString().isBlank()) {
+                    // LC requires this field; doc didn't produce it
+                    cellStatus.put(dt, ReconField.ReconStatus.MISSING);
+                    cellDetail.put(dt, "expected per LC, not extracted");
+                } else {
+                    var cmp = normaliser.compare(fd.type(), lcVal, docVal);
+                    cellStatus.put(dt, mapVerdict(cmp.verdict()));
+                    if (cmp.detail() != null) cellDetail.put(dt, cmp.detail());
+                }
+            }
+
+            // 3. Row-level verdict = worst-of cells (LC excluded)
+            ReconField.ReconStatus rowStatus = lcVal == null
+                    ? ReconField.ReconStatus.NA
+                    : worstOf(cellStatus, /*excludeLc*/ true);
+
+            String rowDetail = rowStatus == ReconField.ReconStatus.DISCREPANCY
+                    ? buildRowDetail(valueByDocType) : null;
+
+            fields.add(new ReconField(
+                    fd.key(), fd.nameEn(), valueByDocType,
+                    cellStatus, cellDetail,
+                    rowStatus, rowDetail, null));
         }
 
         ctx.reconFields = fields;
-        long discrepancies = fields.stream().filter(f -> f.status() == ReconField.ReconStatus.DISCREPANCY).count();
+        long disc = fields.stream().filter(f -> f.status() == ReconField.ReconStatus.DISCREPANCY).count();
+        long tol  = fields.stream().filter(f -> f.status() == ReconField.ReconStatus.TOLERANCE).count();
+
+        // Persist to final_report.reconcile so the matrix survives JVM restart.
+        persistRows(ctx, fields);
+
         ctx.eventBus.stageCompleted(ctx.sessionId, "reconcile", System.currentTimeMillis() - start);
-        log.info("[{}] Reconcile: {} canonical fields, {} discrepancies, {}ms",
-                ctx.sessionId, fields.size(), discrepancies, System.currentTimeMillis() - start);
+        log.info("[{}] Reconcile: {} fields, {} discrepancies, {} tolerances, {}ms",
+                ctx.sessionId, fields.size(), disc, tol, System.currentTimeMillis() - start);
     }
 
-    private ReconField.ReconStatus computeStatus(FieldDefinition fd, Map<DocType, Object> values) {
-        if (values.isEmpty()) return ReconField.ReconStatus.NA;
-        if (!values.containsKey(DocType.LC)) return ReconField.ReconStatus.NA;
-        if (values.size() == 1) return ReconField.ReconStatus.MATCH; // only LC value
-
-        Object lcVal = values.get(DocType.LC);
-        if (fd.type() == FieldType.AMOUNT) {
-            return compareAmounts(lcVal, values);
+    private void persistRows(StageContext ctx, List<ReconField> fields) {
+        try {
+            List<Map<String, Object>> serialised = new ArrayList<>(fields.size());
+            for (ReconField f : fields) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("fieldKey", f.fieldKey());
+                row.put("label", f.nameEn());
+                row.put("verdict", f.status().name());
+                row.put("discrepancyDetail", f.discrepancyDetail());
+                Map<String, Object> values = new LinkedHashMap<>();
+                f.valueByDocType().forEach((dt, v) -> values.put(dt.name(), v == null ? null : v.toString()));
+                row.put("valueByDocType", values);
+                Map<String, String> cellStatus = new LinkedHashMap<>();
+                f.cellStatus().forEach((dt, s) -> cellStatus.put(dt.name(), s.name()));
+                row.put("cellStatus", cellStatus);
+                Map<String, String> cellDetail = new LinkedHashMap<>();
+                f.cellDetail().forEach((dt, d) -> cellDetail.put(dt.name(), d));
+                row.put("cellDetail", cellDetail);
+                serialised.add(row);
+            }
+            String json = objectMapper.writeValueAsString(serialised);
+            sessionStore.mergeFinalReportSection(ctx.sessionId, "reconcile", json);
+        } catch (Exception e) {
+            log.warn("[{}] reconcile persistence failed: {}", ctx.sessionId, e.getMessage());
         }
-        boolean allMatch = values.values().stream()
-                .allMatch(v -> normalize(v).equalsIgnoreCase(normalize(lcVal)));
-        return allMatch ? ReconField.ReconStatus.MATCH : ReconField.ReconStatus.DISCREPANCY;
     }
 
-    private ReconField.ReconStatus compareAmounts(Object lcVal, Map<DocType, Object> values) {
-        BigDecimal lcAmt = parseBd(lcVal);
-        if (lcAmt == null) {
-            return values.values().stream().allMatch(v -> normalize(v).equalsIgnoreCase(normalize(lcVal)))
-                    ? ReconField.ReconStatus.MATCH : ReconField.ReconStatus.DISCREPANCY;
+    private static ReconField.ReconStatus mapVerdict(ReconcileNormaliser.Verdict v) {
+        return switch (v) {
+            case MATCH       -> ReconField.ReconStatus.MATCH;
+            case TOLERANCE   -> ReconField.ReconStatus.TOLERANCE;
+            case DISCREPANCY -> ReconField.ReconStatus.DISCREPANCY;
+            case MISSING     -> ReconField.ReconStatus.MISSING;
+        };
+    }
+
+    private static ReconField.ReconStatus worstOf(Map<DocType, ReconField.ReconStatus> cells, boolean excludeLc) {
+        // priority: DISCREPANCY > TOLERANCE > MISSING > MATCH > NA
+        ReconField.ReconStatus worst = ReconField.ReconStatus.MATCH;
+        boolean any = false;
+        for (var entry : cells.entrySet()) {
+            if (excludeLc && entry.getKey() == DocType.LC) continue;
+            any = true;
+            worst = worse(worst, entry.getValue());
         }
-        boolean anyTolerance = false;
-        for (var entry : values.entrySet()) {
-            if (entry.getKey() == DocType.LC) continue;
-            BigDecimal docAmt = parseBd(entry.getValue());
-            if (docAmt == null) continue;
-            int cmp = docAmt.compareTo(lcAmt);
-            if (cmp == 0) continue;
-            BigDecimal diff = docAmt.subtract(lcAmt).abs();
-            BigDecimal threshold = lcAmt.abs().multiply(new BigDecimal("0.10"));
-            if (diff.compareTo(threshold) > 0) return ReconField.ReconStatus.DISCREPANCY;
-            anyTolerance = true;
-        }
-        return anyTolerance ? ReconField.ReconStatus.TOLERANCE : ReconField.ReconStatus.MATCH;
+        return any ? worst : ReconField.ReconStatus.NA;
     }
 
-    private BigDecimal parseBd(Object val) {
-        if (val == null) return null;
-        String s = val.toString().replaceAll("[^0-9.]", "");
-        if (s.isEmpty()) return null;
-        try { return new BigDecimal(s); } catch (Exception e) { return null; }
+    private static ReconField.ReconStatus worse(ReconField.ReconStatus a, ReconField.ReconStatus b) {
+        return rank(a) >= rank(b) ? a : b;
+    }
+    private static int rank(ReconField.ReconStatus s) {
+        return switch (s) {
+            case DISCREPANCY -> 4;
+            case TOLERANCE   -> 3;
+            case MISSING     -> 2;
+            case MATCH       -> 1;
+            case NA          -> 0;
+        };
     }
 
-    private String normalize(Object val) {
-        return val == null ? "" : val.toString().trim().replaceAll("\\s+", " ");
-    }
-
-    private String buildDetail(Map<DocType, Object> values) {
+    private static String buildRowDetail(Map<DocType, Object> values) {
         StringBuilder sb = new StringBuilder();
         values.forEach((dt, val) -> sb.append(dt.name()).append("=").append(val).append("; "));
         return sb.toString();

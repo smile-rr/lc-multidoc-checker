@@ -82,6 +82,25 @@ export async function getReconcile(sessionId) {
   return res.json();
 }
 
+/** Per-cell officer decision: parse_error | genuine | accept_match | edited */
+export async function setCellDecision(sessionId, body) {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/reconcile/cell-decision`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function clearCellDecision(sessionId, body) {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/reconcile/cell-decision`, {
+    method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export async function triageReconcile(sessionId, body) {
   const res = await fetch(`${BASE}/sessions/${sessionId}/reconcile/triage`, {
     method:  'POST',

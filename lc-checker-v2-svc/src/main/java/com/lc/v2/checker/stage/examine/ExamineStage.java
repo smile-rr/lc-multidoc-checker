@@ -1,13 +1,18 @@
 package com.lc.v2.checker.stage.examine;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lc.v2.checker.domain.common.DocType;
 import com.lc.v2.checker.domain.result.CheckResult;
 import com.lc.v2.checker.domain.rule.Rule;
 import com.lc.v2.checker.infra.observability.PipelineStage;
+import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.infra.rules.RuleCatalogRegistry;
 import com.lc.v2.checker.pipeline.Stage;
 import com.lc.v2.checker.pipeline.StageContext;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -36,13 +41,19 @@ public class ExamineStage implements Stage {
     private final RuleCatalogRegistry catalog;
     private final SpelEvaluator spelEvaluator;
     private final AgentRuleExecutor agentExecutor;
+    private final SessionStore sessionStore;
+    private final ObjectMapper objectMapper;
 
     public ExamineStage(RuleCatalogRegistry catalog,
                         SpelEvaluator spelEvaluator,
-                        AgentRuleExecutor agentExecutor) {
+                        AgentRuleExecutor agentExecutor,
+                        SessionStore sessionStore,
+                        ObjectMapper objectMapper) {
         this.catalog = catalog;
         this.spelEvaluator = spelEvaluator;
         this.agentExecutor = agentExecutor;
+        this.sessionStore = sessionStore;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -89,9 +100,31 @@ public class ExamineStage implements Stage {
                     result.verdict(), result.confidence());
         }
 
+        // Persist results so the worklist survives JVM restart.
+        persistResults(ctx);
+
         ctx.eventBus.stageCompleted(ctx.sessionId, "examine", System.currentTimeMillis() - start);
         log.info("[{}] Examine complete: {} results, {}ms",
                 ctx.sessionId, ctx.checkResults.size(), System.currentTimeMillis() - start);
+    }
+
+    private void persistResults(StageContext ctx) {
+        try {
+            List<Map<String, Object>> serialised = new ArrayList<>(ctx.checkResults.size());
+            for (CheckResult r : ctx.checkResults) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("ruleId", r.ruleId());
+                row.put("verdict", r.verdict().name());
+                row.put("explanation", r.explanation() != null ? r.explanation() : "");
+                row.put("confidence", r.confidence());
+                row.put("checkType", r.checkType() != null ? r.checkType() : "");
+                serialised.add(row);
+            }
+            String json = objectMapper.writeValueAsString(serialised);
+            sessionStore.mergeFinalReportSection(ctx.sessionId, "examine", json);
+        } catch (Exception e) {
+            log.warn("[{}] examine persistence failed: {}", ctx.sessionId, e.getMessage());
+        }
     }
 
     /** Rule fires only when ALL its triggerDocs have been extracted in this session. */

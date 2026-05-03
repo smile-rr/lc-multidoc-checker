@@ -21,6 +21,8 @@ public sealed interface PipelineEvent permits
         PipelineEvent.SessionCancelled,
         PipelineEvent.StageRerun,
         PipelineEvent.AwaitingOfficer,
+        PipelineEvent.ReconcileCellDecided,
+        PipelineEvent.ReconcileCellCleared,
         PipelineEvent.DocTypeChanged,
         PipelineEvent.DocReviewed,
         PipelineEvent.FieldCorrected,
@@ -48,6 +50,8 @@ public sealed interface PipelineEvent permits
     record SessionCancelled(String sessionId, String atStage, Instant timestamp) implements PipelineEvent {}
     record StageRerun(String sessionId, String fromStage, String officerId, Instant timestamp) implements PipelineEvent {}
     record AwaitingOfficer(String sessionId, String stage, Instant timestamp) implements PipelineEvent {}
+    record ReconcileCellDecided(String sessionId, String fieldKey, String docType, String decision, String note, String officerId, Instant timestamp) implements PipelineEvent {}
+    record ReconcileCellCleared(String sessionId, String fieldKey, String docType, String officerId, Instant timestamp) implements PipelineEvent {}
 
     // ── Officer actions ────────────────────────────────────────────────────
     record DocTypeChanged(String sessionId, String docId, String newType, String officerId, Instant timestamp) implements PipelineEvent {}

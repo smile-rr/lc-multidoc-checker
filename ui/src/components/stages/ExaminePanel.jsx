@@ -155,7 +155,7 @@ export function ExaminePanel({ session, stagesCompleted, onContinue, onBack }) {
             meta={
               <>
                 <EyebrowLabel>WORKLIST · {sorted.length} of {rules.length}</EyebrowLabel>
-                {!examineDone && <Spinner size="sm" label="checking…" />}
+                {session?.status === 'EXAMINE' && <Spinner size="sm" label="checking…" />}
                 {activeView && savedViews.find(v => v.id === activeView) && activeView !== 'default' && (
                   <span className="text-[10px] px-2 py-0.5 rounded bg-teal-1/10 text-teal-1 flex items-center gap-1 font-mono">
                     ★ {savedViews.find(v => v.id === activeView).name}

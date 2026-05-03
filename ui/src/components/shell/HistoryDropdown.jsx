@@ -99,7 +99,10 @@ export function HistoryDropdown() {
             >
               <StatusDot status={s.status} compliant={s.compliant} />
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium truncate">{displayName(s)}</div>
+                <div className="flex items-center gap-2">
+                  <div className="text-sm font-medium truncate flex-1">{displayName(s)}</div>
+                  <SessionProgressBadge session={s} />
+                </div>
                 <div className="text-xs text-muted truncate mt-0.5">
                   {s.beneficiary_name ?? '—'}
                 </div>
@@ -119,6 +122,30 @@ export function HistoryDropdown() {
 function displayName(s) {
   if (s.lc_number?.trim()) return s.lc_number;
   return `#${String(s.id).slice(0, 8)}`;
+}
+
+/** Compact "where did this session get to" badge for the History list. */
+function SessionProgressBadge({ session }) {
+  const { status, compliant, next_stage, awaiting_officer } = session;
+  if (status === 'COMPLETED') {
+    const tone = compliant === true ? 'bg-status-greenSoft text-status-green'
+      : compliant === false ? 'bg-status-redSoft text-status-red'
+      : 'bg-status-goldSoft text-status-gold';
+    const lbl = compliant === true ? 'COMPLIANT' : compliant === false ? 'DISCREPANT' : 'COMPLETED';
+    return <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded shrink-0 ${tone}`}>{lbl}</span>;
+  }
+  if (status === 'FAILED') {
+    return <span className="text-[9px] font-mono px-1.5 py-0.5 rounded shrink-0 bg-status-redSoft text-status-red">FAILED</span>;
+  }
+  if (awaiting_officer && next_stage) {
+    return (
+      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded shrink-0 bg-slate2 text-muted" title="Awaiting officer to trigger next stage">
+        ▸ {next_stage}
+      </span>
+    );
+  }
+  // Mid-stage running
+  return <span className="text-[9px] font-mono px-1.5 py-0.5 rounded shrink-0 bg-teal-1/15 text-teal-1">{status?.toLowerCase()}</span>;
 }
 
 function StatusDot({ status, compliant }) {

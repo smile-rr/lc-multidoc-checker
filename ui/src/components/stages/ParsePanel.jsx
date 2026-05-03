@@ -155,15 +155,31 @@ export function ParsePanel({ session, stagesCompleted, events, refresh, onContin
     setCorrecting(null);
   };
 
-  const meta = (
+  // Two-phase meter:
+  //   Phase 1 (PARSE actively running): "extracting M/N" — review-progress is meaningless yet.
+  //   Phase 2 (extraction done, officer is reviewing): "M/N reviewed".
+  // Spinner appears only when PARSE is actively running on the backend.
+  const isExtracting = session?.status === 'PARSE';
+  const extractedCount = docs.filter(d =>
+    d.parse_status === 'EXTRACTED' || d.parse_status === 'REVIEWED' || d.parse_status === 'FAILED'
+  ).length;
+
+  const meta = isExtracting ? (
+    <span className="text-[11px] flex items-center gap-1.5 font-mono">
+      <Spinner size="sm" />
+      <span className="text-status-gold">
+        extracting {extractedCount}/{docs.length}
+      </span>
+      {!isLcActive && activeDoc && pages > 1 && <span className="text-muted">· page {page}/{pages}</span>}
+    </span>
+  ) : (
     <span className="text-[11px] flex items-center gap-1.5 font-mono">
       <span className={`w-1.5 h-1.5 rounded-full ${remaining === 0 ? 'bg-status-green' : 'bg-status-gold'}`} />
       <span className={remaining === 0 ? 'text-status-green' : 'text-status-gold'}>
         {docs.length - remaining}/{docs.length} reviewed
-        {remaining > 0 && ` · ${remaining} remaining`}
+        {remaining > 0 && ` · ${remaining} pending`}
       </span>
       {!isLcActive && activeDoc && pages > 1 && <span className="text-muted">· page {page}/{pages}</span>}
-      {!parseDone && <Spinner size="sm" />}
     </span>
   );
 

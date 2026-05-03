@@ -136,7 +136,7 @@ export function SignoffPanel({ session, stagesCompleted, onBack }) {
         meta={
           <span className="text-[11px] text-muted font-mono flex items-center gap-2">
             officer decision
-            {!signoffDone && <Spinner size="sm" />}
+            {session?.status === 'SIGNOFF' && <Spinner size="sm" label="finalising…" />}
           </span>
         }
         actions={

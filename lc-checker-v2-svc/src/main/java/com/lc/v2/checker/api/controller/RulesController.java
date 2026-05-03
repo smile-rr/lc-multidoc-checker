@@ -102,7 +102,11 @@ public class RulesController {
         if (!(finalReport instanceof String fr) || fr.isBlank()) return List.of();
         try {
             Map<String, Object> parsed = objectMapper.readValue(fr, Map.class);
-            Object rs = parsed.get("results");
+            // Examine stage persists progressively under "examine" (list of result rows).
+            // SignoffStage writes the legacy "results" key. Prefer "examine" — it's
+            // populated as soon as Examine runs, before sign-off.
+            Object rs = parsed.get("examine");
+            if (!(rs instanceof List<?>)) rs = parsed.get("results");
             if (!(rs instanceof List<?> list)) return List.of();
             List<CheckResult> out = new ArrayList<>(list.size());
             for (Object obj : list) {

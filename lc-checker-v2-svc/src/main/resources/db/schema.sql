@@ -214,6 +214,26 @@ ALTER TABLE lc_v2.check_sessions
     ADD COLUMN IF NOT EXISTS awaiting_officer   BOOLEAN NOT NULL DEFAULT FALSE,
     ADD COLUMN IF NOT EXISTS stage_completed_at JSONB   NOT NULL DEFAULT '{}'::jsonb;
 
+-- ---------------------------------------------------------------------------
+-- Reconcile cell decisions — per (field × doc) officer decision.
+-- Replaces the per-row triage with cell-level granularity needed for the
+-- matrix UI. Decision values: 'parse_error' | 'genuine' | 'accept_match' | 'edited'.
+-- 'accept_match' requires a note (officer override of literal mismatch).
+-- 'edited' is auto-recorded when the officer corrects a field via the parse
+-- correction endpoint while at Reconcile.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS lc_v2.reconcile_cell_decisions (
+    session_id   UUID         NOT NULL REFERENCES lc_v2.check_sessions(id) ON DELETE CASCADE,
+    field_key    VARCHAR(60)  NOT NULL,
+    doc_type     VARCHAR(20)  NOT NULL,
+    decision     VARCHAR(20)  NOT NULL,
+    note         TEXT,
+    officer_id   VARCHAR(64)  NOT NULL,
+    decided_at   TIMESTAMP    NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (session_id, field_key, doc_type)
+);
+CREATE INDEX IF NOT EXISTS idx_v2_recon_cells_session ON lc_v2.reconcile_cell_decisions(session_id);
+
 -- Rule confirmation summary per session
 CREATE OR REPLACE VIEW lc_v2.v_rule_confirmations AS
 SELECT  rc.session_id,

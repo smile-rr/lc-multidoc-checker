@@ -88,10 +88,27 @@ CREATE TABLE IF NOT EXISTS lc_v2.reconcile_state (
     locked_at       TIMESTAMP,
     locked_by_officer VARCHAR(100),
     triage          JSONB        NOT NULL DEFAULT '{}',
-    -- {field_key: "genuine" | "parse-error" | null}
+    -- {field_key: "genuine" | "parse-error" | null}  -- legacy row-level triage
     created_at      TIMESTAMP    NOT NULL DEFAULT NOW(),
     UNIQUE (session_id)
 );
+
+-- ---------------------------------------------------------------------------
+-- Reconcile cell decisions — per (field × doc) officer decision (matrix UI)
+-- Replaces row-level triage with cell-level granularity.
+-- decision: 'parse_error' | 'genuine' | 'accept_match' | 'edited'
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS lc_v2.reconcile_cell_decisions (
+    session_id   UUID         NOT NULL REFERENCES lc_v2.check_sessions(id) ON DELETE CASCADE,
+    field_key    VARCHAR(60)  NOT NULL,
+    doc_type     VARCHAR(20)  NOT NULL,
+    decision     VARCHAR(20)  NOT NULL,
+    note         TEXT,
+    officer_id   VARCHAR(64)  NOT NULL,
+    decided_at   TIMESTAMP    NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (session_id, field_key, doc_type)
+);
+CREATE INDEX IF NOT EXISTS idx_v2_recon_cells_session ON lc_v2.reconcile_cell_decisions(session_id);
 
 -- ---------------------------------------------------------------------------
 -- Rule confirmations — per-rule officer confirm/reject

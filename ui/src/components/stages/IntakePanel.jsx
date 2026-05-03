@@ -28,8 +28,10 @@ export function IntakePanel({ session, stagesCompleted, refresh, onContinue }) {
   const { setType, confirm } = useDocActions(sessionId);
   const { data: required, refresh: refreshRequired } = useLcRequiredDocs(sessionId);
 
-  const intakeDone = stagesCompleted?.has('intake');
-  const running = !intakeDone;
+  // Stage is actively running iff backend status is INTAKE.
+  // Pre-stage / post-stage / awaiting-officer all show static state, no spinner.
+  const running = session?.status === 'INTAKE';
+  const intakeDone = stagesCompleted?.has('intake') || session?.next_stage === 'parse';
 
   const reviewNeeded = useMemo(() =>
     sortByDocType(docs.filter(d => d.doc_type === 'UNKNOWN' || d.confirmed_by_officer === false)), [docs]);
@@ -66,9 +68,11 @@ export function IntakePanel({ session, stagesCompleted, refresh, onContinue }) {
     <StagePage>
       <StageToolbar
         title="Document Intake"
-        meta={running ? <Spinner size="sm" label={`classifying… (${docs.length})`} /> : (
+        meta={running ? (
+          <Spinner size="sm" label={`classifying… (${docs.length})`} />
+        ) : (
           <span className="text-[11px] text-muted font-mono">
-            classified {docs.length} doc{docs.length === 1 ? '' : 's'}
+            {docs.length} doc{docs.length === 1 ? '' : 's'} classified · awaiting confirmation
           </span>
         )}
         actions={

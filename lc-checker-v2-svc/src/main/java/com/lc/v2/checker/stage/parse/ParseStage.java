@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lc.v2.checker.domain.common.DocType;
 import com.lc.v2.checker.domain.common.FieldEnvelope;
 import com.lc.v2.checker.domain.document.DocumentExtract;
-import com.lc.v2.checker.domain.lc.LcParseResult;
 import com.lc.v2.checker.infra.observability.PipelineStage;
 import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.pipeline.Stage;
@@ -18,12 +17,14 @@ import org.springframework.stereotype.Component;
 
 /**
  * Stage 1 — Parse.
- * 1a. Mt700Parser → LcParseResult (LC self-consistency check included)
- * 1b. VisionExtractService → sequential per-doc extraction in upload order.
- *     Within each doc, enabled vision slots fire in parallel; consensus = majority vote.
- *     Sequential across docs gives a clean, ordered ActivityStrip and lets the user follow
- *     "currently extracting BOL…" → "currently extracting INV…" in the same order they
- *     see in the doc rail. Honours ctx.cancelled between docs (cooperative cancel).
+ *
+ * <p>Vision extraction only — MT700 parse moved to IntakeStage so the LC fields
+ * are populated before the intake gate. By the time the officer reaches Parse,
+ * the LC view shows real data; Continue triggers only the vision extraction.</p>
+ *
+ * <p>Vision extracts run sequentially per-doc in LC-review-priority order
+ * (INV → BOL → PKL → BOE → BC → WC). Within each doc, enabled slots fire in
+ * parallel; consensus = majority vote. Honours ctx.cancelled between docs.</p>
  */
 @PipelineStage(name = "parse")
 @Component
@@ -31,14 +32,12 @@ public class ParseStage implements Stage {
 
     private static final Logger log = LoggerFactory.getLogger(ParseStage.class);
 
-    private final Mt700Parser mt700Parser;
     private final VisionExtractService visionExtractService;
     private final SessionStore sessionStore;
     private final ObjectMapper objectMapper;
 
-    public ParseStage(Mt700Parser mt700Parser, VisionExtractService visionExtractService,
+    public ParseStage(VisionExtractService visionExtractService,
                       SessionStore sessionStore, ObjectMapper objectMapper) {
-        this.mt700Parser = mt700Parser;
         this.visionExtractService = visionExtractService;
         this.sessionStore = sessionStore;
         this.objectMapper = objectMapper;
@@ -49,21 +48,16 @@ public class ParseStage implements Stage {
 
     @Override
     public void execute(StageContext ctx) {
-        log.info("[{}] ParseStage starting", ctx.sessionId);
+        log.info("[{}] ParseStage starting (vision only — LC already parsed in Intake)", ctx.sessionId);
         ctx.eventBus.stageStarted(ctx.sessionId, "parse");
 
-        // 1a — LC parse
-        if (ctx.lcText != null && !ctx.lcText.isBlank()) {
-            parseLc(ctx);
-        } else {
-            log.warn("[{}] No LC text in context — skipping MT700 parse", ctx.sessionId);
-        }
-
-        // 1b — Vision extraction in parallel for all uploaded doc types
+        // Vision extraction in LC-review-priority order: INV → BOL → PKL →
+        // BOE → BC → WC. DocType enum is declared in this order so ordinal works.
         List<DocType> toExtract = new ArrayList<>();
         for (DocType dt : ctx.uploadedDocBytes.keySet()) {
             if (dt != DocType.LC && dt != DocType.UNKNOWN) toExtract.add(dt);
         }
+        toExtract.sort(java.util.Comparator.comparingInt(DocType::ordinal));
 
         if (!toExtract.isEmpty()) {
             extractAllDocTypes(ctx, toExtract);
@@ -72,22 +66,6 @@ public class ParseStage implements Stage {
         ctx.eventBus.stageCompleted(ctx.sessionId, "parse",
                 "lc=" + (ctx.lc != null) + " extracts=" + ctx.extracts.size());
         log.info("[{}] ParseStage complete: {} doc extracts", ctx.sessionId, ctx.extracts.size());
-    }
-
-    private void parseLc(StageContext ctx) {
-        try {
-            ctx.eventBus.extractionProgress(ctx.sessionId, "LC", "mt700_parser", "parsing");
-            LcParseResult result = mt700Parser.parse(ctx.lcText);
-            ctx.lc = result;
-            int warnings = result.consistencyWarnings().size();
-            ctx.eventBus.extractionProgress(ctx.sessionId, "LC", "mt700_parser",
-                    "complete #" + result.getLcNumber() + (warnings > 0 ? " warnings=" + warnings : ""));
-            log.info("[{}] LC parsed: #{}, warnings={}", ctx.sessionId, result.getLcNumber(), warnings);
-        } catch (LcParseException e) {
-            log.error("[{}] MT700 parse failed: {}", ctx.sessionId, e.getMessage());
-            ctx.eventBus.extractionProgress(ctx.sessionId, "LC", "mt700_parser", "error: " + e.getMessage());
-            throw e;
-        }
     }
 
     private void extractAllDocTypes(StageContext ctx, List<DocType> docTypes) {
