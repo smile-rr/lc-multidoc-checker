@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { rerunStage } from '../../api';
+import { OFFICER_ID } from '../../lib/officer';
 
 const STAGE_LABELS = {
   intake:    'Intake',
@@ -15,8 +16,6 @@ const DOWNSTREAM_LABEL = {
   examine:   'discard examination, sign-off',
   signoff:   'discard sign-off draft (no other state lost)',
 };
-
-const OFFICER_ID = 'A. Wijaya';
 
 /** DEV-only re-run button. Shows a confirm dialog; calls POST /stages/{stage}/rerun. */
 export function RerunButton({ sessionId, stage, devMode, disabled }) {

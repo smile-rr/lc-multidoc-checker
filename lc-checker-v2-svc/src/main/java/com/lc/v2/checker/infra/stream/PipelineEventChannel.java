@@ -1,6 +1,7 @@
 package com.lc.v2.checker.infra.stream;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.pipeline.PipelineEvent;
 import java.io.IOException;
 import java.util.List;
@@ -17,7 +18,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * SSE fan-out: subscribes to Spring ApplicationEvents from PipelineEventBus,
- * delivers to all registered SseEmitters for the session.
+ * delivers to all registered SseEmitters for the session, and persists every
+ * event to {@code lc_v2.pipeline_events} via SessionStore.
  *
  * One SessionChannel per active session: holds a ring buffer (last 512 events)
  * for late-joining subscribers, and a live emitter list.
@@ -31,6 +33,11 @@ public class PipelineEventChannel {
     private final Map<String, SessionChannel> channels = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper = new ObjectMapper()
             .findAndRegisterModules();
+    private final SessionStore sessionStore;
+
+    public PipelineEventChannel(SessionStore sessionStore) {
+        this.sessionStore = sessionStore;
+    }
 
     /** Create (or return existing) channel for a session. */
     public SessionChannel channel(String sessionId) {
@@ -56,15 +63,23 @@ public class PipelineEventChannel {
     public void onPipelineEvent(PipelineEvent event) {
         SessionChannel ch = channels.get(event.sessionId());
         if (ch == null) return;
+
+        // Assign seq BEFORE serialising so it's stable for both SSE and DB.
+        long seq = ch.nextSeq();
+
         try {
             String json = objectMapper.writeValueAsString(Map.of(
                     "type", event.getClass().getSimpleName(),
                     "sessionId", event.sessionId(),
                     "ts", event.timestamp().toEpochMilli(),
+                    "seq", seq,
                     "data", event));
+
             ch.publish(json);
+            sessionStore.appendEvent(event.sessionId(), seq, json);
+
         } catch (Exception e) {
-            log.warn("[SSE] Failed to serialize event: {}", e.getMessage());
+            log.warn("[SSE] Failed to serialise event: {}", e.getMessage());
         }
     }
 
@@ -84,9 +99,13 @@ public class PipelineEventChannel {
             this.ringBuffer = new String[bufferSize];
         }
 
+        /** Returns the next sequence number (atomically incremented). */
+        synchronized long nextSeq() {
+            return seq.getAndIncrement();
+        }
+
         void publish(String json) {
-            long idx = seq.getAndIncrement();
-            ringBuffer[(int) (idx % ringBuffer.length)] = json;
+            ringBuffer[(int) (seq.get() % ringBuffer.length)] = json;
             deliver(json);
         }
 

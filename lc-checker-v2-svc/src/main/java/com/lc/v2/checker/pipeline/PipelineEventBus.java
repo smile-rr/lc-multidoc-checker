@@ -70,6 +70,10 @@ public class PipelineEventBus {
         emit(new PipelineEvent.StageRerun(sessionId, fromStage, officerId, java.time.Instant.now()));
     }
 
+    public void awaitingOfficer(String sessionId, String stage) {
+        emit(new PipelineEvent.AwaitingOfficer(sessionId, stage, java.time.Instant.now()));
+    }
+
     // ── Officer-action helpers ─────────────────────────────────────────────
     public void docTypeChanged(String sessionId, String docId, String newType, String officerId) {
         emit(new PipelineEvent.DocTypeChanged(sessionId, docId, newType, officerId, java.time.Instant.now()));

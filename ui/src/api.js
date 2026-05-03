@@ -61,7 +61,14 @@ export async function correctField(sessionId, docId, fieldKey, body) {
   return res.json();
 }
 
-// ── LC required-docs ───────────────────────────────────────────────────────
+// ── LC source + required-docs ─────────────────────────────────────────────
+/** Returns { text, fields, rawFields, warnings } for the MT700 pane. */
+export async function getLc(sessionId) {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/lc`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export async function getLcRequiredDocs(sessionId) {
   const res = await fetch(`${BASE}/sessions/${sessionId}/lc/required-docs`);
   if (!res.ok) throw new Error(await res.text());
@@ -180,9 +187,18 @@ export async function getPresetFile(presetId, filename) {
   return res.blob();
 }
 
-// ── Pipeline control: cancel + re-run ─────────────────────────────────────
-export async function cancelSession(sessionId, officerId) {
-  const res = await fetch(`${BASE}/sessions/${sessionId}/cancel`, {
+// ── Session events (history) ─────────────────────────────────────────────────
+/** Fetch all persisted events for a session (for history popover). */
+export async function getSessionEvents(sessionId) {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/events`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+// ── Pipeline control: officer-triggered stage advance + re-run ────────────
+/** Advance the pipeline forward to {stage}. Stage must match session.next_stage. */
+export async function runStage(sessionId, stage, officerId) {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/stages/${stage}/run`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ officerId }),
   });
@@ -190,6 +206,7 @@ export async function cancelSession(sessionId, officerId) {
   return res.json();
 }
 
+/** Re-run from a prior stage (back-to-edit flow). Wipes downstream state. */
 export async function rerunStage(sessionId, stage, officerId) {
   const res = await fetch(`${BASE}/sessions/${sessionId}/stages/${stage}/rerun`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },

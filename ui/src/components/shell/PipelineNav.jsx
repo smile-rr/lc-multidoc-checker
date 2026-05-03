@@ -14,7 +14,7 @@ const STAGES = [
  */
 export function PipelineNav({ activeStage, completedStages, reachable, onSelect }) {
   return (
-    <nav className="flex items-center gap-0 border-b border-line bg-paper px-6 shrink-0">
+    <nav className="flex items-center gap-0 bg-paper px-6 shrink-0">
       {STAGES.map((s, i) => {
         const done = completedStages?.has(s.key);
         const active = activeStage === s.key;
@@ -27,12 +27,12 @@ export function PipelineNav({ activeStage, completedStages, reachable, onSelect 
               title={canClick ? '' : 'Complete the prior stage gate first'}
               className={`flex items-center gap-1.5 px-4 py-3 text-xs font-medium border-b-2 transition-colors
                 ${active
-                  ? 'border-teal-1 text-teal-1'
+                  ? 'border-b-teal-1 text-teal-1'
                   : done
-                    ? 'border-status-green text-status-green hover:text-teal-1'
+                    ? 'border-b-status-green text-status-green hover:border-b-teal-1'
                     : canClick
-                      ? 'border-transparent text-muted hover:text-navy-1'
-                      : 'border-transparent text-line cursor-not-allowed'}`}
+                      ? 'border-b-transparent text-muted hover:border-b-navy-1 hover:text-navy-1'
+                      : 'border-b-transparent text-line cursor-not-allowed'}`}
             >
               <span>{done ? '✓' : !canClick ? '🔒' : s.icon}</span>
               {s.label}

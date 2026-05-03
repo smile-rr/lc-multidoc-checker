@@ -20,6 +20,7 @@ public sealed interface PipelineEvent permits
         PipelineEvent.SessionCompleted,
         PipelineEvent.SessionCancelled,
         PipelineEvent.StageRerun,
+        PipelineEvent.AwaitingOfficer,
         PipelineEvent.DocTypeChanged,
         PipelineEvent.DocReviewed,
         PipelineEvent.FieldCorrected,
@@ -33,6 +34,9 @@ public sealed interface PipelineEvent permits
     String sessionId();
     Instant timestamp();
 
+    /** Assigned by {@link com.lc.v2.checker.infra.stream.PipelineEventChannel} at publish time. */
+    default long seq() { return 0; }
+
     // ── Pipeline lifecycle ─────────────────────────────────────────────────
     record StageStarted(String sessionId, String stageName, Instant timestamp) implements PipelineEvent {}
     record StageCompleted(String sessionId, String stageName, long durationMs, Instant timestamp) implements PipelineEvent {}
@@ -43,6 +47,7 @@ public sealed interface PipelineEvent permits
     record SessionCompleted(String sessionId, boolean compliant, int discrepancies, Instant timestamp) implements PipelineEvent {}
     record SessionCancelled(String sessionId, String atStage, Instant timestamp) implements PipelineEvent {}
     record StageRerun(String sessionId, String fromStage, String officerId, Instant timestamp) implements PipelineEvent {}
+    record AwaitingOfficer(String sessionId, String stage, Instant timestamp) implements PipelineEvent {}
 
     // ── Officer actions ────────────────────────────────────────────────────
     record DocTypeChanged(String sessionId, String docId, String newType, String officerId, Instant timestamp) implements PipelineEvent {}

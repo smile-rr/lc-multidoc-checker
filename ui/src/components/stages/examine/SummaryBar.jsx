@@ -15,7 +15,7 @@ export function SummaryBar({ rules, docCount }) {
 
   return (
     <div className="bg-white border-b border-line px-6 py-4">
-      <div className="max-w-[1600px] mx-auto">
+      <div>
         <div className="flex items-center justify-between mb-3">
           <div>
             <div className="text-[10px] tracking-[0.2em] uppercase text-muted font-mono">EXAMINATION</div>

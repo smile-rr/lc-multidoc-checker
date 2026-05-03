@@ -3,6 +3,9 @@ package com.lc.v2.checker.api.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lc.v2.checker.infra.lc.Lc46aRequiredDocsParser;
 import com.lc.v2.checker.infra.persistence.SessionStore;
+import com.lc.v2.checker.pipeline.PipelineService;
+import com.lc.v2.checker.pipeline.StageContext;
+import com.lc.v2.checker.domain.lc.LcParseResult;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,12 +32,58 @@ public class LcController {
     private final SessionStore sessionStore;
     private final Lc46aRequiredDocsParser parser;
     private final ObjectMapper objectMapper;
+    private final PipelineService pipelineService;
 
     public LcController(SessionStore sessionStore, Lc46aRequiredDocsParser parser,
-                         ObjectMapper objectMapper) {
+                         ObjectMapper objectMapper, PipelineService pipelineService) {
         this.sessionStore = sessionStore;
         this.parser = parser;
         this.objectMapper = objectMapper;
+        this.pipelineService = pipelineService;
+    }
+
+    /**
+     * Returns the LC source view used by the Parse stage's MT700 pane:
+     *   { text, fields, warnings, rawFields }
+     *
+     * Source priority:
+     *   1. live StageContext (post-parse-stage) — has full LcParseResult
+     *   2. final_report.lc.raw (after sign-off) — text only
+     *   3. ctx.lcText (before parse) — raw upload, no fields yet
+     */
+    @GetMapping
+    public ResponseEntity<Map<String, Object>> getLc(@PathVariable String sessionId) {
+        if (!sessionStore.sessionExists(sessionId)) return ResponseEntity.notFound().build();
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        StageContext ctx = pipelineService.getContext(sessionId);
+
+        if (ctx != null && ctx.lc != null) {
+            LcParseResult lc = ctx.lc;
+            response.put("text", lc.rawMt700() != null ? lc.rawMt700() : (ctx.lcText != null ? ctx.lcText : ""));
+            response.put("fields", lc.envelope().fields());
+            response.put("rawFields", lc.rawFields());
+            response.put("warnings", lc.consistencyWarnings());
+            return ResponseEntity.ok(response);
+        }
+
+        // Fallback to ctx.lcText if pipeline hasn't reached Parse yet.
+        if (ctx != null && ctx.lcText != null) {
+            response.put("text", ctx.lcText);
+            response.put("fields", Map.of());
+            response.put("rawFields", Map.of());
+            response.put("warnings", List.of());
+            return ResponseEntity.ok(response);
+        }
+
+        // Final fallback — pull raw text from final_report.lc.raw.
+        Map<String, Object> session = sessionStore.getSession(sessionId);
+        String text = readLcRawText(session);
+        response.put("text", text);
+        response.put("fields", Map.of());
+        response.put("rawFields", Map.of());
+        response.put("warnings", List.of());
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/required-docs")

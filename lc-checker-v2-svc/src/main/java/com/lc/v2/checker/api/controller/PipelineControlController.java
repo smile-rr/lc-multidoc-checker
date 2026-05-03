@@ -13,18 +13,19 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Pipeline control: cancel a running session or re-run from a chosen stage.
+ * Pipeline control: officer-triggered stage advance + re-run.
  *
- *   POST /sessions/{id}/cancel                  body: {officerId}
+ *   POST /sessions/{id}/stages/{stage}/run      body: {officerId}
+ *     Advances the pipeline forward by one stage. The {stage} must match the
+ *     session's recorded next_stage. Hard-gated flow — no auto-advance.
+ *
  *   POST /sessions/{id}/stages/{stage}/rerun    body: {officerId}
- *
- * Cancel is cooperative: the in-flight stage runs to completion, then the
- * pipeline loop exits. Re-run wipes downstream DB rows + ctx fields then
- * replays from the chosen stage.
+ *     Re-runs from a prior stage. Wipes downstream rows + replays one stage,
+ *     then waits again for officer trigger. Used when the officer goes back
+ *     to a stage to correct data.
  *
  * Re-run requires the session's StageContext to still be in the in-process
- * cache (the upload bytes live there). After JVM restart or sign-off, re-run
- * returns 409 — caller should start a fresh session.
+ * cache. After JVM restart or sign-off, re-run returns 409.
  */
 @RestController
 @RequestMapping("/api/v2/sessions/{sessionId}")
@@ -40,21 +41,25 @@ public class PipelineControlController {
         this.sessionStore = sessionStore;
     }
 
-    @PostMapping("/cancel")
-    public ResponseEntity<Map<String, Object>> cancel(@PathVariable String sessionId,
-                                                       @RequestBody(required = false) Map<String, String> body) {
+    @PostMapping("/stages/{stage}/run")
+    public ResponseEntity<Map<String, Object>> runStage(@PathVariable String sessionId,
+                                                         @PathVariable String stage,
+                                                         @RequestBody(required = false) Map<String, String> body) {
         if (!sessionStore.sessionExists(sessionId)) return ResponseEntity.notFound().build();
-        if (sessionStore.isSigned(sessionId)) {
-            return ResponseEntity.status(409).body(Map.of("error", "Session is signed (frozen)"));
-        }
         String officerId = body == null ? null : body.get("officerId");
-        boolean ok = pipelineService.cancel(sessionId, officerId);
-        if (!ok) {
-            return ResponseEntity.status(409).body(Map.of(
-                    "error", "Session has no active in-memory context (already complete or evicted)"));
+        try {
+            boolean started = pipelineService.runStage(sessionId, stage);
+            if (!started) {
+                return ResponseEntity.status(409).body(Map.of(
+                        "error", "Session context expired. Re-running from this stage requires a fresh session."));
+            }
+            log.info("[{}] stage={} run triggered by {}", sessionId, stage, officerId);
+            return ResponseEntity.ok(Map.of("ok", true, "stage", stage));
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(409).body(Map.of("error", e.getMessage()));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
-        log.info("[{}] cancel requested by {}", sessionId, officerId);
-        return ResponseEntity.ok(Map.of("ok", true));
     }
 
     @PostMapping("/stages/{stage}/rerun")

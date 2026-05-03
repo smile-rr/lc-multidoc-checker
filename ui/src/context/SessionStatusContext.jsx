@@ -2,15 +2,16 @@ import { createContext, useContext, useState } from 'react';
 
 const SessionStatusContext = createContext({
   runningInfo: null,
+  eventCount: 0,
   setRunningInfo: () => {},
+  setEventCount: () => {},
 });
 
 export function SessionStatusProvider({ children }) {
   const [runningInfo, setRunningInfoRaw] = useState(null);
+  const [eventCount, setEventCountRaw] = useState(0);
 
   function setRunningInfo(info) {
-    // Avoid unnecessary re-renders of TopNav when eventCount hasn't changed.
-    // If new info is same shape with same eventCount, keep the existing object.
     setRunningInfoRaw(prev => {
       if (!info && !prev) return null;
       if (!info) return null;
@@ -21,8 +22,12 @@ export function SessionStatusProvider({ children }) {
     });
   }
 
+  function setEventCount(count) {
+    setEventCountRaw(count);
+  }
+
   return (
-    <SessionStatusContext.Provider value={{ runningInfo, setRunningInfo }}>
+    <SessionStatusContext.Provider value={{ runningInfo, eventCount, setRunningInfo, setEventCount }}>
       {children}
     </SessionStatusContext.Provider>
   );

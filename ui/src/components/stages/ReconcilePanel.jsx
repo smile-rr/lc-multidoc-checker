@@ -5,17 +5,23 @@ import { RerunButton } from '../shared/RerunButton';
 import { useDevMode } from '../../context/DevModeContext';
 import { useReconcile } from '../../hooks/useReconcile';
 import { GROUP_ORDER, groupOf } from '../../constants/reconcileGroups';
+import { compareDocType } from '../../constants/docTypes';
 import { ReconcileFilterBar } from './reconcile/ReconcileFilterBar';
 import { LockSummaryPanel } from './reconcile/LockSummaryPanel';
 import { UnlockModal } from './reconcile/UnlockModal';
 import { PivotTable } from './reconcile/PivotTable';
-
-const OFFICER_ID = 'A. Wijaya';
+import { OFFICER_ID } from '../../lib/officer';
+import { StagePage, StageBody } from '../ui/StagePage';
+import { StageToolbar } from '../ui/StageToolbar';
+import { StageNavButtons } from '../ui/StageNavButtons';
+import { PageContainer } from '../ui/PageContainer';
+import { Card } from '../ui/Card';
+import { PrimaryButton, SecondaryButton } from '../ui/Button';
 
 /**
  * Stage 2 — Reconcile.
  * Pivot table of canonical fields × documents with filter/search/triage/lock.
- * Continue gate: locked === true (or DEV MODE).
+ * Single-slot CTA on the right: swaps Lock → Continue based on `locked` state.
  */
 export function ReconcilePanel({ session, stagesCompleted, onContinue, onBackToParse }) {
   const { enabled: devMode } = useDevMode();
@@ -30,13 +36,13 @@ export function ReconcilePanel({ session, stagesCompleted, onContinue, onBackToP
   const [unlockOpen, setUnlockOpen] = useState(false);
 
   const docs = session?.documents ?? [];
-  // We pivot on actual confirmed doc types present in the session (excluding LC).
   const docTypes = useMemo(() => {
     const seen = new Set();
     for (const d of docs) {
       if (d.doc_type && d.doc_type !== 'UNKNOWN') seen.add(d.doc_type);
     }
-    return [...seen];
+    // Sort by review priority — pivot columns now match Parse / Intake order.
+    return [...seen].sort(compareDocType);
   }, [docs]);
   const docMap = useMemo(() => {
     const m = {};
@@ -44,7 +50,6 @@ export function ReconcilePanel({ session, stagesCompleted, onContinue, onBackToP
     return m;
   }, [docs]);
 
-  // Coerce the API-provided rows into a guaranteed shape with group + label.
   const rows = useMemo(() => {
     const fields = data?.fields ?? [];
     return fields.map(f => ({
@@ -93,7 +98,6 @@ export function ReconcilePanel({ session, stagesCompleted, onContinue, onBackToP
   const canContinue = devMode || locked;
 
   const handleTriage = async (fieldKey, decision) => {
-    // Reset is null → upsert empty? Server has no DELETE for triage; we pass empty-string sentinel.
     await triage(fieldKey, decision ?? '', OFFICER_ID);
     await refresh();
   };
@@ -109,57 +113,49 @@ export function ReconcilePanel({ session, stagesCompleted, onContinue, onBackToP
 
   const reconcileDone = stagesCompleted?.has('reconcile');
 
-  return (
-    <div className="flex flex-col h-full">
-      {/* Sub-header */}
-      <div className="px-6 py-3 bg-white border-b border-line flex items-center gap-4">
-        <div>
-          <div className="text-[10px] tracking-[0.2em] uppercase text-muted font-mono">STAGE 2</div>
-          <div className="text-[15px] font-semibold tracking-tight">Reconcile · cross-document field alignment</div>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          {!reconcileDone && <Spinner size="sm" label="pivoting…" />}
-          {locked && <span className="text-[10px] px-2 py-0.5 rounded bg-teal-1 text-white font-mono">🔒 LOCKED</span>}
-          {onBackToParse && (
-            <button onClick={onBackToParse} className="px-3 py-1.5 rounded-[8px] border border-line text-xs hover:bg-slate2">
-              ← Back to Parse
-            </button>
-          )}
-          <RerunButton sessionId={sessionId} stage="reconcile" devMode={devMode} disabled={locked && !devMode} />
-          {!locked
-            ? (
-              <button
-                onClick={handleLock}
-                disabled={!devMode && needTriage > 0}
-                title={needTriage > 0 ? `${needTriage} discrepanc${needTriage === 1 ? 'y' : 'ies'} still need triage` : 'Lock dataset'}
-                className="px-4 py-1.5 rounded-[8px] text-xs bg-navy-1 text-white hover:bg-navy-2 disabled:bg-line disabled:text-muted disabled:cursor-not-allowed"
-              >
-                🔒 Lock dataset{needTriage > 0 && !devMode ? ` · ${needTriage} to triage` : ''}
-              </button>
-            ) : (
-              <button
-                onClick={onContinue}
-                disabled={!canContinue}
-                className={`px-4 py-1.5 rounded-[8px] text-xs ${canContinue ? 'bg-teal-1 text-white hover:bg-teal-2' : 'bg-line text-muted cursor-not-allowed'}`}
-              >
-                Continue to Examine →
-              </button>
-            )
-          }
-          {devMode && !locked && needTriage > 0 && (
-            <button
-              onClick={handleLock}
-              className="text-[11px] px-3 py-1.5 rounded-[6px] bg-status-gold text-white hover:bg-status-gold/80"
-              title="DEV: lock without triaging"
-            >
-              ⚡ Skip lock gate
-            </button>
-          )}
-        </div>
-      </div>
+  // Single CTA slot — swaps label based on lock state.
+  const ctaSlot = locked ? (
+    <StageNavButtons
+      stage="reconcile"
+      onBack={onBackToParse}
+      onContinue={onContinue}
+      canContinue={canContinue}
+      continueTone="teal"
+    />
+  ) : (
+    <>
+      {onBackToParse && <SecondaryButton onClick={onBackToParse}>← Parse</SecondaryButton>}
+      <PrimaryButton
+        onClick={handleLock}
+        disabled={!devMode && needTriage > 0}
+        title={needTriage > 0 ? `${needTriage} discrepanc${needTriage === 1 ? 'y' : 'ies'} still need triage` : 'Lock dataset'}
+      >
+        🔒 Lock dataset{needTriage > 0 && !devMode ? ` · ${needTriage} to triage` : ''}
+      </PrimaryButton>
+    </>
+  );
 
-      <div className="flex-1 overflow-auto px-6 py-5 bg-slate2">
-        <div className="max-w-[1400px] mx-auto">
+  return (
+    <StagePage>
+      <StageToolbar
+        title="Reconcile"
+        meta={
+          <span className="flex items-center gap-2 text-[11px] font-mono text-muted">
+            cross-document field alignment
+            {!reconcileDone && <Spinner size="sm" />}
+            {locked && <span className="px-2 py-0.5 rounded bg-teal-1 text-white">🔒 LOCKED</span>}
+          </span>
+        }
+        actions={
+          <>
+            <RerunButton sessionId={sessionId} stage="reconcile" devMode={devMode} disabled={locked && !devMode} />
+            {ctaSlot}
+          </>
+        }
+      />
+
+      <StageBody tone="slate" className="px-6 py-5">
+        <PageContainer>
           <ReconcileFilterBar
             counts={counts}
             filter={filter}
@@ -174,13 +170,11 @@ export function ReconcilePanel({ session, stagesCompleted, onContinue, onBackToP
           />
 
           {loading && rows.length === 0 ? (
-            <div className="bg-white border border-line rounded-[10px] p-8 text-center text-muted text-sm">
-              Loading reconcile pivot…
-            </div>
+            <Card className="p-8 text-center text-muted text-sm">Loading reconcile pivot…</Card>
           ) : rows.length === 0 ? (
-            <div className="bg-white border border-line rounded-[10px] p-8 text-center text-muted text-sm">
+            <Card className="p-8 text-center text-muted text-sm">
               No reconcile rows produced yet (the pipeline may not have populated them — check final_report).
-            </div>
+            </Card>
           ) : (
             <PivotTable
               visibleByGroup={visibleByGroup}
@@ -204,10 +198,10 @@ export function ReconcilePanel({ session, stagesCompleted, onContinue, onBackToP
             parseErrorCount={parseErrorCount}
             onUnlockClick={locked ? () => setUnlockOpen(true) : null}
           />
-        </div>
-      </div>
+        </PageContainer>
+      </StageBody>
 
       <UnlockModal open={unlockOpen} onClose={() => setUnlockOpen(false)} onUnlock={handleUnlock} />
-    </div>
+    </StagePage>
   );
 }

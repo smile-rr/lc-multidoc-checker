@@ -17,7 +17,10 @@ CREATE SCHEMA IF NOT EXISTS lc_v2;
 CREATE TABLE IF NOT EXISTS lc_v2.check_sessions (
     id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     status          VARCHAR(20)  NOT NULL DEFAULT 'QUEUED',
-    -- QUEUED | INTAKE | PARSE | RECONCILE | EXAMINE | SIGNOFF | COMPLETED | FAILED
+    -- QUEUED | INTAKE | PARSE | RECONCILE | EXAMINE | SIGNOFF | AWAITING_OFFICER | COMPLETED | FAILED
+    next_stage      VARCHAR(20),
+    awaiting_officer BOOLEAN NOT NULL DEFAULT FALSE,
+    stage_completed_at JSONB NOT NULL DEFAULT '{}'::jsonb,
     compliant       BOOLEAN,
     error           TEXT,
     final_report    JSONB,

@@ -205,6 +205,15 @@ SELECT * FROM lc_v2.v_session_overview
 WHERE created_at = (SELECT MAX(created_at) FROM lc_v2.check_sessions)
 LIMIT 1;
 
+-- ---------------------------------------------------------------------------
+-- Migration: add per-stage gate columns (idempotent for existing DBs)
+-- Pipeline pauses between every stage; officer triggers each via /run.
+-- ---------------------------------------------------------------------------
+ALTER TABLE lc_v2.check_sessions
+    ADD COLUMN IF NOT EXISTS next_stage         VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS awaiting_officer   BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS stage_completed_at JSONB   NOT NULL DEFAULT '{}'::jsonb;
+
 -- Rule confirmation summary per session
 CREATE OR REPLACE VIEW lc_v2.v_rule_confirmations AS
 SELECT  rc.session_id,

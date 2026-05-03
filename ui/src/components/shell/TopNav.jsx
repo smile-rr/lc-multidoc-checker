@@ -1,59 +1,21 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useSessionStatus } from '../../context/SessionStatusContext';
+import React from 'react';
+import { Link } from 'react-router-dom';
 import { useDevMode } from '../../context/DevModeContext';
 import { HistoryDropdown } from './HistoryDropdown';
-import { cancelSession } from '../../api';
 
-const OFFICER_ID = 'A. Wijaya';
-
+/**
+ * Global top nav. Owns: brand, DEV pill, History, New Check.
+ * Session-state display (id, status, event count, cancel) lives in SessionStatusBar.
+ */
 export function TopNav() {
-  const nav = useNavigate();
-  const { runningInfo } = useSessionStatus();
   const { enabled: devOn, toggle: toggleDev } = useDevMode();
-  const isRunning = runningInfo?.status === 'RUNNING';
-  const [cancelling, setCancelling] = useState(false);
-
-  const onCancel = async () => {
-    if (!runningInfo?.id || cancelling) return;
-    setCancelling(true);
-    try { await cancelSession(runningInfo.id, OFFICER_ID); }
-    catch (e) { console.error('cancel failed', e); }
-    finally { setCancelling(false); }
-  };
 
   return (
-    <header className="bg-navy-1 border-b border-[#2c2c2e] px-6 py-3 flex items-center gap-4 shrink-0">
+    <header className="bg-navy-1 border-b border-[#2c2c2e] px-6 h-10 flex items-center gap-5 shrink-0">
       <Link to="/" className="font-bold text-white text-sm tracking-wide hover:text-white/80">
         LC Checker <span className="text-teal-1">v2</span>
       </Link>
       <span className="text-white/40 text-xs">Multi-document UCP 600 Compliance</span>
-
-      {isRunning && runningInfo?.id && (
-        <div className="inline-flex items-center gap-2 text-[11px] font-mono">
-          <button
-            onClick={() => nav(`/session/${runningInfo.id}`)}
-            className="px-2 py-1 rounded bg-teal-1/15 text-teal-1 hover:bg-teal-1/30 inline-flex items-center gap-1.5"
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-teal-1 animate-pulse flex-shrink-0" />
-            <span>{String(runningInfo.id).slice(0, 8)}</span>
-          </button>
-          {runningInfo.eventCount != null && (
-            <span className="text-white/40">{runningInfo.eventCount} events</span>
-          )}
-          {runningInfo.docCount != null && (
-            <span className="text-white/40">{runningInfo.docCount} docs</span>
-          )}
-          <button
-            onClick={onCancel}
-            disabled={cancelling}
-            title="Soft cancel — current stage finishes, then pipeline stops"
-            className="px-2 py-1 rounded border border-status-red text-status-red hover:bg-status-red/10 disabled:opacity-50"
-          >
-            {cancelling ? '⏳' : '⏹ cancel'}
-          </button>
-        </div>
-      )}
 
       <nav className="ml-auto flex items-center gap-2">
         <button

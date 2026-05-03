@@ -12,11 +12,20 @@ import { DecisionRadio } from './signoff/DecisionRadio';
 import { Mt734Preview } from './signoff/Mt734Preview';
 import { AuditTrailPanel } from './signoff/AuditTrailPanel';
 import { SignedRecordView } from './signoff/SignedRecordView';
-
-const OFFICER_ID = 'A. Wijaya';
+import { OFFICER_ID } from '../../lib/officer';
+import { compareDocType } from '../../constants/docTypes';
+import { StagePage, StageBody } from '../ui/StagePage';
+import { StageToolbar } from '../ui/StageToolbar';
+import { StageNavButtons } from '../ui/StageNavButtons';
+import { PageContainer } from '../ui/PageContainer';
+import { Card } from '../ui/Card';
+import { EyebrowLabel } from '../ui/EyebrowLabel';
+import { PrimaryButton, GhostButton, DevShortcutButton } from '../ui/Button';
 
 /**
  * Stage 4 — Sign-off. 2-col layout, officer disposition + decision + sign-off gate.
+ * CTA "Sign off & freeze record" sits at the bottom of the left column — natural
+ * conclusion of the disposition flow. Right column is read-only context.
  * Once signed, switches to SignedRecordView (immutable).
  */
 export function SignoffPanel({ session, stagesCompleted, onBack }) {
@@ -26,11 +35,28 @@ export function SignoffPanel({ session, stagesCompleted, onBack }) {
   const { rules } = useRules(sessionId);
   const { data: signoffData, sign, fetchMt734 } = useSignoff(sessionId);
 
-  const failures = useMemo(() => rules.filter(r => (r.effectiveVerdict || r.verdict) === 'FAIL'), [rules]);
-  const doubts   = useMemo(() => rules.filter(r => (r.effectiveVerdict || r.verdict) === 'DOUBTS'), [rules]);
-  const lowConf  = useMemo(() => rules.filter(r =>
-    (r.attention || []).some(t => ['LOW-CONF-PASS', 'SPLIT', 'HANDWRITING'].includes(t))
-    && (r.effectiveVerdict || r.verdict) === 'PASS'), [rules]);
+  // Sort findings by review priority — INV failures before BOL, etc.
+  // Severity stays a secondary sort within the same doc-type bucket.
+  const sevRank = { CRITICAL: 0, MAJOR: 1, MINOR: 2, OBSERVATION: 3 };
+  const sortByDocThenSev = (rs) => [...rs].sort((a, b) => {
+    const da = (a.scope || [])[0] || 'UNKNOWN';
+    const db = (b.scope || [])[0] || 'UNKNOWN';
+    const c = compareDocType(da, db);
+    if (c !== 0) return c;
+    return (sevRank[a.severity] ?? 9) - (sevRank[b.severity] ?? 9);
+  });
+
+  const failures = useMemo(() => sortByDocThenSev(
+    rules.filter(r => (r.effectiveVerdict || r.verdict) === 'FAIL')
+  ), [rules]);
+  const doubts   = useMemo(() => sortByDocThenSev(
+    rules.filter(r => (r.effectiveVerdict || r.verdict) === 'DOUBTS')
+  ), [rules]);
+  const lowConf  = useMemo(() => sortByDocThenSev(
+    rules.filter(r =>
+      (r.attention || []).some(t => ['LOW-CONF-PASS', 'SPLIT', 'HANDWRITING'].includes(t))
+      && (r.effectiveVerdict || r.verdict) === 'PASS')
+  ), [rules]);
   const overrides = rules.filter(r => r.override).length;
   const flagged = rules.filter(r => r.override?.flagged).length;
 
@@ -59,7 +85,6 @@ export function SignoffPanel({ session, stagesCompleted, onBack }) {
     }
   }, [decision, advice, loadingAdvice, fetchMt734]);
 
-  // Already signed → render the immutable record view
   if (signoffData?.signed) {
     return (
       <SignedRecordView
@@ -100,27 +125,30 @@ export function SignoffPanel({ session, stagesCompleted, onBack }) {
   };
 
   const signoffDone = stagesCompleted?.has('signoff');
+  const blockerText = !decision ? 'Select a decision'
+    : !allDispositioned && decision !== 'ACCEPT' ? 'Disposition all discrepancies'
+    : !note.trim() ? "Officer's note is required" : '';
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-6 py-3 bg-white border-b border-line flex items-center gap-4">
-        <div>
-          <div className="text-[10px] tracking-[0.2em] uppercase text-muted font-mono">STAGE 4</div>
-          <div className="text-[15px] font-semibold tracking-tight">Sign-off · officer decision</div>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          {!signoffDone && <Spinner size="sm" label="finalizing…" />}
-          {onBack && (
-            <button onClick={onBack} className="px-3 py-1.5 rounded-[8px] border border-line text-xs hover:bg-slate2">
-              ← Back to Examine
-            </button>
-          )}
-          <RerunButton sessionId={sessionId} stage="signoff" devMode={devMode} disabled={signoffData?.signed} />
-        </div>
-      </div>
+    <StagePage>
+      <StageToolbar
+        title="Sign-off"
+        meta={
+          <span className="text-[11px] text-muted font-mono flex items-center gap-2">
+            officer decision
+            {!signoffDone && <Spinner size="sm" />}
+          </span>
+        }
+        actions={
+          <>
+            <RerunButton sessionId={sessionId} stage="signoff" devMode={devMode} disabled={signoffData?.signed} />
+            <StageNavButtons stage="signoff" onBack={onBack} />
+          </>
+        }
+      />
 
-      <div className="flex-1 overflow-auto bg-slate2">
-        <div className="max-w-[1280px] mx-auto px-6 py-5 grid grid-cols-[1fr_360px] gap-5">
+      <StageBody tone="slate">
+        <PageContainer className="px-6 py-5 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5">
 
           <div className="space-y-5">
             <VerdictBand
@@ -130,12 +158,10 @@ export function SignoffPanel({ session, stagesCompleted, onBack }) {
               lowConfPasses={lowConf.length}
             />
 
-            <div className="bg-white border border-line rounded-[10px]">
+            <Card padding="">
               <div className="px-4 py-3 border-b border-line flex items-center justify-between gap-3 flex-wrap">
                 <div>
-                  <div className="text-[10px] tracking-[0.2em] uppercase text-muted font-mono">
-                    DISCREPANCIES · {failures.length}
-                  </div>
+                  <EyebrowLabel>DISCREPANCIES · {failures.length}</EyebrowLabel>
                   <div className="text-[13px] font-semibold tracking-tight">
                     Disposition each finding before signing off
                   </div>
@@ -145,20 +171,10 @@ export function SignoffPanel({ session, stagesCompleted, onBack }) {
                     {dispCount}/{failures.length} dispositioned
                   </span>
                   {dispCount > 0 && (
-                    <button
-                      onClick={resetAll}
-                      className="text-[10px] px-2 py-1 rounded text-muted hover:bg-slate2 hover:text-navy-1 font-mono"
-                    >
-                      ↻ RESET ALL
-                    </button>
+                    <GhostButton onClick={resetAll}>↻ reset all</GhostButton>
                   )}
                   {devMode && failures.length > 0 && dispCount < failures.length && (
-                    <button
-                      onClick={autoDisposition}
-                      className="text-[11px] px-3 py-1 rounded-[6px] bg-status-gold text-white hover:bg-status-gold/80"
-                    >
-                      ⚡ Auto-disposition all
-                    </button>
+                    <DevShortcutButton onClick={autoDisposition}>⚡ Auto-disposition all</DevShortcutButton>
                   )}
                 </div>
               </div>
@@ -179,39 +195,39 @@ export function SignoffPanel({ session, stagesCompleted, onBack }) {
                   ))}
                 </div>
               )}
-            </div>
+            </Card>
 
             <ReviewWorthyPasses rules={lowConf} />
 
             <OfficerNote value={note} onChange={setNote} />
-          </div>
 
-          <div className="space-y-4">
-            <div className="bg-white border border-line rounded-[10px] p-4">
-              <DecisionRadio decision={decision} onChange={setDecision} />
-
-              <button
+            {/* Primary CTA — bottom of the disposition flow */}
+            <Card>
+              <PrimaryButton
+                size="lg"
                 onClick={handleSign}
                 disabled={!canSign}
-                className={`w-full mt-4 py-2.5 rounded-[8px] text-[13px] font-semibold
-                  ${canSign ? 'bg-navy-1 text-white hover:bg-navy-2' : 'bg-line text-muted cursor-not-allowed'}`}
+                className="w-full justify-center"
               >
                 🔒 Sign off &amp; freeze record
-              </button>
-
-              {!canSign && (
-                <div className="text-[10px] text-status-gold mt-2 font-mono">
-                  {!decision ? 'Select a decision'
-                    : !allDispositioned && decision !== 'ACCEPT' ? 'Disposition all discrepancies'
-                    : !note.trim() ? "Officer's note is required" : ''}
+              </PrimaryButton>
+              {!canSign && blockerText && (
+                <div className="text-[10px] text-status-gold mt-2 font-mono text-center">
+                  {blockerText}
                 </div>
               )}
-
               <div className="text-[10px] text-muted mt-2 font-mono">
                 Sign-off stamps officer ID, timestamp, and the entire dataset (parsed values, rule
                 outcomes, overrides, dispositions, note) into an immutable audit record.
               </div>
-            </div>
+            </Card>
+          </div>
+
+          {/* Right column: read-only context */}
+          <div className="space-y-4">
+            <Card>
+              <DecisionRadio decision={decision} onChange={setDecision} />
+            </Card>
 
             {decision === 'REFUSE' && (
               <Mt734Preview
@@ -229,8 +245,9 @@ export function SignoffPanel({ session, stagesCompleted, onBack }) {
               agentFlags={flagged}
             />
           </div>
-        </div>
-      </div>
-    </div>
+
+        </PageContainer>
+      </StageBody>
+    </StagePage>
   );
 }

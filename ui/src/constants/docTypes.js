@@ -13,6 +13,33 @@ export const DOC_TYPES = [
 
 export const DOC_TYPE_MAP = Object.fromEntries(DOC_TYPES.map(t => [t.id, t]));
 
+/**
+ * Display order — matches LC-checker review priority:
+ *   1. LC      — source of truth (always first)
+ *   2. INV     — primary commercial doc; ties everything together
+ *   3. BOL     — shipment proof; required by UCP transport rules
+ *   4. PKL     — supports INV (qty) + BOL (marks)
+ *   5. BOE     — financial draft / draft drawn on bank
+ *   6. BC      — beneficiary declarations
+ *   7. WC      — quality/warranty certs
+ *   8. UNKNOWN — needs officer classification (always last)
+ */
+export const DOC_TYPE_ORDER = ['LC', 'INV', 'BOL', 'PKL', 'BOE', 'BC', 'WC', 'UNKNOWN'];
+
+const ORDER_RANK = Object.fromEntries(DOC_TYPE_ORDER.map((t, i) => [t, i]));
+
+/** Stable comparator that sorts docs by review-priority order. */
+export function compareDocType(a, b) {
+  const ra = ORDER_RANK[a] ?? 99;
+  const rb = ORDER_RANK[b] ?? 99;
+  return ra - rb;
+}
+
+/** Sort an array of {doc_type} objects in review-priority order. */
+export function sortByDocType(docs, key = 'doc_type') {
+  return [...docs].sort((a, b) => compareDocType(a[key], b[key]));
+}
+
 export function docTypeMeta(id) {
   return DOC_TYPE_MAP[id] || { id, short: id || '?', name: id || 'Unknown', icon: '?', color: '#6e6e73' };
 }

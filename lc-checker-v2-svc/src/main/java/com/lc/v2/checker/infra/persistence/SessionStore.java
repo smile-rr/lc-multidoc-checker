@@ -42,6 +42,40 @@ public class SessionStore {
                 """, status, sessionId);
     }
 
+    /**
+     * Mark a session as awaiting officer input before the next stage.
+     * Stamps the just-completed stage's timestamp into stage_completed_at JSONB.
+     */
+    public void markAwaitingOfficer(String sessionId, String justCompleted, String nextStage) {
+        jdbc.update("""
+                UPDATE lc_v2.check_sessions
+                SET status = 'AWAITING_OFFICER',
+                    awaiting_officer = TRUE,
+                    next_stage = ?,
+                    stage_completed_at = stage_completed_at
+                        || jsonb_build_object(?, to_jsonb(NOW()::text))
+                WHERE id = ?::uuid
+                """, nextStage, justCompleted, sessionId);
+    }
+
+    /** Clear the awaiting flag when an officer triggers the next stage. */
+    public void clearAwaitingOfficer(String sessionId, String runningStage) {
+        jdbc.update("""
+                UPDATE lc_v2.check_sessions
+                SET status = ?, awaiting_officer = FALSE, next_stage = NULL
+                WHERE id = ?::uuid
+                """, runningStage.toUpperCase(), sessionId);
+    }
+
+    /** Returns the next stage the officer is expected to trigger, or null. */
+    public String getNextStage(String sessionId) {
+        var rows = jdbc.queryForList(
+                "SELECT next_stage FROM lc_v2.check_sessions WHERE id = ?::uuid", sessionId);
+        if (rows.isEmpty()) return null;
+        Object v = rows.get(0).get("next_stage");
+        return v == null ? null : v.toString();
+    }
+
     public void updateCompleted(String sessionId, Boolean compliant, String finalReportJson) {
         jdbc.update("""
                 UPDATE lc_v2.check_sessions
@@ -115,6 +149,7 @@ public class SessionStore {
     public Map<String, Object> getSession(String sessionId) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
                 SELECT id, status, compliant, doc_count, error, created_at, completed_at,
+                       next_stage, awaiting_officer, stage_completed_at::text AS stage_completed_at,
                        final_report::text AS final_report
                 FROM lc_v2.check_sessions WHERE id = ?::uuid
                 """, sessionId);
@@ -131,11 +166,17 @@ public class SessionStore {
                 """, sessionId);
     }
 
-    /** Get pipeline events for trace replay. */
+    /** Get pipeline events for trace replay. Returns events with type/ts/seq top-level for the frontend. */
     public List<Map<String, Object>> getEvents(String sessionId) {
         return jdbc.queryForList("""
-                SELECT seq, event::text, created_at
-                FROM lc_v2.pipeline_events WHERE session_id = ?::uuid ORDER BY seq
+                SELECT (event->>'seq')::bigint     AS seq,
+                       (event->>'type')            AS type,
+                       (event->>'ts')              AS ts,
+                       (event->>'sessionId')       AS sessionId,
+                       event
+                FROM lc_v2.pipeline_events
+                WHERE session_id = ?::uuid
+                ORDER BY seq
                 """, sessionId);
     }
 
