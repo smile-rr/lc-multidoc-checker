@@ -1,0 +1,141 @@
+# =============================================================================
+# isbp821.yaml — ISBP 821 golden source paragraphs referenced by v2 rules
+# =============================================================================
+# ID format: ISBP-{chapter}{paragraph}
+# Used by: rule catalog (isbpRefs), prompt templates (text injection), UI tooltips.
+# Source: ISBP 821 (ICC Publication No. 821E, 2023)
+# FOR SYSTEM USE ONLY — not a reproduction of ICC publications.
+
+refs:
+  - id: ISBP-A1
+    source: ISBP821
+    article: "A1"
+    paragraph: ""
+    heading: "General Principles — Standard of Examination"
+    text: "Examination of documents under a documentary credit requires a careful reading of the credit and the documents presented. Documents are to be examined in their entirety. Data in a document need not be identical to data in the credit, other documents or ISBP 821, but must not conflict with data in the credit, any other stipulated document or ISBP 821."
+
+  - id: ISBP-A14
+    source: ISBP821
+    article: "A14"
+    paragraph: ""
+    heading: "General Principles — Abbreviations"
+    text: "Abbreviations that are internationally accepted or used in international banking practice are acceptable. Acceptable abbreviations include: Ltd. for Limited, Co. for Company, Corp. for Corporation, Int'l for International, Dept. for Department, Assn. for Association, Mfg. for Manufacturing. Abbreviations used in addresses: St. for Street, Ave. for Avenue, Rd. for Road, Blvd. for Boulevard."
+
+  - id: ISBP-A19
+    source: ISBP821
+    article: "A19"
+    paragraph: ""
+    heading: "General Principles — Document Date"
+    text: "A document may be dated prior to the date of the credit but must not be dated later than the date of its presentation. A document dated after the credit has expired but presented within the presentation period is acceptable unless the credit states otherwise."
+
+  - id: ISBP-B1
+    source: ISBP821
+    article: "B1"
+    paragraph: ""
+    heading: "Bills of Exchange — Drawn On"
+    text: "A bill of exchange must be drawn on the drawee named in the credit. Where a credit indicates that the bill of exchange is to be drawn on the issuing bank, a bill of exchange drawn on the applicant is not acceptable."
+
+  - id: ISBP-B3
+    source: ISBP821
+    article: "B3"
+    paragraph: ""
+    heading: "Bills of Exchange — Amount"
+    text: "The amount of a bill of exchange must correspond to the amount shown in the commercial invoice, unless the credit requires otherwise."
+
+  - id: ISBP-C3
+    source: ISBP821
+    article: "C3"
+    paragraph: ""
+    heading: "Commercial Invoice — Goods Description"
+    text: "A description of the goods in the commercial invoice must correspond with the description of goods in the credit. This means that the description need not be word-for-word the same, but must not conflict with the credit's description. An invoice description need not repeat all the details shown in the credit, but the essential characteristics of the goods must be reflected."
+
+  - id: ISBP-C6
+    source: ISBP821
+    article: "C6"
+    paragraph: ""
+    heading: "Commercial Invoice — Issued by Beneficiary"
+    text: "A commercial invoice must indicate the name and address of the beneficiary as they appear in the credit. A variation in the name such as Ltd. versus Limited is acceptable. The beneficiary's address on the invoice may differ from that shown in the credit in terms of the arrangement of elements, punctuation, abbreviation, etc., so long as it is the same address."
+
+  - id: ISBP-C8
+    source: ISBP821
+    article: "C8"
+    paragraph: ""
+    heading: "Commercial Invoice — Currency"
+    text: "The currency of the invoice must be the same as the currency of the credit. Abbreviations and symbols for currencies, including ISO 4217 codes, are acceptable provided that they clearly identify the currency stipulated in the credit."
+
+  - id: ISBP-C9
+    source: ISBP821
+    article: "C9"
+    paragraph: ""
+    heading: "Commercial Invoice — Amount"
+    text: "Where a credit requires the presentation of a commercial invoice for the full credit amount or as a percentage of the credit amount, and it permits partial drawing or shipments, the amount of each invoice may be for the partial drawing or shipment amount, provided that the aggregate does not exceed the credit amount."
+
+  - id: ISBP-C10
+    source: ISBP821
+    article: "C10"
+    paragraph: ""
+    heading: "Commercial Invoice — Tolerance"
+    text: "Tolerances permitted under UCP 600 sub-article 30(b) apply to the amount of the invoice even when the credit does not expressly state that the quantity tolerance is allowed. However, the amount drawn must not exceed the credit amount."
+
+  - id: ISBP-D16
+    source: ISBP821
+    article: "D16"
+    paragraph: ""
+    heading: "Bills of Lading — Full Set"
+    text: "When the credit requires a full set of original bills of lading to be presented, all originals issued must be presented. The number of originals issued is shown on the bill of lading itself. Where the credit requires 3/3 originals, a 3/3 set must be presented."
+
+  - id: ISBP-D20
+    source: ISBP821
+    article: "D20"
+    paragraph: ""
+    heading: "Bills of Lading — Shipped on Board"
+    text: "When a bill of lading is presented that is not a pre-printed 'shipped on board' bill of lading, an on board notation is required. The on board notation must be signed or initialled and dated. The date of the on board notation is the date of shipment. If the bill of lading is pre-printed to indicate 'shipped on board' or similar wording, the date in the bill of lading serves as the date of shipment, provided no separate on board notation is present."
+
+  - id: ISBP-D21
+    source: ISBP821
+    article: "D21"
+    paragraph: ""
+    heading: "Bills of Lading — Ports"
+    text: "A bill of lading must show the port of loading and port of discharge as stated in the credit. Where a credit states a port of loading, the bill of lading must show the same port of loading even if a place of receipt is also stated."
+
+  - id: ISBP-D24
+    source: ISBP821
+    article: "D24"
+    paragraph: ""
+    heading: "Bills of Lading — Freight"
+    text: "Where the credit indicates CIF or CFR Incoterms, the bill of lading must indicate 'Freight Prepaid' or words of similar effect. Where the credit indicates FOB Incoterms, the bill of lading will typically show 'Freight Collect', though 'Freight Prepaid' is not a discrepancy if the seller has arranged and paid freight. Banks examine the freight notation in conjunction with the Incoterms stated in the invoice."
+
+  - id: ISBP-D25
+    source: ISBP821
+    article: "D25"
+    paragraph: ""
+    heading: "Bills of Lading — Clean"
+    text: "A transport document bearing a clause or notation expressly declaring a defective condition of the goods or their packaging is not acceptable as a clean transport document. A clause merely limiting the carrier's liability (e.g., 'shipper's count', 'said to contain') is acceptable and does not affect the clean status of the bill of lading."
+
+  - id: ISBP-H3
+    source: ISBP821
+    article: "H3"
+    paragraph: ""
+    heading: "Packing Lists — Quantity"
+    text: "Data in the packing list, when read in context with the credit and other stipulated documents, must not conflict with data in those documents. The quantity and description of goods in the packing list must not conflict with data in the commercial invoice."
+
+  - id: ISBP-H4
+    source: ISBP821
+    article: "H4"
+    paragraph: ""
+    heading: "Packing Lists — Shipping Marks"
+    text: "Shipping marks in the packing list must not conflict with the shipping marks on the bill of lading or other transport document. Where shipping marks are required by the credit, they must appear consistently across all documents that reference them."
+
+  - id: ISBP-Q1
+    source: ISBP821
+    article: "Q1"
+    paragraph: ""
+    heading: "Certificates and Declarations — Non-specified Documents"
+    text: "Where a credit calls for a certificate or declaration without specifying its issuer, content or form, banks accept any document that appears to fulfil the function of the required certificate or declaration, provided it does not conflict with any other stipulated document or the credit. For beneficiary certificates, every condition or requirement stated in the credit for that certificate must be addressed in the document."
+
+  - id: ISBP-Q3
+    source: ISBP821
+    article: "Q3"
+    paragraph: ""
+    heading: "Certificates and Declarations — Signature"
+    text: "Where a credit requires a certificate to be 'signed' or to bear a signature, it must bear what appears to be a handwritten or authenticated digital signature. A company stamp or seal alone does not constitute a signature. A beneficiary certificate must be signed by the beneficiary itself unless the credit specifies otherwise."

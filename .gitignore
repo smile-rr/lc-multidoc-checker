@@ -1,4 +1,72 @@
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+.env.ubuntu
+*.pem
+*.key
+credentials.json
+
+# IDE
+.vscode/
+.idea/
+.gradle/
+*.iml
+
+# Claude Code
+.claude/
+CLAUDE.md
+
+# Local docs / analysis notes (not committed)
+docs/key-insights.md
+
+# UI build artifacts
+ui/node_modules/
+ui/dist/
+ui/public/samples/
+
+# macOS
 .DS_Store
+.DS_Store?
+._*
+
+# Gradle (lc-checker-svc — was lc-checker-api in earlier layout)
+lc-checker-svc/.gradle/
+lc-checker-svc/build/
+lc-checker-svc/out/
+!lc-checker-svc/.gradle/.gitkeep
+!lc-checker-svc/build/.gitkeep
+
+# Large binaries / installers under test/
+test/Ollama.dmg
+test/*.dmg
+
+# Python venvs (local dev)
+.venv/
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Docker
+docker-compose.override.yml
+
+# PostgreSQL data directory (runtime data, never commit)
+infra/postgres/data/
+
+# Logs
+*.log
+logs/
+
+# Test output
+test-results/
+coverage/
+
+# Temp files
+*.tmp
+*.swp
+*.swo
+~

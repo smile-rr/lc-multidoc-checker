@@ -1,0 +1,51 @@
+# lc-checker-v2 — Ubuntu production deployment
+#
+# Deploys lc-checker-v2-svc (Spring Boot) + ui-v2 (React/nginx).
+# Uses the shared PostgreSQL instance at 192.168.31.214:5436 (same as v1).
+# V2 schema lives in the lc_v2 schema within the same lc_checker database.
+#
+# Ports:
+#   9082 — lc-checker-v2-svc (Spring Boot API)
+#   9080 — lc-checker-v2-ui  (React UI)
+#
+# Run alongside v1 — services use a separate network (lc-checker-v2-net)
+# but can share MinIO and Langfuse at their fixed addresses.
+#
+# Usage (on Ubuntu):
+#   docker compose build
+#   docker compose up -d
+
+name: lc-checker-v2
+
+services:
+
+  lc-checker-v2-svc:
+    build:
+      context: ../lc-checker-v2-svc
+    image: lc-checker-v2-svc:latest
+    container_name: lc-checker-v2-svc
+    ports:
+      - "${API_PORT:-9082}:9082"
+    env_file: .env.ubuntu
+    volumes:
+      - ../test/cases:/opt/test-cases:ro
+    restart: unless-stopped
+    networks:
+      - lc-checker-v2-net
+
+  ui-v2:
+    build:
+      context: ../ui
+    image: lc-checker-v2-ui:latest
+    container_name: lc-checker-v2-ui
+    ports:
+      - "${UI_PORT:-9080}:80"
+    depends_on:
+      - lc-checker-v2-svc
+    restart: unless-stopped
+    networks:
+      - lc-checker-v2-net
+
+networks:
+  lc-checker-v2-net:
+    driver: bridge

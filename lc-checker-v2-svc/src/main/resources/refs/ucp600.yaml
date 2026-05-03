@@ -1,0 +1,127 @@
+# =============================================================================
+# ucp600.yaml — UCP 600 golden source articles referenced by v2 rules
+# =============================================================================
+# ID format: UCP-{article}-{paragraph}
+# Used by: rule catalog (ucpRefs), prompt templates (text injection), UI tooltips.
+# Source: UCP 600 (ICC Publication No. 600, 2007)
+# FOR SYSTEM USE ONLY — not a reproduction of ICC publications.
+
+refs:
+  - id: UCP-14-a
+    source: UCP600
+    article: "14"
+    paragraph: "a"
+    heading: "Standard for Examination of Documents"
+    text: "A nominated bank acting on its nomination, a confirming bank, if any, and the issuing bank must examine a presentation to determine, on the basis of the documents alone, whether or not the documents appear on their face to constitute a complying presentation."
+
+  - id: UCP-14-d
+    source: UCP600
+    article: "14"
+    paragraph: "d"
+    heading: "Standard for Examination of Documents — Non-contradictory"
+    text: "Data in a document, when read in context with the credit, the document itself and international standard banking practice, need not be identical to, but must not conflict with, data in that document, any other stipulated document, or the credit."
+
+  - id: UCP-14-e
+    source: UCP600
+    article: "14"
+    paragraph: "e"
+    heading: "Standard for Examination of Documents — Transport Documents"
+    text: "In documents other than the commercial invoice, the description of the goods, services or performance, if stated, may be in general terms not conflicting with their description in the credit."
+
+  - id: UCP-14-f
+    source: UCP600
+    article: "14"
+    paragraph: "f"
+    heading: "Standard for Examination of Documents — Non-specified Documents"
+    text: "If a credit requires presentation of a document other than a transport document, insurance document or commercial invoice, without stipulating by whom the document is to be issued or its data content, banks will accept the document as presented if its content appears to fulfil the function of the required document and otherwise complies with sub-article 14(a)."
+
+  - id: UCP-14-h
+    source: UCP600
+    article: "14"
+    paragraph: "h"
+    heading: "Standard for Examination of Documents — Contradictory Terms"
+    text: "If a credit contains a condition without stipulating the document to indicate compliance with the condition, banks will deem such condition as not stated and will disregard it."
+
+  - id: UCP-14-i
+    source: UCP600
+    article: "14"
+    paragraph: "i"
+    heading: "Standard for Examination of Documents — Document Date"
+    text: "A document may be dated prior to the issuance date of the credit, but must not be dated later than its date of presentation."
+
+  - id: UCP-18-a-i
+    source: UCP600
+    article: "18"
+    paragraph: "a(i)"
+    heading: "Commercial Invoice — Issued by Beneficiary"
+    text: "A commercial invoice must appear to have been issued by the beneficiary (except as provided in article 38)."
+
+  - id: UCP-18-a-iii
+    source: UCP600
+    article: "18"
+    paragraph: "a(iii)"
+    heading: "Commercial Invoice — Same Currency"
+    text: "A commercial invoice must be made out in the currency of the credit."
+
+  - id: UCP-18-b
+    source: UCP600
+    article: "18"
+    paragraph: "b"
+    heading: "Commercial Invoice — Amount"
+    text: "The amount of a commercial invoice must not exceed the amount permitted by the credit. However, if a credit allows for partial drawings or shipments and the amount of a partial drawing or shipment does not exceed the amount permitted for each drawing or shipment, the commercial invoice amount for that partial drawing or shipment must not exceed the aggregate of all drawings or shipments permitted."
+
+  - id: UCP-18-c
+    source: UCP600
+    article: "18"
+    paragraph: "c"
+    heading: "Commercial Invoice — Goods Description"
+    text: "The description of the goods, services or performance in a commercial invoice must correspond with that appearing in the credit."
+
+  - id: UCP-20-a-ii
+    source: UCP600
+    article: "20"
+    paragraph: "a(ii)"
+    heading: "Bill of Lading — On Board"
+    text: "A bill of lading, however named, must indicate that the goods have been shipped on board a named vessel at the port of loading stated in the credit. This may be indicated by pre-printed wording on the bill of lading that the goods have been shipped on board a named vessel at the port of loading stated in the credit, or by an on board notation indicating the date on which the goods have been shipped on board."
+
+  - id: UCP-20-a-iii
+    source: UCP600
+    article: "20"
+    paragraph: "a(iii)"
+    heading: "Bill of Lading — Ports"
+    text: "A bill of lading must indicate the port of loading as stated in the credit, even if the credit states a place of receipt but not a port of loading, and the actual port of loading, and the port of discharge as stated in the credit."
+
+  - id: UCP-20-a-iv
+    source: UCP600
+    article: "20"
+    paragraph: "a(iv)"
+    heading: "Bill of Lading — Full Set"
+    text: "A bill of lading must be the sole original bill of lading or, if issued in more than one original, be the full set as indicated on the bill of lading."
+
+  - id: UCP-27
+    source: UCP600
+    article: "27"
+    paragraph: ""
+    heading: "Clean Transport Document"
+    text: "A bank will only accept a clean transport document. A clean transport document is one bearing no clause or notation expressly declaring a defective condition of the goods or their packaging. The word 'clean' need not appear on a transport document, even if a credit has a requirement for that transport document to be 'clean on board'."
+
+  - id: UCP-30-a
+    source: UCP600
+    article: "30"
+    paragraph: "a"
+    heading: "Tolerance in Credit Amount, Quantity and Unit Prices — About/Approximately"
+    text: "The words 'about' or 'approximately' used in connection with the amount of the credit or the quantity or the unit price stated in the credit are to be construed as allowing a tolerance not to exceed 10% more or 10% less than the amount, the quantity or the unit price to which they refer."
+
+  - id: UCP-30-b
+    source: UCP600
+    article: "30"
+    paragraph: "b"
+    heading: "Tolerance in Credit Amount, Quantity and Unit Prices — Bulk Goods"
+    text: "A tolerance not to exceed 5% more or 5% less than the quantity of the goods is allowed, provided the credit does not state the quantity in terms of a stipulated number of packing units or individual items and the total amount of the drawings does not exceed the amount of the credit."
+
+  - id: UCP-6-a
+    source: UCP600
+    article: "6"
+    paragraph: "a"
+    heading: "Availability, Expiry Date and Place for Presentation — Drawee"
+    text: "A credit must state the bank with which it is available or whether it is available with any bank. A credit available with a nominated bank is also available with the issuing bank. A credit must state whether it is available by sight payment, deferred payment, acceptance or negotiation."

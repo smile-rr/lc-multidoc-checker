@@ -1,0 +1,197 @@
+# lc-checker-v2-api — runtime configuration
+#
+# Environment overrides via .env file or Docker env_file.
+# Port 9082 (svc). UI served separately at port 9080.
+
+spring:
+  config:
+    import:
+      - optional:file:../.env[.properties]
+  application:
+    name: lc-checker-v2-api
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:default}
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+
+  ai:
+    openai:
+      api-key: ${LLM_API_KEY:dev-placeholder}
+      base-url: ${LLM_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+      chat:
+        completions-path: /chat/completions
+        options:
+          model: ${LLM_MODEL:qwen3.6-flash}
+          temperature: 0.0
+          additional-model-request-fields:
+            enable_thinking: false
+
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 50MB   # v2 accepts 7 docs per session
+
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema.sql
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/lc_checker
+    username: ${DB_USER:lcuser}
+    password: ${DB_PASSWORD:lcpass123}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      idle-timeout: 30000
+      connection-timeout: 20000
+      connection-test-query: SELECT 1
+      validation-timeout: 3000
+      keepalive-time: 60000
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: ${SERVER_PORT:9082}
+
+# --- Vision LLM slots 1–4 (uniform config) ------------------------------------
+# Default: slot-1 only — qwen3.6-flash @ Bailian for fast single-model extraction.
+# Slots fire sequentially per doc (in upload order); consensus = majority vote.
+# Provider switch is config-only (URL + key). No local/cloud naming distinction.
+# Source label in DB/UI: <model>_<N>  (e.g. qwen3.6-flash_1)
+vision-llm:
+  slot-1:
+    enabled:          ${VISION_1_ENABLED:true}
+    base-url:         ${VISION_1_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+    api-key:          ${VISION_1_API_KEY:}
+    model:            ${VISION_1_MODEL:qwen3.6-flash}
+    render-dpi:       ${VISION_1_RENDER_DPI:200}
+    max-pages:        ${VISION_1_MAX_PAGES:10}
+    max-long-edge-px: ${VISION_1_MAX_LONG_EDGE_PX:2048}
+    timeout-seconds:  ${VISION_1_TIMEOUT_SECONDS:120}
+  slot-2:
+    enabled:          ${VISION_2_ENABLED:false}
+    base-url:         ${VISION_2_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+    api-key:          ${VISION_2_API_KEY:}
+    model:            ${VISION_2_MODEL:qwen3.6-plus-2026-04-02}
+    render-dpi:       ${VISION_2_RENDER_DPI:200}
+    max-pages:        ${VISION_2_MAX_PAGES:10}
+    max-long-edge-px: ${VISION_2_MAX_LONG_EDGE_PX:2048}
+    timeout-seconds:  ${VISION_2_TIMEOUT_SECONDS:120}
+  slot-3:
+    enabled:          ${VISION_3_ENABLED:false}
+    base-url:         ${VISION_3_BASE_URL:http://localhost:11434/v1}
+    api-key:          ${VISION_3_API_KEY:}
+    model:            ${VISION_3_MODEL:qwen3-vl:4b-instruct}
+    render-dpi:       ${VISION_3_RENDER_DPI:200}
+    max-pages:        ${VISION_3_MAX_PAGES:10}
+    max-long-edge-px: ${VISION_3_MAX_LONG_EDGE_PX:2048}
+    timeout-seconds:  ${VISION_3_TIMEOUT_SECONDS:120}
+  slot-4:
+    enabled:          ${VISION_4_ENABLED:false}
+    base-url:         ${VISION_4_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+    api-key:          ${VISION_4_API_KEY:}
+    model:            ${VISION_4_MODEL:qwen3.6-27b}
+    render-dpi:       ${VISION_4_RENDER_DPI:200}
+    max-pages:        ${VISION_4_MAX_PAGES:10}
+    max-long-edge-px: ${VISION_4_MAX_LONG_EDGE_PX:2048}
+    timeout-seconds:  ${VISION_4_TIMEOUT_SECONDS:120}
+
+extractor:
+  confidence-threshold: ${EXTRACTOR_CONFIDENCE_THRESHOLD:0.80}
+
+# --- File storage (MinIO — shared with v1, separate bucket/prefix) -----------
+storage:
+  minio:
+    enabled:    ${MINIO_ENABLED:true}
+    endpoint:   ${MINIO_ENDPOINT:http://192.168.31.214:9000}
+    bucket:     ${MINIO_BUCKET:lc-pdfs}
+    region:     ${MINIO_REGION:us-east-1}
+    access-key: ${MINIO_ACCESS_KEY:minioadmin}
+    secret-key: ${MINIO_SECRET_KEY:minioadmin}
+    path-style: ${MINIO_PATH_STYLE:true}
+    path-prefix: v2/
+    request-timeout-seconds: ${MINIO_REQUEST_TIMEOUT_SECONDS:30}
+
+# --- Rule catalog and field pool --------------------------------------------
+rules:
+  catalog-path: classpath:/rules/catalog.yml
+
+fields:
+  pool-path:      classpath:/fields/field-pool.yaml
+  tag-mapping-path: classpath:/fields/lc-tag-mapping.yaml
+  registry-path:  classpath:/fields/doc-type-registry.yaml
+
+# --- Pipeline queue ---------------------------------------------------------
+pipeline:
+  concurrency: ${PIPELINE_CONCURRENCY:1}
+  poll-delay-ms: ${PIPELINE_POLL_DELAY_MS:2000}
+
+# --- Session settings -------------------------------------------------------
+session:
+  ttl-minutes: 120
+  max-size: 500
+
+# --- Dev mode ---------------------------------------------------------------
+# When dev-mode=true: UI shows "Confirm All" and "Pass All" buttons in Examine.
+# Never enable in production.
+dev-mode: ${DEV_MODE:true}
+
+# --- Preset bundles ---------------------------------------------------------
+# Filesystem dir scanned for test-case bundles served via GET /api/v2/presets.
+# Default works when the service is launched from lc-checker-v2-svc/ (e.g. via Makefile).
+presets:
+  dir: ${PRESETS_DIR:../test/cases}
+  max-count: ${PRESETS_MAX_COUNT:3}
+
+# --- Actuator + Prometheus + Tracing → Langfuse -----------------------------
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  tracing:
+    enabled: ${TRACING_ENABLED:true}
+    sampling:
+      probability: ${TRACING_SAMPLING:1.0}
+  otlp:
+    tracing:
+      endpoint: ${LANGFUSE_OTEL_ENDPOINT:${LANGFUSE_HOST:http://192.168.31.214:3300}/api/public/otel/v1/traces}
+      headers:
+        Authorization: Basic ${LANGFUSE_AUTH_BASIC:}
+      compression: gzip
+      timeout: 10s
+
+spring.ai.chat.observations:
+  include-prompt: ${AI_OBS_INCLUDE_PROMPT:true}
+  include-completion: ${AI_OBS_INCLUDE_COMPLETION:true}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+    enabled: true
+  swagger-ui:
+    enabled: false
+  default-produces-media-type: application/json
+  packagesToScan: com.lc.v2.checker.api
+
+logging:
+  level:
+    root: INFO
+    com.lc.v2.checker: DEBUG
+    org.springframework.ai: INFO
+    io.opentelemetry.exporter.internal.http: WARN
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level [%thread] %X{sessionId:-} %X{stage:-} %X{ruleId:-} %logger{36} - %msg%n"

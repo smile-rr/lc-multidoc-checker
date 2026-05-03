@@ -1,0 +1,200 @@
+# =============================================================================
+# doc-type-registry.yaml — DocType → field keys + extraction prompt mapping
+# =============================================================================
+# Each entry maps a doc type code to the canonical field_keys extracted by VLM
+# and the prompt template to use. LC is parsed by Mt700Parser, not VLM.
+#
+# filename_keywords: priority-ordered list (longest/most-specific first) for
+# intake filename-based doc type detection. First match wins.
+
+doc_types:
+
+  LC:
+    code: LC
+    name_en: Letter of Credit (MT700)
+    name_zh: 信用证 (MT700)
+    detection: MT700_PARSER
+    filename_keywords: [mt700, lc]
+    extraction_prompt: null   # parsed by Mt700Parser, not VLM
+    field_keys:
+      - lc_number
+      - credit_type
+      - issue_date
+      - expiry_date
+      - expiry_place
+      - applicable_rules
+      - credit_currency
+      - credit_amount
+      - about_credit_amount
+      - tolerance_plus
+      - tolerance_minus
+      - max_amount_flag
+      - applicant_name
+      - applicant_address
+      - beneficiary_name
+      - beneficiary_address
+      - port_of_loading
+      - port_of_discharge
+      - place_of_receipt
+      - place_of_delivery
+      - latest_shipment_date
+      - shipment_period
+      - partial_shipment
+      - transhipment
+      - presentation_days
+      - goods_description
+      - incoterms
+      - documents_required
+      - additional_conditions
+      - drafts_at
+      - drawee_bic
+      - available_with
+      - available_by
+
+  INV:
+    code: INV
+    name_en: Commercial Invoice
+    name_zh: 商业发票
+    detection: FILENAME
+    filename_keywords: [invoice]
+    extraction_prompt: extract/inv-extract-vision.st
+    field_keys:
+      - lc_number
+      - invoice_number
+      - invoice_date
+      - document_date
+      - beneficiary_name
+      - beneficiary_address
+      - applicant_name
+      - applicant_address
+      - credit_currency
+      - invoice_total
+      - quantity
+      - unit
+      - unit_price
+      - goods_description
+      - incoterms
+      - country_of_origin
+      - port_of_loading
+      - port_of_discharge
+      - line_items
+      - signed
+      - stamp_present
+      - watermark_type
+
+  BOL:
+    code: BOL
+    name_en: Bill of Lading
+    name_zh: 提单
+    detection: FILENAME
+    filename_keywords: [bill-of-lading, bol]
+    extraction_prompt: extract/bol-extract-vision.st
+    field_keys:
+      - bol_number
+      - bl_date
+      - shipment_date
+      - onboard_notation
+      - carrier_name
+      - beneficiary_name
+      - consignee
+      - notify_party
+      - port_of_loading
+      - port_of_discharge
+      - freight_terms
+      - originals_required
+      - originals_presented
+      - clean_indicator
+      - on_deck_notation
+      - quantity
+      - total_packages
+      - shipping_marks
+      - total_gross_weight
+      - total_net_weight
+      - incoterms
+      - watermark_type
+      - signed
+      - stamp_present
+
+  PKL:
+    code: PKL
+    name_en: Packing List
+    name_zh: 装箱单
+    detection: FILENAME
+    filename_keywords: [packing-list]
+    extraction_prompt: extract/pkl-extract-vision.st
+    field_keys:
+      - pkl_number
+      - pkl_date
+      - document_date
+      - beneficiary_name
+      - shipping_marks
+      - total_packages
+      - total_net_weight
+      - total_gross_weight
+      - quantity
+      - watermark_type
+      - signed
+      - stamp_present
+
+  BOE:
+    code: BOE
+    name_en: Bill of Exchange / Draft
+    name_zh: 汇票/跟单汇票
+    detection: FILENAME
+    filename_keywords: [bill-of-exchange, boe]
+    extraction_prompt: extract/boe-extract-vision.st
+    field_keys:
+      - boe_number
+      - boe_date
+      - document_date
+      - lc_number
+      - drawee_name
+      - drawer_name
+      - draft_amount
+      - draft_currency
+      - invoice_total
+      - tenor
+      - beneficiary_name
+      - credit_currency
+      - watermark_type
+      - signed
+      - stamp_present
+
+  BC:
+    code: BC
+    name_en: Beneficiary Certificate
+    name_zh: 受益人证书
+    detection: FILENAME
+    filename_keywords: [beneficiary-cert, bc]
+    extraction_prompt: extract/bc-extract-vision.st
+    field_keys:
+      - bc_number
+      - bc_date
+      - document_date
+      - lc_number
+      - beneficiary_name
+      - bc_certifying_party
+      - bc_conditions_text
+      - watermark_type
+      - signed
+      - stamp_present
+
+  WC:
+    code: WC
+    name_en: Warranty Certificate
+    name_zh: 质量保证书
+    detection: FILENAME
+    filename_keywords: [warranty-cert, wc]
+    extraction_prompt: extract/wc-extract-vision.st
+    field_keys:
+      - wc_number
+      - wc_date
+      - document_date
+      - lc_number
+      - beneficiary_name
+      - wc_scope
+      - wc_period
+      - wc_conditions_text
+      - watermark_type
+      - signed
+      - stamp_present

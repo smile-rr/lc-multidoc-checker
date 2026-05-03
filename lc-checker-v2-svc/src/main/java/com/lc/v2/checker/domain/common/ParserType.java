@@ -1,0 +1,16 @@
+package com.lc.v2.checker.domain.common;
+
+public enum ParserType {
+    SIMPLE_STRING,
+    AMOUNT_WITH_CURRENCY,
+    DATE_YYMMDD,
+    DATE_PLUS_TEXT,
+    SLASH_SEPARATED_INT,
+    INT_BEFORE_SLASH,
+    MULTILINE_FIRST_LINE,
+    MULTILINE_FULL,
+    ENUM_NORMALIZED,
+    BIC,
+    DOCUMENT_LIST,
+    INCOTERMS_EXTRACT
+}

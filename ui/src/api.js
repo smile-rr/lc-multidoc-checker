@@ -1,0 +1,200 @@
+const BASE = '/api/v2';
+
+// ── Sessions ───────────────────────────────────────────────────────────────
+export async function createSession(lcText, files) {
+  const form = new FormData();
+  if (lcText) form.append('lcText', lcText);
+  for (const f of files) form.append('files', f);
+  const res = await fetch(`${BASE}/sessions`, { method: 'POST', body: form });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function listSessions(limit = 50) {
+  const res = await fetch(`${BASE}/sessions?limit=${limit}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function getSession(id) {
+  const res = await fetch(`${BASE}/sessions/${id}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function getHealth() {
+  const res = await fetch('/actuator/health');
+  return res.ok;
+}
+
+export function openStream(sessionId) {
+  return new EventSource(`${BASE}/sessions/${sessionId}/stream`);
+}
+
+// ── Documents ──────────────────────────────────────────────────────────────
+export function pdfUrl(sessionId, docId) {
+  return `${BASE}/sessions/${sessionId}/documents/${docId}/pdf`;
+}
+
+export async function getDocExtracts(sessionId, docId) {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/documents/${docId}/extracts`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function patchDocument(sessionId, docId, body) {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/documents/${docId}`, {
+    method:  'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function correctField(sessionId, docId, fieldKey, body) {
+  const res = await fetch(
+    `${BASE}/sessions/${sessionId}/documents/${docId}/fields/${encodeURIComponent(fieldKey)}/correction`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+  );
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+// ── LC required-docs ───────────────────────────────────────────────────────
+export async function getLcRequiredDocs(sessionId) {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/lc/required-docs`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+// ── Reconcile ──────────────────────────────────────────────────────────────
+export async function getReconcile(sessionId) {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/reconcile`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function triageReconcile(sessionId, body) {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/reconcile/triage`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function lockSession(sessionId, officerId) {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/lock`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ officerId }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function unlockSession(sessionId, officerId, reason) {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/unlock`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ officerId, reason }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+// ── Rules + overrides ──────────────────────────────────────────────────────
+export async function getRules(sessionId) {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/rules`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function overrideRule(sessionId, ruleId, body) {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/rules/${ruleId}/override`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function clearOverride(sessionId, ruleId, officerId) {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/rules/${ruleId}/override`, {
+    method:  'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ officerId }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+// ── Sign-off ───────────────────────────────────────────────────────────────
+export async function getSignoff(sessionId) {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/signoff`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function postSignoff(sessionId, body) {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/signoff`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function getMt734(sessionId) {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/mt734`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.text();
+}
+
+export async function getAudit(sessionId) {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/audit`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+// ── Article refs (UCP/ISBP tooltips) ──────────────────────────────────────
+export async function getArticleRef(id) {
+  const res = await fetch(`${BASE}/refs/${id}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+// ── Presets (test/cases bundles) ──────────────────────────────────────────
+export async function getPresets() {
+  const res = await fetch(`${BASE}/presets`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** Returns a Blob; caller wraps in File() with the right name + MIME. */
+export async function getPresetFile(presetId, filename) {
+  const res = await fetch(`${BASE}/presets/${encodeURIComponent(presetId)}/files/${encodeURIComponent(filename)}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.blob();
+}
+
+// ── Pipeline control: cancel + re-run ─────────────────────────────────────
+export async function cancelSession(sessionId, officerId) {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/cancel`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ officerId }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function rerunStage(sessionId, stage, officerId) {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/stages/${stage}/rerun`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ officerId }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}

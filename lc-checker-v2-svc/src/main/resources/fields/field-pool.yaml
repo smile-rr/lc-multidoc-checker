@@ -1,0 +1,143 @@
+# =============================================================================
+# field-pool.yaml — v2 canonical field definitions
+# =============================================================================
+# Single source of truth for all canonical field keys across all 6 doc types.
+# Extends v1's LC + INV fields with BOL, PKL, BOE, BC, WC.
+#
+# applies_to: subset of [LC, INV, BOL, PKL, BOE, BC, WC]
+#   ALL = shorthand meaning every doc type
+# reconcile_canonical: true → field participates in Reconcile stage pivot table
+# group: header|amount|parties|shipment|documents|meta|items
+
+fields:
+
+  # ─── SWIFT envelope ───────────────────────────────────────────────────
+  - { key: sender_bic,          name_en: Sender BIC,          name_zh: 发送方银行 BIC, type: STRING, applies_to: [LC], source_tags: [block1],     group: header }
+  - { key: receiver_bic,        name_en: Receiver BIC,        name_zh: 接收方银行 BIC, type: STRING, applies_to: [LC], source_tags: [block2],     group: header }
+  - { key: message_type,        name_en: Message Type,        name_zh: 报文类型,        type: STRING, applies_to: [LC], source_tags: [block2],     group: header }
+
+  # ─── LC identity fields ───────────────────────────────────────────────
+  - { key: sequence_of_total,   name_en: Sequence,            name_zh: 序号/总数,    type: STRING,        applies_to: [LC],                       source_tags: ["27"],  rule_relevant: false, group: header }
+  - { key: credit_type,         name_en: Credit Type,         name_zh: 信用证类型,   type: STRING,        applies_to: [LC],                       source_tags: ["40A"], rule_relevant: true,  group: header }
+  - { key: lc_number,           name_en: LC Number,           name_zh: 信用证号,     type: STRING,        applies_to: [LC, INV, BOL, BOE, BC, WC], source_tags: ["20"],  invoice_aliases: [lc_reference, lc_no, l_c_number, credit_number, reference], rule_relevant: true, reconcile_canonical: true, group: header }
+  - { key: issue_date,          name_en: Issue Date,          name_zh: 开证日期,     type: DATE,          applies_to: [LC],                       source_tags: ["31C"], rule_relevant: false, group: header }
+  - { key: expiry_date,         name_en: Expiry Date,         name_zh: 到期日期,     type: DATE,          applies_to: [LC],                       source_tags: ["31D"], rule_relevant: true,  group: header }
+  - { key: expiry_place,        name_en: Expiry Place,        name_zh: 到期地点,     type: STRING,        applies_to: [LC],                       source_tags: ["31D"], rule_relevant: false, group: header }
+  - { key: applicable_rules,    name_en: Rules,               name_zh: 适用规则,     type: STRING,        applies_to: [LC],                       source_tags: ["40E"], rule_relevant: false, group: header }
+  - { key: confirmation_instructions, name_en: Confirmation,  name_zh: 保兑指示,     type: STRING,        applies_to: [LC],                       source_tags: ["49"],  rule_relevant: false, group: header }
+  - { key: available_with,      name_en: Available With,      name_zh: 兑付银行,     type: STRING,        applies_to: [LC],                       source_tags: ["41A", "41D"], rule_relevant: false, group: header }
+  - { key: available_by,        name_en: Available By,        name_zh: 兑付方式,     type: STRING,        applies_to: [LC],                       source_tags: ["41A", "41D"], rule_relevant: false, group: header }
+
+  # ─── Amount ───────────────────────────────────────────────────────────
+  - { key: credit_currency,     name_en: Currency,            name_zh: 信用证币种,   type: CURRENCY_CODE, applies_to: [LC, INV, BOE],             source_tags: ["32B"], invoice_aliases: [currency, ccy], rule_relevant: true, reconcile_canonical: true, group: amount }
+  - { key: credit_amount,       name_en: LC Amount,           name_zh: 信用证金额,   type: AMOUNT,        applies_to: [LC],                       source_tags: ["32B"], rule_relevant: true, group: amount }
+  - { key: about_credit_amount, name_en: About Credit Amount, name_zh: 金额约数标志, type: STRING,        applies_to: [LC],                       source_tags: [],      rule_relevant: true, group: amount }
+  - { key: tolerance_plus,      name_en: Tolerance (+),       name_zh: 金额上浮容差, type: INTEGER,       applies_to: [LC],                       source_tags: ["39A"], rule_relevant: true, default_value: 0, group: amount }
+  - { key: tolerance_minus,     name_en: Tolerance (-),       name_zh: 金额下浮容差, type: INTEGER,       applies_to: [LC],                       source_tags: ["39A"], rule_relevant: true, default_value: 0, group: amount }
+  - { key: max_amount_flag,     name_en: Max Amount Flag,     name_zh: 信用证金额上限标志, type: STRING,   applies_to: [LC],                       source_tags: ["39B"], rule_relevant: false, group: amount }
+
+  # ─── Parties ──────────────────────────────────────────────────────────
+  - { key: applicant_name,      name_en: Applicant,           name_zh: 申请人,       type: STRING,        applies_to: [LC, INV],                  source_tags: ["50", "50B", "50F"], invoice_aliases: [buyer_name, importer_name, buyer, consignee], rule_relevant: false, group: parties }
+  - { key: applicant_address,   name_en: Applicant Address,   name_zh: 申请人地址,   type: STRING,        applies_to: [LC, INV],                  source_tags: ["50", "50B", "50F"], invoice_aliases: [buyer_address, consignee_address], rule_relevant: false, group: parties }
+  - { key: applicant_bank_bic,  name_en: Applicant Bank,      name_zh: 申请人银行,   type: STRING,        applies_to: [LC],                       source_tags: ["51A"], rule_relevant: false, group: parties }
+  - { key: beneficiary_name,    name_en: Beneficiary,         name_zh: 受益人,       type: STRING,        applies_to: [LC, INV, BOL, BOE, BC, WC], source_tags: ["59", "59A", "59F"], invoice_aliases: [seller_name, exporter_name, vendor_name, shipper_name, exporter, drawer_name], rule_relevant: true, reconcile_canonical: true, group: parties }
+  - { key: beneficiary_address, name_en: Beneficiary Address, name_zh: 受益人地址,   type: STRING,        applies_to: [LC, INV],                  source_tags: ["59", "59A", "59F"], invoice_aliases: [seller_address, vendor_address], rule_relevant: false, group: parties }
+
+  # ─── Shipment / logistics ─────────────────────────────────────────────
+  - { key: place_of_receipt,    name_en: Place of Receipt,    name_zh: 收货地,       type: STRING,        applies_to: [LC],                       source_tags: ["44A"], rule_relevant: false, group: shipment }
+  - { key: port_of_loading,     name_en: Port of Loading,     name_zh: 装运港,       type: STRING,        applies_to: [LC, INV, BOL],             source_tags: ["44E"], invoice_aliases: [loading_port, port_loading, pol], rule_relevant: true, reconcile_canonical: true, group: shipment }
+  - { key: port_of_discharge,   name_en: Port of Discharge,   name_zh: 卸货港,       type: STRING,        applies_to: [LC, INV, BOL],             source_tags: ["44F"], invoice_aliases: [discharge_port, port_discharge, pod], rule_relevant: true, reconcile_canonical: true, group: shipment }
+  - { key: place_of_delivery,   name_en: Place of Delivery,   name_zh: 交货地,       type: STRING,        applies_to: [LC],                       source_tags: ["44B"], rule_relevant: false, group: shipment }
+  - { key: latest_shipment_date, name_en: Latest Shipment,    name_zh: 最迟装运日,   type: DATE,          applies_to: [LC],                       source_tags: ["44C"], rule_relevant: true,  group: shipment }
+  - { key: shipment_period,     name_en: Shipment Period,     name_zh: 装运期,       type: STRING,        applies_to: [LC],                       source_tags: ["44D"], rule_relevant: false, group: shipment }
+  - { key: partial_shipment,    name_en: Partial Shipment,    name_zh: 分批装运,     type: STRING,        applies_to: [LC],                       source_tags: ["43P"], rule_relevant: false, group: shipment }
+  - { key: transhipment,        name_en: Transhipment,        name_zh: 转运,         type: STRING,        applies_to: [LC],                       source_tags: ["43T"], rule_relevant: false, group: shipment }
+  - { key: presentation_days,   name_en: Presentation Days,   name_zh: 单据提示期(天), type: INTEGER,      applies_to: [LC],                       source_tags: ["48"],  rule_relevant: true,  default_value: 21, group: shipment }
+
+  # ─── LC document clauses ─────────────────────────────────────────────
+  - { key: goods_description,   name_en: Goods Description,   name_zh: 货物描述,     type: MULTILINE_TEXT, applies_to: [LC, INV],                 source_tags: ["45A"], invoice_aliases: [description, goods, item_description], rule_relevant: true, reconcile_canonical: true, group: documents }
+  - { key: incoterms,           name_en: Incoterms,           name_zh: 贸易术语,     type: ENUM,          applies_to: [LC, INV, BOL],             source_tags: ["45A"], enum_values: [CIF, CFR, FOB, EXW, FCA, CPT, CIP, DAP, DPU, DDP], invoice_aliases: [trade_terms, delivery_terms, terms], rule_relevant: true, reconcile_canonical: true, group: documents }
+  - { key: documents_required,  name_en: Documents Required,  name_zh: 要求单据,     type: DOCUMENT_LIST, applies_to: [LC],                       source_tags: ["46A"], rule_relevant: true,  group: documents }
+  - { key: additional_conditions, name_en: Additional Conditions, name_zh: 附加条件, type: MULTILINE_TEXT, applies_to: [LC],                      source_tags: ["47A"], rule_relevant: true,  group: documents }
+  - { key: drafts_at,           name_en: Drafts At,           name_zh: 汇票期限,     type: STRING,        applies_to: [LC],                       source_tags: ["42C"], rule_relevant: false, group: documents }
+  - { key: drawee_bic,          name_en: Drawee Bank,         name_zh: 受票行,       type: STRING,        applies_to: [LC],                       source_tags: ["42A", "42D"], rule_relevant: true, group: documents }
+  - { key: charges,             name_en: Charges,             name_zh: 费用承担,     type: MULTILINE_TEXT, applies_to: [LC],                      source_tags: ["71B"], rule_relevant: false, group: documents }
+  - { key: bank_instructions,   name_en: Bank Instructions,   name_zh: 银行指示,     type: MULTILINE_TEXT, applies_to: [LC],                      source_tags: ["78"],  rule_relevant: false, group: documents }
+
+  # ─── INV — Commercial Invoice ─────────────────────────────────────────
+  - { key: invoice_number,      name_en: Invoice Number,      name_zh: 发票号,       type: STRING,        applies_to: [INV],                      invoice_aliases: [invoice_no, inv_number], rule_relevant: true, group: header }
+  - { key: invoice_date,        name_en: Invoice Date,        name_zh: 发票日期,     type: DATE,          applies_to: [INV],                      invoice_aliases: [date, invoicedate, inv_date], rule_relevant: true, group: header }
+  - { key: invoice_total,       name_en: Invoice Total,       name_zh: 发票总金额,   type: AMOUNT,        applies_to: [INV, BOE],                 invoice_aliases: [total_amount, total, invoice_total, amount_due, grand_total, invoice_amount], rule_relevant: true, reconcile_canonical: true, group: amount }
+  - { key: quantity,            name_en: Quantity,            name_zh: 数量,         type: AMOUNT,        applies_to: [INV, BOL, PKL],            invoice_aliases: [qty, number_of_units, total_qty], rule_relevant: true, reconcile_canonical: true, group: amount }
+  - { key: unit,                name_en: Unit,                name_zh: 单位,         type: STRING,        applies_to: [INV],                      invoice_aliases: [], rule_relevant: true, group: amount }
+  - { key: unit_price,          name_en: Unit Price,          name_zh: 单价,         type: AMOUNT,        applies_to: [INV],                      invoice_aliases: [unitprice, price_per_unit], rule_relevant: false, group: amount }
+  - { key: country_of_origin,   name_en: Country of Origin,   name_zh: 原产国,       type: STRING,        applies_to: [INV],                      invoice_aliases: [origin, coo, manufacturing_country], rule_relevant: true, group: documents }
+
+  # ─── INV line items (TABLE) ──────────────────────────────────────────
+  - key: line_items
+    name_en: Line Items
+    name_zh: 商品明细
+    type: TABLE
+    applies_to: [INV]
+    invoice_aliases: [items, lines, item_list, products]
+    rule_relevant: true
+    group: items
+    extraction_hint: "One object per product row. Return [] if no line-item table. Set document-level quantity/unit_price to null when line_items has more than one row."
+    columns:
+      - { key: description, name_en: Description, name_zh: 描述,    type: MULTILINE_TEXT, rule_relevant: true,  invoice_aliases: [item, name, goods, product, desc] }
+      - { key: quantity,    name_en: Quantity,    name_zh: 数量,    type: AMOUNT,         rule_relevant: true,  invoice_aliases: [qty, units, count] }
+      - { key: unit,        name_en: Unit,        name_zh: 单位,    type: STRING,         rule_relevant: false, invoice_aliases: [uom] }
+      - { key: unit_price,  name_en: Unit Price,  name_zh: 单价,    type: AMOUNT,         rule_relevant: true,  invoice_aliases: [price, unitprice, rate] }
+      - { key: amount,      name_en: Line Total,  name_zh: 行合计,  type: AMOUNT,         rule_relevant: true,  invoice_aliases: [line_total, total, subtotal] }
+
+  # ─── BOL — Bill of Lading ────────────────────────────────────────────
+  - { key: bol_number,          name_en: B/L Number,          name_zh: 提单号,       type: STRING,        applies_to: [BOL], invoice_aliases: [bl_number, bol_no, b_l_number], rule_relevant: true, group: header }
+  - { key: bl_date,             name_en: B/L Issue Date,      name_zh: 提单日期,     type: DATE,          applies_to: [BOL], invoice_aliases: [bill_of_lading_date, date_of_issue], rule_relevant: true, group: header }
+  - { key: shipment_date,       name_en: Shipment Date (On-board), name_zh: 装船日期(实际), type: DATE,   applies_to: [BOL], invoice_aliases: [on_board_date, onboard_date, shipped_on_board_date], rule_relevant: true, reconcile_canonical: true, group: shipment, extraction_hint: "If on-board notation exists, extract its date — this is the actual shipment date used for the 21-day window. If no separate on-board notation, use bl_date." }
+  - { key: onboard_notation,    name_en: On-board Notation,   name_zh: 装船批注,     type: STRING,        applies_to: [BOL], invoice_aliases: [on_board_notation, shipped_on_board], rule_relevant: true, group: shipment, extraction_hint: "The on-board notation stamp/text on the B/L. 'SHIPPED ON BOARD' / 'ON BOARD' or equivalent. Include date if printed separately from bl_date." }
+  - { key: carrier_name,        name_en: Carrier / Shipping Company, name_zh: 承运人, type: STRING,       applies_to: [BOL], invoice_aliases: [carrier, shipping_company, shipping_line], rule_relevant: false, group: parties }
+  - { key: consignee,           name_en: Consignee,           name_zh: 收货人,       type: STRING,        applies_to: [BOL], invoice_aliases: [consignee_name, to_order], rule_relevant: false, group: parties }
+  - { key: notify_party,        name_en: Notify Party,        name_zh: 通知方,       type: STRING,        applies_to: [BOL], invoice_aliases: [notify, notify_party_name], rule_relevant: false, group: parties }
+  - { key: freight_terms,       name_en: Freight Terms,       name_zh: 运费条款,     type: STRING,        applies_to: [BOL], invoice_aliases: [freight_paid, freight_collect, freight_prepaid], rule_relevant: true, group: shipment, extraction_hint: "FREIGHT PREPAID / FREIGHT COLLECT / FREIGHT PAYABLE AT DESTINATION — exact wording matters for XD-024 Incoterms cross-check." }
+  - { key: originals_required,  name_en: Originals Required,  name_zh: 要求正本套数, type: STRING,        applies_to: [BOL], invoice_aliases: [full_set_originals, set_of_originals], rule_relevant: true, group: documents, extraction_hint: "e.g. '3/3' — fraction format: presented/total originals issued." }
+  - { key: originals_presented, name_en: Originals Presented, name_zh: 提交正本套数, type: STRING,        applies_to: [BOL], invoice_aliases: [originals_submitted], rule_relevant: true, group: documents }
+  - { key: clean_indicator,     name_en: Clean B/L,           name_zh: 清洁提单,     type: STRING,        applies_to: [BOL], invoice_aliases: [is_clean, clean_bl, no_clause], rule_relevant: true, group: documents, extraction_hint: "true if no defect/damage clauses appear on the B/L. Even a crossed-out clause = not clean unless properly authenticated." }
+  - { key: on_deck_notation,    name_en: On-Deck Notation,    name_zh: 甲板装载批注, type: STRING,        applies_to: [BOL], invoice_aliases: [on_deck, deck_cargo, stowed_on_deck], rule_relevant: true, group: documents, extraction_hint: "Any notation indicating on-deck stowage. Prohibited under most LCs. null = no notation found." }
+
+  # ─── PKL — Packing List ──────────────────────────────────────────────
+  - { key: pkl_number,          name_en: Packing List Number, name_zh: 装箱单号,     type: STRING,        applies_to: [PKL], invoice_aliases: [packing_list_no, pl_number], rule_relevant: false, group: header }
+  - { key: pkl_date,            name_en: Packing List Date,   name_zh: 装箱单日期,   type: DATE,          applies_to: [PKL], invoice_aliases: [packing_date], rule_relevant: true, group: header }
+  - { key: shipping_marks,      name_en: Shipping Marks,      name_zh: 运输标志,     type: MULTILINE_TEXT, applies_to: [PKL, BOL], invoice_aliases: [marks, cargo_marks, shipping_mark], rule_relevant: true, group: shipment, extraction_hint: "The cargo marks and numbers as printed. Must not contradict B/L marks (PKL-004)." }
+  - { key: total_packages,      name_en: Total Packages,      name_zh: 总包装件数,   type: INTEGER,       applies_to: [PKL, BOL, INV], invoice_aliases: [total_cartons, total_cases, number_of_packages, pkg_count], rule_relevant: true, reconcile_canonical: true, group: amount }
+  - { key: total_net_weight,    name_en: Total Net Weight,    name_zh: 净重,         type: AMOUNT,        applies_to: [PKL, BOL], invoice_aliases: [net_weight, nw], rule_relevant: false, group: amount }
+  - { key: total_gross_weight,  name_en: Total Gross Weight,  name_zh: 毛重,         type: AMOUNT,        applies_to: [PKL, BOL], invoice_aliases: [gross_weight, gw], rule_relevant: false, group: amount }
+
+  # ─── BOE — Bill of Exchange / Draft ──────────────────────────────────
+  - { key: boe_number,          name_en: Draft Number,        name_zh: 汇票号,       type: STRING,        applies_to: [BOE], invoice_aliases: [draft_no, boe_no], rule_relevant: false, group: header }
+  - { key: boe_date,            name_en: Draft Date,          name_zh: 汇票日期,     type: DATE,          applies_to: [BOE], invoice_aliases: [draft_date, date_of_draft], rule_relevant: true, group: header }
+  - { key: drawee_name,         name_en: Drawee,              name_zh: 受票人/付款人, type: STRING,        applies_to: [BOE], invoice_aliases: [drawee, drawn_on, pay_to], rule_relevant: true, group: parties, extraction_hint: "The party on whom the draft is drawn — must match LC :42A:/:42D: (BOE-001)." }
+  - { key: drawer_name,         name_en: Drawer,              name_zh: 出票人,       type: STRING,        applies_to: [BOE], invoice_aliases: [drawer, issued_by, signed_by_drawer], rule_relevant: false, group: parties }
+  - { key: draft_amount,        name_en: Draft Amount,        name_zh: 汇票金额,     type: AMOUNT,        applies_to: [BOE], invoice_aliases: [amount, boe_amount, draft_value], rule_relevant: true, reconcile_canonical: true, group: amount, extraction_hint: "The face amount of the draft. Must equal invoice total (BOE-003)." }
+  - { key: draft_currency,      name_en: Draft Currency,      name_zh: 汇票币种,     type: CURRENCY_CODE, applies_to: [BOE], invoice_aliases: [boe_currency, draft_ccy], rule_relevant: true, group: amount }
+  - { key: tenor,               name_en: Tenor,               name_zh: 汇票期限,     type: STRING,        applies_to: [BOE], invoice_aliases: [payment_term, at_sight, days_after], rule_relevant: false, group: documents, extraction_hint: "e.g. 'AT SIGHT' / '90 DAYS AFTER SIGHT' / '60 DAYS AFTER B/L DATE'" }
+
+  # ─── BC — Beneficiary Certificate ────────────────────────────────────
+  - { key: bc_number,           name_en: Certificate Number,  name_zh: 受益人证书号, type: STRING,        applies_to: [BC], invoice_aliases: [cert_no, certificate_number], rule_relevant: false, group: header }
+  - { key: bc_date,             name_en: Certificate Date,    name_zh: 受益人证书日期, type: DATE,          applies_to: [BC], invoice_aliases: [date_of_certificate, cert_date], rule_relevant: true, group: header }
+  - { key: bc_certifying_party, name_en: Certifying Party,    name_zh: 出证方,       type: STRING,        applies_to: [BC], invoice_aliases: [issuer, certified_by], rule_relevant: false, group: parties }
+  - { key: bc_conditions_text,  name_en: Conditions Certified, name_zh: 认证条款文本, type: MULTILINE_TEXT, applies_to: [BC], invoice_aliases: [certification_text, conditions_stated], rule_relevant: true, group: documents, extraction_hint: "Full verbatim text of all conditions certified. BC-001 LLM check compares this against LC :46A: requirements." }
+
+  # ─── WC — Warranty Certificate ───────────────────────────────────────
+  - { key: wc_number,           name_en: Warranty Number,     name_zh: 质保证书号,   type: STRING,        applies_to: [WC], invoice_aliases: [warranty_no, warranty_number], rule_relevant: false, group: header }
+  - { key: wc_date,             name_en: Warranty Date,       name_zh: 质保日期,     type: DATE,          applies_to: [WC], invoice_aliases: [date_of_warranty, warranty_date], rule_relevant: true, group: header }
+  - { key: wc_scope,            name_en: Warranty Scope,      name_zh: 质保范围,     type: MULTILINE_TEXT, applies_to: [WC], invoice_aliases: [warranty_coverage, scope_of_warranty, covered_items], rule_relevant: true, group: documents }
+  - { key: wc_period,           name_en: Warranty Period,     name_zh: 质保期限,     type: STRING,        applies_to: [WC], invoice_aliases: [warranty_duration, warranty_term, valid_for], rule_relevant: false, group: documents }
+  - { key: wc_conditions_text,  name_en: Warranty Conditions, name_zh: 质保条款文本, type: MULTILINE_TEXT, applies_to: [WC], invoice_aliases: [warranty_text, warranty_conditions], rule_relevant: true, group: documents, extraction_hint: "Full verbatim text of all warranty conditions. WC-001 LLM check compares this against LC :46A: requirements." }
+
+  # ─── Universal VLM detection fields (apply to all presented docs) ─────
+  # GEN-011 / BC-003 use signed; BOL-009 uses clean_indicator + off-schema corrections;
+  # GEN-006 uses watermark_type to identify originals.
+  - { key: signed,              name_en: Signed,              name_zh: 已签字,       type: STRING,        applies_to: [INV, BOL, BOE, BC, WC], invoice_aliases: [signature, is_signed], rule_relevant: true, group: meta, extraction_hint: "true if a handwritten, digital, or printed NAME+TITLE signature block is visible. A stamp alone is NOT a signature." }
+  - { key: stamp_present,       name_en: Stamp Present,       name_zh: 盖章,         type: STRING,        applies_to: [INV, BOL, PKL, BOE, BC, WC], invoice_aliases: [stamp, has_stamp], rule_relevant: false, group: meta }
+  - { key: watermark_type,      name_en: Watermark Type,      name_zh: 水印类型,     type: STRING,        applies_to: [INV, BOL, PKL, BOE, BC, WC], invoice_aliases: [watermark, copy_indicator], rule_relevant: true, group: meta, extraction_hint: "ORIGINAL | COPY | SPECIMEN | null — for originals count check. Extract from visible watermarks, stamps, or printed text." }
+  - { key: document_date,       name_en: Document Date,       name_zh: 文件日期,     type: DATE,          applies_to: [INV, BOL, PKL, BOE, BC, WC], invoice_aliases: [doc_date], rule_relevant: true, group: header, extraction_hint: "The date printed on this document. GEN-003: no document may be dated after the presentation date." }
