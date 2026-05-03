@@ -5,14 +5,15 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Component;
 
 /**
- * In-process cache of uploaded PDF bytes keyed by docId.
+ * In-process hot cache of PDF bytes keyed by docId.
  *
- * The v2 POC does not yet persist PDFs to MinIO; the bytes captured at intake
- * stay in memory for the lifetime of the JVM so the Parse-stage UI can stream
- * them via {@code GET /sessions/{id}/documents/{docId}/pdf}.
+ * <p>Populated by {@link S3FileStore} on every PUT (success or failure) and
+ * on every successful MinIO GET. The controller always checks this cache first
+ * before hitting MinIO, so a running JVM never needs a MinIO round-trip for
+ * documents already seen during this session.
  *
- * Future: replace with MinIO content-addressed storage (see v1 MinioFileStore
- * pattern). The serving controller would then fall back to MinIO on cache miss.
+ * <p>Documents whose PDFs were only persisted to MinIO (e.g. after JVM restart)
+ * are loaded from MinIO on first access and cached here for subsequent reads.
  */
 @Component
 public class PdfBytesCache {

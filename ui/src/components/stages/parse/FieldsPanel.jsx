@@ -61,7 +61,7 @@ export function FieldsPanel({ doc, extracts, events, onCorrect, onMarkReviewed, 
       <div className="px-4 pt-3 border-b border-line">
         <div className="flex items-center justify-between mb-2">
           <span className="text-[10px] tracking-[0.2em] uppercase text-muted font-mono">
-            EXTRACTED · {t.name}
+            EXTRACTED · {t.name} ({t.short})
           </span>
           <button
             onClick={() => setCompareMode(c => !c)}

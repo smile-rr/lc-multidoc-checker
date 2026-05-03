@@ -19,7 +19,7 @@ const ZOOM_STEP = 0.25;
  * axes so when zoom pushes a page wider/taller than the viewport the user gets
  * natural scroll-as-pan. Toolbar is sticky inside the scroll container.
  */
-export function PdfViewer({ src, file, page, onNumPages, maxHeightClass = 'h-full', docType, originalFilename }) {
+export function PdfViewer({ src, file, page, onNumPages, maxHeightClass = 'h-full', docType }) {
   const [numPages, setNumPages] = useState(0);
   const [zoom, setZoom] = useState(1.0);
   const [err, setErr] = useState(null);
@@ -40,18 +40,16 @@ export function PdfViewer({ src, file, page, onNumPages, maxHeightClass = 'h-ful
   return (
     <div className={`bg-paper rounded-[10px] border border-line overflow-auto ${maxHeightClass}`}>
       {docType && (
-        <div className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-line px-3 py-1.5 flex items-center gap-2 text-xs">
+        <div className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-line px-3 py-1.5 flex items-center gap-2 text-xs min-h-[30px]">
           <span className="text-[13px]" style={{ color: docTypeMeta(docType).color }}>
             {docTypeMeta(docType).icon}
           </span>
           <span className="font-semibold text-navy-1 text-[12px]">
             {docTypeMeta(docType).name}
           </span>
-          {originalFilename && (
-            <span className="text-muted font-mono text-[11px] truncate max-w-[240px]" title={originalFilename}>
-              {originalFilename}
-            </span>
-          )}
+          <span className="font-mono text-[10px] text-muted">
+            ({docTypeMeta(docType).short})
+          </span>
         </div>
       )}
       <div className="sticky top-[30px] z-10 bg-slate2/95 backdrop-blur border-b border-line px-3 py-1.5 flex items-center gap-1 text-xs">

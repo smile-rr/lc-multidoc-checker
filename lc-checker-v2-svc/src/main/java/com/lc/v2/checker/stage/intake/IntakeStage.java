@@ -4,9 +4,9 @@ import com.lc.v2.checker.domain.common.DocType;
 import com.lc.v2.checker.infra.observability.PipelineStage;
 import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.infra.storage.PdfBytesCache;
+import com.lc.v2.checker.infra.storage.S3FileStore;
 import com.lc.v2.checker.pipeline.Stage;
 import com.lc.v2.checker.pipeline.StageContext;
-import java.io.ByteArrayInputStream;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.slf4j.Logger;
@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
 /**
  * Stage 0 — Intake.
  * Classifies uploaded docs, persists a documents row per file, confirms doc types for Parse.
+ * PDFs are stored to MinIO (S3) first, then hot-cached in-process.
  * UNKNOWN docs emit a warning but do not block the pipeline (POC).
  */
 @PipelineStage(name = "intake")
@@ -26,10 +27,12 @@ public class IntakeStage implements Stage {
 
     private final SessionStore sessionStore;
     private final PdfBytesCache pdfCache;
+    private final S3FileStore s3Store;
 
-    public IntakeStage(SessionStore sessionStore, PdfBytesCache pdfCache) {
+    public IntakeStage(SessionStore sessionStore, PdfBytesCache pdfCache, S3FileStore s3Store) {
         this.sessionStore = sessionStore;
         this.pdfCache = pdfCache;
+        this.s3Store = s3Store;
     }
 
     @Override
@@ -49,8 +52,10 @@ public class IntakeStage implements Stage {
             int pageCount = countPages(bytes);
             String docId = sessionStore.createDocument(ctx.sessionId, docType, filename, pageCount);
             ctx.docIds.put(docType, docId);
+
+            // Persist to S3 first, then hot-cache (S3FileStore.put handles both).
             if (bytes != null && bytes.length > 0) {
-                pdfCache.put(docId, bytes);
+                s3Store.put(docId, bytes);
             }
 
             if (docType == DocType.UNKNOWN) {
@@ -69,8 +74,9 @@ public class IntakeStage implements Stage {
             }
         }
 
-        log.info("[{}] IntakeStage complete: {} total, {} UNKNOWN, confirmed={}",
-                ctx.sessionId, ctx.uploadedDocBytes.size(), unknownCount, ctx.confirmedDocTypes);
+        log.info("[{}] IntakeStage complete: {} total, {} UNKNOWN, confirmed={}, s3Enabled={}",
+                ctx.sessionId, ctx.uploadedDocBytes.size(), unknownCount,
+                ctx.confirmedDocTypes, s3Store.enabled());
         ctx.eventBus.stageCompleted(ctx.sessionId, "intake",
                 "docs=" + ctx.uploadedDocBytes.size() + " unknown=" + unknownCount);
     }

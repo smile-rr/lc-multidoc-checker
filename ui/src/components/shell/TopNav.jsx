@@ -29,27 +29,33 @@ export function TopNav() {
       </Link>
       <span className="text-white/40 text-xs">Multi-document UCP 600 Compliance</span>
 
+      {isRunning && runningInfo?.id && (
+        <div className="inline-flex items-center gap-2 text-[11px] font-mono">
+          <button
+            onClick={() => nav(`/session/${runningInfo.id}`)}
+            className="px-2 py-1 rounded bg-teal-1/15 text-teal-1 hover:bg-teal-1/30 inline-flex items-center gap-1.5"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-teal-1 animate-pulse flex-shrink-0" />
+            <span>{String(runningInfo.id).slice(0, 8)}</span>
+          </button>
+          {runningInfo.eventCount != null && (
+            <span className="text-white/40">{runningInfo.eventCount} events</span>
+          )}
+          {runningInfo.docCount != null && (
+            <span className="text-white/40">{runningInfo.docCount} docs</span>
+          )}
+          <button
+            onClick={onCancel}
+            disabled={cancelling}
+            title="Soft cancel — current stage finishes, then pipeline stops"
+            className="px-2 py-1 rounded border border-status-red text-status-red hover:bg-status-red/10 disabled:opacity-50"
+          >
+            {cancelling ? '⏳' : '⏹ cancel'}
+          </button>
+        </div>
+      )}
+
       <nav className="ml-auto flex items-center gap-2">
-        {isRunning && (
-          <div className="inline-flex items-center gap-1">
-            <button
-              onClick={() => nav(`/session/${runningInfo.id}`)}
-              className="font-mono text-[11px] px-2 py-1 rounded bg-teal-1/15 text-teal-1 hover:bg-teal-1/30 inline-flex items-center gap-1.5"
-              title={`Running: ${runningInfo.id}`}
-            >
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-teal-1 animate-pulse" />
-              <span>{String(runningInfo.id).slice(0, 8)} · running</span>
-            </button>
-            <button
-              onClick={onCancel}
-              disabled={cancelling}
-              title="Soft cancel — current stage finishes, then pipeline stops"
-              className="font-mono text-[11px] px-2 py-1 rounded border border-status-red text-status-red hover:bg-status-red/10 disabled:opacity-50"
-            >
-              {cancelling ? '⏳' : '⏹ cancel'}
-            </button>
-          </div>
-        )}
         <button
           onClick={toggleDev}
           title={devOn ? 'Disable DEV MODE' : 'Enable DEV MODE — bypasses officer gates'}

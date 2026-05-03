@@ -32,13 +32,18 @@ export function SessionPage() {
 
   const [activeStage, setActiveStage] = useState('intake');
 
-  // Sync top-nav running chip
+  // Sync top-nav running chip with live counts
   useEffect(() => {
     if (!id) return;
     const status = sessionCompleted ? 'COMPLETED' : (session?.status ?? 'RUNNING');
-    setRunningInfo({ id, status });
+    setRunningInfo({
+      id,
+      status,
+      eventCount: events.length,
+      docCount: session?.doc_count ?? null,
+    });
     return () => setRunningInfo(null);
-  }, [id, session?.status, sessionCompleted, setRunningInfo]);
+  }, [id, session?.status, session?.doc_count, sessionCompleted, events.length, setRunningInfo]);
 
   // Refetch session when SSE signals progress (or after a rerun resets state)
   useEffect(() => {
@@ -107,20 +112,6 @@ export function SessionPage() {
   return (
     <div className="h-full flex flex-col overflow-hidden">
 
-      <div className="bg-paper border-b border-line px-6 py-2 flex items-center gap-4 shrink-0">
-        <span className="text-xs font-mono text-[#a1a1a6]">{id?.slice(0, 8)}</span>
-        <StatusPill session={session} sessionCompleted={sessionCompleted} signedOff={signedOff || signoffData?.signed} />
-        {events.length > 0 && (
-          <span className="text-xs text-[#a1a1a6]">{events.length} events</span>
-        )}
-        {session?.doc_count != null && (
-          <span className="text-xs text-[#a1a1a6]">{session.doc_count} doc{session.doc_count !== 1 ? 's' : ''}</span>
-        )}
-        {locked && <span className="text-xs px-2 py-0.5 rounded bg-teal-1 text-white font-mono">🔒 LOCKED</span>}
-        {cancelled && <span className="text-xs px-2 py-0.5 rounded bg-status-gold text-white font-mono">⏹ CANCELLED at {cancelled.atStage}</span>}
-        {(signoffData?.signed) && <span className="text-xs px-2 py-0.5 rounded bg-status-green text-white font-mono">✎ SIGNED</span>}
-      </div>
-
       <PipelineNav
         activeStage={activeStage}
         completedStages={stagesCompleted}
@@ -139,19 +130,3 @@ export function SessionPage() {
   );
 }
 
-function StatusPill({ session, sessionCompleted, signedOff }) {
-  const status = session?.status;
-  const compliant = session?.finalReport?.compliant ?? session?.compliant ?? sessionCompleted?.compliant;
-
-  if (status === 'COMPLETED') {
-    return compliant === true
-      ? <span className="text-xs px-2 py-0.5 rounded bg-status-greenSoft text-status-green border border-[#86efac]">COMPLIANT</span>
-      : compliant === false
-        ? <span className="text-xs px-2 py-0.5 rounded bg-status-redSoft text-status-red border border-[#fca5a5]">DISCREPANT</span>
-        : <span className="text-xs text-status-green">COMPLETED</span>;
-  }
-  if (status === 'FAILED') {
-    return <span className="text-xs px-2 py-0.5 rounded bg-status-redSoft text-status-red border border-[#fca5a5]">FAILED</span>;
-  }
-  return <span className="text-xs text-teal-1 flex items-center gap-1"><Spinner size="sm" /> RUNNING</span>;
-}

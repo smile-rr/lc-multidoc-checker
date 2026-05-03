@@ -15,7 +15,7 @@ export function ConfirmedTile({ doc, onTypeChange, disabled }) {
         <div className="flex items-center gap-2 mb-0.5">
           <span className="inline-flex items-center gap-1 text-[10px] tracking-wider uppercase font-semibold font-mono"
                 style={{ color: t.color }}>
-            {t.short}
+            {t.name} <span className="font-mono normal-case tracking-normal">({t.short})</span>
           </span>
           <span className="text-[10px] text-status-green flex items-center gap-0.5 font-mono">
             ✓ confirmed

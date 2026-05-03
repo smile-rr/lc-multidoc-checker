@@ -4,12 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lc.v2.checker.api.dto.DocPatchRequest;
 import com.lc.v2.checker.api.dto.FieldCorrectionRequest;
 import com.lc.v2.checker.infra.persistence.SessionStore;
-import com.lc.v2.checker.infra.storage.PdfBytesCache;
+import com.lc.v2.checker.infra.storage.S3FileStore;
 import com.lc.v2.checker.pipeline.PipelineEventBus;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -26,9 +27,9 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Per-document endpoints used by the Intake + Parse stages of the UI.
  *
- *   GET    /sessions/{id}/documents/{docId}/pdf                    — stream PDF bytes
- *   GET    /sessions/{id}/documents/{docId}/extracts               — per-slot + consensus + off-schema
- *   PATCH  /sessions/{id}/documents/{docId}                        — officer changes type / marks reviewed
+ *   GET    /sessions/{id}/documents/{docId}/pdf              — stream PDF bytes (cache → S3 fallback)
+ *   GET    /sessions/{id}/documents/{docId}/extracts         — per-slot + consensus + off-schema
+ *   PATCH  /sessions/{id}/documents/{docId}                  — officer changes type / marks reviewed
  *   POST   /sessions/{id}/documents/{docId}/fields/{key}/correction — officer corrects extracted value
  */
 @RestController
@@ -38,39 +39,42 @@ public class DocumentsController {
     private static final Logger log = LoggerFactory.getLogger(DocumentsController.class);
 
     private final SessionStore sessionStore;
-    private final PdfBytesCache pdfCache;
+    private final S3FileStore s3Store;
     private final PipelineEventBus eventBus;
     private final ObjectMapper objectMapper;
 
-    public DocumentsController(SessionStore sessionStore, PdfBytesCache pdfCache,
-                                PipelineEventBus eventBus, ObjectMapper objectMapper) {
+    public DocumentsController(SessionStore sessionStore, S3FileStore s3Store,
+                              PipelineEventBus eventBus, ObjectMapper objectMapper) {
         this.sessionStore = sessionStore;
-        this.pdfCache = pdfCache;
+        this.s3Store = s3Store;
         this.eventBus = eventBus;
         this.objectMapper = objectMapper;
     }
 
     @GetMapping("/pdf")
     public ResponseEntity<byte[]> downloadPdf(@PathVariable String sessionId,
-                                                @PathVariable String docId) {
+                                              @PathVariable String docId) {
         Map<String, Object> doc = sessionStore.getDocument(docId);
         if (doc == null) return ResponseEntity.notFound().build();
 
-        byte[] bytes = pdfCache.get(docId);
-        if (bytes == null || bytes.length == 0) {
-            // POC: PDFs not persisted to MinIO — JVM restart loses them.
+        // Hot cache first; S3FileStore.get() falls back to MinIO on miss and
+        // populates the hot cache on a successful MinIO read.
+        Optional<byte[]> bytes = s3Store.get(docId);
+        if (bytes.isEmpty()) {
+            log.warn("[{}] PDF not found: docId={} (cache={} s3Enabled={})",
+                    sessionId, docId, s3Store.enabled(), s3Store.enabled());
             return ResponseEntity.status(404)
                     .contentType(MediaType.TEXT_PLAIN)
-                    .body(("PDF not available (in-process cache only). "
-                            + "Restart the session to re-upload.").getBytes());
+                    .body(("PDF not available (not in cache" +
+                            (s3Store.enabled() ? " or MinIO)" : ")")).getBytes());
         }
 
         String filename = (String) doc.getOrDefault("original_filename", docId + ".pdf");
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_PDF);
-        headers.setContentLength(bytes.length);
+        headers.setContentLength(bytes.get().length);
         headers.setContentDispositionFormData("inline", filename);
-        return new ResponseEntity<>(bytes, headers, 200);
+        return new ResponseEntity<>(bytes.get(), headers, 200);
     }
 
     @GetMapping("/extracts")

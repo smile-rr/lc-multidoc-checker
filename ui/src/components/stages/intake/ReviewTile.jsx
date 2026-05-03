@@ -46,7 +46,7 @@ export function ReviewTile({ doc, idx, total, onConfirm, onTypeChange, disabled 
                 disabled={disabled}
                 className="px-3 py-1.5 rounded-[6px] bg-teal-1 text-white text-xs font-medium hover:bg-teal-2 flex items-center gap-1.5 disabled:opacity-30"
               >
-                ✓ Yes, confirm as <span className="font-mono uppercase tracking-wider text-[10px]">{t.short}</span>
+                ✓ Yes, confirm as <span className="font-mono uppercase tracking-wider text-[10px]">{t.name} ({t.short})</span>
               </button>
             )}
             <button

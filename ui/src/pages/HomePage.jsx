@@ -10,7 +10,7 @@ import { Spinner } from '../components/shared/Spinner';
  * Single drop zone accepts .pdf and .txt files. Filename + content sniff classifies:
  *   - .pdf → DocType via filename keyword (existing DocTypeClassifier)
  *   - .txt with "mt700" or starting with :27:/:20: → LC (server confirms)
- * Three preset bundles (01–03) load with one click and a pass/fail variant choice.
+ * Three preset bundles (01–03) load with one click; each bundle provides one MT700 variant.
  */
 export function HomePage() {
   const navigate = useNavigate();
@@ -21,7 +21,6 @@ export function HomePage() {
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [presets, setPresets] = useState([]);
   const [presetLoadingId, setPresetLoadingId] = useState(null);
-  const [variantPickerFor, setVariantPickerFor] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef();
 
@@ -69,14 +68,12 @@ export function HomePage() {
 
   // ── Presets ────────────────────────────────────────────────────────────
 
-  const loadPreset = async (preset, variant) => {
-    // variant = 'mt700-pass' | 'mt700-fail'
+  const loadPreset = async (preset) => {
     setPresetLoadingId(preset.id);
-    setVariantPickerFor(null);
     setError(null);
     try {
       const wanted = preset.files.filter(f =>
-        f.type === 'pdf' || f.type === variant
+        f.type === 'pdf' || f.type === 'mt700'
       );
       const fetched = await Promise.all(wanted.map(async (f) => {
         const blob = await getPresetFile(preset.id, f.name);
@@ -95,12 +92,7 @@ export function HomePage() {
   // ── Submit ─────────────────────────────────────────────────────────────
 
   const lcCount = files.filter(f => f.detectedType === 'LC').length;
-  const docCount = files.filter(f => f.detectedType !== 'LC' && f.detectedType !== 'TXT' && f.detectedType !== 'OTHER').length;
   const handleSubmit = async () => {
-    if (files.length === 0) {
-      setError('Drop or pick at least one document (PDF or MT700 .txt).');
-      return;
-    }
     if (lcCount === 0) {
       setError('No MT700 detected. Include a file containing "mt700" in the filename or starting with :27: tag.');
       return;
@@ -140,9 +132,7 @@ export function HomePage() {
                   key={p.id}
                   preset={p}
                   loading={presetLoadingId === p.id}
-                  open={variantPickerFor === p.id}
-                  onOpen={() => setVariantPickerFor(variantPickerFor === p.id ? null : p.id)}
-                  onPick={(variant) => loadPreset(p, variant)}
+                  onLoad={() => loadPreset(p)}
                 />
               ))}
             </div>
@@ -189,7 +179,7 @@ export function HomePage() {
           {files.length > 0 && (
             <>
               <div className="text-[11px] text-muted font-mono">
-                {files.length} file{files.length === 1 ? '' : 's'} · {lcCount} LC · {docCount} supporting · {files.length - lcCount - docCount} other
+                {files.length} file{files.length === 1 ? '' : 's'} · {lcCount} LC · {files.length - lcCount} supporting
               </div>
               <div className="space-y-1 max-h-72 overflow-y-auto">
                 {files.map((item, idx) => (
@@ -217,12 +207,12 @@ export function HomePage() {
         <div className="flex justify-end">
           <button
             onClick={handleSubmit}
-            disabled={submitting || files.length === 0}
+            disabled={submitting || lcCount === 0}
             className="px-6 py-2.5 bg-teal-1 hover:bg-teal-2 disabled:opacity-50 disabled:cursor-not-allowed
                        text-white text-sm font-medium rounded transition-colors flex items-center gap-2"
           >
             {submitting ? <Spinner size="sm" /> : null}
-            {submitting ? 'Starting…' : 'Run Compliance Check'}
+            {submitting ? 'Uploading…' : 'Upload'}
           </button>
         </div>
 
@@ -258,10 +248,9 @@ function TypeBadge({ type }) {
   );
 }
 
-function PresetCard({ preset, loading, open, onOpen, onPick }) {
-  const hasPass = preset.files.some(f => f.type === 'mt700-pass');
-  const hasFail = preset.files.some(f => f.type === 'mt700-fail');
+function PresetCard({ preset, loading, onLoad }) {
   const pdfCount = preset.files.filter(f => f.type === 'pdf').length;
+  const hasMt700 = preset.files.some(f => f.type === 'mt700');
 
   return (
     <div className="border border-line rounded-[10px] bg-white p-3 relative">
@@ -269,41 +258,21 @@ function PresetCard({ preset, loading, open, onOpen, onPick }) {
         <div>
           <div className="text-[12px] font-semibold tracking-tight">{preset.label}</div>
           <div className="text-[10px] text-muted font-mono mt-0.5">
-            {pdfCount} PDFs · MT700 {hasPass && hasFail ? 'pass + fail' : hasPass ? 'pass' : hasFail ? 'fail' : '—'}
+            {pdfCount} PDFs{hasMt700 ? ' · MT700' : ''}
           </div>
         </div>
         {loading
           ? <Spinner size="sm" />
           : (
             <button
-              onClick={onOpen}
+              onClick={onLoad}
               className="text-[10px] px-2 py-1 rounded border border-line hover:bg-slate2"
             >
-              {open ? 'cancel' : 'load →'}
+              load →
             </button>
           )
         }
       </div>
-      {open && !loading && (
-        <div className="mt-2 pt-2 border-t border-line/50 flex flex-col gap-1">
-          {hasPass && (
-            <button
-              onClick={() => onPick('mt700-pass')}
-              className="text-[11px] px-2 py-1 rounded bg-status-greenSoft text-status-green text-left hover:bg-status-greenSoft/70"
-            >
-              ✓ Use <span className="font-mono">mt700--pass.txt</span>
-            </button>
-          )}
-          {hasFail && (
-            <button
-              onClick={() => onPick('mt700-fail')}
-              className="text-[11px] px-2 py-1 rounded bg-status-redSoft text-status-red text-left hover:bg-status-redSoft/70"
-            >
-              ✕ Use <span className="font-mono">mt700--fail.txt</span>
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }
