@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createSession, getPresets, getPresetFile } from '../api';
 import { classifyFilename } from '../components/shared/DocTypeClassifier';
+import { compareDocType } from '../constants/docTypes';
 import { Spinner } from '../components/shared/Spinner';
 import { PageContainer } from '../components/ui/PageContainer';
 import { Card } from '../components/ui/Card';
@@ -181,7 +182,15 @@ export function HomePage() {
               </PrimaryButton>
             </div>
             <div className="space-y-1">
-              {files.map((item, idx) => (
+              {files
+                .map((item, idx) => ({ item, idx }))
+                .sort((a, b) => {
+                  // Order by LC review priority (LC → INV → BOL → PKL → BOE → BC → WC → rest)
+                  const c = compareDocType(a.item.detectedType, b.item.detectedType);
+                  if (c !== 0) return c;
+                  return a.idx - b.idx; // stable within same type
+                })
+                .map(({ item, idx }) => (
                 <div key={idx} className="flex items-center gap-2 bg-paper rounded border border-line px-3 py-2">
                   <TypeBadge type={item.detectedType} />
                   <span className="text-[11px] text-navy-1 flex-1 truncate font-mono">{item.file.name}</span>
