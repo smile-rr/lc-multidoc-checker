@@ -27,7 +27,6 @@ public class AdhocRuleValidator {
     private static final Logger log = LoggerFactory.getLogger(AdhocRuleValidator.class);
 
     private static final int MAX_RULES = 8;
-    private static final Set<String> VALID_CHECK_TYPES = Set.of("AGENT", "PROGRAMMATIC", "PROGRAMMATIC_AGENT");
     private static final Set<String> VALID_SEVERITIES = Set.of("CRITICAL", "MAJOR", "MINOR",
             "INFO", "WARNING", "DISCREPANCY");
 
@@ -58,8 +57,9 @@ public class AdhocRuleValidator {
             }
             if (!seenIds.add(id)) continue;
 
-            String checkType = p.checkType() == null ? "AGENT" : p.checkType().toUpperCase(Locale.ROOT);
-            if (!VALID_CHECK_TYPES.contains(checkType)) checkType = "AGENT";
+            // Planner-discovered rules are always AGENTIC_ADHOC; planner's own
+            // checkType field is overridden so the dispatcher routes consistently.
+            String checkType = "AGENTIC_ADHOC";
 
             String severity = p.severity() == null ? "WARNING" : p.severity().toUpperCase(Locale.ROOT);
             if (!VALID_SEVERITIES.contains(severity)) severity = "WARNING";
@@ -93,7 +93,8 @@ public class AdhocRuleValidator {
                     true,
                     p.triggers(),
                     RuleOrigin.ADHOC,
-                    p.evidenceLcClause()
+                    p.evidenceLcClause(),
+                    null
             ));
         }
 

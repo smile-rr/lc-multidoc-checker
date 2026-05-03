@@ -2,140 +2,425 @@
 # isbp821.yaml — ISBP 821 golden source paragraphs referenced by v2 rules
 # =============================================================================
 # ID format: ISBP-{chapter}{paragraph}
-# Used by: rule catalog (isbpRefs), prompt templates (text injection), UI tooltips.
-# Source: ISBP 821 (ICC Publication No. 821E, 2023)
 # FOR SYSTEM USE ONLY — not a reproduction of ICC publications.
 
 refs:
   - id: ISBP-A1
     source: ISBP821
     article: "A1"
-    paragraph: ""
     heading: "General Principles — Standard of Examination"
-    text: "Examination of documents under a documentary credit requires a careful reading of the credit and the documents presented. Documents are to be examined in their entirety. Data in a document need not be identical to data in the credit, other documents or ISBP 821, but must not conflict with data in the credit, any other stipulated document or ISBP 821."
+    text: "Examination of documents under a documentary credit requires a careful reading of the credit and the documents presented. Documents are to be examined in their entirety. Data need not be identical but must not conflict."
+
+  - id: ISBP-A9
+    source: ISBP821
+    article: "A9"
+    heading: "Corrections — Third-party Documents"
+    text: "Corrections and alterations of information or data on a document issued by an entity other than the beneficiary must appear to be authenticated by the issuer or someone authorised by the issuer."
+
+  - id: ISBP-A10
+    source: ISBP821
+    article: "A10"
+    heading: "Corrections — Beneficiary Documents"
+    text: "Corrections and alterations of information or data on a document issued by the beneficiary, with the exception of drafts, need not be authenticated."
+
+  - id: ISBP-A12
+    source: ISBP821
+    article: "A12"
+    heading: "Signatures — Methods"
+    text: "A signature need not be handwritten. Signatures by facsimile, perforation, stamp, symbol (such as a chop) or any mechanical or electronic method of authentication are acceptable."
 
   - id: ISBP-A14
     source: ISBP821
     article: "A14"
-    paragraph: ""
-    heading: "General Principles — Abbreviations"
-    text: "Abbreviations that are internationally accepted or used in international banking practice are acceptable. Acceptable abbreviations include: Ltd. for Limited, Co. for Company, Corp. for Corporation, Int'l for International, Dept. for Department, Assn. for Association, Mfg. for Manufacturing. Abbreviations used in addresses: St. for Street, Ave. for Avenue, Rd. for Road, Blvd. for Boulevard."
+    heading: "Abbreviations"
+    text: "Abbreviations that are internationally accepted are acceptable: Ltd., Co., Corp., Int'l, Mfg., St., Ave., Rd."
+
+  - id: ISBP-A15
+    source: ISBP821
+    article: "A15"
+    heading: "Spelling and Typing Errors"
+    text: "A misspelling or typing error that does not affect the meaning of a word or sentence does not make a document discrepant. A description of goods of 'Indusrial' instead of 'Industrial' would not be a discrepancy. However, 'Model 123' instead of 'Model 321' would be."
 
   - id: ISBP-A19
     source: ISBP821
     article: "A19"
-    paragraph: ""
-    heading: "General Principles — Document Date"
-    text: "A document may be dated prior to the date of the credit but must not be dated later than the date of its presentation. A document dated after the credit has expired but presented within the presentation period is acceptable unless the credit states otherwise."
+    heading: "Document Date"
+    text: "A document may be dated prior to the date of the credit but must not be dated later than the date of its presentation. Dates may be expressed in any unambiguous format."
+
+  - id: ISBP-A20
+    source: ISBP821
+    article: "A20"
+    heading: "Addresses — Beneficiary and Applicant"
+    text: "The addresses of the beneficiary and applicant on a document need not be the same as those stated in the credit, but must be within the same country."
+
+  - id: ISBP-A27
+    source: ISBP821
+    article: "A27"
+    heading: "Originals and Copies"
+    text: "A document indicated to be in 'original' must be presented as such, even if not specifically called for. A document apparently bearing the issuer's original signature, mark, stamp or label is treated as an original."
+
+  - id: ISBP-A28
+    source: ISBP821
+    article: "A28"
+    heading: "Copies"
+    text: "When a credit requires copies of documents, presentation of either originals or copies is permitted, unless the credit prohibits originals."
 
   - id: ISBP-B1
     source: ISBP821
     article: "B1"
-    paragraph: ""
-    heading: "Bills of Exchange — Drawn On"
-    text: "A bill of exchange must be drawn on the drawee named in the credit. Where a credit indicates that the bill of exchange is to be drawn on the issuing bank, a bill of exchange drawn on the applicant is not acceptable."
+    heading: "Drafts — Drawee"
+    text: "A draft must be drawn on the drawee named in the credit. A draft drawn on the applicant when the credit indicates the issuing bank as drawee is not acceptable."
+
+  - id: ISBP-B2
+    source: ISBP821
+    article: "B2"
+    heading: "Drafts — Drawer"
+    text: "A draft must be drawn by the beneficiary."
 
   - id: ISBP-B3
     source: ISBP821
     article: "B3"
-    paragraph: ""
-    heading: "Bills of Exchange — Amount"
-    text: "The amount of a bill of exchange must correspond to the amount shown in the commercial invoice, unless the credit requires otherwise."
+    heading: "Drafts — Amount"
+    text: "The amount of a draft must correspond to the amount shown in the commercial invoice."
+
+  - id: ISBP-B4
+    source: ISBP821
+    article: "B4"
+    heading: "Drafts — Tenor"
+    text: "The tenor of a draft must comply with the terms of the credit. A draft drawn at sight when the credit calls for a usance draft, or vice versa, is discrepant."
+
+  - id: ISBP-B5
+    source: ISBP821
+    article: "B5"
+    heading: "Drafts — Tenor Reference"
+    text: "When the tenor of a draft refers to the date of the bill of lading, the on-board date is used even if it differs from the issuance date of the bill of lading."
+
+  - id: ISBP-B6
+    source: ISBP821
+    article: "B6"
+    heading: "Drafts — Maturity"
+    text: "The maturity date of a draft drawn at a usance must be calculable on its face. Where calculated from the bill of lading date, the date used is the on-board date."
+
+  - id: ISBP-B7
+    source: ISBP821
+    article: "B7"
+    heading: "Drafts — LC Reference"
+    text: "Where the credit requires the draft to indicate the credit number and issuing bank, those references must appear on the draft."
+
+  - id: ISBP-B8
+    source: ISBP821
+    article: "B8"
+    heading: "Drafts — Signature"
+    text: "A draft must be signed by the drawer (beneficiary)."
+
+  - id: ISBP-B9
+    source: ISBP821
+    article: "B9"
+    heading: "Drafts — Amount in Words and Figures"
+    text: "The amount stated in words on a draft must correspond to the amount stated in figures."
+
+  - id: ISBP-B10
+    source: ISBP821
+    article: "B10"
+    heading: "Drafts — Corrections"
+    text: "Corrections and alterations on a draft must be authenticated by the drawer."
+
+  - id: ISBP-C1
+    source: ISBP821
+    article: "C1"
+    heading: "Invoice — LC Number Reference"
+    text: "Where the credit requires the invoice to quote the credit number, the absence of the credit number constitutes a discrepancy."
+
+  - id: ISBP-C2
+    source: ISBP821
+    article: "C2"
+    heading: "Invoice — Signature"
+    text: "An invoice need not be signed unless the credit requires a signed invoice."
 
   - id: ISBP-C3
     source: ISBP821
     article: "C3"
-    paragraph: ""
-    heading: "Commercial Invoice — Goods Description"
-    text: "A description of the goods in the commercial invoice must correspond with the description of goods in the credit. This means that the description need not be word-for-word the same, but must not conflict with the credit's description. An invoice description need not repeat all the details shown in the credit, but the essential characteristics of the goods must be reflected."
+    heading: "Invoice — Goods Description"
+    text: "The description of goods in the invoice must correspond with the description in the credit. Word-for-word identity is not required, but the description must not conflict with the credit."
+
+  - id: ISBP-C4
+    source: ISBP821
+    article: "C4"
+    heading: "Invoice — Unit Price"
+    text: "When a credit stipulates a unit price, the unit price stated on the invoice must reflect the same unit price."
+
+  - id: ISBP-C5
+    source: ISBP821
+    article: "C5"
+    heading: "Invoice — Applicant"
+    text: "The invoice must be made out in the name of the applicant as it appears in the credit. The applicant address may differ but must be in the same country."
 
   - id: ISBP-C6
     source: ISBP821
     article: "C6"
-    paragraph: ""
-    heading: "Commercial Invoice — Issued by Beneficiary"
-    text: "A commercial invoice must indicate the name and address of the beneficiary as they appear in the credit. A variation in the name such as Ltd. versus Limited is acceptable. The beneficiary's address on the invoice may differ from that shown in the credit in terms of the arrangement of elements, punctuation, abbreviation, etc., so long as it is the same address."
+    heading: "Invoice — Beneficiary"
+    text: "An invoice must indicate the name and address of the beneficiary as in the credit. Variations such as Ltd. for Limited are acceptable."
+
+  - id: ISBP-C7
+    source: ISBP821
+    article: "C7"
+    heading: "Invoice — Country of Origin"
+    text: "Where the credit requires the invoice to show the country of origin, the absence of such information is a discrepancy."
 
   - id: ISBP-C8
     source: ISBP821
     article: "C8"
-    paragraph: ""
-    heading: "Commercial Invoice — Currency"
-    text: "The currency of the invoice must be the same as the currency of the credit. Abbreviations and symbols for currencies, including ISO 4217 codes, are acceptable provided that they clearly identify the currency stipulated in the credit."
+    heading: "Invoice — Currency and Incoterms"
+    text: "The invoice must be in the same currency as the credit. ISO 4217 codes and currency symbols are acceptable. Where the credit specifies an Incoterm, the invoice must reflect that trade term."
 
   - id: ISBP-C9
     source: ISBP821
     article: "C9"
-    paragraph: ""
-    heading: "Commercial Invoice — Amount"
-    text: "Where a credit requires the presentation of a commercial invoice for the full credit amount or as a percentage of the credit amount, and it permits partial drawing or shipments, the amount of each invoice may be for the partial drawing or shipment amount, provided that the aggregate does not exceed the credit amount."
+    heading: "Invoice — Amount"
+    text: "The invoice amount must not exceed the credit amount, taking into account permitted tolerances. Where multiple invoices are presented, the aggregate must not exceed the credit amount."
 
   - id: ISBP-C10
     source: ISBP821
     article: "C10"
-    paragraph: ""
-    heading: "Commercial Invoice — Tolerance"
-    text: "Tolerances permitted under UCP 600 sub-article 30(b) apply to the amount of the invoice even when the credit does not expressly state that the quantity tolerance is allowed. However, the amount drawn must not exceed the credit amount."
+    heading: "Invoice — Charges and Tolerance"
+    text: "Charges shown on the invoice must be consistent with the trade term. Tolerances under UCP 600 sub-article 30(b) apply to the invoice amount even when not expressly stated in the credit."
+
+  - id: ISBP-D1
+    source: ISBP821
+    article: "D1"
+    heading: "Transport — Ports Consistency"
+    text: "Where the invoice or other document refers to a port of loading or discharge, that port must not conflict with the corresponding port shown on the bill of lading."
+
+  - id: ISBP-D2
+    source: ISBP821
+    article: "D2"
+    heading: "Transport — Consignee"
+    text: "The consignee field on a bill of lading must comply with the terms of the credit. 'To order', 'to order of [issuing bank]', or a named consignee must reflect the credit's instruction."
+
+  - id: ISBP-D14
+    source: ISBP821
+    article: "D14"
+    heading: "Transport — Carrier and Signature"
+    text: "A bill of lading must be signed by the carrier (or master) or a named agent on behalf of the carrier or master, and the agent must indicate the capacity in which it signs."
+
+  - id: ISBP-D15
+    source: ISBP821
+    article: "D15"
+    heading: "Transport — Goods Description"
+    text: "The description of goods on a transport document may be in general terms, provided it does not conflict with the description in the credit or invoice."
 
   - id: ISBP-D16
     source: ISBP821
     article: "D16"
-    paragraph: ""
-    heading: "Bills of Lading — Full Set"
-    text: "When the credit requires a full set of original bills of lading to be presented, all originals issued must be presented. The number of originals issued is shown on the bill of lading itself. Where the credit requires 3/3 originals, a 3/3 set must be presented."
+    heading: "Transport — Full Set"
+    text: "When the credit requires a full set of original bills of lading, all originals issued must be presented. The number of originals issued is shown on the bill of lading itself."
 
   - id: ISBP-D20
     source: ISBP821
     article: "D20"
-    paragraph: ""
-    heading: "Bills of Lading — Shipped on Board"
-    text: "When a bill of lading is presented that is not a pre-printed 'shipped on board' bill of lading, an on board notation is required. The on board notation must be signed or initialled and dated. The date of the on board notation is the date of shipment. If the bill of lading is pre-printed to indicate 'shipped on board' or similar wording, the date in the bill of lading serves as the date of shipment, provided no separate on board notation is present."
+    heading: "Transport — Shipped on Board"
+    text: "When a bill of lading is not pre-printed 'shipped on board', an on board notation is required. The on board notation must be dated, and the date is treated as the date of shipment."
 
   - id: ISBP-D21
     source: ISBP821
     article: "D21"
-    paragraph: ""
-    heading: "Bills of Lading — Ports"
-    text: "A bill of lading must show the port of loading and port of discharge as stated in the credit. Where a credit states a port of loading, the bill of lading must show the same port of loading even if a place of receipt is also stated."
+    heading: "Transport — Ports"
+    text: "A bill of lading must show the port of loading and port of discharge as stated in the credit. If 'intended' port is shown, an on board notation must confirm the actual port and date."
+
+  - id: ISBP-D22
+    source: ISBP821
+    article: "D22"
+    heading: "Transport — Endorsement"
+    text: "Where a bill of lading is issued to the order of the shipper, it must be endorsed by the shipper to be transferred."
+
+  - id: ISBP-D23
+    source: ISBP821
+    article: "D23"
+    heading: "Transport — Transhipment"
+    text: "Even when the credit prohibits transhipment, a transhipment will be acceptable if the bill of lading evidences that the goods are containerised and the entire carriage is covered by one bill of lading."
 
   - id: ISBP-D24
     source: ISBP821
     article: "D24"
-    paragraph: ""
-    heading: "Bills of Lading — Freight"
-    text: "Where the credit indicates CIF or CFR Incoterms, the bill of lading must indicate 'Freight Prepaid' or words of similar effect. Where the credit indicates FOB Incoterms, the bill of lading will typically show 'Freight Collect', though 'Freight Prepaid' is not a discrepancy if the seller has arranged and paid freight. Banks examine the freight notation in conjunction with the Incoterms stated in the invoice."
+    heading: "Transport — Freight"
+    text: "Where the credit indicates CIF or CFR Incoterms, the bill of lading must indicate 'Freight Prepaid' or words of similar effect. Where the credit indicates FOB Incoterms, the bill of lading typically shows 'Freight Collect'."
 
   - id: ISBP-D25
     source: ISBP821
     article: "D25"
-    paragraph: ""
-    heading: "Bills of Lading — Clean"
-    text: "A transport document bearing a clause or notation expressly declaring a defective condition of the goods or their packaging is not acceptable as a clean transport document. A clause merely limiting the carrier's liability (e.g., 'shipper's count', 'said to contain') is acceptable and does not affect the clean status of the bill of lading."
+    heading: "Transport — Clean"
+    text: "A transport document bearing a clause expressly declaring a defective condition of the goods or packaging is not acceptable. Clauses such as 'shipper's load and count' or 'said by shipper to contain' are acceptable."
+
+  - id: ISBP-E1
+    source: ISBP821
+    article: "E1"
+    heading: "Insurance — 110% Coverage"
+    text: "Where the credit requires insurance for the CIF or CIP value, the minimum amount is 110% of that value. Where the value cannot be determined from the documents, 110% of the amount honoured or of the gross invoice value, whichever is greater, applies."
+
+  - id: ISBP-H1
+    source: ISBP821
+    article: "H1"
+    heading: "Packing List — Issuer and Title"
+    text: "Where the credit calls for a packing list without specifying the issuer or content, banks accept any document titled or that fulfils the function of a packing list. Variations of title (Packing Note, Weight and Packing List) are acceptable."
+
+  - id: ISBP-H2
+    source: ISBP821
+    article: "H2"
+    heading: "Packing List — Goods Description"
+    text: "The description of goods on a packing list need not be identical to the credit but must not conflict with the credit or other stipulated documents."
 
   - id: ISBP-H3
     source: ISBP821
     article: "H3"
-    paragraph: ""
-    heading: "Packing Lists — Quantity"
-    text: "Data in the packing list, when read in context with the credit and other stipulated documents, must not conflict with data in those documents. The quantity and description of goods in the packing list must not conflict with data in the commercial invoice."
+    heading: "Packing List — Quantity and Weight"
+    text: "Quantity, number of packages, net weight and gross weight in the packing list must not conflict with data in the invoice, transport document or other stipulated documents."
 
   - id: ISBP-H4
     source: ISBP821
     article: "H4"
-    paragraph: ""
-    heading: "Packing Lists — Shipping Marks"
-    text: "Shipping marks in the packing list must not conflict with the shipping marks on the bill of lading or other transport document. Where shipping marks are required by the credit, they must appear consistently across all documents that reference them."
+    heading: "Packing List — Shipping Marks"
+    text: "Shipping marks in the packing list must not conflict with shipping marks shown on the bill of lading or other transport document."
+
+  - id: ISBP-H5
+    source: ISBP821
+    article: "H5"
+    heading: "Packing List — No Price"
+    text: "A packing list should not contain price or value information; price information belongs on the invoice."
+
+  - id: ISBP-K1
+    source: ISBP821
+    article: "K1"
+    heading: "Insurance — Issuer and Signature"
+    text: "An insurance document must be issued and signed by an insurance company, an underwriter, or their agents."
+
+  - id: ISBP-K2
+    source: ISBP821
+    article: "K2"
+    heading: "Insurance — Originals"
+    text: "When an insurance document indicates that more than one original has been issued, all originals must be presented."
+
+  - id: ISBP-K3
+    source: ISBP821
+    article: "K3"
+    heading: "Insurance — Date"
+    text: "The date of the insurance document must be no later than the date of shipment, unless the document indicates that cover is effective from a date not later than the date of shipment."
+
+  - id: ISBP-K4
+    source: ISBP821
+    article: "K4"
+    heading: "Insurance — Currency"
+    text: "The currency of the insurance document must be the same as the currency of the credit."
+
+  - id: ISBP-K5
+    source: ISBP821
+    article: "K5"
+    heading: "Insurance — 110% Minimum"
+    text: "The amount of insurance coverage must be at least 110% of the CIF or CIP value of the goods."
+
+  - id: ISBP-K6
+    source: ISBP821
+    article: "K6"
+    heading: "Insurance — Coverage Route"
+    text: "The insurance must cover the goods at least from the place of taking in charge or shipment to the place of discharge or final destination as stated in the credit."
+
+  - id: ISBP-K7
+    source: ISBP821
+    article: "K7"
+    heading: "Insurance — Risks"
+    text: "Where the credit uses imprecise terms such as 'usual risks', the insurance document is accepted as presented without regard to risks not covered."
+
+  - id: ISBP-K8
+    source: ISBP821
+    article: "K8"
+    heading: "Insurance — All Risks"
+    text: "When a credit requires 'all risks' coverage, an insurance document containing any 'all risks' notation will be accepted regardless of any risks stated to be excluded."
+
+  - id: ISBP-K9
+    source: ISBP821
+    article: "K9"
+    heading: "Insurance — Goods and Voyage Description"
+    text: "The description of the goods, voyage and shipment details on the insurance document must not conflict with data in the invoice, transport document or other stipulated documents."
+
+  - id: ISBP-L1
+    source: ISBP821
+    article: "L1"
+    heading: "Certificate of Origin — Issuer"
+    text: "A certificate of origin must be issued by the entity stated in the credit. If no issuer is stated, banks accept a certificate that appears to fulfil the function."
+
+  - id: ISBP-L2
+    source: ISBP821
+    article: "L2"
+    heading: "Certificate of Origin — Beneficiary or Chamber"
+    text: "When a credit requires the certificate of origin to be issued by the beneficiary, exporter or manufacturer, a certificate issued by a chamber of commerce that clearly identifies the beneficiary, exporter or manufacturer is also acceptable."
+
+  - id: ISBP-L3
+    source: ISBP821
+    article: "L3"
+    heading: "Certificate of Origin — Country"
+    text: "The country of origin shown on the certificate of origin must not conflict with the country of origin (if any) shown on the invoice or other stipulated documents."
+
+  - id: ISBP-L4
+    source: ISBP821
+    article: "L4"
+    heading: "Certificate of Origin — Goods"
+    text: "The description of goods on the certificate of origin may be general but must not conflict with the credit or invoice description."
+
+  - id: ISBP-L5
+    source: ISBP821
+    article: "L5"
+    heading: "Certificate of Origin — Consignee"
+    text: "Consignee information on the certificate of origin must not conflict with the consignee information on the transport document."
+
+  - id: ISBP-L6
+    source: ISBP821
+    article: "L6"
+    heading: "Certificate of Origin — Signature"
+    text: "A certificate of origin must be signed unless the credit indicates otherwise."
+
+  - id: ISBP-L7
+    source: ISBP821
+    article: "L7"
+    heading: "Certificate of Origin — Signature Requirements"
+    text: "Where the credit requires a signed certificate of origin, it must bear what appears to be a handwritten or authenticated signature."
 
   - id: ISBP-Q1
     source: ISBP821
     article: "Q1"
-    paragraph: ""
-    heading: "Certificates and Declarations — Non-specified Documents"
-    text: "Where a credit calls for a certificate or declaration without specifying its issuer, content or form, banks accept any document that appears to fulfil the function of the required certificate or declaration, provided it does not conflict with any other stipulated document or the credit. For beneficiary certificates, every condition or requirement stated in the credit for that certificate must be addressed in the document."
+    heading: "Certificates — Content"
+    text: "Where a credit requires a certificate or declaration, every condition or requirement stated in the credit for that certificate must be addressed in the document."
+
+  - id: ISBP-Q2
+    source: ISBP821
+    article: "Q2"
+    heading: "Certificates — Issuer"
+    text: "A certificate must be issued by the entity stated in the credit. If no issuer is stated, the document may be issued by any party."
 
   - id: ISBP-Q3
     source: ISBP821
     article: "Q3"
-    paragraph: ""
-    heading: "Certificates and Declarations — Signature"
-    text: "Where a credit requires a certificate to be 'signed' or to bear a signature, it must bear what appears to be a handwritten or authenticated digital signature. A company stamp or seal alone does not constitute a signature. A beneficiary certificate must be signed by the beneficiary itself unless the credit specifies otherwise."
+    heading: "Certificates — Signature"
+    text: "Where a credit requires a certificate to be signed, it must bear what appears to be a handwritten or authenticated signature. A stamp or seal alone does not constitute a signature."
+
+  - id: ISBP-Q4
+    source: ISBP821
+    article: "Q4"
+    heading: "Certificates — Cross-references"
+    text: "Where a certificate references another document such as the invoice or bill of lading by number or date, those references must match the corresponding documents."
+
+  - id: ISBP-Q5
+    source: ISBP821
+    article: "Q5"
+    heading: "Certificates — Non-conflict"
+    text: "Data in a certificate must not conflict with data in any other stipulated document or the credit."
+
+  - id: ISBP-Q6
+    source: ISBP821
+    article: "Q6"
+    heading: "Certificates — LC Reference"
+    text: "Where the credit requires a certificate to quote the credit number, the absence of such reference is a discrepancy."
+
+  - id: ISBP-Q7
+    source: ISBP821
+    article: "Q7"
+    heading: "Certificates — Timeframe"
+    text: "Where a certificate states a timeframe (e.g., 'within X days of shipment'), it must match the timeframe specified in the credit."

@@ -24,7 +24,7 @@ public record Rule(
         List<String> scope,
         List<String> triggerDocs,
         List<String> lcFieldsRequired,
-        String checkType,         // PROGRAMMATIC | AGENT | PROGRAMMATIC_AGENT
+        String checkType,         // PROGRAMMATIC | AGENT | AGENT_TOOL | AGENTIC_ADHOC (legacy: PROGRAMMATIC_AGENT)
         String severity,          // CRITICAL | MAJOR | MINOR
         String polarity,          // POSITIVE | NEGATIVE
         boolean waivable,
@@ -36,7 +36,8 @@ public record Rule(
         boolean enabled,
         Triggers.TriggerNode triggers,
         RuleOrigin origin,
-        String evidenceLcClause
+        String evidenceLcClause,
+        String ucpExcerpt        // Quoted UCP/ISBP text injected into LLM prompt under "Rule excerpt"
 ) {
     public Rule {
         scope = scope == null ? List.of() : List.copyOf(scope);
@@ -49,5 +50,9 @@ public record Rule(
     }
 
     public boolean isProgrammatic() { return "PROGRAMMATIC".equals(checkType); }
-    public boolean isAgent() { return "AGENT".equals(checkType) || "PROGRAMMATIC_AGENT".equals(checkType); }
+    public boolean isAgent() {
+        return "AGENT".equals(checkType) || "AGENT_TOOL".equals(checkType)
+                || "AGENTIC_ADHOC".equals(checkType)
+                || "PROGRAMMATIC_AGENT".equals(checkType); // legacy alias
+    }
 }

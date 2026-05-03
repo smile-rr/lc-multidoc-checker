@@ -99,12 +99,8 @@ function phaseDetail(phase, state, planMeta, checkMeta, checkedCount, deriveSumm
   }
   if (phase === 'check') {
     if (state === 'future') return 'pending';
-    const total = checkMeta?.total;
-    if (state === 'active') {
-      if (Number.isFinite(total)) return `${checkedCount}/${total}`;
-      return `${checkedCount} checked`;
-    }
-    return Number.isFinite(total) ? `${total}/${total}` : 'done';
+    if (state === 'active') return 'running…';
+    return 'done';
   }
   if (phase === 'review') {
     if (state === 'future') return 'pending';

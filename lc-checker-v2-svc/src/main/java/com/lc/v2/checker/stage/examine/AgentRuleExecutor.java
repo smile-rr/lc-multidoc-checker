@@ -2,60 +2,70 @@ package com.lc.v2.checker.stage.examine;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lc.v2.checker.domain.common.ArticleRef;
 import com.lc.v2.checker.domain.result.CheckResult;
 import com.lc.v2.checker.domain.rule.Rule;
+import com.lc.v2.checker.infra.refs.ArticleRefRegistry;
 import com.lc.v2.checker.pipeline.StageContext;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.StringJoiner;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Component;
 
 /**
- * Executes AGENT and PROGRAMMATIC_AGENT rules via Spring AI ChatClient.
+ * Executes AGENT, AGENT_TOOL, AGENTIC_ADHOC (and legacy PROGRAMMATIC_AGENT) rules
+ * via Spring AI ChatClient.
  *
- * Prompt structure:
- *   System: officer role + JSON-only output contract
- *   User:   rule ID + relevant LC/doc field values + promptInstruction from catalog
+ * The system prompt is loaded from {@code classpath:/prompts/system/check-system.st}
+ * at boot. Per-rule user prompts are looked up from
+ * {@code classpath:/prompts/check/<rule-id>.st} (mirrors the v1 pattern); if the
+ * file is absent, the executor falls back to {@code rule.promptInstruction()}.
+ *
+ * Each prompt also receives:
+ *   - resolved UCP/ISBP citation text (from {@link ArticleRefRegistry})
+ *   - the catalog's {@code ucp_excerpt} block (quoted authoritative text)
+ *   - LC field values + per-doc field values for {@code fieldKeys}
  *
  * Expected response: {"verdict":"PASS|FAIL|NOT_APPLICABLE|DOUBTS","explanation":"...","confidence":0.0-1.0}
- *
- * The Spring AI ChatClient is auto-configured from spring.ai.openai.* in application.yml.
- * Provider switch (DashScope → Ollama) is purely config: change LLM_BASE_URL + LLM_MODEL.
  */
 @Component
 public class AgentRuleExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(AgentRuleExecutor.class);
 
-    private static final String SYSTEM_PROMPT = """
-            You are an expert LC (Letter of Credit) compliance officer examining trade documents
-            against UCP 600 and ISBP 821 rules.
-
-            CRITICAL: Respond ONLY with a single JSON object. No prose, no markdown, no explanation outside JSON.
-
-            Required format:
-            {"verdict": "PASS|FAIL|NOT_APPLICABLE|DOUBTS", "explanation": "one sentence", "confidence": 0.0-1.0}
-
-            Verdict definitions:
-            - PASS:            document complies with the rule
-            - FAIL:            clear discrepancy found that violates the rule
-            - NOT_APPLICABLE:  required LC field absent, or rule conditions genuinely don't apply
-            - DOUBTS:          genuinely ambiguous — insufficient evidence for a definitive call; use sparingly
-            """;
-
     private final ChatClient chatClient;
+    private final ArticleRefRegistry refs;
+    private final ResourceLoader resourceLoader;
+    private final String systemPrompt;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public AgentRuleExecutor(ChatClient.Builder chatClientBuilder) {
+    /** Per-rule prompt template cache; key = ruleId, value = "" sentinel if no .st file. */
+    private final ConcurrentMap<String, String> rulePromptCache = new ConcurrentHashMap<>();
+
+    public AgentRuleExecutor(ChatClient.Builder chatClientBuilder, ArticleRefRegistry refs,
+                              ResourceLoader resourceLoader) throws IOException {
         this.chatClient = chatClientBuilder.build();
+        this.refs = refs;
+        this.resourceLoader = resourceLoader;
+        try (InputStream in = new ClassPathResource("prompts/system/check-system.st").getInputStream()) {
+            this.systemPrompt = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
     }
 
     public CheckResult execute(Rule rule, StageContext ctx) {
         String userPrompt = buildPrompt(rule, ctx);
         try {
             String response = chatClient.prompt()
-                    .system(SYSTEM_PROMPT)
+                    .system(systemPrompt)
                     .user(userPrompt)
                     .call()
                     .content();
@@ -67,9 +77,52 @@ public class AgentRuleExecutor {
         }
     }
 
+    /**
+     * Resolve the user-prompt body for {@code rule}. Looks up
+     * {@code prompts/check/<ruleId>.st} from the classpath; on miss falls back to
+     * the inline {@code prompt_instruction} from the catalog.
+     */
+    private String userPromptFor(Rule rule) {
+        return rulePromptCache.computeIfAbsent(rule.ruleId(), id -> {
+            try {
+                Resource r = resourceLoader.getResource("classpath:/prompts/check/" + id + ".st");
+                if (r.exists()) {
+                    try (InputStream in = r.getInputStream()) {
+                        return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+                    }
+                }
+            } catch (IOException e) {
+                log.warn("Failed to load prompt for rule {}: {}", id, e.getMessage());
+            }
+            return rule.promptInstruction() != null ? rule.promptInstruction() : "";
+        });
+    }
+
     private String buildPrompt(Rule rule, StageContext ctx) {
         StringBuilder sb = new StringBuilder();
         sb.append("Rule: ").append(rule.ruleId()).append("\n\n");
+
+        // Resolve referenced UCP/ISBP articles so the LLM sees the actual rule text
+        // rather than just the IDs it's being asked to enforce.
+        boolean anyRef = !rule.ucpRefs().isEmpty() || !rule.isbpRefs().isEmpty();
+        if (anyRef) {
+            sb.append("Rule context — UCP/ISBP basis:\n");
+            for (String id : rule.ucpRefs()) {
+                refs.byId(id).ifPresent(a -> sb.append("  ").append(a.id())
+                        .append(": ").append(safeText(a)).append("\n"));
+            }
+            for (String id : rule.isbpRefs()) {
+                refs.byId(id).ifPresent(a -> sb.append("  ").append(a.id())
+                        .append(": ").append(safeText(a)).append("\n"));
+            }
+            sb.append("\n");
+        }
+
+        // Catalog-supplied authoritative excerpt — verbatim quote of the UCP/ISBP
+        // text the rule enforces, including pitfall notes.
+        if (rule.ucpExcerpt() != null && !rule.ucpExcerpt().isBlank()) {
+            sb.append("Rule excerpt:\n").append(rule.ucpExcerpt().trim()).append("\n\n");
+        }
 
         sb.append("LC fields:\n");
         for (String key : rule.fieldKeys()) {
@@ -92,8 +145,13 @@ public class AgentRuleExecutor {
             });
         }
 
-        sb.append("\nCompliance check instruction:\n").append(rule.promptInstruction());
+        sb.append("\nCompliance check instruction:\n").append(userPromptFor(rule));
         return sb.toString();
+    }
+
+    private static String safeText(ArticleRef a) {
+        String t = a.text();
+        return t == null ? "" : t.replaceAll("\\s+", " ").trim();
     }
 
     private CheckResult parseResponse(String ruleId, String checkType, String response) {

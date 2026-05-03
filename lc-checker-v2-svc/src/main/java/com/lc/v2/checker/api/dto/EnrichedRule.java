@@ -39,5 +39,6 @@ public record EnrichedRule(
         Boolean waivable,
         String origin,                  // CATALOG | ADHOC
         String evidenceLcClause,        // ad-hoc only — :46A:/:47A: span that motivated the rule
-        List<String> triggerTrace       // human-readable steps from RuleTriggerEvaluator
+        List<String> triggerTrace,      // human-readable steps from RuleTriggerEvaluator
+        String ucpExcerpt               // verbatim UCP/ISBP quote from the rule catalog (for drawer display)
 ) {}

@@ -20,7 +20,8 @@ public record CheckResult(
         PASS,
         FAIL,
         NOT_APPLICABLE,
-        DOUBTS          // confidence < threshold, routes to human queue
+        DOUBTS,         // confidence < threshold, routes to human queue
+        PENDING         // pre-inserted at start of check phase; replaced when rule completes
     }
 
     public boolean routesToHumanQueue() {

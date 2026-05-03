@@ -36,7 +36,28 @@ public class SpelEvaluator {
         }
         try {
             StandardEvaluationContext spelCtx = buildContext(ctx);
-            Boolean result = PARSER.parseExpression(rule.expression()).getValue(spelCtx, Boolean.class);
+            Object raw = PARSER.parseExpression(rule.expression()).getValue(spelCtx);
+            // Multi-doc helpers return a Map{verdict, explanation, confidence} so the rule
+            // can produce a structured result with per-doc evidence baked in.
+            if (raw instanceof Map<?, ?> m && m.get("verdict") != null) {
+                String verdictStr = String.valueOf(m.get("verdict")).trim();
+                CheckResult.Verdict verdict;
+                try {
+                    verdict = CheckResult.Verdict.valueOf(verdictStr);
+                } catch (IllegalArgumentException ex) {
+                    log.warn("[{}] Unknown verdict '{}' from rule {}; defaulting to DOUBTS",
+                            ctx.sessionId, verdictStr, rule.ruleId());
+                    verdict = CheckResult.Verdict.DOUBTS;
+                }
+                Object expl = m.get("explanation");
+                Object conf = m.get("confidence");
+                double confidence = conf instanceof Number n ? n.doubleValue() : 1.0;
+                return new CheckResult(rule.ruleId(), verdict,
+                        expl == null ? null : expl.toString(),
+                        buildEvidence(rule, ctx), confidence, "PROGRAMMATIC");
+            }
+            // Legacy boolean expression path: true → PASS, false → FAIL
+            Boolean result = raw instanceof Boolean b ? b : null;
             CheckResult.Verdict verdict = Boolean.TRUE.equals(result)
                     ? CheckResult.Verdict.PASS : CheckResult.Verdict.FAIL;
             return new CheckResult(rule.ruleId(), verdict, null, buildEvidence(rule, ctx), 1.0, "PROGRAMMATIC");

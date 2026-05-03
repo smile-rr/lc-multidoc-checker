@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getRules, overrideRule, clearOverride } from '../api';
 
-export function useRules(sessionId, examineMeta, events) {
+const POLL_MS = 2000;
+
+export function useRules(sessionId, sessionStatus, examineMeta) {
   const [rawRules, setRawRules] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -18,21 +20,23 @@ export function useRules(sessionId, examineMeta, events) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // Live-fill: each RuleChecked event triggers a debounced re-fetch so the
-  // worklist populates progressively as backend appends rows to final_report.examine.
-  const ruleCheckedCount = useMemo(() => {
-    if (!events) return 0;
-    let n = 0;
-    for (const e of events) if (e?.type === 'RuleChecked') n++;
-    return n;
-  }, [events]);
-  const debounceRef = useRef(null);
+  // Status-driven polling: while EXAMINE is running, poll every 2s; on transition
+  // away from EXAMINE, do one final fetch and stop.
+  const prevStatusRef = useRef(sessionStatus);
   useEffect(() => {
-    if (!sessionId || ruleCheckedCount === 0) return;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => { refresh(); }, 300);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [ruleCheckedCount, sessionId, refresh]);
+    if (!sessionId) return undefined;
+    const isExamining = sessionStatus === 'EXAMINE';
+    if (isExamining) {
+      const t = setInterval(refresh, POLL_MS);
+      prevStatusRef.current = sessionStatus;
+      return () => clearInterval(t);
+    }
+    if (prevStatusRef.current === 'EXAMINE') {
+      refresh();
+    }
+    prevStatusRef.current = sessionStatus;
+    return undefined;
+  }, [sessionId, sessionStatus, refresh]);
 
   const adhocRules = useMemo(
     () => (examineMeta?.adhoc_rules || []),

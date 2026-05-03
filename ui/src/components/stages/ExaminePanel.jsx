@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { RerunButton } from '../shared/RerunButton';
+import { StageProgressMeter } from '../shared/StageProgressMeter';
+import { useStageProgress } from '../../hooks/useStageProgress';
 import { useDevMode } from '../../context/DevModeContext';
 import { useRules } from '../../hooks/useRules';
 import { useSavedViews } from '../../hooks/useSavedViews';
@@ -31,7 +33,8 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
   const sessionId = session?.id;
 
   const examineMeta = session?.finalReport?.examine_meta;
-  const { rules, adhocRules, consistencyWarnings, loading, refresh, override, reset } = useRules(sessionId, examineMeta, events);
+  const sessionStatus = session?.status;
+  const { rules, adhocRules, consistencyWarnings, loading, refresh, override, reset } = useRules(sessionId, sessionStatus, examineMeta);
   const { views: savedViews, save, remove } = useSavedViews();
 
   const [filter, setFilter] = useState(DEFAULT_FILTER);
@@ -161,7 +164,6 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
     }
     return p;
   }, [events, examineDone]);
-  const showReviewCount = currentPhase === 'review' || examineDone;
   const showPhaseStrip = (session?.status || '').toUpperCase() === 'EXAMINE' || examineDone;
   const planAdhocCount = (adhocRules || []).length;
   const showPlanPane = (currentPhase === 'plan' || (currentPhase && currentPhase !== 'derive' && planAdhocCount > 0));
@@ -178,9 +180,83 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
     return [inco, tol != null ? `±${tol}%` : null, tenor].filter(Boolean).join(' · ') || null;
   }, [session]);
 
+  // Two-state toolbar meta — mirrors Parse stage's "extracting M/N" → "M/N reviewed" pattern.
+  // While running: per-phase progress meter consuming SSE events.
+  // While complete: a calm verdict snapshot in monospace, status-coloured.
+  const examineProgress = useStageProgress(events, 'examine', sessionStatus, examineDone);
+  const planned = rules.filter(r => !isOutOfScope(r));
+  const completedCount = planned.filter(r => (r.verdict || r.effectiveVerdict) !== 'PENDING').length;
+  const verdictTally = useMemo(() => {
+    const t = { fail: 0, doubts: 0, pass: 0, na: 0 };
+    for (const r of planned) {
+      const v = r.effectiveVerdict || r.verdict;
+      if (v === 'FAIL') t.fail++;
+      else if (v === 'DOUBTS') t.doubts++;
+      else if (v === 'PASS') t.pass++;
+      else if (v === 'NOT_APPLICABLE') t.na++;
+    }
+    return t;
+  }, [planned]);
+
+  const isRunning = examineProgress.phase === 'running';
+  const meta = isRunning ? (
+    <StageProgressMeter
+      phase="running"
+      label={examineProgress.label || 'Examine'}
+      sub={examineProgress.sub}
+      idx={examineProgress.idx ?? completedCount}
+      total={examineProgress.total ?? planned.length}
+      secsSinceLast={examineProgress.secsSinceLast}
+      isStale={examineProgress.isStale}
+    />
+  ) : (
+    <span className="text-[11px] flex items-center gap-2 font-mono">
+      <span className={`w-1.5 h-1.5 rounded-full ${verdictTally.fail > 0 ? 'bg-status-red' : verdictTally.doubts > 0 ? 'bg-status-gold' : 'bg-status-green'}`} />
+      <span className="text-muted">{planned.length} rules</span>
+      {verdictTally.fail > 0 && <span className="text-status-red">· {verdictTally.fail} fail</span>}
+      {verdictTally.doubts > 0 && <span className="text-status-gold">· {verdictTally.doubts} doubts</span>}
+      {verdictTally.pass > 0 && verdictTally.fail === 0 && verdictTally.doubts === 0 && (
+        <span className="text-status-green">· all clear</span>
+      )}
+      {verdictTally.na > 0 && <span className="text-muted">· {verdictTally.na} n/a</span>}
+    </span>
+  );
+
   return (
     <StagePage>
-      <SummaryBar rules={rules} docCount={docCount} adhocRules={adhocRules} consistencyWarnings={consistencyWarnings} />
+      {/* Stage hierarchy: top nav · stage row (PipelineNav) · title row · then
+          full-width informational bands · then side-nav + content body. The
+          title row owns the entire width — like Parse — so the FilterRail
+          drops below it. */}
+      <StageToolbar
+        title="Examine"
+        meta={meta}
+        actions={
+          <>
+            <RerunButton sessionId={sessionId} stage="examine" devMode={devMode} />
+            <StageNavButtons
+              stage="examine"
+              onBack={onBack}
+              onContinue={onContinue}
+              canContinue={canContinue}
+            />
+          </>
+        }
+      />
+
+      <SummaryBar rules={rules} />
+
+      {showPhaseStrip && (
+        <ExaminePhaseStrip
+          events={events}
+          session={session}
+          examineDone={examineDone}
+          deriveSummary={deriveSummary}
+        />
+      )}
+      {showPlanPane && (
+        <PlanReviewPane adhocRules={adhocRules} collapsedByDefault={collapsePlan} />
+      )}
 
       <div className="flex flex-1 overflow-hidden">
         <FilterRail
@@ -196,12 +272,24 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
         />
 
         <div className="flex-1 flex flex-col min-w-0 bg-white">
-          <StageToolbar
-            title={null}
-            meta={
-              <>
-                {showReviewCount && (
-                  <EyebrowLabel>WORKLIST · {sorted.length} of {rules.length}</EyebrowLabel>
+          {/* Worklist sub-header — count + view controls + group-by toggle.
+              Lives right above the table so progress + filters stay visually
+              attached to what they describe, not buried in the stage title. */}
+          {rules.length > 0 && (
+            <div className="flex items-center justify-between gap-3 px-4 py-2 border-b border-line bg-slate2/40 flex-wrap">
+              <div className="flex items-center gap-3 flex-wrap">
+                <EyebrowLabel>WORKLIST</EyebrowLabel>
+                <span className="text-[11px] font-mono">
+                  <span className={completedCount === planned.length ? 'text-status-green' : 'text-navy-1'}>
+                    {completedCount}
+                  </span>
+                  <span className="text-line"> / </span>
+                  <span className="text-muted">{planned.length}</span>
+                </span>
+                {planned.length - completedCount > 0 && (
+                  <span className="text-[10px] text-status-gold font-mono">
+                    {planned.length - completedCount} pending
+                  </span>
                 )}
                 {activeView && savedViews.find(v => v.id === activeView) && activeView !== 'default' && (
                   <span className="text-[10px] px-2 py-0.5 rounded bg-teal-1/10 text-teal-1 flex items-center gap-1 font-mono">
@@ -213,45 +301,21 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
                     ↻ reset
                   </GhostButton>
                 )}
-              </>
-            }
-            actions={
-              <>
-                <div className="flex items-center gap-1 text-[10px] font-mono">
-                  <span className="text-muted mr-1">GROUP BY</span>
-                  {[['article','Article'], ['doc','Document'], ['field','Field'], ['origin','Origin']].map(([id, l]) => (
-                    <button
-                      key={id}
-                      onClick={() => setNavMode(id)}
-                      className={`px-2 py-0.5 rounded
-                        ${navMode === id ? 'bg-navy-1 text-white' : 'border border-line hover:bg-slate2'}`}
-                    >
-                      {l}
-                    </button>
-                  ))}
-                </div>
-                <RerunButton sessionId={sessionId} stage="examine" devMode={devMode} />
-                <StageNavButtons
-                  stage="examine"
-                  onBack={onBack}
-                  onContinue={onContinue}
-                  canContinue={canContinue}
-                />
-              </>
-            }
-            className="bg-slate2"
-          />
-
-          {showPhaseStrip && (
-            <ExaminePhaseStrip
-              events={events}
-              session={session}
-              examineDone={examineDone}
-              deriveSummary={deriveSummary}
-            />
-          )}
-          {showPlanPane && (
-            <PlanReviewPane adhocRules={adhocRules} collapsedByDefault={collapsePlan} />
+              </div>
+              <div className="flex items-center gap-1 text-[10px] font-mono">
+                <span className="text-muted mr-1">GROUP BY</span>
+                {[['article','Article'], ['doc','Document'], ['field','Field'], ['origin','Origin']].map(([id, l]) => (
+                  <button
+                    key={id}
+                    onClick={() => setNavMode(id)}
+                    className={`px-2 py-0.5 rounded transition-colors
+                      ${navMode === id ? 'bg-navy-1 text-white' : 'border border-line text-muted hover:text-navy-1 hover:bg-slate2'}`}
+                  >
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
 
           {loading && rules.length === 0 ? (

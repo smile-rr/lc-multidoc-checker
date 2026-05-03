@@ -50,6 +50,12 @@ public class RuleCatalogRegistry {
         this.allRules = List.copyOf(parsed.rules());
         this.enabledRules = allRules.stream().filter(Rule::enabled).toList();
         for (Rule r : allRules) {
+            if ("PROGRAMMATIC_AGENT".equals(r.checkType())) {
+                log.warn("Rule {} uses deprecated checkType PROGRAMMATIC_AGENT — alias of AGENT_TOOL; "
+                        + "update catalog.yml", r.ruleId());
+            }
+        }
+        for (Rule r : allRules) {
             if (r.triggers() != null && r.triggerDocs() != null && !r.triggerDocs().isEmpty()) {
                 log.warn("Rule {} declares both triggers and triggerDocs — triggers wins, "
                         + "triggerDocs ignored at runtime", r.ruleId());

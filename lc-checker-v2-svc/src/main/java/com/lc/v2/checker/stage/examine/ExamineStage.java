@@ -48,6 +48,7 @@ public class ExamineStage implements Stage {
     private final ObjectMapper objectMapper;
     private final RuleTriggerEvaluator triggerEvaluator;
     private final LcRulePlannerAgent plannerAgent;
+    private final com.lc.v2.checker.stage.parse.Mt700Parser mt700Parser;
 
     private final Map<String, List<String>> traces = new LinkedHashMap<>();
 
@@ -57,7 +58,8 @@ public class ExamineStage implements Stage {
                         SessionStore sessionStore,
                         ObjectMapper objectMapper,
                         RuleTriggerEvaluator triggerEvaluator,
-                        LcRulePlannerAgent plannerAgent) {
+                        LcRulePlannerAgent plannerAgent,
+                        com.lc.v2.checker.stage.parse.Mt700Parser mt700Parser) {
         this.catalog = catalog;
         this.spelEvaluator = spelEvaluator;
         this.agentExecutor = agentExecutor;
@@ -65,6 +67,7 @@ public class ExamineStage implements Stage {
         this.objectMapper = objectMapper;
         this.triggerEvaluator = triggerEvaluator;
         this.plannerAgent = plannerAgent;
+        this.mt700Parser = mt700Parser;
     }
 
     @Override
@@ -82,7 +85,23 @@ public class ExamineStage implements Stage {
         long deriveStart = System.currentTimeMillis();
         phaseStarts.put("derive", deriveStart);
 
-        // Step 0: refresh derived LC envelope. Examine "owns" derive→plan→check
+        // Step 0a: rehydrate ctx.lc from final_report.lc if the in-memory copy
+        // was lost (JVM restart, stage-cache eviction). Without this, every
+        // field-dependent rule returns NOT_APPLICABLE because the envelope
+        // appears empty.
+        if (ctx.lc == null) {
+            try {
+                ctx.lc = rehydrateLc(ctx.sessionId);
+                if (ctx.lc != null) {
+                    log.info("[{}] Examine rehydrated LC from final_report.lc: #{} ",
+                            ctx.sessionId, ctx.lc.getLcNumber());
+                }
+            } catch (Exception e) {
+                log.warn("[{}] Examine LC rehydrate failed: {}", ctx.sessionId, e.getMessage());
+            }
+        }
+
+        // Step 0b: refresh derived LC envelope. Examine "owns" derive→plan→check
         // as one unit, so a re-examine reflects any LC text edits without needing
         // a Parse-stage rerun.
         if (ctx.lc != null) {
@@ -98,6 +117,9 @@ public class ExamineStage implements Stage {
             } catch (Exception e) {
                 log.warn("[{}] Examine re-derive failed: {}", ctx.sessionId, e.getMessage());
             }
+        } else {
+            log.warn("[{}] Examine: ctx.lc still null after rehydrate attempt — "
+                    + "field-dependent rules will return NOT_APPLICABLE", ctx.sessionId);
         }
 
         long deriveEnd = System.currentTimeMillis();
@@ -140,6 +162,14 @@ public class ExamineStage implements Stage {
         int[] idx = {0};
 
         ctx.eventBus.examinePhase(ctx.sessionId, "check", 0L, total, null);
+
+        // Pre-insert PENDING rows so the worklist materialises immediately. Each row
+        // gets upserted in place when the rule actually completes. SKIPs are not
+        // pre-inserted — they emit synthetic [OUT_OF_SCOPE] NA rows via emitSkipped.
+        for (Rule rule : toFireProg) upsertPendingRow(ctx, rule);
+        for (Rule rule : toFireAgent) upsertPendingRow(ctx, rule);
+        for (RuleAndDecision rad : naList) upsertPendingRow(ctx, rad.rule());
+        for (RuleAndDecision rad : adhocNa) upsertPendingRow(ctx, rad.rule());
 
         for (RuleAndDecision rad : naList) emitNa(ctx, rad, ++idx[0], total);
         for (RuleAndDecision rad : adhocNa) emitNa(ctx, rad, ++idx[0], total);
@@ -255,10 +285,27 @@ public class ExamineStage implements Stage {
             row.put("explanation", r.explanation() != null ? r.explanation() : "");
             row.put("confidence", r.confidence());
             row.put("checkType", r.checkType() != null ? r.checkType() : "");
-            sessionStore.appendExamineResult(ctx.sessionId, objectMapper.writeValueAsString(row));
+            sessionStore.upsertExamineResult(ctx.sessionId, r.ruleId(),
+                    objectMapper.writeValueAsString(row));
         } catch (Exception e) {
-            log.warn("[{}] append examine row failed for {}: {}",
+            log.warn("[{}] persist examine row failed for {}: {}",
                     ctx.sessionId, r.ruleId(), e.getMessage());
+        }
+    }
+
+    private void upsertPendingRow(StageContext ctx, Rule rule) {
+        try {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("ruleId", rule.ruleId());
+            row.put("verdict", "PENDING");
+            row.put("explanation", "");
+            row.put("confidence", null);
+            row.put("checkType", rule.checkType());
+            sessionStore.upsertExamineResult(ctx.sessionId, rule.ruleId(),
+                    objectMapper.writeValueAsString(row));
+        } catch (Exception e) {
+            log.warn("[{}] pre-insert PENDING row failed for {}: {}",
+                    ctx.sessionId, rule.ruleId(), e.getMessage());
         }
     }
 
@@ -319,6 +366,26 @@ public class ExamineStage implements Stage {
     }
 
     private record RuleAndDecision(Rule rule, TriggerDecision decision) {}
+
+    /**
+     * Re-parse MT700 from final_report.lc.raw if ctx.lc is null. Deterministic;
+     * cheap. Survives JVM restarts since IntakeStage persists the raw text +
+     * envelope at the end of intake.
+     */
+    private com.lc.v2.checker.domain.lc.LcParseResult rehydrateLc(String sessionId) {
+        String json = sessionStore.getFinalReportSection(sessionId, "lc");
+        if (json == null || json.isBlank() || "null".equals(json)) return null;
+        try {
+            Map<String, Object> snapshot = objectMapper.readValue(json,
+                    new com.fasterxml.jackson.core.type.TypeReference<>() {});
+            Object raw = snapshot.get("raw");
+            if (!(raw instanceof String s) || s.isBlank()) return null;
+            return mt700Parser.parse(s);
+        } catch (Exception e) {
+            log.warn("[{}] LC rehydrate parse failed: {}", sessionId, e.getMessage());
+            return null;
+        }
+    }
 
     private void persistResults(StageContext ctx, List<Rule> adhocRules) {
         // The examine[] array is built progressively via appendCheckResult — do not

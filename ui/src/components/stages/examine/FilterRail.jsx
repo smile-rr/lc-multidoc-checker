@@ -42,9 +42,10 @@ export function FilterRail({ rules, filter, setFilter, savedViews, applyView, sa
     count: rules.filter(r => (r.attention || []).includes(id)).length,
   }));
   const sourceOpts = [
-    ['PROG',    'Programmatic'],
-    ['AI',      'Agent only'],
-    ['PROG+AI', 'Both'],
+    ['PROG',     'Programmatic'],
+    ['AI',       'Agent'],
+    ['AI+tool',  'Agent + tool'],
+    ['AI·adhoc', 'Agent · ad-hoc'],
   ].map(([id, label]) => ({
     id, label,
     count: rules.filter(r => r.source === id).length,

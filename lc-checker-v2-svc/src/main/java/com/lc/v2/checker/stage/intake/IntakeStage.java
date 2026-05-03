@@ -1,5 +1,6 @@
 package com.lc.v2.checker.stage.intake;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lc.v2.checker.domain.common.DocType;
 import com.lc.v2.checker.domain.lc.LcParseResult;
 import com.lc.v2.checker.infra.observability.PipelineStage;
@@ -10,6 +11,8 @@ import com.lc.v2.checker.pipeline.Stage;
 import com.lc.v2.checker.pipeline.StageContext;
 import com.lc.v2.checker.stage.parse.LcParseException;
 import com.lc.v2.checker.stage.parse.Mt700Parser;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.slf4j.Logger;
@@ -42,13 +45,15 @@ public class IntakeStage implements Stage {
     private final PdfBytesCache pdfCache;
     private final S3FileStore s3Store;
     private final Mt700Parser mt700Parser;
+    private final ObjectMapper objectMapper;
 
     public IntakeStage(SessionStore sessionStore, PdfBytesCache pdfCache, S3FileStore s3Store,
-                        Mt700Parser mt700Parser) {
+                        Mt700Parser mt700Parser, ObjectMapper objectMapper) {
         this.sessionStore = sessionStore;
         this.pdfCache = pdfCache;
         this.s3Store = s3Store;
         this.mt700Parser = mt700Parser;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -98,6 +103,7 @@ public class IntakeStage implements Stage {
                 ctx.eventBus.extractionProgress(ctx.sessionId, "LC", "mt700_parser", "parsing");
                 LcParseResult result = mt700Parser.parse(ctx.lcText);
                 ctx.lc = result;
+                persistLc(ctx, result);
                 int warnings = result.consistencyWarnings().size();
                 ctx.eventBus.extractionProgress(ctx.sessionId, "LC", "mt700_parser",
                         "complete #" + result.getLcNumber() + (warnings > 0 ? " warnings=" + warnings : ""));
@@ -126,6 +132,29 @@ public class IntakeStage implements Stage {
             return doc.getNumberOfPages();
         } catch (Exception e) {
             return 1;
+        }
+    }
+
+    /**
+     * Persist the MT700 parse result to final_report.lc so it survives JVM
+     * restarts. Without this, ctx.lc is in-memory only and downstream stages
+     * (Reconcile / Examine) see null after any container restart, causing
+     * every field-dependent rule to return NOT_APPLICABLE.
+     *
+     * Stored shape: { raw, fields, rawFields, derived, warnings }.
+     */
+    private void persistLc(StageContext ctx, LcParseResult lc) {
+        try {
+            Map<String, Object> snapshot = new LinkedHashMap<>();
+            snapshot.put("raw", lc.rawMt700());
+            snapshot.put("fields", lc.envelope() != null ? lc.envelope().fields() : Map.of());
+            snapshot.put("rawFields", lc.rawFields());
+            snapshot.put("derived", lc.derived());
+            snapshot.put("warnings", lc.consistencyWarnings());
+            sessionStore.mergeFinalReportSection(ctx.sessionId, "lc",
+                    objectMapper.writeValueAsString(snapshot));
+        } catch (Exception e) {
+            log.warn("[{}] LC persistence failed (non-fatal): {}", ctx.sessionId, e.getMessage());
         }
     }
 }

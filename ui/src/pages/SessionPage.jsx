@@ -131,7 +131,6 @@ export function SessionPage() {
         reachable={reachable}
         onSelect={setActiveStage}
         events={events}
-        currentActivity={currentActivity}
         sessionId={id}
         docCount={session?.doc_count}
         sessionStatus={sessionCompleted ? 'COMPLETED' : (session?.status ?? 'RUNNING')}

@@ -1,154 +1,216 @@
 # =============================================================================
-# catalog.yml — v2 rule catalog (20 rules, official IDs from rule-catalog.md)
+# catalog.yml — v2 POC rule catalog (10 consolidated operations)
 # =============================================================================
 #
+# This is a POC catalog calibrated to industry reality. Banks run 30-50 rules
+# in production; this 10-op set covers ~70% of real discrepancies seen on the
+# four test bundles and exercises all four checkType categories.
+#
+# +------+-----------------------------------+--------------+--------------+----------+
+# |  ID  | Operation                         | Type         | Docs         | Severity |
+# +------+-----------------------------------+--------------+--------------+----------+
+# | OP01 | CURRENCY-CONSISTENT               | PROGRAMMATIC | INV/BOE/INS  | CRITICAL |
+# | OP02 | AMOUNT-WITHIN-LC                  | AGENT_TOOL   | INV/BOE      | CRITICAL |
+# | OP03 | DOC-DATE-VALID                    | PROGRAMMATIC | ALL          | MAJOR    |
+# | OP04 | PRESENTATION-WINDOW               | AGENT_TOOL   | BOL          | CRITICAL |
+# | OP05 | BENEFICIARY-CONSISTENT            | AGENT        | INV/BOE/BC/WC| CRITICAL |
+# | OP06 | GOODS-DESCRIPTION-CORRESPONDS     | AGENT        | INV (+ANY)   | MAJOR    |
+# | OP07 | BL-ONBOARD-VALID                  | AGENT        | BOL          | CRITICAL |
+# | OP08 | BL-CLEAN                          | AGENT        | BOL          | MAJOR    |
+# | OP09 | 46A-DOC-SET-COMPLETE              | AGENT        | session-wide | CRITICAL |
+# | OP10 | BC-WC-46A-COMPLIANCE              | AGENT        | BC/WC        | MAJOR    |
+# +------+-----------------------------------+--------------+--------------+----------+
+#
+# Per-op prompt templates live at prompts/check/<rule-id>.st (mirrors v1 pattern).
+# Each AGENT/AGENT_TOOL op carries a `ucp_excerpt:` block with the actual quoted
+# UCP/ISBP text — injected into the LLM prompt under "Rule excerpt" header.
+# PROGRAMMATIC ops keep `expression:` inline.
+#
 # Rule fields:
-#   rule_id:           Official catalog ID (GEN-nnn, INV-nnn, BOL-nnn, etc.)
-#   scope:             Primary doc type(s) this rule checks
-#   triggerDocs:       Doc types that must be in the session to activate this rule
+#   rule_id:           Op ID (OPnn-NAME, uppercase, hyphenated)
+#   scope:             Doc types this op evaluates (display-only)
+#   triggerDocs:       Legacy fallback list of required doc types
+#   triggers:          Compound trigger DSL (Triggers sealed-interface variants)
 #   lcFieldsRequired:  LC fields that must be present; if any absent → NOT_APPLICABLE
-#                      NOT_APPLICABLE is NEVER triggered by a missing doc type —
-#                      the Intake gate handles missing docs before Examine runs.
-#   checkType:         PROGRAMMATIC | AGENT | PROGRAMMATIC_AGENT
+#   checkType:         PROGRAMMATIC | AGENT | AGENT_TOOL | (AGENTIC_ADHOC reserved for runtime)
 #   severity:          CRITICAL | MAJOR | MINOR
-#   polarity:          POSITIVE (presence complies) | NEGATIVE (presence = FAIL)
+#   polarity:          POSITIVE | NEGATIVE
 #   waivable:          Whether discrepancy can be waived via Art. 16(b)
-#   ucpRefs:           IDs in refs/ucp600.yaml (golden source)
-#   isbpRefs:          IDs in refs/isbp821.yaml (golden source)
-#   expression:        SpEL for PROGRAMMATIC rules; #lc['key'] / #docs['TYPE']['key']
-#   promptInstruction: Injected into LLM prompt for AGENT rules (officer-maintainable)
-#   fieldKeys:         Fields whose values are injected into LLM prompt context
+#   ucpRefs:           Citation IDs in refs/ucp600.yaml
+#   isbpRefs:          Citation IDs in refs/isbp821.yaml
+#   ucp_excerpt:       Quoted UCP/ISBP text injected into the LLM prompt
+#   expression:        SpEL for PROGRAMMATIC ops; #lc['k'] / #docs['T']['k'] / #presentationDate
+#   fieldKeys:         Field names whose values are injected into LLM prompt context
 #   enabled:           false to skip at runtime without removing from catalog
+#
+# Multi-doc operations: each op's triggerDocs lists the doc types it spans;
+# the op produces ONE verdict + per-doc evidence inside the explanation.
 
 rules:
 
-  # ===========================================================================
-  # GEN — Universal rules (apply to ALL submitted docs)
-  # ===========================================================================
-
-  - rule_id: GEN-001
-    scope: [ALL]
+  # ---------------------------------------------------------------------------
+  # OP01 · CURRENCY-CONSISTENT — every currency-bearing doc agrees with LC
+  # ---------------------------------------------------------------------------
+  - rule_id: OP01-CURRENCY-CONSISTENT
+    scope: [INV, BOE, INS]
     triggerDocs: [INV]
     triggers:
       all_of:
-        - docs_present: [INV]
-    lcFieldsRequired: []
-    checkType: AGENT
-    severity: MAJOR
-    polarity: POSITIVE
-    waivable: true
-    ucpRefs: [UCP-14-a, UCP-14-d]
-    isbpRefs: [ISBP-A1, ISBP-A14]
-    promptInstruction: |
-      UCP Art. 14(a): on its face each document must comply with the terms and conditions of the credit.
-      UCP Art. 14(d): data in documents need not be identical but must not conflict with each other or the LC.
-      ISBP A1: examine the whole document, not just specific fields.
-      ISBP A14: abbreviations acceptable (Ltd, Co., Int'l, St., Ave., etc.).
-      FAIL if any document contains information that materially contradicts the LC terms or other documents.
-      NOTE: "Machinery" vs "CNC Lathe X-200" — general term is usually NOT contradictory (UCP 14(e) principle);
-      model number mismatch (X-200 vs X-100) IS a contradiction.
-    fieldKeys: [goods_description, incoterms, beneficiary_name, lc_number]
-    enabled: true
-
-  - rule_id: GEN-003
-    scope: [ALL]
-    triggerDocs: [INV]
-    triggers:
-      all_of:
-        - docs_present: [INV]
-    lcFieldsRequired: []
-    checkType: PROGRAMMATIC
-    severity: MAJOR
-    polarity: NEGATIVE
-    waivable: false
-    ucpRefs: [UCP-14-i]
-    isbpRefs: [ISBP-A19]
-    expression: >-
-      #docs['INV']['document_date'] == null
-      || #presentationDate == null
-      || !#docs['INV']['document_date'].toString().isBlank()
-        && java.time.LocalDate.parse(#docs['INV']['document_date'].toString())
-            .isAfter(java.time.LocalDate.parse(#presentationDate.toString()))
-      ? false : true
-    fieldKeys: [document_date]
-    enabled: true
-
-  # ===========================================================================
-  # INV — Commercial Invoice rules
-  # ===========================================================================
-
-  - rule_id: INV-001
-    scope: [INV]
-    triggerDocs: [INV]
-    triggers:
-      all_of:
-        - docs_present: [INV]
-        - lc_field_present: [beneficiary_name]
-    lcFieldsRequired: [beneficiary_name]
-    checkType: PROGRAMMATIC
-    severity: CRITICAL
-    polarity: POSITIVE
-    waivable: false
-    ucpRefs: [UCP-18-a-i]
-    isbpRefs: [ISBP-C6]
-    expression: >-
-      #docs['INV']['beneficiary_name'] != null
-      && #lc['beneficiary_name'] != null
-      && #docs['INV']['beneficiary_name'].toString().trim().equalsIgnoreCase(
-             #lc['beneficiary_name'].toString().trim())
-    fieldKeys: [beneficiary_name]
-    enabled: true
-
-  - rule_id: INV-003
-    scope: [INV]
-    triggerDocs: [INV]
-    triggers:
-      all_of:
-        - docs_present: [INV]
+        - any_of:
+            - docs_present: [INV]
+            - docs_present: [BOE]
+            - docs_present: [INS]
         - lc_field_present: [credit_currency]
     lcFieldsRequired: [credit_currency]
     checkType: PROGRAMMATIC
     severity: CRITICAL
     polarity: POSITIVE
     waivable: false
-    ucpRefs: [UCP-18-a-iii]
-    isbpRefs: [ISBP-C8]
-    expression: >-
-      #docs['INV']['credit_currency'] != null
-      && #lc['credit_currency'] != null
-      && #docs['INV']['credit_currency'].toString().trim().equalsIgnoreCase(
-             #lc['credit_currency'].toString().trim())
-    fieldKeys: [credit_currency]
+    ucpRefs: [UCP-18-a-iii, UCP-18-b, UCP-28-f-i]
+    isbpRefs: [ISBP-C8, ISBP-B3, ISBP-K4]
+    ucp_excerpt: |
+      UCP 600 Art. 18(a)(iii): A commercial invoice must be made out in the currency of the credit.
+      UCP 600 Art. 18(b): The amount of a commercial invoice must not exceed the amount permitted by the credit.
+      UCP 600 Art. 28(f)(i): An insurance document must indicate that the amount of insurance coverage is in the same currency as the credit.
+      ISBP 821 C8: The invoice must be in the same currency as the credit. ISO 4217 codes and currency symbols are acceptable.
+      ISBP 821 B3: The amount of a draft must correspond to the amount shown in the commercial invoice.
+      ISBP 821 K4: The currency of the insurance document must be the same as the currency of the credit.
+    fieldKeys: [credit_currency, draft_currency]
+    expression: |
+      T(com.lc.v2.checker.stage.examine.MultiDocHelpers).currencyConsistent(
+        #docs, #lc['credit_currency'])
     enabled: true
 
-  - rule_id: INV-005
-    scope: [INV]
+  # ---------------------------------------------------------------------------
+  # OP02 · AMOUNT-WITHIN-LC — invoice (and BOE) total ≤ LC, tolerance stack
+  # ---------------------------------------------------------------------------
+  - rule_id: OP02-AMOUNT-WITHIN-LC
+    scope: [INV, BOE]
     triggerDocs: [INV]
     triggers:
       all_of:
         - docs_present: [INV]
         - lc_field_present: [credit_amount, credit_currency]
     lcFieldsRequired: [credit_amount, credit_currency]
-    checkType: PROGRAMMATIC_AGENT
+    checkType: AGENT_TOOL
     severity: CRITICAL
     polarity: NEGATIVE
     waivable: false
-    ucpRefs: [UCP-18-b, UCP-30-a, UCP-30-b]
+    ucpRefs: [UCP-18-b, UCP-30-a, UCP-30-b, UCP-30-c]
     isbpRefs: [ISBP-C9, ISBP-C10]
-    promptInstruction: |
-      UCP Art. 18(b): invoice must not be issued for an amount exceeding the credit amount.
-      PRIORITY STACK for tolerance (apply in order — first matching rule wins):
-        1. LC :39A: explicit tolerance (e.g. 5/5 = ±5%) — use this if present and non-zero.
-        2. LC :32B: contains ABOUT/APPROXIMATELY → ±10% on BOTH quantity and amount.
-        3. Bulk goods without unit count (e.g. MT/KG) → quantity ±5%, but drawn amount must not exceed LC total.
-        4. Default: invoice amount must not exceed LC amount; PASS if ≤, FAIL if >.
-      COMMON MISTAKE: quantity ±5% does NOT mean amount ±5% — if quantity drops 5%, drawn amount must also drop.
-      Extract: LC amount, invoice total, tolerance from :39A:, about flag from :32B:.
-    fieldKeys: [credit_amount, credit_currency, invoice_total, tolerance_plus, tolerance_minus, about_credit_amount]
+    ucp_excerpt: |
+      UCP 600 Art. 18(b): The amount of a commercial invoice must not exceed the amount permitted by the credit.
+      UCP 600 Art. 30(a): The words "about" or "approximately" used in connection with the amount of the credit
+        or the quantity or the unit price are to be construed as allowing a tolerance not to exceed 10% more
+        or 10% less than the amount, the quantity or the unit price to which they refer.
+      UCP 600 Art. 30(b): A tolerance not to exceed 5% more or 5% less than the quantity of the goods is allowed,
+        provided the credit does not state the quantity in terms of a stipulated number of packing units or
+        individual items and the total amount of the drawings does not exceed the amount of the credit.
+      UCP 600 Art. 30(c): Even when partial shipments are not allowed, a tolerance not to exceed 5% less than
+        the amount of the credit is allowed, provided the quantity is shipped in full and unit price is not reduced.
+      ISBP 821 C9: The invoice amount must not exceed the credit amount, taking into account permitted tolerances.
+      ISBP 821 C10: Tolerances under UCP 600 sub-article 30(b) apply to the invoice amount even when not expressly stated.
+      Pitfall 03 (tolerance precedence): (1) explicit :39A: % wins; (2) ABOUT/APPROXIMATELY ⇒ ±10% on quantity AND amount;
+        (3) bulk goods without unit count ⇒ quantity ±5%, amount must NOT exceed LC total; (4) default ⇒ exact, no overdraw.
+    fieldKeys: [credit_amount, credit_currency, about_credit_amount, tolerance_plus, tolerance_minus, invoice_total, draft_amount]
     enabled: true
 
-  - rule_id: INV-006
-    scope: [INV]
+  # ---------------------------------------------------------------------------
+  # OP03 · DOC-DATE-VALID — every presented doc dated ≤ presentation date
+  # ---------------------------------------------------------------------------
+  - rule_id: OP03-DOC-DATE-VALID
+    scope: [INV, BOL, PKL, BOE, BC, WC]
+    triggerDocs: [INV]
+    triggers:
+      any_of:
+        - docs_present: [INV]
+        - docs_present: [BOL]
+        - docs_present: [PKL]
+        - docs_present: [BOE]
+        - docs_present: [BC]
+        - docs_present: [WC]
+    lcFieldsRequired: []
+    checkType: PROGRAMMATIC
+    severity: MAJOR
+    polarity: POSITIVE
+    waivable: false
+    ucpRefs: [UCP-14-h, UCP-14-i]
+    isbpRefs: [ISBP-A19]
+    ucp_excerpt: |
+      UCP 600 Art. 14(i): A document may be dated prior to the issuance date of the credit, but must not be dated
+        later than its date of presentation.
+      ISBP 821 A19: A document may be dated prior to the date of the credit but must not be dated later than the
+        date of its presentation. Dates may be expressed in any unambiguous format.
+    fieldKeys: [document_date, invoice_date, bl_date, pkl_date, boe_date, bc_date, wc_date]
+    expression: |
+      T(com.lc.v2.checker.stage.examine.MultiDocHelpers).docDatesValid(
+        #docs, T(java.time.LocalDate).parse(#presentationDate))
+    enabled: true
+
+  # ---------------------------------------------------------------------------
+  # OP04 · PRESENTATION-WINDOW — 21-day clock + LC expiry + override window
+  # ---------------------------------------------------------------------------
+  - rule_id: OP04-PRESENTATION-WINDOW
+    scope: [BOL]
+    triggerDocs: [BOL]
+    triggers:
+      all_of:
+        - docs_present: [BOL]
+    lcFieldsRequired: []
+    checkType: AGENT_TOOL
+    severity: CRITICAL
+    polarity: POSITIVE
+    waivable: false
+    ucpRefs: [UCP-14-c]
+    isbpRefs: []
+    ucp_excerpt: |
+      UCP 600 Art. 14(c): A presentation including one or more original transport documents subject to articles
+        19, 20, 21, 22, 23, 24 or 25 must be made by or on behalf of the beneficiary not later than 21 calendar
+        days after the date of shipment, but in any event not later than the expiry date of the credit.
+    fieldKeys: [shipment_date, bl_date, expiry_date, presentation_days]
+    enabled: true
+
+  # ---------------------------------------------------------------------------
+  # OP05 · BENEFICIARY-CONSISTENT — INV/BOE/BC/WC named beneficiary = LC :59:
+  # ---------------------------------------------------------------------------
+  - rule_id: OP05-BENEFICIARY-CONSISTENT
+    scope: [INV, BOE, BC, WC]
+    triggerDocs: [INV]
+    triggers:
+      all_of:
+        - any_of:
+            - docs_present: [INV]
+            - docs_present: [BOE]
+            - docs_present: [BC]
+            - docs_present: [WC]
+        - lc_field_present: [beneficiary_name]
+    lcFieldsRequired: [beneficiary_name]
+    checkType: AGENT
+    severity: CRITICAL
+    polarity: POSITIVE
+    waivable: false
+    ucpRefs: [UCP-18-a-i, UCP-6-a, UCP-14-a]
+    isbpRefs: [ISBP-B1, ISBP-C6, ISBP-Q2, ISBP-A14, ISBP-A15]
+    ucp_excerpt: |
+      UCP 600 Art. 18(a)(i): A commercial invoice must appear to have been issued by the beneficiary.
+      UCP 600 Art. 6(a): A credit must state the bank with which it is available.
+      UCP 600 Art. 14(a): Documents must be examined on their face to determine whether they appear to constitute
+        a complying presentation.
+      ISBP 821 B1: A draft must be drawn on the drawee named in the credit.
+      ISBP 821 C6: An invoice must indicate the name and address of the beneficiary as in the credit. Variations
+        such as Ltd. for Limited are acceptable.
+      ISBP 821 A14: Internationally accepted abbreviations are acceptable: Ltd., Co., Corp., Int'l, Mfg., St., Ave., Rd.
+      ISBP 821 A15: A misspelling or typing error that does not affect the meaning of a word does not make a
+        document discrepant. "Indusrial" for "Industrial" is fine; "Model 123" vs "Model 321" is NOT.
+      Pitfall 01: Non-contradictory ≠ identical. Abbreviations and minor spelling variations are NOT discrepancies.
+    fieldKeys: [beneficiary_name, drawer_name, bc_certifying_party]
+    enabled: true
+
+  # ---------------------------------------------------------------------------
+  # OP06 · GOODS-DESCRIPTION-CORRESPONDS — invoice strict, others general
+  # ---------------------------------------------------------------------------
+  - rule_id: OP06-GOODS-DESCRIPTION-CORRESPONDS
+    scope: [INV, BOL, PKL, WC, INS]
     triggerDocs: [INV]
     triggers:
       all_of:
@@ -160,92 +222,52 @@ rules:
     polarity: POSITIVE
     waivable: true
     ucpRefs: [UCP-18-c, UCP-14-e]
-    isbpRefs: [ISBP-C3, ISBP-A14]
-    promptInstruction: |
-      UCP Art. 18(c): goods description in invoice must correspond with the LC :45A: description.
-      ISBP C3: "correspond with" means not contradict — NOT word-for-word identical.
-      ISBP A14: abbreviations acceptable (Ltd, Co., Int'l, St.).
-      UCP Art. 14(e): a general description in transport docs (e.g. "Machinery") does not conflict
-      with a detailed LC description — but this is for B/L, NOT for the invoice.
-      For the INVOICE, the description must clearly correspond with :45A:.
-      FAIL if: materially different goods terminology; omitted required Incoterms trade term;
-               goods not described in LC added to invoice; model number mismatch.
-      PASS if: minor wording variation; acceptable abbreviation; same goods described differently
-               but not contradictorily.
-    fieldKeys: [goods_description, incoterms]
+    isbpRefs: [ISBP-C3, ISBP-A12]
+    ucp_excerpt: |
+      UCP 600 Art. 18(c): The description of the goods, services or performance in a commercial invoice must
+        correspond with that appearing in the credit.
+      UCP 600 Art. 14(e): In documents other than the commercial invoice, the description of the goods, services
+        or performance, if stated, may be in general terms not conflicting with their description in the credit.
+      ISBP 821 C3: The description of goods in the invoice must correspond with the description in the credit.
+        Word-for-word identity is not required, but the description must not conflict with the credit.
+      ISBP 821 A12: A signature need not be handwritten.
+      Pitfall 01: Non-contradictory ≠ identical.
+    fieldKeys: [goods_description, line_items, incoterms]
     enabled: true
 
-  # ===========================================================================
-  # BOL — Bill of Lading rules
-  # ===========================================================================
-
-  - rule_id: BOL-003
+  # ---------------------------------------------------------------------------
+  # OP07 · BL-ONBOARD-VALID — on-board notation + LC port match + intended override
+  # ---------------------------------------------------------------------------
+  - rule_id: OP07-BL-ONBOARD-VALID
     scope: [BOL]
     triggerDocs: [BOL]
     triggers:
       all_of:
         - docs_present: [BOL]
     lcFieldsRequired: []
-    checkType: PROGRAMMATIC
+    checkType: AGENT
     severity: CRITICAL
     polarity: POSITIVE
     waivable: false
-    ucpRefs: [UCP-20-a-ii]
-    isbpRefs: [ISBP-D20]
-    expression: >-
-      #docs['BOL']['onboard_notation'] != null
-      && !#docs['BOL']['onboard_notation'].toString().isBlank()
-    fieldKeys: [onboard_notation, shipment_date, bl_date]
+    ucpRefs: [UCP-20-a-ii, UCP-20-a-iii]
+    isbpRefs: [ISBP-D20, ISBP-D21]
+    ucp_excerpt: |
+      UCP 600 Art. 20(a)(ii): A bill of lading must indicate that the goods have been shipped on board a named
+        vessel at the port of loading stated in the credit, by pre-printed wording or by an on board notation
+        indicating the date on which the goods have been shipped on board.
+      UCP 600 Art. 20(a)(iii): A bill of lading must indicate the port of loading and the port of discharge as
+        stated in the credit.
+      ISBP 821 D20: When a bill of lading is not pre-printed "shipped on board", an on board notation is required.
+        The on board notation must be dated, and the date is treated as the date of shipment.
+      ISBP 821 D21: A bill of lading must show the port of loading and port of discharge as stated in the credit.
+        If "intended" port is shown, an on board notation must confirm the actual port and date.
+    fieldKeys: [onboard_notation, shipment_date, bl_date, port_of_loading, port_of_discharge]
     enabled: true
 
-  - rule_id: BOL-005
-    scope: [BOL]
-    triggerDocs: [BOL]
-    triggers:
-      all_of:
-        - docs_present: [BOL]
-        - lc_field_present: [port_of_loading, port_of_discharge]
-    lcFieldsRequired: [port_of_loading, port_of_discharge]
-    checkType: PROGRAMMATIC
-    severity: MAJOR
-    polarity: POSITIVE
-    waivable: false
-    ucpRefs: [UCP-20-a-iii]
-    isbpRefs: [ISBP-D21]
-    expression: >-
-      #docs['BOL']['port_of_loading'] != null
-      && #lc['port_of_loading'] != null
-      && #docs['BOL']['port_of_loading'].toString().trim().equalsIgnoreCase(
-             #lc['port_of_loading'].toString().trim())
-      && #docs['BOL']['port_of_discharge'] != null
-      && #lc['port_of_discharge'] != null
-      && #docs['BOL']['port_of_discharge'].toString().trim().equalsIgnoreCase(
-             #lc['port_of_discharge'].toString().trim())
-    fieldKeys: [port_of_loading, port_of_discharge]
-    enabled: true
-
-  - rule_id: BOL-007
-    scope: [BOL]
-    triggerDocs: [BOL]
-    triggers:
-      all_of:
-        - docs_present: [BOL]
-    lcFieldsRequired: []
-    checkType: PROGRAMMATIC
-    severity: CRITICAL
-    polarity: POSITIVE
-    waivable: false
-    ucpRefs: [UCP-20-a-iv]
-    isbpRefs: [ISBP-D16]
-    expression: >-
-      #docs['BOL']['originals_presented'] != null
-      && #docs['BOL']['originals_required'] != null
-      && #docs['BOL']['originals_presented'].toString().trim()
-             .equalsIgnoreCase(#docs['BOL']['originals_required'].toString().trim())
-    fieldKeys: [originals_required, originals_presented, watermark_type]
-    enabled: true
-
-  - rule_id: BOL-009
+  # ---------------------------------------------------------------------------
+  # OP08 · BL-CLEAN — no defect/damage notation (NEGATIVE polarity)
+  # ---------------------------------------------------------------------------
+  - rule_id: OP08-BL-CLEAN
     scope: [BOL]
     triggerDocs: [BOL]
     triggers:
@@ -254,290 +276,85 @@ rules:
     lcFieldsRequired: []
     checkType: AGENT
     severity: MAJOR
-    polarity: POSITIVE
+    polarity: NEGATIVE
     waivable: true
     ucpRefs: [UCP-27]
     isbpRefs: [ISBP-D25]
-    promptInstruction: |
-      UCP Art. 27: a clean transport document bears no clause or notation expressly declaring
-      a defective condition of the goods or packaging.
-      ISBP D25: the word "clean" need not appear — absence of defect/damage clauses = clean.
-      Check the clean_indicator field AND inspect off_schema_items for:
-        - kind=correction: any uncrossed/unauthenticated correction near goods/packaging description
-        - kind=stamp with value containing "DAMAGED" / "DIRTY" / "DEFECTIVE" / "STAINED"
-        - Any clause like "said to contain" or "shipper's count" = acceptable (not a defect clause)
-      FAIL if any defect/damage/shortage notation is found, even if struck through without authentication.
-      PASS if clean_indicator=true and no suspicious off_schema_items detected.
-    fieldKeys: [clean_indicator, on_deck_notation]
+    ucp_excerpt: |
+      UCP 600 Art. 27: A bank will only accept a clean transport document. A clean transport document is one
+        bearing no clause or notation expressly declaring a defective condition of the goods or their packaging.
+        The word "clean" need not appear on a transport document.
+      ISBP 821 D25: A transport document bearing a clause expressly declaring a defective condition of the goods
+        or packaging is not acceptable. Clauses such as "shipper's load and count" or "said by shipper to contain"
+        are acceptable.
+    fieldKeys: [clean_indicator]
     enabled: true
 
-  # ===========================================================================
-  # PKL — Packing List rules
-  # ===========================================================================
-
-  - rule_id: PKL-003
-    scope: [PKL]
-    triggerDocs: [INV, PKL]
+  # ---------------------------------------------------------------------------
+  # OP09 · 46A-DOC-SET-COMPLETE — all required docs present + originals counts
+  # ---------------------------------------------------------------------------
+  - rule_id: OP09-46A-DOC-SET-COMPLETE
+    scope: [ALL]
+    triggerDocs: []
     triggers:
       all_of:
-        - docs_present: [INV, PKL]
-    lcFieldsRequired: []
-    checkType: PROGRAMMATIC
-    severity: MAJOR
-    polarity: POSITIVE
-    waivable: true
-    ucpRefs: [UCP-14-d]
-    isbpRefs: [ISBP-H3]
-    expression: >-
-      #docs['PKL']['total_packages'] == null
-      || #docs['INV']['quantity'] == null
-      || #docs['PKL']['total_packages'].toString().trim()
-             .equalsIgnoreCase(#docs['INV']['quantity'].toString().trim())
-    fieldKeys: [total_packages, quantity]
-    enabled: true
-
-  - rule_id: PKL-004
-    scope: [PKL]
-    triggerDocs: [BOL, PKL]
-    triggers:
-      all_of:
-        - docs_present: [BOL, PKL]
-    lcFieldsRequired: []
-    checkType: PROGRAMMATIC
-    severity: MINOR
-    polarity: POSITIVE
-    waivable: true
-    ucpRefs: [UCP-14-d]
-    isbpRefs: [ISBP-H4]
-    expression: >-
-      #docs['PKL']['shipping_marks'] == null
-      || #docs['BOL']['shipping_marks'] == null
-      || #docs['PKL']['shipping_marks'].toString().trim()
-             .equalsIgnoreCase(#docs['BOL']['shipping_marks'].toString().trim())
-    fieldKeys: [shipping_marks]
-    enabled: true
-
-  # ===========================================================================
-  # BOE — Bill of Exchange rules
-  # ===========================================================================
-
-  - rule_id: BOE-001
-    scope: [BOE]
-    triggerDocs: [BOE]
-    triggers:
-      all_of:
-        - docs_present: [BOE]
-        - lc_field_present: [drawee_bic]
-    lcFieldsRequired: [drawee_bic]
-    checkType: PROGRAMMATIC
-    severity: CRITICAL
-    polarity: POSITIVE
-    waivable: false
-    ucpRefs: [UCP-6-a]
-    isbpRefs: [ISBP-B1]
-    expression: >-
-      #docs['BOE']['drawee_name'] != null
-      && #lc['drawee_bic'] != null
-      && #docs['BOE']['drawee_name'].toString().trim().length() > 0
-    fieldKeys: [drawee_name, drawee_bic]
-    enabled: true
-
-  - rule_id: BOE-003
-    scope: [BOE]
-    triggerDocs: [BOE, INV]
-    triggers:
-      all_of:
-        - docs_present: [BOE, INV]
-    lcFieldsRequired: []
-    checkType: PROGRAMMATIC
-    severity: CRITICAL
-    polarity: POSITIVE
-    waivable: false
-    ucpRefs: [UCP-18-b]
-    isbpRefs: [ISBP-B3]
-    expression: >-
-      #docs['BOE']['draft_amount'] == null
-      || #docs['INV']['invoice_total'] == null
-      || new java.math.BigDecimal(#docs['BOE']['draft_amount'].toString().replaceAll("[^0-9.]", ""))
-             .compareTo(
-               new java.math.BigDecimal(#docs['INV']['invoice_total'].toString().replaceAll("[^0-9.]", ""))
-             ) == 0
-    fieldKeys: [draft_amount, invoice_total, draft_currency, credit_currency]
-    enabled: true
-
-  # ===========================================================================
-  # BC — Beneficiary Certificate rules
-  # ===========================================================================
-
-  - rule_id: BC-001
-    scope: [BC]
-    triggerDocs: [BC]
-    triggers:
-      all_of:
-        - docs_present: [BC]
-        - any_of:
-            - lc_field_contains: { field: documents_required, needle: "BENEFICIARY", case_insensitive: true }
-            - lc_field_contains: { field: additional_conditions, needle: "BENEFICIARY", case_insensitive: true }
-            - lc_field_present: [documents_required]
-    lcFieldsRequired: [documents_required]
-    checkType: AGENT
-    severity: MAJOR
-    polarity: POSITIVE
-    waivable: true
-    ucpRefs: [UCP-14-f]
-    isbpRefs: [ISBP-Q1]
-    promptInstruction: |
-      UCP Art. 14(f): for documents not specified in the LC, any document satisfying the general
-      description stated in :46A: is acceptable.
-      BC documents are entirely defined by LC :46A: — there are no independent UCP/ISBP rules for content.
-      CRITICAL CHECKS:
-        1. Parse LC :46A: and extract every requirement for the beneficiary certificate.
-        2. Check bc_conditions_text covers EACH requirement individually (not aggregated).
-        3. Timeframe wording must match LC exactly: "within 5 days" ≠ "within 7 days".
-        4. Any referenced invoice/B/L numbers must match actual documents in this session.
-        5. Certification language must be sufficiently specific to the condition stated.
-      FAIL if any :46A: condition for the BC is not addressed or uses different timeframe/scope.
-      PASS only if every stated condition is explicitly and correctly certified.
-    fieldKeys: [bc_conditions_text, documents_required, additional_conditions, lc_number, invoice_number, bol_number]
-    enabled: true
-
-  - rule_id: BC-003
-    scope: [BC]
-    triggerDocs: [BC]
-    triggers:
-      all_of:
-        - docs_present: [BC]
         - lc_field_present: [documents_required]
     lcFieldsRequired: [documents_required]
-    checkType: PROGRAMMATIC
-    severity: MAJOR
+    checkType: AGENT
+    severity: CRITICAL
     polarity: POSITIVE
     waivable: false
-    ucpRefs: [UCP-14-a]
-    isbpRefs: [ISBP-Q3]
-    expression: >-
-      #docs['BC']['signed'] != null
-      && "true".equalsIgnoreCase(#docs['BC']['signed'].toString())
-    fieldKeys: [signed, stamp_present]
+    ucpRefs: [UCP-14-f, UCP-17]
+    isbpRefs: [ISBP-A1, ISBP-A27, ISBP-A28]
+    ucp_excerpt: |
+      UCP 600 Art. 14(f): If a credit requires presentation of a document other than a transport document,
+        insurance document or commercial invoice, without stipulating by whom the document is to be issued or
+        its data content, banks will accept the document as presented if its content appears to fulfil the
+        function of the required document and otherwise complies with sub-article 14(a).
+      UCP 600 Art. 17: At least one original of each document stipulated in the credit must be presented.
+      ISBP 821 A1: Examination of documents under a documentary credit requires a careful reading of the credit
+        and the documents presented. Documents are to be examined in their entirety.
+      ISBP 821 A27: A document indicated to be in "original" must be presented as such, even if not specifically
+        called for.
+      ISBP 821 A28: When a credit requires copies of documents, presentation of either originals or copies is
+        permitted, unless the credit prohibits originals.
+    fieldKeys: [documents_required, originals_required, originals_presented]
     enabled: true
 
-  # ===========================================================================
-  # WC — Warranty Certificate rules
-  # ===========================================================================
-
-  - rule_id: WC-001
-    scope: [WC]
-    triggerDocs: [WC]
+  # ---------------------------------------------------------------------------
+  # OP10 · BC-WC-46A-COMPLIANCE — certificates satisfy every :46A:/:47A: condition
+  # ---------------------------------------------------------------------------
+  - rule_id: OP10-BC-WC-46A-COMPLIANCE
+    scope: [BC, WC]
+    triggerDocs: [BC]
     triggers:
       all_of:
-        - docs_present: [WC]
         - any_of:
-            - lc_field_contains: { field: documents_required, needle: "WARRANTY", case_insensitive: true }
-            - lc_field_contains: { field: additional_conditions, needle: "WARRANTY", case_insensitive: true }
+            - docs_present: [BC]
+            - docs_present: [WC]
+        - any_of:
             - lc_field_present: [documents_required]
-    lcFieldsRequired: [documents_required]
+            - lc_field_present: [additional_conditions]
+    lcFieldsRequired: []
     checkType: AGENT
     severity: MAJOR
     polarity: POSITIVE
     waivable: true
     ucpRefs: [UCP-14-f]
-    isbpRefs: [ISBP-Q1]
-    promptInstruction: |
-      UCP Art. 14(f): for documents not specified in the LC, any document satisfying the general
-      description stated in :46A: is acceptable.
-      Warranty certificates are defined by LC :46A: — no independent UCP/ISBP content rules.
-      CRITICAL CHECKS:
-        1. Parse LC :46A: and extract every requirement for the warranty certificate.
-        2. Check wc_conditions_text covers EACH requirement individually.
-        3. Warranty scope must cover the goods described in the LC :45A:.
-        4. Warranty period wording must match LC exactly if specified.
-        5. Any referenced equipment serial numbers / invoice numbers must match.
-      FAIL if any :46A: condition for the warranty is not addressed.
-      PASS only if every stated condition is explicitly and correctly warranted.
-    fieldKeys: [wc_conditions_text, wc_scope, wc_period, documents_required, additional_conditions, lc_number]
-    enabled: true
-
-  # ===========================================================================
-  # XD — Cross-document rules
-  # ===========================================================================
-
-  - rule_id: XD-004
-    scope: [INV, PKL]
-    triggerDocs: [INV, PKL]
-    triggers:
-      all_of:
-        - docs_present: [INV, PKL]
-    lcFieldsRequired: []
-    checkType: PROGRAMMATIC
-    severity: MAJOR
-    polarity: POSITIVE
-    waivable: true
-    ucpRefs: [UCP-14-d]
-    isbpRefs: [ISBP-H3]
-    expression: >-
-      #docs['INV']['quantity'] == null
-      || #docs['PKL']['quantity'] == null
-      || #docs['INV']['quantity'].toString().trim()
-             .equalsIgnoreCase(#docs['PKL']['quantity'].toString().trim())
-    fieldKeys: [quantity, total_packages]
-    enabled: true
-
-  - rule_id: XD-022
-    scope: [INV, BOL]
-    triggerDocs: [INV, BOL]
-    triggers:
-      all_of:
-        - docs_present: [INV, BOL]
-        - lc_field_present: [beneficiary_name]
-    lcFieldsRequired: [beneficiary_name]
-    checkType: AGENT
-    severity: MAJOR
-    polarity: POSITIVE
-    waivable: true
-    ucpRefs: [UCP-14-d]
-    isbpRefs: [ISBP-A14]
-    promptInstruction: |
-      UCP Art. 14(d): data in submitted documents must not conflict with each other.
-      Check that the beneficiary/seller/shipper name is consistent across ALL submitted documents.
-      ISBP A14: abbreviations are acceptable (ACME Corp. = ACME Corporation).
-      IMPORTANT: UCP Art. 14(d) says "need not be identical but must not conflict."
-      PASS if all name variations are acceptable abbreviations of the same legal entity.
-      FAIL if documents reference materially different company names (not just abbreviations).
-      Check: INV beneficiary_name, BOL carrier/shipper field, BOE drawer_name if present.
-    fieldKeys: [beneficiary_name]
-    enabled: true
-
-  - rule_id: XD-024
-    scope: [INV, BOL]
-    triggerDocs: [INV, BOL]
-    triggers:
-      all_of:
-        - docs_present: [INV, BOL]
-    lcFieldsRequired: []
-    checkType: PROGRAMMATIC
-    severity: MAJOR
-    polarity: POSITIVE
-    waivable: false
-    ucpRefs: [UCP-18-c]
-    isbpRefs: [ISBP-D24]
-    expression: >-
-      #docs['INV']['incoterms'] == null
-      || #docs['BOL']['freight_terms'] == null
-      || (
-           ('CIF'.equalsIgnoreCase(#docs['INV']['incoterms'].toString())
-            || 'CFR'.equalsIgnoreCase(#docs['INV']['incoterms'].toString())
-            || 'CIP'.equalsIgnoreCase(#docs['INV']['incoterms'].toString()))
-            && #docs['BOL']['freight_terms'].toString().toUpperCase().contains('PREPAID')
-         )
-      || (
-           'FOB'.equalsIgnoreCase(#docs['INV']['incoterms'].toString())
-            && #docs['BOL']['freight_terms'].toString().toUpperCase().contains('COLLECT')
-         )
-      || (
-           !('CIF'.equalsIgnoreCase(#docs['INV']['incoterms'].toString()))
-           && !('CFR'.equalsIgnoreCase(#docs['INV']['incoterms'].toString()))
-           && !('CIP'.equalsIgnoreCase(#docs['INV']['incoterms'].toString()))
-           && !('FOB'.equalsIgnoreCase(#docs['INV']['incoterms'].toString()))
-         )
-    fieldKeys: [incoterms, freight_terms]
+    isbpRefs: [ISBP-Q1, ISBP-Q2, ISBP-Q3, ISBP-Q4, ISBP-Q5]
+    ucp_excerpt: |
+      UCP 600 Art. 14(f): For documents not specified in the credit, banks will accept the document as presented
+        if its content appears to fulfil the function of the required document.
+      ISBP 821 Q1: Where a credit requires a certificate or declaration, every condition or requirement stated in
+        the credit for that certificate must be addressed in the document.
+      ISBP 821 Q2: A certificate must be issued by the entity stated in the credit. If no issuer is stated, the
+        document may be issued by any party.
+      ISBP 821 Q3: Where a credit requires a certificate to be signed, it must bear what appears to be a
+        handwritten or authenticated signature. A stamp or seal alone does not constitute a signature.
+      ISBP 821 Q4: Where a certificate references another document by number or date, those references must match
+        the corresponding documents.
+      ISBP 821 Q5: Data in a certificate must not conflict with data in any other stipulated document or the credit.
+      Pitfall 11: Conditions in :46A:/:47A: must be satisfied EXACTLY — timeframe wording, scope, and any referenced
+        document numbers must match. "Within 5 days" ≠ "within 7 days".
+    fieldKeys: [documents_required, additional_conditions, bc_conditions_text, wc_conditions_text, bc_certifying_party, wc_scope, wc_period]
     enabled: true

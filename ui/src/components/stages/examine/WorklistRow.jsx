@@ -13,17 +13,24 @@ const STATUS_META = {
 
 export function WorklistRow({ rule, selected, onClick }) {
   const effective = rule.effectiveVerdict || rule.verdict;
+  const isPending = effective === 'PENDING';
   const meta = STATUS_META[effective] || STATUS_META.PASS;
   return (
     <tr
       onClick={onClick}
-      className={`border-b border-line/50 cursor-pointer hover:bg-slate2 ${selected ? 'bg-status-greenSoft' : ''}`}
+      className={`border-b border-line/50 cursor-pointer hover:bg-slate2 ${selected ? 'bg-status-greenSoft' : ''} ${isPending ? 'text-muted' : ''}`}
     >
       <td className="px-2 py-2 text-center" style={{ width: 24 }}>
-        <span className="inline-flex items-center justify-center w-5 h-5 rounded text-[11px] font-bold"
-              style={{ color: meta.c, background: meta.bg }}>
-          {meta.icon}
-        </span>
+        {isPending ? (
+          <span className="inline-flex items-center justify-center w-5 h-5">
+            <span className="bg-line animate-pulse w-1.5 h-1.5 rounded-full" />
+          </span>
+        ) : (
+          <span className="inline-flex items-center justify-center w-5 h-5 rounded text-[11px] font-bold"
+                style={{ color: meta.c, background: meta.bg }}>
+            {meta.icon}
+          </span>
+        )}
       </td>
       <td className="px-2 py-2 text-[10px] text-muted whitespace-nowrap font-mono">{rule.article}</td>
       <td className="px-2 py-2 text-[10px] font-mono">

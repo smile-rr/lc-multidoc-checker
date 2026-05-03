@@ -9,6 +9,7 @@ const STATUS_META = {
   FAIL:           { c: '#cc0011', bg: '#fff1f0', l: 'FAIL' },
   DOUBTS:         { c: '#8a5700', bg: '#fefce8', l: 'DOUBTS' },
   NOT_APPLICABLE: { c: '#6e6e73', bg: '#f5f5f7', l: 'N/A' },
+  PENDING:        { c: '#6e6e73', bg: '#f5f5f7', l: 'pending…' },
 };
 
 export function RuleDrawer({ rule, onClose, onOverride, onResetOverride }) {
@@ -45,6 +46,17 @@ export function RuleDrawer({ rule, onClose, onOverride, onResetOverride }) {
       </div>
 
       <div className="flex-1 overflow-auto">
+        {rule.ucpExcerpt && (
+          <div className="px-5 py-4 border-b border-line/50">
+            <div className="text-[9px] tracking-[0.2em] uppercase text-muted mb-2 font-mono">
+              RULE EXCERPT — UCP 600 / ISBP 821
+            </div>
+            <pre className="text-[11px] font-mono whitespace-pre-wrap bg-slate2 border border-line rounded-sm px-3 py-2 text-navy-1">
+              {rule.ucpExcerpt}
+            </pre>
+          </div>
+        )}
+
         {rule.origin === 'ADHOC' && rule.evidenceLcClause && (
           <div className="px-5 py-4 border-b border-line/50">
             <div className="text-[9px] tracking-[0.2em] uppercase text-status-gold mb-2 font-mono flex items-center gap-1">
@@ -56,7 +68,13 @@ export function RuleDrawer({ rule, onClose, onOverride, onResetOverride }) {
           </div>
         )}
 
-        {effective === 'NOT_APPLICABLE' ? (
+        {effective === 'PENDING' ? (
+          <div className="px-5 py-4 border-b border-line/50">
+            <div className="text-[11px] text-muted">
+              This rule hasn't been checked yet. Verdict will appear here once execution completes.
+            </div>
+          </div>
+        ) : effective === 'NOT_APPLICABLE' ? (
           <div className="px-5 py-4 border-b border-line/50">
             <div className="text-[9px] tracking-[0.2em] uppercase text-muted mb-2 font-mono">WHY THIS RULE DIDN'T FIRE</div>
             {(rule.triggerTrace && rule.triggerTrace.length > 0) ? (

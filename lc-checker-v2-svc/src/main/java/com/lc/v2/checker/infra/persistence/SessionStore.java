@@ -128,6 +128,29 @@ public class SessionStore {
                 """, rowJson, sessionId);
     }
 
+    /**
+     * Upsert one row in final_report.examine, keyed by ruleId. Replaces if a row
+     * with the same ruleId exists; otherwise appends. Used so PENDING rows pre-inserted
+     * at the start of the check phase get replaced in-place by their final verdict.
+     */
+    public void upsertExamineResult(String sessionId, String ruleId, String rowJson) {
+        if (rowJson == null || rowJson.isBlank() || ruleId == null) return;
+        jdbc.update("""
+                UPDATE lc_v2.check_sessions
+                SET final_report = jsonb_set(
+                  COALESCE(final_report, '{}'::jsonb),
+                  '{examine}',
+                  COALESCE(
+                    (SELECT jsonb_agg(elem)
+                     FROM jsonb_array_elements(COALESCE(final_report->'examine','[]'::jsonb)) elem
+                     WHERE elem->>'ruleId' <> ?),
+                    '[]'::jsonb)
+                  || jsonb_build_array(?::jsonb)
+                )
+                WHERE id = ?::uuid
+                """, ruleId, rowJson, sessionId);
+    }
+
     /** Read a single top-level section from final_report. Returns null if absent. */
     public String getFinalReportSection(String sessionId, String sectionKey) {
         try {

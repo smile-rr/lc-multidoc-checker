@@ -27,4 +27,14 @@ public class StorageProperties {
     public boolean pathStyle() { return pathStyle; }
     public String pathPrefix() { return pathPrefix; }
     public int requestTimeoutSeconds() { return requestTimeoutSeconds; }
+
+    public void setEnabled(boolean enabled) { this.enabled = enabled; }
+    public void setEndpoint(String endpoint) { this.endpoint = endpoint; }
+    public void setBucket(String bucket) { this.bucket = bucket; }
+    public void setRegion(String region) { this.region = region; }
+    public void setAccessKey(String accessKey) { this.accessKey = accessKey; }
+    public void setSecretKey(String secretKey) { this.secretKey = secretKey; }
+    public void setPathStyle(boolean pathStyle) { this.pathStyle = pathStyle; }
+    public void setPathPrefix(String pathPrefix) { this.pathPrefix = pathPrefix; }
+    public void setRequestTimeoutSeconds(int requestTimeoutSeconds) { this.requestTimeoutSeconds = requestTimeoutSeconds; }
 }

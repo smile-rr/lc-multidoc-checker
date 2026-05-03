@@ -28,6 +28,8 @@ export function RerunButton({ sessionId, stage, devMode, disabled }) {
   const [error, setError] = useState(null);
   const label = STAGE_LABELS[stage] || stage;
 
+  if (!devMode) return null;
+
   const onClick = async () => {
     if (running || disabled) return;
     const ok = window.confirm(

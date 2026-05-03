@@ -37,26 +37,16 @@ public class RuleCatalogJoiner {
 
     /** Single source of truth for human-readable rule labels (server-canonical). */
     private static final Map<String, String> LABELS = Map.ofEntries(
-            Map.entry("GEN-001", "Every document complies on face with LC terms"),
-            Map.entry("GEN-003", "No document dated later than presentation date"),
-            Map.entry("INV-001", "Invoice issued by the beneficiary"),
-            Map.entry("INV-003", "Invoice in same currency as LC"),
-            Map.entry("INV-005", "Invoice amount must not exceed LC amount"),
-            Map.entry("INV-006", "Goods description corresponds to :45A:"),
-            Map.entry("BOL-003", "B/L on-board or has on-board notation"),
-            Map.entry("BOL-005", "B/L shows correct port of loading and discharge"),
-            Map.entry("BOL-007", "Full set of originals presented as per B/L"),
-            Map.entry("BOL-009", "B/L is clean (no defect/damage clauses)"),
-            Map.entry("PKL-003", "Quantity/packages in PKL must not contradict invoice"),
-            Map.entry("PKL-004", "Shipping marks in PKL must not contradict B/L"),
-            Map.entry("BOE-001", "Draft drawn on party stated in LC"),
-            Map.entry("BOE-003", "Draft amount equals invoice amount"),
-            Map.entry("BC-001",  "BC content satisfies all :46A: conditions"),
-            Map.entry("BC-003",  "If LC requires signed BC, must bear beneficiary signature"),
-            Map.entry("WC-001",  "Warranty content satisfies all :46A: conditions"),
-            Map.entry("XD-004",  "Invoice quantity must match Packing List"),
-            Map.entry("XD-022",  "Beneficiary name consistent across all submitted docs"),
-            Map.entry("XD-024",  "Invoice Incoterms consistent with B/L freight notation")
+            Map.entry("OP01-CURRENCY-CONSISTENT",          "Currency consistent across docs and LC"),
+            Map.entry("OP02-AMOUNT-WITHIN-LC",             "Invoice (and draft) total within LC amount + tolerance"),
+            Map.entry("OP03-DOC-DATE-VALID",               "No document dated later than presentation date"),
+            Map.entry("OP04-PRESENTATION-WINDOW",          "Presentation within 21 days of shipment and before LC expiry"),
+            Map.entry("OP05-BENEFICIARY-CONSISTENT",       "Beneficiary name consistent across all docs"),
+            Map.entry("OP06-GOODS-DESCRIPTION-CORRESPONDS","Goods description corresponds with LC :45A:"),
+            Map.entry("OP07-BL-ONBOARD-VALID",             "B/L on-board notation valid and ports match LC"),
+            Map.entry("OP08-BL-CLEAN",                     "B/L is clean (no defect/damage clauses)"),
+            Map.entry("OP09-46A-DOC-SET-COMPLETE",         "All :46A: required documents and originals presented"),
+            Map.entry("OP10-BC-WC-46A-COMPLIANCE",         "Beneficiary / warranty certificate satisfies :46A:/:47A: conditions")
     );
 
     private final RuleCatalogRegistry catalog;
@@ -143,7 +133,8 @@ public class RuleCatalogJoiner {
                     rule != null ? rule.waivable() : null,
                     rule != null && rule.origin() != null ? rule.origin().name() : RuleOrigin.CATALOG.name(),
                     rule != null ? rule.evidenceLcClause() : null,
-                    tracesById.get(cr.ruleId())
+                    tracesById.get(cr.ruleId()),
+                    rule != null ? rule.ucpExcerpt() : null
             ));
         }
         return result;
@@ -197,7 +188,9 @@ public class RuleCatalogJoiner {
         return switch (checkType) {
             case "PROGRAMMATIC" -> "PROG";
             case "AGENT" -> "AI";
-            case "PROGRAMMATIC_AGENT" -> "PROG+AI";
+            case "AGENT_TOOL" -> "AI+tool";
+            case "AGENTIC_ADHOC" -> "AI·adhoc";
+            case "PROGRAMMATIC_AGENT" -> "AI+tool"; // legacy alias
             default -> "PROG";
         };
     }
@@ -283,7 +276,8 @@ public class RuleCatalogJoiner {
 
     private String computeAgree(Rule rule, Map<DocType, DocumentExtract> extractsByDocType) {
         if (rule == null || extractsByDocType == null) return "—";
-        if ("AGENT".equals(rule.checkType())) return "AI";
+        if (rule.isAgent() && !"AGENT_TOOL".equals(rule.checkType())
+                && !"PROGRAMMATIC_AGENT".equals(rule.checkType())) return "AI";
         // For PROG / PROG+AI, derive from primary doc's consensus tier
         for (String docName : rule.scope()) {
             DocType dt = safeDocType(docName);
