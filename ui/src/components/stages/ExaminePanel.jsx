@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Spinner } from '../shared/Spinner';
 import { RerunButton } from '../shared/RerunButton';
 import { useDevMode } from '../../context/DevModeContext';
 import { useRules } from '../../hooks/useRules';
@@ -8,6 +7,8 @@ import { SummaryBar } from './examine/SummaryBar';
 import { FilterRail } from './examine/FilterRail';
 import { WorklistTable } from './examine/WorklistTable';
 import { RuleDrawer } from './examine/RuleDrawer';
+import { ExaminePhaseStrip } from './examine/ExaminePhaseStrip';
+import { PlanReviewPane } from './examine/PlanReviewPane';
 import { OFFICER_ID } from '../../lib/officer';
 import { StagePage } from '../ui/StagePage';
 import { StageToolbar } from '../ui/StageToolbar';
@@ -25,11 +26,12 @@ const STATUS_RANK = { FAIL: 0, DOUBTS: 1, PASS: 2, NOT_APPLICABLE: 3 };
 /**
  * Stage 3 — Examine. Filter rail + sortable worklist + rule drawer with overrides.
  */
-export function ExaminePanel({ session, stagesCompleted, onContinue, onBack }) {
+export function ExaminePanel({ session, stagesCompleted, events, onContinue, onBack }) {
   const { enabled: devMode } = useDevMode();
   const sessionId = session?.id;
 
-  const { rules, loading, refresh, override, reset } = useRules(sessionId);
+  const examineMeta = session?.finalReport?.examine_meta;
+  const { rules, adhocRules, consistencyWarnings, loading, refresh, override, reset } = useRules(sessionId, examineMeta, events);
   const { views: savedViews, save, remove } = useSavedViews();
 
   const [filter, setFilter] = useState(DEFAULT_FILTER);
@@ -56,6 +58,7 @@ export function ExaminePanel({ session, stagesCompleted, onContinue, onBack }) {
     if (filter.attention?.length && !(r.attention || []).some(t => filter.attention.includes(t))) return false;
     if (filter.source?.length && !filter.source.includes(r.source)) return false;
     if (filter.scope?.length && !(r.scope || []).some(s => filter.scope.includes(s))) return false;
+    if (filter.origin?.length && !filter.origin.includes(r.origin || 'CATALOG')) return false;
     return true;
   }), [rules, filter]);
 
@@ -83,15 +86,31 @@ export function ExaminePanel({ session, stagesCompleted, onContinue, onBack }) {
     return arr;
   }, [filtered, sort]);
 
-  const grouped = useMemo(() => {
-    const out = {};
+  const isOutOfScope = (r) => (r.explanation || '').startsWith('[OUT_OF_SCOPE]');
+  const buckets = useMemo(() => {
+    const active = [], na = [], oos = [];
     for (const r of sorted) {
-      const key = navMode === 'article' ? (r.article || '—')
-        : navMode === 'doc' ? ((r.scope || [])[0] || '—')
-        : (r.evidence?.lc?.toString().split(':')[0] || 'Other');
-      (out[key] = out[key] || []).push(r);
+      if (isOutOfScope(r)) oos.push(r);
+      else if ((r.effectiveVerdict || r.verdict) === 'NOT_APPLICABLE') na.push(r);
+      else active.push(r);
     }
-    return out;
+    const groupOf = (rs) => {
+      const out = {};
+      for (const r of rs) {
+        const key = navMode === 'article' ? (r.article || '—')
+          : navMode === 'doc' ? ((r.scope || [])[0] || '—')
+          : navMode === 'origin' ? (r.origin || 'CATALOG')
+          : (r.evidence?.lc?.toString().split(':')[0] || 'Other');
+        (out[key] = out[key] || []).push(r);
+      }
+      return out;
+    };
+    return {
+      groupedActive: groupOf(active),
+      groupedNa: groupOf(na),
+      groupedOutOfScope: groupOf(oos),
+      activeCount: active.length,
+    };
   }, [sorted, navMode]);
 
   const selected = rules.find(r => r.ruleId === selectedId);
@@ -132,9 +151,36 @@ export function ExaminePanel({ session, stagesCompleted, onContinue, onBack }) {
   const examineDone = stagesCompleted?.has('examine');
   const canContinue = devMode || examineDone;
 
+  // Walk events to find latest ExaminePhase to drive the toolbar's review-phase counter.
+  const currentPhase = useMemo(() => {
+    if (!events || examineDone) return examineDone ? 'review' : null;
+    let p = null;
+    for (const e of events) {
+      if (e?.type === 'StageStarted' && e.data?.stageName === 'examine') p = null;
+      if (e?.type === 'ExaminePhase') p = e.data?.phase || p;
+    }
+    return p;
+  }, [events, examineDone]);
+  const showReviewCount = currentPhase === 'review' || examineDone;
+  const showPhaseStrip = (session?.status || '').toUpperCase() === 'EXAMINE' || examineDone;
+  const planAdhocCount = (adhocRules || []).length;
+  const showPlanPane = (currentPhase === 'plan' || (currentPhase && currentPhase !== 'derive' && planAdhocCount > 0));
+  const collapsePlan = examineDone || currentPhase === 'review';
+
+  const deriveSummary = useMemo(() => {
+    const fr = session?.finalReport;
+    const lcSection = fr?.lc;
+    const derived = lcSection?.derived;
+    if (!derived) return null;
+    const inco = derived.incoterms_class || derived.incotermsClass;
+    const tol = derived.effective_tolerance?.pct ?? derived.effectiveTolerance?.pct;
+    const tenor = derived.tenor_class || derived.tenorClass;
+    return [inco, tol != null ? `±${tol}%` : null, tenor].filter(Boolean).join(' · ') || null;
+  }, [session]);
+
   return (
     <StagePage>
-      <SummaryBar rules={rules} docCount={docCount} />
+      <SummaryBar rules={rules} docCount={docCount} adhocRules={adhocRules} consistencyWarnings={consistencyWarnings} />
 
       <div className="flex flex-1 overflow-hidden">
         <FilterRail
@@ -154,8 +200,9 @@ export function ExaminePanel({ session, stagesCompleted, onContinue, onBack }) {
             title={null}
             meta={
               <>
-                <EyebrowLabel>WORKLIST · {sorted.length} of {rules.length}</EyebrowLabel>
-                {session?.status === 'EXAMINE' && <Spinner size="sm" label="checking…" />}
+                {showReviewCount && (
+                  <EyebrowLabel>WORKLIST · {sorted.length} of {rules.length}</EyebrowLabel>
+                )}
                 {activeView && savedViews.find(v => v.id === activeView) && activeView !== 'default' && (
                   <span className="text-[10px] px-2 py-0.5 rounded bg-teal-1/10 text-teal-1 flex items-center gap-1 font-mono">
                     ★ {savedViews.find(v => v.id === activeView).name}
@@ -172,7 +219,7 @@ export function ExaminePanel({ session, stagesCompleted, onContinue, onBack }) {
               <>
                 <div className="flex items-center gap-1 text-[10px] font-mono">
                   <span className="text-muted mr-1">GROUP BY</span>
-                  {[['article','Article'], ['doc','Document'], ['field','Field']].map(([id, l]) => (
+                  {[['article','Article'], ['doc','Document'], ['field','Field'], ['origin','Origin']].map(([id, l]) => (
                     <button
                       key={id}
                       onClick={() => setNavMode(id)}
@@ -195,13 +242,27 @@ export function ExaminePanel({ session, stagesCompleted, onContinue, onBack }) {
             className="bg-slate2"
           />
 
+          {showPhaseStrip && (
+            <ExaminePhaseStrip
+              events={events}
+              session={session}
+              examineDone={examineDone}
+              deriveSummary={deriveSummary}
+            />
+          )}
+          {showPlanPane && (
+            <PlanReviewPane adhocRules={adhocRules} collapsedByDefault={collapsePlan} />
+          )}
+
           {loading && rules.length === 0 ? (
             <div className="p-8 text-center text-muted text-sm">Loading rules…</div>
           ) : rules.length === 0 ? (
             <div className="p-8 text-center text-muted text-sm">No rule results yet.</div>
           ) : (
             <WorklistTable
-              grouped={grouped}
+              groupedActive={buckets.groupedActive}
+              groupedNa={buckets.groupedNa}
+              groupedOutOfScope={buckets.groupedOutOfScope}
               navMode={navMode}
               sort={sort}
               setSort={setSort}
@@ -214,6 +275,8 @@ export function ExaminePanel({ session, stagesCompleted, onContinue, onBack }) {
         {selected && (
           <RuleDrawer
             rule={selected}
+            adhocRules={adhocRules}
+            consistencyWarnings={consistencyWarnings}
             onClose={() => setSelectedId(null)}
             onOverride={handleOverride}
             onResetOverride={handleResetOverride}
@@ -223,3 +286,4 @@ export function ExaminePanel({ session, stagesCompleted, onContinue, onBack }) {
     </StagePage>
   );
 }
+

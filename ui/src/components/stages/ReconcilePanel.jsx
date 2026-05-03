@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { Spinner } from '../shared/Spinner';
+import { StageProgressMeter } from '../shared/StageProgressMeter';
+import { useStageProgress } from '../../hooks/useStageProgress';
 import { RerunButton } from '../shared/RerunButton';
 import { useDevMode } from '../../context/DevModeContext';
 import { useReconcile } from '../../hooks/useReconcile';
@@ -29,7 +30,7 @@ import { EyebrowLabel } from '../ui/EyebrowLabel';
  *
  * Lock gate: enabled when every non-MATCH cell has a decision (or DEV MODE).
  */
-export function ReconcilePanel({ session, stagesCompleted, onContinue, onBackToParse }) {
+export function ReconcilePanel({ session, stagesCompleted, events, onContinue, onBackToParse }) {
   const { enabled: devMode } = useDevMode();
   const sessionId = session?.id;
 
@@ -98,6 +99,7 @@ export function ReconcilePanel({ session, stagesCompleted, onContinue, onBackToP
 
   const locked = !!data?.locked;
   const reconcileRunning = session?.status === 'RECONCILE';
+  const reconcileProgress = useStageProgress(events, 'reconcile', session?.status, stagesCompleted?.has('reconcile'));
   const canContinue = devMode || locked;
 
   const handleLock = async () => { await lock(OFFICER_ID); };
@@ -282,7 +284,15 @@ export function ReconcilePanel({ session, stagesCompleted, onContinue, onBackToP
         meta={
           <span className="flex items-center gap-3 text-[11px] font-mono text-muted">
             <span>cross-doc field matrix</span>
-            {reconcileRunning && <Spinner size="sm" label="pivoting…" />}
+            {reconcileRunning && (
+              <StageProgressMeter
+                phase="running"
+                label={reconcileProgress.label || 'Reconcile'}
+                sub={reconcileProgress.sub || 'normalising…'}
+                secsSinceLast={reconcileProgress.secsSinceLast}
+                isStale={reconcileProgress.isStale}
+              />
+            )}
             {locked && <span className="px-2 py-0.5 rounded bg-teal-1 text-white">🔒 LOCKED</span>}
             {/* Inline counts */}
             <span className="flex items-center gap-2">

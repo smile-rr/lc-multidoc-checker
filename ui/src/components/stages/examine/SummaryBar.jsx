@@ -48,6 +48,16 @@ export function SummaryBar({ rules, docCount }) {
           {seg('bg-status-red',   counts.FAIL, total)}
           {seg('bg-line',         counts.NOT_APPLICABLE, total)}
         </div>
+        {(() => {
+          const catalogCount = rules.filter(r => r.origin !== 'ADHOC').length;
+          const adhocCount = rules.filter(r => r.origin === 'ADHOC').length;
+          const naCount = rules.filter(r => (r.effectiveVerdict || r.verdict) === 'NOT_APPLICABLE').length;
+          return (
+            <div className="mt-2 text-[10px] text-muted font-mono">
+              {catalogCount} catalog · <span className="text-status-gold">{adhocCount} discovered</span> · {naCount} not applicable
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

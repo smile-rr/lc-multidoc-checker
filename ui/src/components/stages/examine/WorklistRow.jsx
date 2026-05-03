@@ -42,6 +42,14 @@ export function WorklistRow({ rule, selected, onClick }) {
       </td>
       <td className="px-2 py-2 text-[12px]">
         <span className="text-[10px] text-[#a1a1a6] mr-1.5 font-mono">{rule.ruleId}</span>
+        {rule.origin === 'ADHOC' && (
+          <span
+            className="mr-1.5 px-1 py-0.5 rounded text-[9px] font-mono font-semibold bg-status-gold/20 text-status-gold border border-status-gold/40"
+            title={`Discovered from LC clause — ${(rule.evidenceLcClause || '').slice(0, 80)}${rule.evidenceLcClause && rule.evidenceLcClause.length > 80 ? '…' : ''}`}
+          >
+            AH
+          </span>
+        )}
         {rule.label}
       </td>
       <td className="px-2 py-2"><SeverityChip severity={rule.severity} /></td>

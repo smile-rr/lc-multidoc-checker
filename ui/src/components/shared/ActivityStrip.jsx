@@ -69,7 +69,7 @@ function defaultFormatter(msg) {
     case 'ExtractionProgress':
       return `${msg.data.docType} · ${msg.data.slot} · ${msg.data.status}`;
     case 'RuleStarted':
-      return `Rule ${msg.data.index}/${msg.data.total} · ${msg.data.ruleId} (${msg.data.checkType})`;
+      return `Rule ${msg.data.index}/${msg.data.total} · ${msg.data.ruleId}${msg.data.checkType ? ` (${msg.data.checkType})` : ''}`;
     case 'RuleChecked':
       return `${msg.data.ruleId} → ${msg.data.verdict}`;
     case 'StageStarted':

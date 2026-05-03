@@ -29,6 +29,9 @@ rules:
   - rule_id: GEN-001
     scope: [ALL]
     triggerDocs: [INV]
+    triggers:
+      all_of:
+        - docs_present: [INV]
     lcFieldsRequired: []
     checkType: AGENT
     severity: MAJOR
@@ -50,6 +53,9 @@ rules:
   - rule_id: GEN-003
     scope: [ALL]
     triggerDocs: [INV]
+    triggers:
+      all_of:
+        - docs_present: [INV]
     lcFieldsRequired: []
     checkType: PROGRAMMATIC
     severity: MAJOR
@@ -74,6 +80,10 @@ rules:
   - rule_id: INV-001
     scope: [INV]
     triggerDocs: [INV]
+    triggers:
+      all_of:
+        - docs_present: [INV]
+        - lc_field_present: [beneficiary_name]
     lcFieldsRequired: [beneficiary_name]
     checkType: PROGRAMMATIC
     severity: CRITICAL
@@ -92,6 +102,10 @@ rules:
   - rule_id: INV-003
     scope: [INV]
     triggerDocs: [INV]
+    triggers:
+      all_of:
+        - docs_present: [INV]
+        - lc_field_present: [credit_currency]
     lcFieldsRequired: [credit_currency]
     checkType: PROGRAMMATIC
     severity: CRITICAL
@@ -110,6 +124,10 @@ rules:
   - rule_id: INV-005
     scope: [INV]
     triggerDocs: [INV]
+    triggers:
+      all_of:
+        - docs_present: [INV]
+        - lc_field_present: [credit_amount, credit_currency]
     lcFieldsRequired: [credit_amount, credit_currency]
     checkType: PROGRAMMATIC_AGENT
     severity: CRITICAL
@@ -132,6 +150,10 @@ rules:
   - rule_id: INV-006
     scope: [INV]
     triggerDocs: [INV]
+    triggers:
+      all_of:
+        - docs_present: [INV]
+        - lc_field_present: [goods_description]
     lcFieldsRequired: [goods_description]
     checkType: AGENT
     severity: MAJOR
@@ -160,6 +182,9 @@ rules:
   - rule_id: BOL-003
     scope: [BOL]
     triggerDocs: [BOL]
+    triggers:
+      all_of:
+        - docs_present: [BOL]
     lcFieldsRequired: []
     checkType: PROGRAMMATIC
     severity: CRITICAL
@@ -176,6 +201,10 @@ rules:
   - rule_id: BOL-005
     scope: [BOL]
     triggerDocs: [BOL]
+    triggers:
+      all_of:
+        - docs_present: [BOL]
+        - lc_field_present: [port_of_loading, port_of_discharge]
     lcFieldsRequired: [port_of_loading, port_of_discharge]
     checkType: PROGRAMMATIC
     severity: MAJOR
@@ -198,6 +227,9 @@ rules:
   - rule_id: BOL-007
     scope: [BOL]
     triggerDocs: [BOL]
+    triggers:
+      all_of:
+        - docs_present: [BOL]
     lcFieldsRequired: []
     checkType: PROGRAMMATIC
     severity: CRITICAL
@@ -216,6 +248,9 @@ rules:
   - rule_id: BOL-009
     scope: [BOL]
     triggerDocs: [BOL]
+    triggers:
+      all_of:
+        - docs_present: [BOL]
     lcFieldsRequired: []
     checkType: AGENT
     severity: MAJOR
@@ -243,6 +278,9 @@ rules:
   - rule_id: PKL-003
     scope: [PKL]
     triggerDocs: [INV, PKL]
+    triggers:
+      all_of:
+        - docs_present: [INV, PKL]
     lcFieldsRequired: []
     checkType: PROGRAMMATIC
     severity: MAJOR
@@ -261,6 +299,9 @@ rules:
   - rule_id: PKL-004
     scope: [PKL]
     triggerDocs: [BOL, PKL]
+    triggers:
+      all_of:
+        - docs_present: [BOL, PKL]
     lcFieldsRequired: []
     checkType: PROGRAMMATIC
     severity: MINOR
@@ -283,6 +324,10 @@ rules:
   - rule_id: BOE-001
     scope: [BOE]
     triggerDocs: [BOE]
+    triggers:
+      all_of:
+        - docs_present: [BOE]
+        - lc_field_present: [drawee_bic]
     lcFieldsRequired: [drawee_bic]
     checkType: PROGRAMMATIC
     severity: CRITICAL
@@ -300,6 +345,9 @@ rules:
   - rule_id: BOE-003
     scope: [BOE]
     triggerDocs: [BOE, INV]
+    triggers:
+      all_of:
+        - docs_present: [BOE, INV]
     lcFieldsRequired: []
     checkType: PROGRAMMATIC
     severity: CRITICAL
@@ -324,6 +372,13 @@ rules:
   - rule_id: BC-001
     scope: [BC]
     triggerDocs: [BC]
+    triggers:
+      all_of:
+        - docs_present: [BC]
+        - any_of:
+            - lc_field_contains: { field: documents_required, needle: "BENEFICIARY", case_insensitive: true }
+            - lc_field_contains: { field: additional_conditions, needle: "BENEFICIARY", case_insensitive: true }
+            - lc_field_present: [documents_required]
     lcFieldsRequired: [documents_required]
     checkType: AGENT
     severity: MAJOR
@@ -349,6 +404,10 @@ rules:
   - rule_id: BC-003
     scope: [BC]
     triggerDocs: [BC]
+    triggers:
+      all_of:
+        - docs_present: [BC]
+        - lc_field_present: [documents_required]
     lcFieldsRequired: [documents_required]
     checkType: PROGRAMMATIC
     severity: MAJOR
@@ -369,6 +428,13 @@ rules:
   - rule_id: WC-001
     scope: [WC]
     triggerDocs: [WC]
+    triggers:
+      all_of:
+        - docs_present: [WC]
+        - any_of:
+            - lc_field_contains: { field: documents_required, needle: "WARRANTY", case_insensitive: true }
+            - lc_field_contains: { field: additional_conditions, needle: "WARRANTY", case_insensitive: true }
+            - lc_field_present: [documents_required]
     lcFieldsRequired: [documents_required]
     checkType: AGENT
     severity: MAJOR
@@ -398,6 +464,9 @@ rules:
   - rule_id: XD-004
     scope: [INV, PKL]
     triggerDocs: [INV, PKL]
+    triggers:
+      all_of:
+        - docs_present: [INV, PKL]
     lcFieldsRequired: []
     checkType: PROGRAMMATIC
     severity: MAJOR
@@ -416,6 +485,10 @@ rules:
   - rule_id: XD-022
     scope: [INV, BOL]
     triggerDocs: [INV, BOL]
+    triggers:
+      all_of:
+        - docs_present: [INV, BOL]
+        - lc_field_present: [beneficiary_name]
     lcFieldsRequired: [beneficiary_name]
     checkType: AGENT
     severity: MAJOR
@@ -437,6 +510,9 @@ rules:
   - rule_id: XD-024
     scope: [INV, BOL]
     triggerDocs: [INV, BOL]
+    triggers:
+      all_of:
+        - docs_present: [INV, BOL]
     lcFieldsRequired: []
     checkType: PROGRAMMATIC
     severity: MAJOR

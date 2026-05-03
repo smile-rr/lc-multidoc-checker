@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Spinner } from '../shared/Spinner';
+import { StageProgressMeter } from '../shared/StageProgressMeter';
+import { useStageProgress } from '../../hooks/useStageProgress';
 import { RerunButton } from '../shared/RerunButton';
 import { useDevMode } from '../../context/DevModeContext';
 import { useRules } from '../../hooks/useRules';
@@ -28,7 +29,7 @@ import { PrimaryButton, GhostButton, DevShortcutButton } from '../ui/Button';
  * conclusion of the disposition flow. Right column is read-only context.
  * Once signed, switches to SignedRecordView (immutable).
  */
-export function SignoffPanel({ session, stagesCompleted, onBack }) {
+export function SignoffPanel({ session, stagesCompleted, events, onBack }) {
   const { enabled: devMode } = useDevMode();
   const sessionId = session?.id;
 
@@ -125,6 +126,7 @@ export function SignoffPanel({ session, stagesCompleted, onBack }) {
   };
 
   const signoffDone = stagesCompleted?.has('signoff');
+  const signoffProgress = useStageProgress(events, 'signoff', session?.status, signoffDone);
   const blockerText = !decision ? 'Select a decision'
     : !allDispositioned && decision !== 'ACCEPT' ? 'Disposition all discrepancies'
     : !note.trim() ? "Officer's note is required" : '';
@@ -136,7 +138,15 @@ export function SignoffPanel({ session, stagesCompleted, onBack }) {
         meta={
           <span className="text-[11px] text-muted font-mono flex items-center gap-2">
             officer decision
-            {session?.status === 'SIGNOFF' && <Spinner size="sm" label="finalising…" />}
+            {session?.status === 'SIGNOFF' && (
+              <StageProgressMeter
+                phase="running"
+                label={signoffProgress.label || 'Sign-off'}
+                sub={signoffProgress.sub || 'finalising…'}
+                secsSinceLast={signoffProgress.secsSinceLast}
+                isStale={signoffProgress.isStale}
+              />
+            )}
           </span>
         }
         actions={

@@ -4,6 +4,7 @@ import com.lc.v2.checker.domain.common.DocumentRequirement;
 import com.lc.v2.checker.domain.common.FieldEnvelope;
 import com.lc.v2.checker.domain.common.ParsedRow;
 import com.lc.v2.checker.domain.lc.LcConsistencyWarning;
+import com.lc.v2.checker.domain.lc.LcDerived;
 import com.lc.v2.checker.domain.lc.LcParseResult;
 import com.lc.v2.checker.infra.fields.TagMappingRegistry;
 import com.lc.v2.checker.stage.parse.subfield.DocumentListParser;
@@ -162,8 +163,97 @@ public class Mt700Parser {
 
         List<LcConsistencyWarning> warnings = consistencyChecker.check(envelope);
         List<ParsedRow> parsedRows = rowProjector.project(envelope, raw);
+        LcDerived derived = deriveLc(raw, scalars);
 
-        return new LcParseResult(envelope, mt700Text, Map.copyOf(raw), warnings, parsedRows);
+        return new LcParseResult(envelope, mt700Text, Map.copyOf(raw), warnings, parsedRows, derived);
+    }
+
+    private static final Pattern INCOTERMS_PATTERN = Pattern.compile(
+            "\\b(EXW|FOB|FCA|CFR|CIF|CPT|CIP|DAP|DDP)\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern TENOR_DAYS_PATTERN = Pattern.compile(
+            "\\b(\\d+)\\s*DAYS?\\b", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Re-derive LC envelope from raw MT700 tags + structured fields.
+     * Public so ExamineStage can refresh derived values at re-run time without
+     * needing to replay the full MT700 parse.
+     */
+    public static LcDerived deriveFromRaw(Map<String, String> raw,
+                                           com.lc.v2.checker.domain.common.FieldEnvelope envelope) {
+        Object tpObj = envelope == null ? null : envelope.fields().get("tolerance_plus");
+        Object tmObj = envelope == null ? null : envelope.fields().get("tolerance_minus");
+        Object aboutObj = envelope == null ? null : envelope.fields().get("about_credit_amount");
+        int tp = tpObj instanceof Number n ? n.intValue() : 0;
+        int tm = tmObj instanceof Number n ? n.intValue() : 0;
+        boolean about = Boolean.TRUE.equals(aboutObj);
+        return doDerive(raw, tp, tm, about);
+    }
+
+    private LcDerived deriveLc(Map<String, String> raw, ParsedScalars s) {
+        return doDerive(raw, s.tolerancePlus(), s.toleranceMinus(), s.aboutCreditAmount());
+    }
+
+    private static LcDerived doDerive(Map<String, String> raw,
+                                       int tolerancePlus, int toleranceMinus,
+                                       boolean aboutCreditAmount) {
+        // Incoterms: scan :45A: text.
+        String incotermsClass = "UNKNOWN";
+        String f45a = raw.get("45A");
+        if (f45a != null) {
+            Matcher m = INCOTERMS_PATTERN.matcher(f45a);
+            if (m.find()) incotermsClass = m.group(1).toUpperCase();
+        }
+
+        // Tolerance precedence: explicit :39A: → about → exact (default).
+        LcDerived.ToleranceSpec tol;
+        if (tolerancePlus > 0 || toleranceMinus > 0) {
+            int pct = Math.max(tolerancePlus, toleranceMinus);
+            tol = new LcDerived.ToleranceSpec(BigDecimal.valueOf(pct), "EXPLICIT", "39A");
+        } else if (aboutCreditAmount) {
+            tol = new LcDerived.ToleranceSpec(BigDecimal.TEN, "ABOUT", "32B");
+        } else {
+            String f39a = raw.get("39A");
+            if (f39a != null) {
+                String upper = f39a.toUpperCase();
+                if (upper.contains("ABOUT") || upper.contains("APPROXIMATELY")) {
+                    tol = new LcDerived.ToleranceSpec(BigDecimal.TEN, "ABOUT", "39A");
+                } else {
+                    tol = new LcDerived.ToleranceSpec(BigDecimal.ZERO, "EXACT", "default");
+                }
+            } else {
+                tol = new LcDerived.ToleranceSpec(BigDecimal.ZERO, "EXACT", "default");
+                // TODO: BULK_DEFAULT (UCP 30(b) ±5%) inference from goods type — not implemented.
+            }
+        }
+
+        // Tenor: parse :42C:.
+        String tenorClass = "UNKNOWN";
+        String f42c = raw.get("42C");
+        if (f42c != null) {
+            String upper = f42c.toUpperCase();
+            boolean isSight = upper.contains("SIGHT");
+            boolean isDeferred = upper.contains("DEFERRED");
+            boolean isUsance = TENOR_DAYS_PATTERN.matcher(upper).find();
+            if (isSight && (isDeferred || isUsance)) tenorClass = "MIXED";
+            else if (isSight) tenorClass = "SIGHT";
+            else if (isUsance) tenorClass = "USANCE_DAYS";
+            else if (isDeferred) tenorClass = "DEFERRED";
+        }
+
+        boolean transhipmentProhibited = containsAny(raw.get("43T"),
+                "PROHIBITED", "NOT ALLOWED", "NOT PERMITTED");
+        boolean partialShipmentProhibited = containsAny(raw.get("43P"),
+                "PROHIBITED", "NOT ALLOWED", "NOT PERMITTED");
+
+        return new LcDerived(incotermsClass, tol, tenorClass,
+                transhipmentProhibited, partialShipmentProhibited);
+    }
+
+    private static boolean containsAny(String text, String... needles) {
+        if (text == null) return false;
+        String upper = text.toUpperCase();
+        for (String n : needles) if (upper.contains(n)) return true;
+        return false;
     }
 
     private record ParsedScalars(

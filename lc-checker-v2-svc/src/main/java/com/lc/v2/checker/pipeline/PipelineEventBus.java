@@ -54,6 +54,12 @@ public class PipelineEventBus {
         emit(new PipelineEvent.RuleChecked(sessionId, ruleId, verdict, confidence, java.time.Instant.now()));
     }
 
+    public void ruleChecked(String sessionId, String ruleId, String verdict, double confidence,
+                            String origin, String triggerOutcome, java.util.List<String> triggerTrace) {
+        emit(new PipelineEvent.RuleChecked(sessionId, ruleId, verdict, confidence,
+                origin, triggerOutcome, triggerTrace, java.time.Instant.now()));
+    }
+
     public void extractionProgress(String sessionId, String docType, String slot, String status) {
         emit(new PipelineEvent.ExtractionProgress(sessionId, docType, slot, status, java.time.Instant.now()));
     }
@@ -118,5 +124,11 @@ public class PipelineEventBus {
 
     public void signedOff(String sessionId, String decision, String officerId) {
         emit(new PipelineEvent.SignedOff(sessionId, decision, officerId, java.time.Instant.now()));
+    }
+
+    public void examinePhase(String sessionId, String phase, Long durationMs,
+                              Integer total, Integer adhocCount) {
+        emit(new PipelineEvent.ExaminePhase(sessionId, phase, durationMs, total, adhocCount,
+                java.time.Instant.now()));
     }
 }

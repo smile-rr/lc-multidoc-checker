@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { Spinner } from '../shared/Spinner';
+import { StageProgressMeter } from '../shared/StageProgressMeter';
+import { useStageProgress } from '../../hooks/useStageProgress';
 import { useDevMode } from '../../context/DevModeContext';
 import { useDocActions } from '../../hooks/useDocActions';
 import { useLcRequiredDocs } from '../../hooks/useLcRequiredDocs';
@@ -21,7 +22,7 @@ import { DevShortcutButton } from '../ui/Button';
  * Continue gate: LC present + all UNKNOWN/unconfirmed handled + required docs all present.
  * DEV MODE bypasses the gate and exposes "Confirm all suggested" button.
  */
-export function IntakePanel({ session, stagesCompleted, refresh, onContinue }) {
+export function IntakePanel({ session, stagesCompleted, events, refresh, onContinue }) {
   const { enabled: devMode } = useDevMode();
   const sessionId = session?.id;
   const docs = session?.documents ?? [];
@@ -32,6 +33,7 @@ export function IntakePanel({ session, stagesCompleted, refresh, onContinue }) {
   // Pre-stage / post-stage / awaiting-officer all show static state, no spinner.
   const running = session?.status === 'INTAKE';
   const intakeDone = stagesCompleted?.has('intake') || session?.next_stage === 'parse';
+  const progress = useStageProgress(events, 'intake', session?.status, intakeDone);
 
   const reviewNeeded = useMemo(() =>
     sortByDocType(docs.filter(d => d.doc_type === 'UNKNOWN' || d.confirmed_by_officer === false)), [docs]);
@@ -69,7 +71,10 @@ export function IntakePanel({ session, stagesCompleted, refresh, onContinue }) {
       <StageToolbar
         title="Document Intake"
         meta={running ? (
-          <Spinner size="sm" label={`classifying… (${docs.length})`} />
+          <StageProgressMeter
+            {...progress}
+            sub={progress.sub || `classifying ${docs.length} doc${docs.length === 1 ? '' : 's'}`}
+          />
         ) : (
           <span className="text-[11px] text-muted font-mono">
             {docs.length} doc{docs.length === 1 ? '' : 's'} classified · awaiting confirmation

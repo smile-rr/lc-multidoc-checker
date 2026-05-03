@@ -57,9 +57,16 @@ public class DocumentsController {
         Map<String, Object> doc = sessionStore.getDocument(docId);
         if (doc == null) return ResponseEntity.notFound().build();
 
-        // Hot cache first; S3FileStore.get() falls back to MinIO on miss and
-        // populates the hot cache on a successful MinIO read.
-        Optional<byte[]> bytes = s3Store.get(docId);
+        Optional<byte[]> bytes;
+        try {
+            bytes = s3Store.get(docId);
+        } catch (S3FileStore.MinioAccessException e) {
+            log.warn("[{}] MinIO unreachable/denied for docId={}: {} — returning 404",
+                    sessionId, docId, e.getMessage());
+            return ResponseEntity.status(404)
+                    .contentType(MediaType.TEXT_PLAIN)
+                    .body(("PDF unavailable (MinIO access failed: " + e.getMessage() + ")").getBytes());
+        }
         if (bytes.isEmpty()) {
             log.warn("[{}] PDF not found: docId={} (cache={} s3Enabled={})",
                     sessionId, docId, s3Store.enabled(), s3Store.enabled());

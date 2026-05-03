@@ -36,5 +36,8 @@ public record EnrichedRule(
         OverrideRecord override,        // null if not overridden
         List<ArticleRef> ucpRefs,
         List<ArticleRef> isbpRefs,
-        Boolean waivable
+        Boolean waivable,
+        String origin,                  // CATALOG | ADHOC
+        String evidenceLcClause,        // ad-hoc only — :46A:/:47A: span that motivated the rule
+        List<String> triggerTrace       // human-readable steps from RuleTriggerEvaluator
 ) {}

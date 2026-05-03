@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Spinner } from '../shared/Spinner';
+import { StageProgressMeter } from '../shared/StageProgressMeter';
+import { useStageProgress } from '../../hooks/useStageProgress';
 import { RerunButton } from '../shared/RerunButton';
 import { useDevMode } from '../../context/DevModeContext';
 import { useDocActions } from '../../hooks/useDocActions';
@@ -156,21 +157,33 @@ export function ParsePanel({ session, stagesCompleted, events, refresh, onContin
   };
 
   // Two-phase meter:
-  //   Phase 1 (PARSE actively running): "extracting M/N" — review-progress is meaningless yet.
+  //   Phase 1 (extraction in flight): "extracting M/N" — review-progress is meaningless yet.
   //   Phase 2 (extraction done, officer is reviewing): "M/N reviewed".
-  // Spinner appears only when PARSE is actively running on the backend.
-  const isExtracting = session?.status === 'PARSE';
+  // Detection uses BOTH signals so we don't depend on session.status alone (which
+  // can race the SSE update): if any doc is still PENDING, we're still extracting.
+  const anyPending = docs.some(d =>
+    d.parse_status === 'PENDING' || d.parse_status === 'EXTRACTING' || !d.parse_status
+  );
+  const isExtracting = session?.status === 'PARSE' || anyPending;
   const extractedCount = docs.filter(d =>
     d.parse_status === 'EXTRACTED' || d.parse_status === 'REVIEWED' || d.parse_status === 'FAILED'
   ).length;
 
+  const parseProgress = useStageProgress(events, 'parse', session?.status, stagesCompleted?.has('parse'));
   const meta = isExtracting ? (
-    <span className="text-[11px] flex items-center gap-1.5 font-mono">
-      <Spinner size="sm" />
-      <span className="text-status-gold">
-        extracting {extractedCount}/{docs.length}
-      </span>
-      {!isLcActive && activeDoc && pages > 1 && <span className="text-muted">· page {page}/{pages}</span>}
+    <span className="flex items-center gap-2">
+      <StageProgressMeter
+        phase="running"
+        label={parseProgress.label || 'Parse'}
+        sub={parseProgress.sub}
+        idx={parseProgress.idx ?? extractedCount}
+        total={parseProgress.total ?? docs.length}
+        secsSinceLast={parseProgress.secsSinceLast}
+        isStale={parseProgress.isStale}
+      />
+      {!isLcActive && activeDoc && pages > 1 && (
+        <span className="text-[11px] text-muted font-mono">· page {page}/{pages}</span>
+      )}
     </span>
   ) : (
     <span className="text-[11px] flex items-center gap-1.5 font-mono">

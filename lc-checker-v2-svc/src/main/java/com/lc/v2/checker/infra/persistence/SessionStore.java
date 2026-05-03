@@ -111,6 +111,35 @@ public class SessionStore {
                 """, sectionKey, sectionJson, sessionId);
     }
 
+    /**
+     * Append one row to {@code final_report.examine}. Creates the array if absent.
+     * Used by ExamineStage so each completed CheckResult lands in DB immediately,
+     * letting the worklist API return rows in real time during execution.
+     */
+    public void appendExamineResult(String sessionId, String rowJson) {
+        if (rowJson == null || rowJson.isBlank()) return;
+        jdbc.update("""
+                UPDATE lc_v2.check_sessions
+                SET final_report = jsonb_set(
+                        COALESCE(final_report, '{}'::jsonb),
+                        '{examine}',
+                        COALESCE(final_report->'examine', '[]'::jsonb) || ?::jsonb)
+                WHERE id = ?::uuid
+                """, rowJson, sessionId);
+    }
+
+    /** Read a single top-level section from final_report. Returns null if absent. */
+    public String getFinalReportSection(String sessionId, String sectionKey) {
+        try {
+            return jdbc.queryForObject("""
+                    SELECT (final_report -> ?)::text
+                    FROM lc_v2.check_sessions WHERE id = ?::uuid
+                    """, String.class, sectionKey, sessionId);
+        } catch (org.springframework.dao.EmptyResultDataAccessException e) {
+            return null;
+        }
+    }
+
     public void updateFailed(String sessionId, String error) {
         jdbc.update("""
                 UPDATE lc_v2.check_sessions

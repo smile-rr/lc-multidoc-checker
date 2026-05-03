@@ -49,7 +49,15 @@ public class RuleCatalogRegistry {
         }
         this.allRules = List.copyOf(parsed.rules());
         this.enabledRules = allRules.stream().filter(Rule::enabled).toList();
-        log.info("RuleCatalogRegistry loaded {} rules ({} enabled)", allRules.size(), enabledRules.size());
+        for (Rule r : allRules) {
+            if (r.triggers() != null && r.triggerDocs() != null && !r.triggerDocs().isEmpty()) {
+                log.warn("Rule {} declares both triggers and triggerDocs — triggers wins, "
+                        + "triggerDocs ignored at runtime", r.ruleId());
+            }
+        }
+        log.info("RuleCatalogRegistry loaded {} rules ({} enabled, {} with compound triggers)",
+                allRules.size(), enabledRules.size(),
+                allRules.stream().filter(r -> r.triggers() != null).count());
     }
 
     public List<Rule> all() { return allRules; }

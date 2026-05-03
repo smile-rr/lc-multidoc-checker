@@ -1,5 +1,7 @@
 package com.lc.v2.checker.infra.persistence;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lc.v2.checker.api.dto.EnrichedRule;
 import com.lc.v2.checker.api.dto.OverrideRecord;
 import com.lc.v2.checker.domain.common.ArticleRef;
@@ -7,6 +9,7 @@ import com.lc.v2.checker.domain.common.DocType;
 import com.lc.v2.checker.domain.document.DocumentExtract;
 import com.lc.v2.checker.domain.result.CheckResult;
 import com.lc.v2.checker.domain.rule.Rule;
+import com.lc.v2.checker.domain.rule.RuleOrigin;
 import com.lc.v2.checker.infra.refs.ArticleRefRegistry;
 import com.lc.v2.checker.infra.rules.RuleCatalogRegistry;
 import java.sql.Timestamp;
@@ -79,10 +82,12 @@ public class RuleCatalogJoiner {
                                     List<CheckResult> checkResults,
                                     Map<DocType, DocumentExtract> extractsByDocType) {
         Map<String, Map<String, Object>> overridesByRule = sessionStore.getLatestOverridesByRule(sessionId);
+        Map<String, Rule> adhocById = loadAdhocRules(sessionId);
+        Map<String, List<String>> tracesById = loadTriggerTraces(sessionId);
         List<EnrichedRule> result = new ArrayList<>(checkResults.size());
 
         for (CheckResult cr : checkResults) {
-            Rule rule = catalog.byId(cr.ruleId()).orElse(null);
+            Rule rule = catalog.byId(cr.ruleId()).orElse(adhocById.get(cr.ruleId()));
             String label = LABELS.getOrDefault(cr.ruleId(), cr.ruleId());
 
             String severity = rule != null ? rule.severity() : "MINOR";
@@ -135,10 +140,56 @@ public class RuleCatalogJoiner {
                     override,
                     ucpFull,
                     isbpFull,
-                    rule != null ? rule.waivable() : null
+                    rule != null ? rule.waivable() : null,
+                    rule != null && rule.origin() != null ? rule.origin().name() : RuleOrigin.CATALOG.name(),
+                    rule != null ? rule.evidenceLcClause() : null,
+                    tracesById.get(cr.ruleId())
             ));
         }
         return result;
+    }
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private Map<String, Rule> loadAdhocRules(String sessionId) {
+        String json = sessionStore.getFinalReportSection(sessionId, "examine_meta");
+        if (json == null || json.isBlank() || "null".equals(json)) return Map.of();
+        try {
+            Map<String, Object> meta = MAPPER.readValue(json, new TypeReference<>() {});
+            Object list = meta.get("adhoc_rules");
+            if (!(list instanceof List<?> rows) || rows.isEmpty()) return Map.of();
+            Map<String, Rule> out = new LinkedHashMap<>();
+            for (Object row : rows) {
+                Rule r = MAPPER.convertValue(row, Rule.class);
+                if (r != null && r.ruleId() != null) out.put(r.ruleId(), r);
+            }
+            return out;
+        } catch (Exception e) {
+            log.warn("Failed to load adhoc rules for session {}: {}", sessionId, e.toString());
+            return Map.of();
+        }
+    }
+
+    private Map<String, List<String>> loadTriggerTraces(String sessionId) {
+        String json = sessionStore.getFinalReportSection(sessionId, "examine_meta");
+        if (json == null || json.isBlank() || "null".equals(json)) return Map.of();
+        try {
+            Map<String, Object> meta = MAPPER.readValue(json, new TypeReference<>() {});
+            Object traces = meta.get("trigger_traces");
+            if (!(traces instanceof Map<?, ?> m)) return Map.of();
+            Map<String, List<String>> out = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> e : m.entrySet()) {
+                if (e.getValue() instanceof List<?> ls) {
+                    List<String> strs = new ArrayList<>(ls.size());
+                    for (Object o : ls) strs.add(String.valueOf(o));
+                    out.put(String.valueOf(e.getKey()), strs);
+                }
+            }
+            return out;
+        } catch (Exception e) {
+            log.warn("Failed to load trigger traces for session {}: {}", sessionId, e.toString());
+            return Map.of();
+        }
     }
 
     private static String sourceFromCheckType(String checkType) {

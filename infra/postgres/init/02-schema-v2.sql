@@ -237,3 +237,14 @@ SELECT  rc.session_id,
         CASE WHEN rc.officer_verdict IS NOT NULL THEN 'CONFIRMED' ELSE 'PENDING' END AS confirmation_status
 FROM    lc_v2.rule_confirmations rc
 ORDER BY rc.session_id, rc.rule_id;
+
+-- ---------------------------------------------------------------------------
+-- Ad-hoc rule cache — LcRulePlannerAgent proposals keyed by sha256(lc + version)
+-- ---------------------------------------------------------------------------
+ALTER TABLE lc_v2.check_sessions ADD COLUMN IF NOT EXISTS adhoc_cache_key TEXT;
+
+CREATE TABLE IF NOT EXISTS lc_v2.adhoc_rule_cache (
+    cache_key   TEXT PRIMARY KEY,
+    rules_json  JSONB NOT NULL,
+    created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+);

@@ -14,8 +14,14 @@ public record LcParseResult(
         String rawMt700,
         Map<String, String> rawFields,
         List<LcConsistencyWarning> consistencyWarnings,
-        List<ParsedRow> parsedRows
+        List<ParsedRow> parsedRows,
+        LcDerived derived
 ) {
+
+    public LcParseResult(FieldEnvelope envelope, String rawMt700, Map<String, String> rawFields,
+                         List<LcConsistencyWarning> consistencyWarnings, List<ParsedRow> parsedRows) {
+        this(envelope, rawMt700, rawFields, consistencyWarnings, parsedRows, null);
+    }
 
     public LcParseResult {
         rawFields = rawFields == null ? Map.of() : Map.copyOf(rawFields);
@@ -27,4 +33,9 @@ public record LcParseResult(
     public String getBeneficiaryName() { return envelope.getString("beneficiary_name"); }
     public String getApplicantName() { return envelope.getString("applicant_name"); }
     public boolean hasConsistencyWarnings() { return !consistencyWarnings.isEmpty(); }
+
+    public LcParseResult withDerived(LcDerived newDerived) {
+        return new LcParseResult(envelope, rawMt700, rawFields,
+                consistencyWarnings, parsedRows, newDerived);
+    }
 }

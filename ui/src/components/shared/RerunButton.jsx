@@ -17,12 +17,15 @@ const DOWNSTREAM_LABEL = {
   signoff:   'discard sign-off draft (no other state lost)',
 };
 
-/** DEV-only re-run button. Shows a confirm dialog; calls POST /stages/{stage}/rerun. */
+/**
+ * Re-run from this stage onward. Available in production AND dev:
+ * real LC officers need to redo a stage when they spot bad extraction
+ * or want a clean second-look. Confirm dialog + downstream-discard hint
+ * is the safety net. DEV MODE only changes the styling (gold/loud).
+ */
 export function RerunButton({ sessionId, stage, devMode, disabled }) {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState(null);
-
-  if (!devMode) return null;
   const label = STAGE_LABELS[stage] || stage;
 
   const onClick = async () => {
@@ -41,15 +44,19 @@ export function RerunButton({ sessionId, stage, devMode, disabled }) {
     }
   };
 
+  const cls = devMode
+    ? 'text-[11px] px-3 py-1.5 rounded-[6px] bg-status-gold/15 border border-status-gold text-status-gold hover:bg-status-gold/25 disabled:opacity-50 disabled:cursor-not-allowed'
+    : 'text-[11px] px-3 py-1.5 rounded-[6px] border border-line text-muted hover:text-navy-1 hover:bg-slate2 disabled:opacity-50 disabled:cursor-not-allowed';
+
   return (
     <>
       <button
         onClick={onClick}
         disabled={running || disabled}
-        title={`DEV: re-run pipeline from ${label} stage onwards`}
-        className="text-[11px] px-3 py-1.5 rounded-[6px] bg-status-gold/15 border border-status-gold text-status-gold hover:bg-status-gold/25 disabled:opacity-50 disabled:cursor-not-allowed"
+        title={`Re-run pipeline from ${label} stage onwards`}
+        className={cls}
       >
-        {running ? '↻ requesting…' : `⚡ Re-run from ${label}`}
+        {running ? '↻ requesting…' : `↻ re-run from ${label}`}
       </button>
       {error && (
         <span className="text-[10px] text-status-red font-mono">{error}</span>

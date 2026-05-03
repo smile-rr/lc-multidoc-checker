@@ -45,16 +45,42 @@ export function RuleDrawer({ rule, onClose, onOverride, onResetOverride }) {
       </div>
 
       <div className="flex-1 overflow-auto">
-        <div className="px-5 py-4 border-b border-line/50">
-          <div className="text-[9px] tracking-[0.2em] uppercase text-muted mb-2 font-mono">EVIDENCE</div>
-          <EvidencePanel evidence={rule.evidence} />
-          {rule.explanation && (
-            <div className="mt-3 text-[11px] border-l-2 border-status-gold pl-3 py-1 bg-status-goldSoft">
-              <span className="text-[9px] tracking-wider uppercase text-status-gold font-mono">EXPLANATION · </span>
-              {rule.explanation}
+        {rule.origin === 'ADHOC' && rule.evidenceLcClause && (
+          <div className="px-5 py-4 border-b border-line/50">
+            <div className="text-[9px] tracking-[0.2em] uppercase text-status-gold mb-2 font-mono flex items-center gap-1">
+              <span>★</span><span>LC EVIDENCE</span>
             </div>
-          )}
-        </div>
+            <pre className="text-[11px] font-mono whitespace-pre-wrap bg-slate2 border-l-2 border-status-gold pl-3 py-2 pr-2 rounded-sm text-navy-1">
+              {rule.evidenceLcClause}
+            </pre>
+          </div>
+        )}
+
+        {effective === 'NOT_APPLICABLE' ? (
+          <div className="px-5 py-4 border-b border-line/50">
+            <div className="text-[9px] tracking-[0.2em] uppercase text-muted mb-2 font-mono">WHY THIS RULE DIDN'T FIRE</div>
+            {(rule.triggerTrace && rule.triggerTrace.length > 0) ? (
+              <ul className="text-[11px] space-y-1 font-mono">
+                {rule.triggerTrace.map((line, i) => (
+                  <li key={i} className="text-navy-1">{line}</li>
+                ))}
+              </ul>
+            ) : (
+              <div className="text-[11px] text-muted">{rule.explanation || 'No trace available.'}</div>
+            )}
+          </div>
+        ) : (
+          <div className="px-5 py-4 border-b border-line/50">
+            <div className="text-[9px] tracking-[0.2em] uppercase text-muted mb-2 font-mono">EVIDENCE</div>
+            <EvidencePanel evidence={rule.evidence} />
+            {rule.explanation && (
+              <div className="mt-3 text-[11px] border-l-2 border-status-gold pl-3 py-1 bg-status-goldSoft">
+                <span className="text-[9px] tracking-wider uppercase text-status-gold font-mono">EXPLANATION · </span>
+                {rule.explanation}
+              </div>
+            )}
+          </div>
+        )}
 
         {(rule.ucpRefs?.length > 0 || rule.isbpRefs?.length > 0) && (
           <div className="px-5 py-4 border-b border-line/50">

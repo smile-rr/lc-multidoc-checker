@@ -30,7 +30,7 @@ export function EventHistory({ events = [], onFormat }) {
     const verdict = data.verdict || '';
     const stageName = data.stageName || '';
     if (type === 'ExtractionProgress') return `${docType} · ${slot} · ${status}`;
-    if (type === 'RuleStarted') return `Rule ${data.index}/${data.total} · ${ruleId} (${data.checkType})`;
+    if (type === 'RuleStarted') return `Rule ${data.index}/${data.total} · ${ruleId}${data.checkType ? ` (${data.checkType})` : ''}`;
     if (type === 'RuleChecked') return `${ruleId} → ${verdict}`;
     if (type === 'StageStarted') return `${stageName} started`;
     if (type === 'StageCompleted') return `${stageName} complete`;

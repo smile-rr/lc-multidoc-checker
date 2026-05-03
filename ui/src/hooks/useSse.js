@@ -74,7 +74,7 @@ export function useSse(sessionId) {
             });
             setCurrentActivity({
               kind: 'rule',
-              text: `Rule ${msg.data.index}/${msg.data.total} · ${msg.data.ruleId} (${msg.data.checkType})`,
+              text: `Rule ${msg.data.index}/${msg.data.total} · ${msg.data.ruleId}${msg.data.checkType ? ` (${msg.data.checkType})` : ''}`,
               ts: msg.ts,
             });
             break;

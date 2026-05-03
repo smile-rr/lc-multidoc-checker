@@ -56,6 +56,16 @@ export function FilterRail({ rules, filter, setFilter, savedViews, applyView, sa
       count: rules.filter(r => (r.scope || []).includes(d)).length,
     };
   });
+  const originOpts = [
+    ['CATALOG', 'Catalog'],
+    ['ADHOC',   'Ad-hoc'],
+  ].map(([id, label]) => ({
+    id, label,
+    count: rules.filter(r => (r.origin || 'CATALOG') === id).length,
+    color: id === 'ADHOC' ? '#8a5700' : '#0066cc',
+  }));
+  const adhocCount = rules.filter(r => r.origin === 'ADHOC').length;
+  const showAdhocOnly = () => setFilter({ ...filter, origin: ['ADHOC'] });
 
   return (
     <aside className="bg-white border-r border-line overflow-auto flex-shrink-0 flex flex-col" style={{ width: 240 }}>
@@ -76,6 +86,17 @@ export function FilterRail({ rules, filter, setFilter, savedViews, applyView, sa
         <FilterSection title="Need attention"  k="attention" options={attentionOpts} filter={filter} setFilter={setFilter} />
         <FilterSection title="Source"          k="source"    options={sourceOpts}    filter={filter} setFilter={setFilter} />
         <FilterSection title="Document"        k="scope"     options={docOpts}       filter={filter} setFilter={setFilter} />
+        <FilterSection title="Origin"          k="origin"    options={originOpts}    filter={filter} setFilter={setFilter} />
+        {adhocCount > 0 && (
+          <button
+            onClick={showAdhocOnly}
+            className="mx-3 mt-2 mb-3 w-[calc(100%-1.5rem)] px-2 py-1.5 rounded text-[10px] bg-status-gold/10 text-status-gold hover:bg-status-gold/20 flex items-center gap-1.5 font-mono"
+            title="Show only ad-hoc rules discovered from this LC"
+          >
+            <span>★</span>
+            <span>{adhocCount} rules discovered from this LC</span>
+          </button>
+        )}
       </div>
     </aside>
   );
