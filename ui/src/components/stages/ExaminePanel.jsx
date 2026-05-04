@@ -207,6 +207,50 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
 
   const selected = rules.find(r => r.ruleId === selectedId);
 
+  // Flat ordered list of rule IDs as they appear in the worklist, across all
+  // three buckets — used for keyboard ↑/↓ navigation when the drawer is open.
+  const navIds = useMemo(() => {
+    const ids = [];
+    const eat = (grouped) => {
+      for (const items of Object.values(grouped || {})) {
+        for (const r of items) ids.push(r.ruleId);
+      }
+    };
+    eat(effectiveBuckets.groupedActive);
+    eat(effectiveBuckets.groupedNa);
+    eat(effectiveBuckets.groupedOutOfScope);
+    return ids;
+  }, [effectiveBuckets]);
+
+  // ↑/↓ moves the selection up/down through the visible worklist; Esc closes
+  // the drawer. Suppressed while the user is typing in an input/textarea or
+  // a contenteditable surface so it doesn't fight with form fields inside the
+  // drawer (override note, etc.).
+  useEffect(() => {
+    if (!selectedId) return undefined;
+    const onKey = (e) => {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown' && e.key !== 'Escape') return;
+      const tgt = e.target;
+      if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) return;
+      if (e.key === 'Escape') {
+        setSelectedId(null);
+        e.preventDefault();
+        return;
+      }
+      const i = navIds.indexOf(selectedId);
+      if (i < 0) return;
+      const next = e.key === 'ArrowDown'
+        ? Math.min(navIds.length - 1, i + 1)
+        : Math.max(0, i - 1);
+      if (navIds[next] !== selectedId) {
+        setSelectedId(navIds[next]);
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedId, navIds]);
+
   const isDirty = JSON.stringify(filter) !== '{}' || navMode !== DEFAULT_NAV
     || JSON.stringify(sort) !== JSON.stringify(DEFAULT_SORT);
   const hasStateForSave = isDirty

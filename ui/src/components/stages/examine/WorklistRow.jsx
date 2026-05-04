@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { docTypeMeta } from '../../../constants/docTypes';
 import { SeverityChip } from '../../shared/SeverityChip';
 import { AttentionChip } from '../../shared/AttentionChip';
@@ -33,8 +33,18 @@ export function WorklistRow({ rule, selected, onClick }) {
   const meta = STATUS_META[effective] || STATUS_META.NOT_APPLICABLE;
   const attention = rule.attention || [];
 
+  // Keep the active row visible during keyboard ↑/↓ navigation. nearest-block
+  // scrolls only when the row would otherwise be clipped.
+  const rowRef = useRef(null);
+  useEffect(() => {
+    if (selected && rowRef.current) {
+      rowRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [selected]);
+
   return (
     <tr
+      ref={rowRef}
       onClick={onClick}
       className={`border-b border-line/50 cursor-pointer transition-colors
         ${selected ? 'bg-status-greenSoft' : meta.rowTint || 'hover:bg-slate2'}
