@@ -21,6 +21,8 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record Rule(
         String ruleId,
+        String canonicalField,    // canonical-field key for UI grouping (null for ad-hoc / "Other / Planned")
+        List<String> appliesTo,   // doc-type universe this rule examines when those docs are presented
         List<String> scope,
         List<String> triggerDocs,
         List<String> lcFieldsRequired,
@@ -40,6 +42,7 @@ public record Rule(
         String ucpExcerpt        // Quoted UCP/ISBP text injected into LLM prompt under "Rule excerpt"
 ) {
     public Rule {
+        appliesTo = appliesTo == null ? List.of() : List.copyOf(appliesTo);
         scope = scope == null ? List.of() : List.copyOf(scope);
         triggerDocs = triggerDocs == null ? List.of() : List.copyOf(triggerDocs);
         lcFieldsRequired = lcFieldsRequired == null ? List.of() : List.copyOf(lcFieldsRequired);

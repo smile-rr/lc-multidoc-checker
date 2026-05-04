@@ -21,10 +21,11 @@ public record CheckResult(
         FAIL,
         NOT_APPLICABLE,
         DOUBTS,         // confidence < threshold, routes to human queue
-        PENDING         // pre-inserted at start of check phase; replaced when rule completes
+        PENDING,        // pre-inserted at start of check phase; replaced when rule completes
+        FAILED          // rule could not execute (LLM error, persist error, parse error)
     }
 
     public boolean routesToHumanQueue() {
-        return verdict == Verdict.DOUBTS;
+        return verdict == Verdict.DOUBTS || verdict == Verdict.FAILED;
     }
 }

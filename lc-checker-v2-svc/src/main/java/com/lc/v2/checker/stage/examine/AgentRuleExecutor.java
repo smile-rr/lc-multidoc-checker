@@ -72,8 +72,9 @@ public class AgentRuleExecutor {
             return parseResponse(rule.ruleId(), rule.checkType(), response);
         } catch (Exception e) {
             log.error("[{}] LLM call failed rule={}: {}", ctx.sessionId, rule.ruleId(), e.getMessage());
-            return new CheckResult(rule.ruleId(), CheckResult.Verdict.DOUBTS,
-                    "LLM error: " + e.getMessage(), null, 0.0, rule.checkType());
+            return new CheckResult(rule.ruleId(), CheckResult.Verdict.FAILED,
+                    "LLM error: " + e.getClass().getSimpleName() + ": " + e.getMessage(),
+                    null, 0.0, rule.checkType());
         }
     }
 
@@ -174,8 +175,8 @@ public class AgentRuleExecutor {
             }
             return new CheckResult(ruleId, verdict, explanation, null, confidence, checkType);
         } catch (Exception e) {
-            log.warn("Failed to parse LLM response for rule {}: {} | raw={}", ruleId, e.getMessage(), response);
-            return new CheckResult(ruleId, CheckResult.Verdict.DOUBTS,
+            log.error("Failed to parse LLM response for rule {}: {} | raw={}", ruleId, e.getMessage(), response);
+            return new CheckResult(ruleId, CheckResult.Verdict.FAILED,
                     "Response parse error: " + e.getMessage(), null, 0.0, checkType);
         }
     }

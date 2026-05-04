@@ -81,7 +81,7 @@ function ActiveSection({ grouped, navMode, selectedId, onSelect }) {
 }
 
 function FoldableSection({ label, grouped, navMode, selectedId, onSelect }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const total = Object.values(grouped).reduce((acc, items) => acc + items.length, 0);
   if (total === 0) return null;
   return (

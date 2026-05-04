@@ -51,6 +51,10 @@ public class ExamineStage implements Stage {
     private final com.lc.v2.checker.stage.parse.Mt700Parser mt700Parser;
 
     private final Map<String, List<String>> traces = new LinkedHashMap<>();
+    /** Per-rule wall-clock start, populated when PENDING is upserted. Used to
+     *  compute duration_ms on the eventual rule-completion upsert so the UI does
+     *  not have to derive durations from event timestamps. */
+    private final Map<String, Long> ruleStartMs = new LinkedHashMap<>();
 
     public ExamineStage(RuleCatalogRegistry catalog,
                         SpelEvaluator spelEvaluator,
@@ -265,9 +269,10 @@ public class ExamineStage implements Stage {
                 result = agentExecutor.execute(rule, ctx);
             }
         } catch (Exception e) {
-            log.error("[{}] Rule {} error: {}", ctx.sessionId, rule.ruleId(), e.getMessage());
-            result = new CheckResult(rule.ruleId(), CheckResult.Verdict.DOUBTS,
-                    "Evaluation error: " + e.getMessage(), null, 0.0, rule.checkType());
+            log.error("[{}] Rule {} error: {}", ctx.sessionId, rule.ruleId(), e.getMessage(), e);
+            result = new CheckResult(rule.ruleId(), CheckResult.Verdict.FAILED,
+                    "Evaluation error: " + e.getClass().getSimpleName() + ": " + e.getMessage(),
+                    null, 0.0, rule.checkType());
         }
         ctx.checkResults.add(result);
         appendCheckResult(ctx, result);
@@ -279,21 +284,32 @@ public class ExamineStage implements Stage {
 
     private void appendCheckResult(StageContext ctx, CheckResult r) {
         try {
+            Long durationMs = computeDuration(r.ruleId());
             Map<String, Object> stepResult = new LinkedHashMap<>();
             stepResult.put("check_type", r.checkType() != null ? r.checkType() : "");
             stepResult.put("explanation", r.explanation() != null ? r.explanation() : "");
             stepResult.put("confidence", r.confidence());
+            stepResult.put("duration_ms", durationMs);
             stepResult.put("trigger_trace", traces.getOrDefault(r.ruleId(), List.of()));
             sessionStore.upsertPipelineStep(ctx.sessionId, "examine", r.ruleId(),
                     r.verdict().name(), objectMapper.writeValueAsString(stepResult),
-                    null, null);
+                    durationMs, null);
         } catch (Exception e) {
-            log.warn("[{}] persist examine row failed for {}: {}",
-                    ctx.sessionId, r.ruleId(), e.getMessage());
+            log.error("[{}] persist examine row failed for {}: {}",
+                    ctx.sessionId, r.ruleId(), e.getMessage(), e);
+            ctx.eventBus.ruleChecked(ctx.sessionId, r.ruleId(),
+                    "FAILED", 0.0, "CATALOG", "PERSIST_ERROR",
+                    List.of("persist error: " + e.getClass().getSimpleName() + ": " + e.getMessage()));
         }
     }
 
+    private Long computeDuration(String ruleId) {
+        Long start = ruleStartMs.get(ruleId);
+        return start != null ? Math.max(0L, System.currentTimeMillis() - start) : null;
+    }
+
     private void upsertPendingRow(StageContext ctx, Rule rule) {
+        ruleStartMs.put(rule.ruleId(), System.currentTimeMillis());
         try {
             Map<String, Object> stepResult = new LinkedHashMap<>();
             stepResult.put("check_type", rule.checkType());
@@ -303,8 +319,13 @@ public class ExamineStage implements Stage {
                     "PENDING", objectMapper.writeValueAsString(stepResult),
                     null, null);
         } catch (Exception e) {
-            log.warn("[{}] pre-insert PENDING row failed for {}: {}",
-                    ctx.sessionId, rule.ruleId(), e.getMessage());
+            log.error("[{}] pre-insert PENDING row failed for {}: {}",
+                    ctx.sessionId, rule.ruleId(), e.getMessage(), e);
+            // Don't continue with stale state — let the stage fail loudly so the
+            // officer/UI sees an explicit error instead of "0/2 — 2 pending" mystery.
+            throw new IllegalStateException(
+                    "Cannot pre-insert PENDING row for " + rule.ruleId()
+                            + " — examine cannot proceed: " + e.getMessage(), e);
         }
     }
 

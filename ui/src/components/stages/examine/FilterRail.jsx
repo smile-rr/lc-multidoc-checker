@@ -8,6 +8,7 @@ const STATUS_COLORS = {
   FAIL:           '#cc0011',
   DOUBTS:         '#8a5700',
   NOT_APPLICABLE: '#6e6e73',
+  FAILED:         '#b54708',
 };
 const SEV_COLORS = {
   CRITICAL:    '#cc0011',
@@ -19,7 +20,7 @@ const SEV_COLORS = {
 export function FilterRail({ rules, filter, setFilter, savedViews, applyView, saveCurrent, deleteView, activeView, hasStateForSave }) {
   const docs = [...new Set(rules.flatMap(r => r.scope || []))].sort();
 
-  const statusOpts = ['PASS', 'FAIL', 'DOUBTS', 'NOT_APPLICABLE'].map(s => ({
+  const statusOpts = ['PASS', 'FAIL', 'DOUBTS', 'FAILED', 'NOT_APPLICABLE'].map(s => ({
     id: s, label: s.replace('_', ' '),
     count: rules.filter(r => (r.effectiveVerdict || r.verdict) === s).length,
     color: STATUS_COLORS[s],

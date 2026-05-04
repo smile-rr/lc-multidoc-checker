@@ -18,6 +18,7 @@ export function SummaryBar({ rules }) {
         {seg('bg-status-green', counts.PASS, total)}
         {seg('bg-status-gold',  counts.DOUBTS, total)}
         {seg('bg-status-red',   counts.FAIL, total)}
+        {seg('bg-orange-500',   counts.FAILED, total)}
         {seg('bg-line',         counts.NOT_APPLICABLE + counts.PENDING, total)}
       </div>
     </div>
@@ -30,7 +31,7 @@ function seg(cls, n, total) {
 }
 
 function countByEffectiveVerdict(rules) {
-  const out = { PASS: 0, FAIL: 0, DOUBTS: 0, NOT_APPLICABLE: 0, PENDING: 0 };
+  const out = { PASS: 0, FAIL: 0, DOUBTS: 0, NOT_APPLICABLE: 0, PENDING: 0, FAILED: 0 };
   for (const r of rules) {
     const v = r.effectiveVerdict || r.verdict;
     if (out[v] != null) out[v]++;

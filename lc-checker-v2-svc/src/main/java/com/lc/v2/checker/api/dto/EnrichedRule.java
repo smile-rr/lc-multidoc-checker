@@ -40,5 +40,8 @@ public record EnrichedRule(
         String origin,                  // CATALOG | DYNAMIC
         String evidenceLcClause,        // DYNAMIC only — :46A:/:47A: span that motivated the rule
         List<String> triggerTrace,      // human-readable steps from RuleTriggerEvaluator
-        String ucpExcerpt               // verbatim UCP/ISBP quote from the rule catalog (for drawer display)
+        String ucpExcerpt,              // verbatim UCP/ISBP quote from the rule catalog (for drawer display)
+        Long durationMs,                // wall-clock duration of this rule's execution; backend-computed
+        String startedAt,               // ISO-8601 timestamp from pipeline_steps
+        String completedAt              // ISO-8601 timestamp from pipeline_steps
 ) {}

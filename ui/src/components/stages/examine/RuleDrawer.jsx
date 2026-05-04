@@ -10,6 +10,7 @@ const STATUS_META = {
   DOUBTS:         { c: '#8a5700', bg: '#fefce8', l: 'DOUBTS' },
   NOT_APPLICABLE: { c: '#6e6e73', bg: '#f5f5f7', l: 'N/A' },
   PENDING:        { c: '#6e6e73', bg: '#f5f5f7', l: 'pending…' },
+  FAILED:         { c: '#b54708', bg: '#fff4ed', l: 'FAILED' },
 };
 
 export function RuleDrawer({ rule, onClose, onOverride, onResetOverride }) {

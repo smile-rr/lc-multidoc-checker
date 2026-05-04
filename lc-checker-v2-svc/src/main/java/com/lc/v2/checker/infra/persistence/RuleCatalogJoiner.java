@@ -33,6 +33,12 @@ import org.springframework.stereotype.Component;
 @Component
 public class RuleCatalogJoiner {
 
+    /** Backend-computed wall-clock for a single rule, sourced from
+     *  {@code v_check_results.duration_ms / started_at / completed_at}. */
+    public record RuleTiming(Long durationMs, String startedAt, String completedAt) {
+        public static final RuleTiming EMPTY = new RuleTiming(null, null, null);
+    }
+
     private static final Logger log = LoggerFactory.getLogger(RuleCatalogJoiner.class);
 
     /** Single source of truth for human-readable rule labels (server-canonical). */
@@ -71,6 +77,13 @@ public class RuleCatalogJoiner {
     public List<EnrichedRule> join(String sessionId,
                                     List<CheckResult> checkResults,
                                     Map<DocType, DocumentExtract> extractsByDocType) {
+        return join(sessionId, checkResults, extractsByDocType, Map.of());
+    }
+
+    public List<EnrichedRule> join(String sessionId,
+                                    List<CheckResult> checkResults,
+                                    Map<DocType, DocumentExtract> extractsByDocType,
+                                    Map<String, RuleTiming> timingByRule) {
         Map<String, Map<String, Object>> overridesByRule = sessionStore.getLatestOverridesByRule(sessionId);
         Map<String, Rule> adhocById = loadAdhocRules(sessionId);
         Map<String, List<String>> tracesById = loadTriggerTraces(sessionId);
@@ -111,6 +124,7 @@ public class RuleCatalogJoiner {
             // Agreement signal — derive from primary doc's confidence tier when available
             String agree = computeAgree(rule, extractsByDocType);
 
+            RuleTiming t = timingByRule.getOrDefault(cr.ruleId(), RuleTiming.EMPTY);
             result.add(new EnrichedRule(
                     cr.ruleId(),
                     label,
@@ -134,7 +148,10 @@ public class RuleCatalogJoiner {
                     rule != null && rule.origin() != null ? rule.origin().name() : RuleOrigin.CATALOG.name(),
                     rule != null ? rule.evidenceLcClause() : null,
                     tracesById.get(cr.ruleId()),
-                    rule != null ? rule.ucpExcerpt() : null
+                    rule != null ? rule.ucpExcerpt() : null,
+                    t.durationMs(),
+                    t.startedAt(),
+                    t.completedAt()
             ));
         }
         return result;

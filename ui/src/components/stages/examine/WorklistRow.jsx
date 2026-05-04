@@ -4,11 +4,19 @@ import { SeverityChip } from '../../shared/SeverityChip';
 import { ReliabChip } from '../../shared/ReliabChip';
 import { AttentionChip } from '../../shared/AttentionChip';
 
+function fmtDuration(ms) {
+  if (ms == null) return '';
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${Math.floor(ms / 60000)}m${Math.floor((ms % 60000) / 1000)}s`;
+}
+
 const STATUS_META = {
   PASS:           { c: '#1a7a43', bg: '#f0fdf4', icon: '✓' },
   FAIL:           { c: '#cc0011', bg: '#fff1f0', icon: '✕' },
   DOUBTS:         { c: '#8a5700', bg: '#fefce8', icon: '!' },
   NOT_APPLICABLE: { c: '#6e6e73', bg: '#f5f5f7', icon: '○' },
+  FAILED:         { c: '#b54708', bg: '#fff4ed', icon: '⚠' },
 };
 
 export function WorklistRow({ rule, selected, onClick }) {
@@ -60,7 +68,14 @@ export function WorklistRow({ rule, selected, onClick }) {
         {rule.label}
       </td>
       <td className="px-2 py-2"><SeverityChip severity={rule.severity} /></td>
-      <td className="px-2 py-2 text-[10px] text-muted font-mono">{rule.source}</td>
+      <td className="px-2 py-2 text-[10px] text-muted font-mono">
+        {rule.source}
+        {rule.durationMs != null && (
+          <span className="ml-1.5 text-[9px] text-[#a1a1a6]" title="Backend-measured execution time">
+            {fmtDuration(rule.durationMs)}
+          </span>
+        )}
+      </td>
       <td className="px-2 py-2 text-[10px] font-mono">{rule.agree}</td>
       <td className="px-2 py-2"><ReliabChip r={rule.reliab} /></td>
       <td className="px-2 py-2">

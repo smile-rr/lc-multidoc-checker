@@ -5,6 +5,7 @@ import com.lc.v2.checker.api.dto.EnrichedRule;
 import com.lc.v2.checker.api.dto.OverrideRequest;
 import com.lc.v2.checker.domain.result.CheckResult;
 import com.lc.v2.checker.infra.persistence.RuleCatalogJoiner;
+import com.lc.v2.checker.infra.persistence.RuleCatalogJoiner.RuleTiming;
 import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.pipeline.PipelineEventBus;
 import java.util.ArrayList;
@@ -53,10 +54,12 @@ public class RulesController {
     public ResponseEntity<Map<String, Object>> getRules(@PathVariable String sessionId) {
         if (!sessionStore.sessionExists(sessionId)) return ResponseEntity.notFound().build();
 
-        List<CheckResult> results = readCheckResults(sessionId);
+        List<Map<String, Object>> rows = sessionStore.getCheckResults(sessionId);
+        List<CheckResult> results = readCheckResults(rows);
+        Map<String, RuleCatalogJoiner.RuleTiming> timings = readTimings(rows);
         // Note: extractsByDocType is null here — attention chips that depend on
         // extraction signals (SPLIT/HANDWRITING) only fire if the data is in-context.
-        List<EnrichedRule> enriched = joiner.join(sessionId, results, null);
+        List<EnrichedRule> enriched = joiner.join(sessionId, results, null, timings);
         return ResponseEntity.ok(Map.of("rules", enriched));
     }
 
@@ -104,10 +107,9 @@ public class RulesController {
         return ResponseEntity.ok(Map.of("ok", true, "ruleId", ruleId));
     }
 
-    /** Read every per-rule outcome from {@code v_check_results}. */
+    /** Convert raw v_check_results rows into CheckResult records. */
     @SuppressWarnings("unchecked")
-    private List<CheckResult> readCheckResults(String sessionId) {
-        List<Map<String, Object>> rows = sessionStore.getCheckResults(sessionId);
+    private List<CheckResult> readCheckResults(List<Map<String, Object>> rows) {
         List<CheckResult> out = new ArrayList<>(rows.size());
         for (Map<String, Object> r : rows) {
             String ruleId = (String) r.get("rule_id");
@@ -129,6 +131,24 @@ public class RulesController {
             out.add(new CheckResult(ruleId, verdict, explanation, evidence, confidence, checkType));
         }
         return out;
+    }
+
+    /** Build rule_id → timing map from the same rows. */
+    private Map<String, RuleCatalogJoiner.RuleTiming> readTimings(List<Map<String, Object>> rows) {
+        Map<String, RuleCatalogJoiner.RuleTiming> out = new LinkedHashMap<>();
+        for (Map<String, Object> r : rows) {
+            String ruleId = (String) r.get("rule_id");
+            if (ruleId == null) continue;
+            Long durationMs = r.get("duration_ms") instanceof Number n ? n.longValue() : null;
+            String startedAt = stringifyTimestamp(r.get("started_at"));
+            String completedAt = stringifyTimestamp(r.get("completed_at"));
+            out.put(ruleId, new RuleCatalogJoiner.RuleTiming(durationMs, startedAt, completedAt));
+        }
+        return out;
+    }
+
+    private static String stringifyTimestamp(Object v) {
+        return v == null ? null : v.toString();
     }
 
     private static <T> ResponseEntity<T> frozen() {

@@ -1,6 +1,5 @@
 package com.lc.v2.checker.infra.storage;
 
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
@@ -17,7 +16,6 @@ import com.lc.v2.checker.infra.config.StorageProperties;
  * Wires the AWS S3 client for MinIO / S3-compatible object storage.
  */
 @Configuration
-@EnableConfigurationProperties(StorageProperties.class)
 public class S3Config {
 
     @Bean

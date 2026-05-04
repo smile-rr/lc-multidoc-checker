@@ -79,6 +79,8 @@ public class AdhocRuleValidator {
 
             validated.add(new Rule(
                     id,
+                    null,                  // canonicalField — ad-hoc rules go in "Other / Planned"
+                    p.scope(),             // appliesTo — default to scope; planner may set explicitly later
                     p.scope(),
                     p.triggerDocs(),
                     p.lcFieldsRequired(),

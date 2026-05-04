@@ -6,6 +6,7 @@ import { useDevMode } from '../../context/DevModeContext';
 import { useRules } from '../../hooks/useRules';
 import { useSavedViews } from '../../hooks/useSavedViews';
 import { SummaryBar } from './examine/SummaryBar';
+import { DiagnosticHeader } from './examine/DiagnosticHeader';
 import { FilterRail } from './examine/FilterRail';
 import { WorklistTable } from './examine/WorklistTable';
 import { RuleDrawer } from './examine/RuleDrawer';
@@ -112,9 +113,51 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
       groupedActive: groupOf(active),
       groupedNa: groupOf(na),
       groupedOutOfScope: groupOf(oos),
+      flatActive: active,
+      flatNa: na,
+      flatOutOfScope: oos,
       activeCount: active.length,
     };
   }, [sorted, navMode]);
+
+  const [diagFilter, setDiagFilter] = useState(null);
+  // Filter the worklist scope from the DiagnosticHeader pills.
+  // null=all, 'ran'=PASS/FAIL/DOUBTS, 'na'=NOT_APPLICABLE, 'oos'=out-of-scope, 'pending', 'failed'.
+  const effectiveBuckets = useMemo(() => {
+    if (!diagFilter) return buckets;
+    const empty = {};
+    if (diagFilter === 'ran') {
+      const ran = buckets.flatActive.filter(r => {
+        const v = r.effectiveVerdict || r.verdict;
+        return v === 'PASS' || v === 'FAIL' || v === 'DOUBTS';
+      });
+      return { ...buckets, groupedActive: groupByNav(ran), groupedNa: empty, groupedOutOfScope: empty };
+    }
+    if (diagFilter === 'na') {
+      return { ...buckets, groupedActive: empty, groupedOutOfScope: empty };
+    }
+    if (diagFilter === 'oos') {
+      return { ...buckets, groupedActive: empty, groupedNa: empty };
+    }
+    if (diagFilter === 'pending' || diagFilter === 'failed') {
+      const want = diagFilter === 'pending' ? 'PENDING' : 'FAILED';
+      const subset = buckets.flatActive.filter(r => (r.effectiveVerdict || r.verdict) === want);
+      return { ...buckets, groupedActive: groupByNav(subset), groupedNa: empty, groupedOutOfScope: empty };
+    }
+    return buckets;
+  }, [buckets, diagFilter, navMode]);
+
+  function groupByNav(rs) {
+    const out = {};
+    for (const r of rs) {
+      const key = navMode === 'article' ? (r.article || '—')
+        : navMode === 'doc' ? ((r.scope || [])[0] || '—')
+        : navMode === 'origin' ? (r.origin || 'CATALOG')
+        : (r.evidence?.lc?.toString().split(':')[0] || 'Other');
+      (out[key] = out[key] || []).push(r);
+    }
+    return out;
+  }
 
   const selected = rules.find(r => r.ruleId === selectedId);
 
@@ -187,13 +230,14 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
   const planned = rules.filter(r => !isOutOfScope(r));
   const completedCount = planned.filter(r => (r.verdict || r.effectiveVerdict) !== 'PENDING').length;
   const verdictTally = useMemo(() => {
-    const t = { fail: 0, doubts: 0, pass: 0, na: 0 };
+    const t = { fail: 0, doubts: 0, pass: 0, na: 0, failed: 0 };
     for (const r of planned) {
       const v = r.effectiveVerdict || r.verdict;
       if (v === 'FAIL') t.fail++;
       else if (v === 'DOUBTS') t.doubts++;
       else if (v === 'PASS') t.pass++;
       else if (v === 'NOT_APPLICABLE') t.na++;
+      else if (v === 'FAILED') t.failed++;
     }
     return t;
   }, [planned]);
@@ -245,6 +289,14 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
       />
 
       <SummaryBar rules={rules} />
+
+      <DiagnosticHeader
+        active={buckets.flatActive}
+        notApplicable={buckets.flatNa}
+        outOfScope={buckets.flatOutOfScope}
+        statusFilter={diagFilter}
+        onStatusFilter={setDiagFilter}
+      />
 
       {showPhaseStrip && (
         <ExaminePhaseStrip
@@ -324,9 +376,9 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
             <div className="p-8 text-center text-muted text-sm">No rule results yet.</div>
           ) : (
             <WorklistTable
-              groupedActive={buckets.groupedActive}
-              groupedNa={buckets.groupedNa}
-              groupedOutOfScope={buckets.groupedOutOfScope}
+              groupedActive={effectiveBuckets.groupedActive}
+              groupedNa={effectiveBuckets.groupedNa}
+              groupedOutOfScope={effectiveBuckets.groupedOutOfScope}
               navMode={navMode}
               sort={sort}
               setSort={setSort}
