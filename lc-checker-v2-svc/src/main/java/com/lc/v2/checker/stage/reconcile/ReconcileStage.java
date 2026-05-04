@@ -119,7 +119,8 @@ public class ReconcileStage implements Stage {
         long disc = fields.stream().filter(f -> f.status() == ReconField.ReconStatus.DISCREPANCY).count();
         long tol  = fields.stream().filter(f -> f.status() == ReconField.ReconStatus.TOLERANCE).count();
 
-        // Persist to final_report.reconcile so the matrix survives JVM restart.
+        // Persist to pipeline_steps(reconcile/field:<key>) so the matrix
+        // survives JVM restart and is exposed via v_reconcile_rows.
         persistRows(ctx, fields);
 
         ctx.eventBus.stageCompleted(ctx.sessionId, "reconcile", System.currentTimeMillis() - start);
@@ -127,31 +128,51 @@ public class ReconcileStage implements Stage {
                 ctx.sessionId, fields.size(), disc, tol, System.currentTimeMillis() - start);
     }
 
+    /**
+     * Persist reconcile rows as one pipeline_steps row per field
+     * ({@code reconcile/field:<key>}). Read via {@code v_reconcile_rows}.
+     */
     private void persistRows(StageContext ctx, List<ReconField> fields) {
         try {
-            List<Map<String, Object>> serialised = new ArrayList<>(fields.size());
             for (ReconField f : fields) {
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put("fieldKey", f.fieldKey());
-                row.put("label", f.nameEn());
-                row.put("verdict", f.status().name());
-                row.put("discrepancyDetail", f.discrepancyDetail());
                 Map<String, Object> values = new LinkedHashMap<>();
                 f.valueByDocType().forEach((dt, v) -> values.put(dt.name(), v == null ? null : v.toString()));
-                row.put("valueByDocType", values);
                 Map<String, String> cellStatus = new LinkedHashMap<>();
                 f.cellStatus().forEach((dt, s) -> cellStatus.put(dt.name(), s.name()));
-                row.put("cellStatus", cellStatus);
                 Map<String, String> cellDetail = new LinkedHashMap<>();
                 f.cellDetail().forEach((dt, d) -> cellDetail.put(dt.name(), d));
-                row.put("cellDetail", cellDetail);
-                serialised.add(row);
+
+                Map<String, Object> stepResult = new LinkedHashMap<>();
+                stepResult.put("label", f.nameEn());
+                stepResult.put("group", groupOf(f.fieldKey()));
+                stepResult.put("field_type", "STRING");
+                stepResult.put("row_verdict", f.status().name());
+                stepResult.put("discrepancy_detail", f.discrepancyDetail());
+                stepResult.put("value_by_doc_type", values);
+                stepResult.put("cell_status", cellStatus);
+                stepResult.put("cell_detail", cellDetail);
+                sessionStore.upsertPipelineStep(ctx.sessionId, "reconcile",
+                        "field:" + f.fieldKey(),
+                        f.status().name(),
+                        objectMapper.writeValueAsString(stepResult),
+                        null, null);
             }
-            String json = objectMapper.writeValueAsString(serialised);
-            sessionStore.mergeFinalReportSection(ctx.sessionId, "reconcile", json);
         } catch (Exception e) {
             log.warn("[{}] reconcile persistence failed: {}", ctx.sessionId, e.getMessage());
         }
+    }
+
+    /** Match the group classifier used by ReconcileController.groupOf for view consistency. */
+    private static String groupOf(String fieldKey) {
+        if (fieldKey == null) return "Other";
+        String k = fieldKey.toLowerCase();
+        if (k.contains("amount") || k.contains("currency") || k.contains("price")) return "Money";
+        if (k.contains("port") || k.contains("ship") || k.contains("transport")) return "Transport";
+        if (k.contains("goods") || k.contains("description") || k.contains("incoterm")) return "Goods";
+        if (k.contains("name") || k.contains("address") || k.contains("beneficiary") || k.contains("applicant")) return "Identity";
+        if (k.contains("date") || k.contains("expiry") || k.contains("compliance")) return "Compliance";
+        if (k.contains("insur")) return "Insurance";
+        return "Other";
     }
 
     private static ReconField.ReconStatus mapVerdict(ReconcileNormaliser.Verdict v) {

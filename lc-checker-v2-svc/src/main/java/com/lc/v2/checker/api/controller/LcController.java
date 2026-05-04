@@ -19,10 +19,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * LC-derived endpoints used by Intake's right-rail required-doc checklist.
+ * LC-derived endpoints.
  *
- *   GET  /sessions/{id}/lc/required-docs
- *        → { parsed46A, required: [{ type, copies, label, present }] }
+ *   GET  /sessions/{id}/lc                — MT700 source view {text, fields, rawFields, warnings, fieldLabels}
+ *   GET  /sessions/{id}/lc/required-docs  — :46A: parsed required-doc checklist
  */
 @RestController
 @RequestMapping("/api/v2/sessions/{sessionId}/lc")
@@ -58,12 +58,12 @@ public class LcController {
 
     /**
      * Returns the LC source view used by the Parse stage's MT700 pane:
-     *   { text, fields, warnings, rawFields }
+     *   { text, fields, rawFields, warnings, fieldLabels }
      *
      * Source priority:
-     *   1. live StageContext (post-parse-stage) — has full LcParseResult
-     *   2. final_report.lc.raw (after sign-off) — text only
-     *   3. ctx.lcText (before parse) — raw upload, no fields yet
+     *   1. live StageContext (in-memory, fastest path during pipeline run)
+     *   2. v_lc_parse view (DB-backed, survives JVM restart)
+     *   3. ctx.lcText only (very early — pipeline hasn't reached Parse yet)
      */
     @GetMapping
     public ResponseEntity<Map<String, Object>> getLc(@PathVariable String sessionId) {
@@ -82,7 +82,22 @@ public class LcController {
             return ResponseEntity.ok(response);
         }
 
-        // Fallback to ctx.lcText if pipeline hasn't reached Parse yet.
+        // DB rehydration — read from v_lc_parse (pipeline_steps intake/lc_parse).
+        Map<String, Object> view = sessionStore.getLcParse(sessionId);
+        if (view != null) {
+            String text = (String) view.get("raw_mt700");
+            Map<String, Object> fields = parseObjectMap((String) view.get("fields"));
+            Map<String, Object> rawFields = parseObjectMap((String) view.get("raw_fields"));
+            List<Object> warnings = parseList((String) view.get("warnings"));
+            response.put("text", text == null ? "" : text);
+            response.put("fields", fields);
+            response.put("rawFields", rawFields);
+            response.put("warnings", warnings);
+            response.put("fieldLabels", labelsFor(fields.keySet()));
+            return ResponseEntity.ok(response);
+        }
+
+        // Pre-parse fallback: pipeline hasn't run intake yet.
         if (ctx != null && ctx.lcText != null) {
             response.put("text", ctx.lcText);
             response.put("fields", Map.of());
@@ -92,28 +107,12 @@ public class LcController {
             return ResponseEntity.ok(response);
         }
 
-        // Final fallback — rehydrate from final_report.lc snapshot persisted by IntakeStage.
-        // Survives JVM restarts and StageContext eviction. Snapshot shape:
-        //   { raw, fields, rawFields, derived, warnings }
-        Map<String, Object> session = sessionStore.getSession(sessionId);
-        Map<String, Object> snapshot = readLcSnapshot(session);
-        String text = snapshot.get("raw") instanceof String s ? s : "";
-        Map<String, Object> fields = snapshot.get("fields") instanceof Map<?, ?> fm
-                ? castMap(fm) : Map.of();
-        Map<String, Object> rawFields = snapshot.get("rawFields") instanceof Map<?, ?> rm
-                ? castMap(rm) : Map.of();
-        List<?> warnings = snapshot.get("warnings") instanceof List<?> wl ? wl : List.of();
-        response.put("text", text);
-        response.put("fields", fields);
-        response.put("rawFields", rawFields);
-        response.put("warnings", warnings);
-        response.put("fieldLabels", labelsFor(fields.keySet()));
+        response.put("text", "");
+        response.put("fields", Map.of());
+        response.put("rawFields", Map.of());
+        response.put("warnings", List.of());
+        response.put("fieldLabels", Map.of());
         return ResponseEntity.ok(response);
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> castMap(Map<?, ?> m) {
-        return (Map<String, Object>) m;
     }
 
     @GetMapping("/required-docs")
@@ -121,8 +120,9 @@ public class LcController {
         Map<String, Object> session = sessionStore.getSession(sessionId);
         if (session == null) return ResponseEntity.notFound().build();
 
-        // Reconstruct LC text from final_report.lc.raw if available; else best-effort empty.
-        String lcText = readLcRawText(session);
+        // Reconstruct LC text from v_lc_parse if available.
+        Map<String, Object> lcView = sessionStore.getLcParse(sessionId);
+        String lcText = lcView == null ? "" : ((String) lcView.getOrDefault("raw_mt700", ""));
         Lc46aRequiredDocsParser.Result parsed = parser.parse(lcText);
 
         // Mark which required docs are present in the session
@@ -151,21 +151,25 @@ public class LcController {
     }
 
     @SuppressWarnings("unchecked")
-    private String readLcRawText(Map<String, Object> session) {
-        Object raw = readLcSnapshot(session).get("raw");
-        return raw instanceof String r ? r : "";
+    private Map<String, Object> parseObjectMap(String json) {
+        if (json == null || json.isBlank()) return Map.of();
+        try {
+            Map<String, Object> m = objectMapper.readValue(json, Map.class);
+            return m == null ? Map.of() : m;
+        } catch (Exception e) {
+            log.warn("LC field map parse failed: {}", e.getMessage());
+            return Map.of();
+        }
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> readLcSnapshot(Map<String, Object> session) {
-        if (session == null) return Map.of();
-        Object fr = session.get("final_report");
-        if (!(fr instanceof String s) || s.isBlank()) return Map.of();
+    private List<Object> parseList(String json) {
+        if (json == null || json.isBlank()) return List.of();
         try {
-            Map<String, Object> parsed = objectMapper.readValue(s, Map.class);
-            Object lc = parsed.get("lc");
-            if (lc instanceof Map<?, ?> m) return (Map<String, Object>) m;
-        } catch (Exception e) { /* swallow */ }
-        return Map.of();
+            List<Object> l = objectMapper.readValue(json, List.class);
+            return l == null ? List.of() : l;
+        } catch (Exception e) {
+            return List.of();
+        }
     }
 }

@@ -167,11 +167,19 @@ public class PipelineService {
         boolean compliant = ctx.checkResults.stream()
                 .noneMatch(r -> r.verdict() == com.lc.v2.checker.domain.result.CheckResult.Verdict.FAIL
                         || r.verdict() == com.lc.v2.checker.domain.result.CheckResult.Verdict.DOUBTS);
-        String reportJson = null;
+        // Persist the assembled report as just another pipeline step. The
+        // session-level scalars (status/compliant/completed_at) are updated
+        // independently — there is no separate final_report column.
         if (ctx.finalReport != null) {
-            try { reportJson = objectMapper.writeValueAsString(ctx.finalReport); } catch (Exception ignored) {}
+            try {
+                String reportJson = objectMapper.writeValueAsString(ctx.finalReport);
+                sessionStore.upsertPipelineStep(sessionId, "signoff", "report",
+                        compliant ? "COMPLIANT" : "DISCREPANT", reportJson, null, null);
+            } catch (Exception e) {
+                log.warn("[{}] signoff report serialise failed: {}", sessionId, e.getMessage());
+            }
         }
-        sessionStore.updateCompleted(sessionId, compliant, reportJson);
+        sessionStore.updateCompleted(sessionId, compliant);
         if (sessionStore.isSigned(sessionId)) {
             eventChannel.complete(sessionId);
             contextCache.remove(sessionId);

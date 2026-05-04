@@ -61,23 +61,24 @@ public class ReconcileController {
     public ResponseEntity<ReconcileResponse> getReconcile(@PathVariable String sessionId) {
         if (!sessionStore.sessionExists(sessionId)) return ResponseEntity.notFound().build();
 
-        Map<String, Object> recState = sessionStore.getReconcileState(sessionId);
-        boolean locked = recState != null && Boolean.TRUE.equals(recState.get("locked"));
-        Instant lockedAt = recState == null ? null : toInstant(recState.get("locked_at"));
-        String lockedBy = recState == null ? null : (String) recState.get("locked_by_officer");
-        Map<String, String> triage = parseTriage(recState);
+        // Lock state from v_lock_state (latest lock/unlock action)
+        Map<String, Object> lockState = sessionStore.getLockState(sessionId);
+        boolean locked = lockState != null && Boolean.TRUE.equals(lockState.get("locked"));
+        Instant lockedAt = lockState == null ? null : toInstant(lockState.get("locked_at"));
+        String lockedBy = lockState == null ? null : (String) lockState.get("locked_by_officer");
 
-        // Prefer in-memory ctx (live during pipeline run); fall back to final_report.
+        // Reconcile rows: prefer in-memory ctx (live during pipeline run);
+        // fall back to v_reconcile_rows (post-restart / completed sessions).
         StageContext ctx = pipelineService.getContext(sessionId);
         List<ReconcileResponse.ReconRow> rows = (ctx != null && ctx.reconFields != null)
                 ? buildRowsFromCtx(ctx.reconFields)
-                : readReconRowsFromFinalReport(sessionId);
+                : buildRowsFromView(sessionId);
 
-        // Layer in cell decisions
+        // Cell decisions from v_cell_decisions
         List<ReconcileResponse.CellDecision> decisions = readCellDecisions(sessionId);
 
         return ResponseEntity.ok(new ReconcileResponse(
-                rows, locked, lockedAt, lockedBy, triage, decisions));
+                rows, locked, lockedAt, lockedBy, Map.of(), decisions));
     }
 
     @PostMapping("/reconcile/cell-decision")
@@ -91,8 +92,16 @@ public class ReconcileController {
         if ("accept_match".equals(req.decision()) && (req.note() == null || req.note().isBlank())) {
             return ResponseEntity.badRequest().body(Map.of("error", "note required for accept_match"));
         }
-        sessionStore.upsertCellDecision(sessionId, req.fieldKey(), req.docType(),
-                req.decision(), req.note(), req.officerId());
+        try {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("decision", req.decision());
+            sessionStore.appendOfficerAction(sessionId, "cell_decision",
+                    req.fieldKey() + ":" + req.docType(),
+                    objectMapper.writeValueAsString(payload),
+                    req.officerId(), req.note());
+        } catch (Exception e) {
+            log.warn("[{}] officer_actions append failed for cell_decision: {}", sessionId, e.getMessage());
+        }
         eventBus.reconcileCellDecided(sessionId, req.fieldKey(), req.docType(),
                 req.decision(), req.note(), req.officerId());
         log.info("[{}] reconcile cell decided: {} × {} → {}",
@@ -105,17 +114,24 @@ public class ReconcileController {
                                                                    @RequestBody CellDecisionRequest req) {
         if (!sessionStore.sessionExists(sessionId)) return ResponseEntity.notFound().build();
         if (sessionStore.isSigned(sessionId)) return frozen();
-        sessionStore.deleteCellDecision(sessionId, req.fieldKey(), req.docType());
+        sessionStore.appendOfficerAction(sessionId, "cell_decision_cleared",
+                req.fieldKey() + ":" + req.docType(),
+                "{}", req.officerId(), null);
         eventBus.reconcileCellCleared(sessionId, req.fieldKey(), req.docType(), req.officerId());
         return ResponseEntity.ok(Map.of("ok", true));
     }
 
+    /**
+     * Legacy row-level triage. Cell decisions superseded this; we keep the
+     * endpoint accepting the request (frontend may still call it) but the
+     * decision is logged as a cell_decision targeting the row's first doc.
+     * No-op semantically — the row-level triage map is empty in responses.
+     */
     @PostMapping("/reconcile/triage")
     public ResponseEntity<Map<String, Object>> triage(@PathVariable String sessionId,
                                                         @RequestBody TriageRequest req) {
         if (!sessionStore.sessionExists(sessionId)) return ResponseEntity.notFound().build();
         if (sessionStore.isSigned(sessionId)) return frozen();
-        sessionStore.upsertReconcileTriage(sessionId, req.fieldKey(), req.decision());
         eventBus.reconcileTriaged(sessionId, req.fieldKey(), req.decision(), req.officerId());
         return ResponseEntity.ok(Map.of("ok", true));
     }
@@ -125,7 +141,8 @@ public class ReconcileController {
                                                       @RequestBody LockRequest req) {
         if (!sessionStore.sessionExists(sessionId)) return ResponseEntity.notFound().build();
         if (sessionStore.isSigned(sessionId)) return frozen();
-        sessionStore.lockSession(sessionId, req.officerId());
+        sessionStore.appendOfficerAction(sessionId, "lock", "-",
+                "{}", req.officerId(), null);
         eventBus.locked(sessionId, req.officerId());
         return ResponseEntity.ok(Map.of("ok", true, "lockedAt", Instant.now().toString()));
     }
@@ -135,9 +152,19 @@ public class ReconcileController {
                                                        @RequestBody UnlockRequest req) {
         if (!sessionStore.sessionExists(sessionId)) return ResponseEntity.notFound().build();
         if (sessionStore.isSigned(sessionId)) return frozen();
-        sessionStore.unlockSession(sessionId, req.officerId());
+        String unlockPayload = req.reason() == null
+                ? "{}"
+                : "{\"reason\":" + jsonStringLit(req.reason()) + "}";
+        sessionStore.appendOfficerAction(sessionId, "unlock", "-",
+                unlockPayload, req.officerId(), req.reason());
         eventBus.unlocked(sessionId, req.officerId(), req.reason());
         return ResponseEntity.ok(Map.of("ok", true));
+    }
+
+    private static String jsonStringLit(String s) {
+        if (s == null) return "null";
+        return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\n", "\\n").replace("\r", "\\r") + "\"";
     }
 
     // ── builders ──────────────────────────────────────────────────────────
@@ -171,54 +198,55 @@ public class ReconcileController {
         return out;
     }
 
+    /**
+     * Build rows from {@code v_reconcile_rows}. Used when the in-memory
+     * StageContext has been evicted (post-restart, completed sessions).
+     */
     @SuppressWarnings("unchecked")
-    private List<ReconcileResponse.ReconRow> readReconRowsFromFinalReport(String sessionId) {
-        Map<String, Object> session = sessionStore.getSession(sessionId);
-        if (session == null) return List.of();
-        Object finalReport = session.get("final_report");
-        if (!(finalReport instanceof String fr) || fr.isBlank()) return List.of();
-        try {
-            Map<String, Object> parsed = objectMapper.readValue(fr, Map.class);
-            Object rec = parsed.get("reconcile");
-            if (!(rec instanceof List<?> list)) return List.of();
-            List<ReconcileResponse.ReconRow> out = new ArrayList<>(list.size());
-            for (Object obj : list) {
-                if (!(obj instanceof Map<?, ?> map)) continue;
-                Map<String, Object> m = (Map<String, Object>) map;
-                String fk = str(m.get("fieldKey"));
-                if (fk == null) continue;
-                Map<String, Object> values = (Map<String, Object>) m.getOrDefault("valueByDocType", Map.of());
-                Map<String, Object> cellStatus = (Map<String, Object>) m.getOrDefault("cellStatus", Map.of());
-                Map<String, Object> cellDetail = (Map<String, Object>) m.getOrDefault("cellDetail", Map.of());
-                String rowVerdict = str(m.getOrDefault("verdict", "NA"));
-                // Build a cell for every doc-type that has either a verdict OR a value.
-                // (MISSING cells appear in cellStatus only; MATCH cells in both.)
-                java.util.LinkedHashSet<String> dts = new java.util.LinkedHashSet<>();
-                dts.addAll(cellStatus.keySet());
-                dts.addAll(values.keySet());
-                Map<String, ReconcileResponse.ReconCell> cells = new LinkedHashMap<>();
-                for (String dt : dts) {
-                    Object v = values.get(dt);
-                    String verdict = str(cellStatus.getOrDefault(dt, rowVerdict));
-                    String detail = str(cellDetail.get(dt));
-                    cells.put(dt, new ReconcileResponse.ReconCell(
-                            v == null ? null : v.toString(), verdict, detail, null));
-                }
-                out.add(new ReconcileResponse.ReconRow(
-                        fk,
-                        str(m.getOrDefault("label", fk)),
-                        str(m.get("article")),
-                        str(m.getOrDefault("group", "Other")),
-                        "STRING",
-                        values,
-                        cells,
-                        str(m.getOrDefault("verdict", "NA")),
-                        str(m.get("discrepancyDetail"))));
+    private List<ReconcileResponse.ReconRow> buildRowsFromView(String sessionId) {
+        List<Map<String, Object>> rows = sessionStore.getReconcileRows(sessionId);
+        if (rows.isEmpty()) return List.of();
+        List<ReconcileResponse.ReconRow> out = new ArrayList<>(rows.size());
+        for (Map<String, Object> r : rows) {
+            String fk = str(r.get("field_key"));
+            if (fk == null) continue;
+            Map<String, Object> values = parseObjectMap((String) r.get("value_by_doc_type"));
+            Map<String, Object> cellStatus = parseObjectMap((String) r.get("cell_status"));
+            Map<String, Object> cellDetail = parseObjectMap((String) r.get("cell_detail"));
+            String rowVerdict = str(r.getOrDefault("row_verdict", "NA"));
+            java.util.LinkedHashSet<String> dts = new java.util.LinkedHashSet<>();
+            dts.addAll(cellStatus.keySet());
+            dts.addAll(values.keySet());
+            Map<String, ReconcileResponse.ReconCell> cells = new LinkedHashMap<>();
+            for (String dt : dts) {
+                Object v = values.get(dt);
+                String verdict = str(cellStatus.getOrDefault(dt, rowVerdict));
+                String detail = str(cellDetail.get(dt));
+                cells.put(dt, new ReconcileResponse.ReconCell(
+                        v == null ? null : v.toString(), verdict, detail, null));
             }
-            return out;
+            out.add(new ReconcileResponse.ReconRow(
+                    fk,
+                    str(r.getOrDefault("label", fk)),
+                    null,
+                    str(r.getOrDefault("field_group", "Other")),
+                    str(r.getOrDefault("field_type", "STRING")),
+                    values,
+                    cells,
+                    rowVerdict,
+                    str(r.get("discrepancy_detail"))));
+        }
+        return out;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> parseObjectMap(String json) {
+        if (json == null || json.isBlank()) return Map.of();
+        try {
+            Map<String, Object> m = objectMapper.readValue(json, Map.class);
+            return m == null ? Map.of() : m;
         } catch (Exception e) {
-            log.warn("[{}] reconcile parse from final_report failed: {}", sessionId, e.getMessage());
-            return List.of();
+            return Map.of();
         }
     }
 
@@ -235,23 +263,6 @@ public class ReconcileController {
                     toInstant(r.get("decided_at"))));
         }
         return out;
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, String> parseTriage(Map<String, Object> recState) {
-        if (recState == null) return Map.of();
-        Object raw = recState.get("triage");
-        if (!(raw instanceof String s) || s.isBlank()) return Map.of();
-        try {
-            Map<String, Object> parsed = objectMapper.readValue(s, Map.class);
-            Map<String, String> out = new LinkedHashMap<>();
-            for (var entry : parsed.entrySet()) {
-                if (entry.getValue() != null) out.put(entry.getKey(), entry.getValue().toString());
-            }
-            return out;
-        } catch (Exception e) {
-            return Map.of();
-        }
     }
 
     private static String str(Object o) { return o == null ? null : o.toString(); }

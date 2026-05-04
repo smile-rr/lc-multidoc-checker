@@ -79,9 +79,13 @@ public class SignoffController {
         }
 
         try {
-            String dispJson = objectMapper.writeValueAsString(
-                    req.dispositions() == null ? Map.of() : req.dispositions());
-            sessionStore.insertSignoff(sessionId, req.decision(), dispJson, req.note(), req.officerId());
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("decision", req.decision());
+            payload.put("dispositions", req.dispositions() == null ? Map.of() : req.dispositions());
+            payload.put("frozen", true);
+            sessionStore.appendOfficerAction(sessionId, "signoff", "-",
+                    objectMapper.writeValueAsString(payload),
+                    req.officerId(), req.note());
         } catch (Exception e) {
             log.error("[{}] signoff persistence failed", sessionId, e);
             return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
@@ -110,7 +114,7 @@ public class SignoffController {
         String lcRef = lookupLcReference(sessionId);
         String amountText = lookupAmountText(sessionId);
 
-        List<CheckResult> results = readCheckResultsFromFinalReport(sessionId);
+        List<CheckResult> results = readCheckResults(sessionId);
         List<EnrichedRule> enriched = joiner.join(sessionId, results, null);
         List<EnrichedRule> failures = new ArrayList<>();
         for (EnrichedRule r : enriched) {
@@ -159,53 +163,55 @@ public class SignoffController {
                 .orElse(null);
     }
 
+    /** LC amount string for the MT734 advice — read from v_lc_parse fields. */
     @SuppressWarnings("unchecked")
     private String lookupAmountText(String sessionId) {
-        // Try to read amount from the LC consensus extraction via final_report
-        Map<String, Object> session = sessionStore.getSession(sessionId);
-        if (session == null) return null;
-        Object fr = session.get("final_report");
-        if (!(fr instanceof String s) || s.isBlank()) return null;
+        Map<String, Object> lcView = sessionStore.getLcParse(sessionId);
+        if (lcView == null) return null;
+        String fieldsJson = (String) lcView.get("fields");
+        if (fieldsJson == null || fieldsJson.isBlank()) return null;
         try {
-            Map<String, Object> parsed = objectMapper.readValue(s, Map.class);
-            Object lcAmount = parsed.get("lc_amount");
-            if (lcAmount instanceof String) return (String) lcAmount;
-        } catch (Exception e) { /* fall through */ }
-        return null;
+            Map<String, Object> fields = objectMapper.readValue(fieldsJson, Map.class);
+            Object currency = unwrapValue(fields.get("credit_currency"));
+            Object amount = unwrapValue(fields.get("credit_amount"));
+            if (amount == null) return null;
+            return currency == null ? amount.toString() : currency + " " + amount;
+        } catch (Exception e) { return null; }
     }
 
-    @SuppressWarnings("unchecked")
-    private List<CheckResult> readCheckResultsFromFinalReport(String sessionId) {
-        Map<String, Object> session = sessionStore.getSession(sessionId);
-        if (session == null) return List.of();
-        Object fr = session.get("final_report");
-        if (!(fr instanceof String s) || s.isBlank()) return List.of();
-        try {
-            Map<String, Object> parsed = objectMapper.readValue(s, Map.class);
-            Object rs = parsed.get("results");
-            if (!(rs instanceof List<?> list)) return List.of();
-            List<CheckResult> out = new ArrayList<>(list.size());
-            for (Object obj : list) {
-                if (!(obj instanceof Map<?, ?> m)) continue;
-                Map<String, Object> map = (Map<String, Object>) m;
-                String ruleId = (String) map.get("ruleId");
-                String verdictStr = (String) map.get("verdict");
-                if (ruleId == null || verdictStr == null) continue;
-                CheckResult.Verdict verdict;
-                try { verdict = CheckResult.Verdict.valueOf(verdictStr); }
-                catch (IllegalArgumentException e) { continue; }
-                String explanation = (String) map.getOrDefault("explanation", "");
-                Object confObj = map.get("confidence");
-                double confidence = confObj instanceof Number n ? n.doubleValue() : 0.0;
-                String checkType = (String) map.get("checkType");
-                Object evObj = map.get("evidence");
-                Map<String, Object> evidence = evObj instanceof Map<?, ?> em ? (Map<String, Object>) em : null;
-                out.add(new CheckResult(ruleId, verdict, explanation, evidence, confidence, checkType));
-            }
-            return out;
-        } catch (Exception e) {
-            return List.of();
+    /** Unwrap a FieldEnvelope object: {value, confidence, ...} → value. */
+    private static Object unwrapValue(Object envelope) {
+        if (envelope == null) return null;
+        if (envelope instanceof Map<?, ?> m) {
+            Object v = m.get("value");
+            return v == null ? envelope : v;
         }
+        return envelope;
+    }
+
+    /** Read every per-rule outcome from {@code v_check_results}. */
+    @SuppressWarnings("unchecked")
+    private List<CheckResult> readCheckResults(String sessionId) {
+        List<Map<String, Object>> rows = sessionStore.getCheckResults(sessionId);
+        List<CheckResult> out = new ArrayList<>(rows.size());
+        for (Map<String, Object> r : rows) {
+            String ruleId = (String) r.get("rule_id");
+            String verdictStr = (String) r.get("system_verdict");
+            if (ruleId == null || verdictStr == null) continue;
+            CheckResult.Verdict verdict;
+            try { verdict = CheckResult.Verdict.valueOf(verdictStr); }
+            catch (IllegalArgumentException e) { continue; }
+            String explanation = (String) r.getOrDefault("explanation", "");
+            double confidence = r.get("confidence") instanceof Number n ? n.doubleValue() : 0.0;
+            String checkType = (String) r.get("check_type");
+            Map<String, Object> evidence = null;
+            String evJson = (String) r.get("evidence");
+            if (evJson != null && !evJson.isBlank()) {
+                try { evidence = objectMapper.readValue(evJson, Map.class); } catch (Exception e) { /* leave null */ }
+            }
+            out.add(new CheckResult(ruleId, verdict, explanation, evidence, confidence, checkType));
+        }
+        return out;
     }
 
     private static <T> ResponseEntity<T> frozen() {

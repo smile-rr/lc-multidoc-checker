@@ -54,7 +54,11 @@ export function StageProgressMeter({
           · {idx}/{total}
         </span>
       )}
-      {sub && <span className="text-muted truncate max-w-[280px]">· {sub}</span>}
+      {sub && (
+        <span className="text-muted truncate max-w-[640px] xl:max-w-[800px] min-w-0" title={sub}>
+          · {sub}
+        </span>
+      )}
       {secsSinceLast != null && secsSinceLast >= 1 && (
         <span className="text-muted">· {secsSinceLast.toFixed ? secsSinceLast.toFixed(0) : secsSinceLast}s</span>
       )}

@@ -136,23 +136,24 @@ public class IntakeStage implements Stage {
     }
 
     /**
-     * Persist the MT700 parse result to final_report.lc so it survives JVM
-     * restarts. Without this, ctx.lc is in-memory only and downstream stages
-     * (Reconcile / Examine) see null after any container restart, causing
-     * every field-dependent rule to return NOT_APPLICABLE.
+     * Persist the MT700 parse result to pipeline_steps(intake/lc_parse).
+     * Survives JVM restarts via {@code v_lc_parse}. Without this, ctx.lc is
+     * in-memory only and downstream stages see null after any container
+     * restart, causing every field-dependent rule to return NOT_APPLICABLE.
      *
-     * Stored shape: { raw, fields, rawFields, derived, warnings }.
+     * Stored shape: { raw_mt700, fields, rawFields, derived, warnings }.
      */
     private void persistLc(StageContext ctx, LcParseResult lc) {
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("raw_mt700", lc.rawMt700());
+        snapshot.put("fields", lc.envelope() != null ? lc.envelope().fields() : Map.of());
+        snapshot.put("rawFields", lc.rawFields());
+        snapshot.put("derived", lc.derived());
+        snapshot.put("warnings", lc.consistencyWarnings());
+
         try {
-            Map<String, Object> snapshot = new LinkedHashMap<>();
-            snapshot.put("raw", lc.rawMt700());
-            snapshot.put("fields", lc.envelope() != null ? lc.envelope().fields() : Map.of());
-            snapshot.put("rawFields", lc.rawFields());
-            snapshot.put("derived", lc.derived());
-            snapshot.put("warnings", lc.consistencyWarnings());
-            sessionStore.mergeFinalReportSection(ctx.sessionId, "lc",
-                    objectMapper.writeValueAsString(snapshot));
+            sessionStore.upsertPipelineStep(ctx.sessionId, "intake", "lc_parse",
+                    "SUCCESS", objectMapper.writeValueAsString(snapshot), null, null);
         } catch (Exception e) {
             log.warn("[{}] LC persistence failed (non-fatal): {}", ctx.sessionId, e.getMessage());
         }

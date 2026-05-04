@@ -33,7 +33,7 @@ import org.springframework.stereotype.Component;
  *   NOT_APPLICABLE → emit a NA row with the trigger trace as explanation (visible to officer)
  *   SKIP           → drop silently (rule's doc universe absent)
  *
- * Trigger traces are persisted under final_report.examine.trigger_traces for UI tooltips.
+ * Trigger traces are persisted in pipeline_steps(examine/meta).trigger_traces for UI tooltips.
  */
 @PipelineStage(name = "examine")
 @Component
@@ -85,7 +85,7 @@ public class ExamineStage implements Stage {
         long deriveStart = System.currentTimeMillis();
         phaseStarts.put("derive", deriveStart);
 
-        // Step 0a: rehydrate ctx.lc from final_report.lc if the in-memory copy
+        // Step 0a: rehydrate ctx.lc from v_lc_parse if the in-memory copy
         // was lost (JVM restart, stage-cache eviction). Without this, every
         // field-dependent rule returns NOT_APPLICABLE because the envelope
         // appears empty.
@@ -93,7 +93,7 @@ public class ExamineStage implements Stage {
             try {
                 ctx.lc = rehydrateLc(ctx.sessionId);
                 if (ctx.lc != null) {
-                    log.info("[{}] Examine rehydrated LC from final_report.lc: #{} ",
+                    log.info("[{}] Examine rehydrated LC from v_lc_parse: #{} ",
                             ctx.sessionId, ctx.lc.getLcNumber());
                 }
             } catch (Exception e) {
@@ -279,14 +279,14 @@ public class ExamineStage implements Stage {
 
     private void appendCheckResult(StageContext ctx, CheckResult r) {
         try {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("ruleId", r.ruleId());
-            row.put("verdict", r.verdict().name());
-            row.put("explanation", r.explanation() != null ? r.explanation() : "");
-            row.put("confidence", r.confidence());
-            row.put("checkType", r.checkType() != null ? r.checkType() : "");
-            sessionStore.upsertExamineResult(ctx.sessionId, r.ruleId(),
-                    objectMapper.writeValueAsString(row));
+            Map<String, Object> stepResult = new LinkedHashMap<>();
+            stepResult.put("check_type", r.checkType() != null ? r.checkType() : "");
+            stepResult.put("explanation", r.explanation() != null ? r.explanation() : "");
+            stepResult.put("confidence", r.confidence());
+            stepResult.put("trigger_trace", traces.getOrDefault(r.ruleId(), List.of()));
+            sessionStore.upsertPipelineStep(ctx.sessionId, "examine", r.ruleId(),
+                    r.verdict().name(), objectMapper.writeValueAsString(stepResult),
+                    null, null);
         } catch (Exception e) {
             log.warn("[{}] persist examine row failed for {}: {}",
                     ctx.sessionId, r.ruleId(), e.getMessage());
@@ -295,14 +295,13 @@ public class ExamineStage implements Stage {
 
     private void upsertPendingRow(StageContext ctx, Rule rule) {
         try {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("ruleId", rule.ruleId());
-            row.put("verdict", "PENDING");
-            row.put("explanation", "");
-            row.put("confidence", null);
-            row.put("checkType", rule.checkType());
-            sessionStore.upsertExamineResult(ctx.sessionId, rule.ruleId(),
-                    objectMapper.writeValueAsString(row));
+            Map<String, Object> stepResult = new LinkedHashMap<>();
+            stepResult.put("check_type", rule.checkType());
+            stepResult.put("explanation", "");
+            stepResult.put("confidence", null);
+            sessionStore.upsertPipelineStep(ctx.sessionId, "examine", rule.ruleId(),
+                    "PENDING", objectMapper.writeValueAsString(stepResult),
+                    null, null);
         } catch (Exception e) {
             log.warn("[{}] pre-insert PENDING row failed for {}: {}",
                     ctx.sessionId, rule.ruleId(), e.getMessage());
@@ -368,18 +367,16 @@ public class ExamineStage implements Stage {
     private record RuleAndDecision(Rule rule, TriggerDecision decision) {}
 
     /**
-     * Re-parse MT700 from final_report.lc.raw if ctx.lc is null. Deterministic;
-     * cheap. Survives JVM restarts since IntakeStage persists the raw text +
-     * envelope at the end of intake.
+     * Re-parse MT700 from {@code v_lc_parse} if ctx.lc is null. Deterministic;
+     * cheap. Survives JVM restarts because IntakeStage persists the raw text
+     * to pipeline_steps(intake/lc_parse).
      */
     private com.lc.v2.checker.domain.lc.LcParseResult rehydrateLc(String sessionId) {
-        String json = sessionStore.getFinalReportSection(sessionId, "lc");
-        if (json == null || json.isBlank() || "null".equals(json)) return null;
+        Map<String, Object> view = sessionStore.getLcParse(sessionId);
+        if (view == null) return null;
+        Object raw = view.get("raw_mt700");
+        if (!(raw instanceof String s) || s.isBlank()) return null;
         try {
-            Map<String, Object> snapshot = objectMapper.readValue(json,
-                    new com.fasterxml.jackson.core.type.TypeReference<>() {});
-            Object raw = snapshot.get("raw");
-            if (!(raw instanceof String s) || s.isBlank()) return null;
             return mt700Parser.parse(s);
         } catch (Exception e) {
             log.warn("[{}] LC rehydrate parse failed: {}", sessionId, e.getMessage());
@@ -397,8 +394,8 @@ public class ExamineStage implements Stage {
             if (ctx.lc != null && !ctx.lc.consistencyWarnings().isEmpty()) {
                 meta.put("consistency", ctx.lc.consistencyWarnings());
             }
-            sessionStore.mergeFinalReportSection(ctx.sessionId, "examine_meta",
-                    objectMapper.writeValueAsString(meta));
+            sessionStore.upsertPipelineStep(ctx.sessionId, "examine", "meta",
+                    "SUCCESS", objectMapper.writeValueAsString(meta), null, null);
         } catch (Exception e) {
             log.warn("[{}] examine persistence failed: {}", ctx.sessionId, e.getMessage());
         }

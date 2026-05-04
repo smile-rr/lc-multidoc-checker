@@ -9,32 +9,46 @@ export function FieldRow({ label, fieldKey, value, conf, manual, slotValues, onC
   const [expanded, setExpanded] = useState(false);
   const slots = slotValues ?? {};
   const slotIds = Object.keys(slots);
-  const conflict = slotIds.length > 1
+  const slotsDisagree = slotIds.length > 1
     && slotIds.some(s => String(slots[s]) !== String(value));
-  const tone = conflict ? 'bg-status-goldSoft' : '';
+  // Slot disagreement only "needs attention" when the officer hasn't decided yet.
+  // After an officer correction, the field is canonical — drop the gold attention
+  // treatment but keep +compare available for inspection.
+  const needsAttention = slotsDisagree && !manual;
+  const tone = manual
+    ? 'bg-status-blueSoft/30'                    // calm, decided
+    : slotsDisagree ? 'bg-status-goldSoft' : '';
   return (
     <div className={`px-4 py-2.5 border-b border-line/50 ${tone}`}>
       <div className="grid grid-cols-[160px_1fr_auto] gap-3 items-baseline">
         <div className="flex items-center gap-1.5">
           <span className="text-[11px] text-navy-1" title={fieldKey}>{label}</span>
           {manual && (
-            <span className="text-[9px] px-1 rounded bg-status-blueSoft text-status-blue font-mono" title="Officer-corrected">
-              ✎
+            <span
+              className="text-[9px] px-1 rounded bg-status-blue text-white font-mono"
+              title="Officer-corrected"
+            >
+              ✎ edited
             </span>
           )}
         </div>
         <div className="text-[12px] font-mono break-words min-w-0">{String(value ?? '—')}</div>
         <div className="flex items-center gap-1.5">
           <ConfChip conf={conf} />
-          {!conflict && slotIds.length > 1 && (
+          {!slotsDisagree && slotIds.length > 1 && (
             <span className="text-[8px] tracking-wider px-1 py-0.5 rounded bg-teal-1/10 text-teal-1 font-mono">
               {slotIds.length}✓
             </span>
           )}
-          {conflict && (
+          {slotsDisagree && (
             <button
               onClick={() => setExpanded(e => !e)}
-              className="text-[9px] px-1.5 py-0.5 rounded border border-status-gold text-status-gold hover:bg-status-goldSoft font-mono"
+              className={`text-[9px] px-1.5 py-0.5 rounded border font-mono transition-colors ${
+                needsAttention
+                  ? 'border-status-gold text-status-gold hover:bg-status-goldSoft'
+                  : 'border-line text-muted hover:bg-slate2'
+              }`}
+              title={needsAttention ? 'Slots disagree — review' : 'Slots disagreed before edit — inspect'}
             >
               {expanded ? '−' : '+'} compare
             </button>

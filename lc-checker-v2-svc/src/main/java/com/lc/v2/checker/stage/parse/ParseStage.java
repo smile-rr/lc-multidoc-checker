@@ -116,7 +116,13 @@ public class ParseStage implements Stage {
         return s.length() <= 120 ? s : s.substring(0, 120) + "…";
     }
 
-    /** Persist per-slot envelopes + the consensus row into lc_v2.extraction_results. */
+    /**
+     * Persist per-slot envelopes + the consensus row to pipeline_steps:
+     *   - parse/extract:&lt;dt&gt;:&lt;slot&gt;   per-slot vision output
+     *   - parse/consensus:&lt;dt&gt;           majority-vote consensus
+     *
+     * Read via {@code v_doc_extracts_consensus} / {@code v_doc_extracts_slots}.
+     */
     private void persistExtract(StageContext ctx, DocType dt, DocumentExtract extract) {
         String docId = ctx.docIds.get(dt);
         if (docId == null) {
@@ -124,24 +130,32 @@ public class ParseStage implements Stage {
             return;
         }
         try {
-            // Per-slot rows
             for (var entry : extract.bySlot().entrySet()) {
                 String slot = entry.getKey();
                 FieldEnvelope env = entry.getValue();
-                String fieldsJson = objectMapper.writeValueAsString(env.fields());
-                sessionStore.insertExtractionResult(docId, ctx.sessionId, slot,
-                        fieldsJson, "[]", null, false);
+                Map<String, Object> stepResult = new java.util.LinkedHashMap<>();
+                stepResult.put("doc_id", docId);
+                stepResult.put("fields", env.fields());
+                stepResult.put("off_schema_items", java.util.List.of());
+                sessionStore.upsertPipelineStep(ctx.sessionId, "parse",
+                        "extract:" + dt.name() + ":" + slot,
+                        "SUCCESS", objectMapper.writeValueAsString(stepResult),
+                        null, null);
             }
-            // Consensus row (carries off-schema items)
-            String consensusJson = objectMapper.writeValueAsString(extract.consensus().fields());
-            String offSchemaJson = objectMapper.writeValueAsString(extract.offSchemaItems());
             double overallConf = switch (extract.overallConfidence()) {
                 case HIGH -> 0.95;
                 case MED -> 0.80;
                 case LOW -> 0.55;
             };
-            sessionStore.insertExtractionResult(docId, ctx.sessionId, "consensus",
-                    consensusJson, offSchemaJson, overallConf, true);
+            Map<String, Object> consensusResult = new java.util.LinkedHashMap<>();
+            consensusResult.put("doc_id", docId);
+            consensusResult.put("fields", extract.consensus().fields());
+            consensusResult.put("off_schema_items", extract.offSchemaItems());
+            consensusResult.put("overall_confidence", overallConf);
+            sessionStore.upsertPipelineStep(ctx.sessionId, "parse",
+                    "consensus:" + dt.name(),
+                    "SUCCESS", objectMapper.writeValueAsString(consensusResult),
+                    null, null);
         } catch (Exception e) {
             log.warn("[{}] Failed to persist extraction for {}: {}", ctx.sessionId, dt, e.getMessage());
         }

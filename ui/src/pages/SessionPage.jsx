@@ -34,31 +34,6 @@ export function SessionPage() {
 
   const [activeStage, setActiveStage] = useState(null);
 
-  // Initialize active stage from session state on first load — open at the
-  // latest stage the session reached so officers don't have to click forward.
-  useEffect(() => {
-    if (activeStage !== null || !session) return;
-    const status = String(session.status ?? '').toUpperCase();
-    if (signoffData?.signed || status === 'COMPLETED') {
-      setActiveStage('signoff');
-      return;
-    }
-    if (session.awaiting_officer && session.next_stage) {
-      const next = String(session.next_stage).toLowerCase();
-      if (STAGE_ORDER.includes(next)) {
-        setActiveStage(next);
-        return;
-      }
-    }
-    // Highest completed stage + 1 (capped at signoff)
-    let lastIdx = -1;
-    for (let i = 0; i < STAGE_ORDER.length; i++) {
-      if (stagesCompleted.has(STAGE_ORDER[i])) lastIdx = i;
-    }
-    const next = lastIdx >= 0 ? STAGE_ORDER[Math.min(lastIdx + 1, STAGE_ORDER.length - 1)] : 'intake';
-    setActiveStage(next);
-  }, [activeStage, session, signoffData?.signed, stagesCompleted]);
-
   // Sync top-nav running chip with live counts
   useEffect(() => {
     if (!id) return;
@@ -107,6 +82,21 @@ export function SessionPage() {
     if (intakeGate && parseGate && reconcileGate && examineGate) r.add('signoff');
     return r;
   }, [devMode, intakeGate, parseGate, reconcileGate, examineGate]);
+
+  // Initialize active stage on first load — land on the highest reachable
+  // stage so officers don't have to click forward, but never past where their
+  // upstream officer-gates are still pending. "Reachable" is gate-driven, not
+  // pipeline-status-driven: e.g. if Parse is mid-review (parseGate=false),
+  // Reconcile isn't reachable yet so we stay on Parse.
+  useEffect(() => {
+    if (activeStage !== null || !session) return;
+    if (signoffData?.signed) { setActiveStage('signoff'); return; }
+    let target = 'intake';
+    for (const s of STAGE_ORDER) {
+      if (reachable.has(s)) target = s;
+    }
+    setActiveStage(target);
+  }, [activeStage, session, signoffData?.signed, reachable]);
 
   // goNext: officer trigger to advance the pipeline by one stage.
   // Calls POST /sessions/{id}/stages/{nextStage}/run on the backend, then navigates.

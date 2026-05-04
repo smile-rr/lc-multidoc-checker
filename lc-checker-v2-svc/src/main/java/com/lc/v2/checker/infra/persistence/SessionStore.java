@@ -13,9 +13,21 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 /**
- * JDBC store for the lc_v2 schema.
- * Covers check_sessions, documents, pipeline_events.
- * Fail-fast at individual operations; caller handles error propagation.
+ * JDBC store for the lc_v2 schema (six tables: check_sessions, documents,
+ * pipeline_steps, pipeline_events, officer_actions, dynamic_rules).
+ *
+ * <p>Conventions:
+ * <ul>
+ *   <li><b>System outputs</b> are upserted into {@code pipeline_steps} via
+ *       {@link #upsertPipelineStep}. Idempotent — re-running a stage overwrites
+ *       the prior row keyed by {@code (session_id, stage, step_key)}.</li>
+ *   <li><b>Officer mutations</b> are appended to {@code officer_actions} via
+ *       {@link #appendOfficerAction}. Append-only audit log; "current state"
+ *       is the latest row per {@code (action, target)}, exposed via views.</li>
+ *   <li><b>Reads</b> go through views (v_lc_parse, v_reconcile_rows,
+ *       v_check_results, v_cell_decisions, v_rule_overrides, v_signoff, …).
+ *       Callers never see JSONB shape directly.</li>
+ * </ul>
  */
 @Component
 public class SessionStore {
@@ -25,7 +37,10 @@ public class SessionStore {
 
     public SessionStore(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
-    /** Create a new session row and return the generated UUID. */
+    // ───────────────────────────────────────────────────────────────────────
+    // check_sessions
+    // ───────────────────────────────────────────────────────────────────────
+
     public String createSession(int docCount) {
         String id = UUID.randomUUID().toString();
         jdbc.update("""
@@ -37,15 +52,10 @@ public class SessionStore {
     }
 
     public void updateStatus(String sessionId, String status) {
-        jdbc.update("""
-                UPDATE lc_v2.check_sessions SET status = ? WHERE id = ?::uuid
-                """, status, sessionId);
+        jdbc.update("UPDATE lc_v2.check_sessions SET status = ? WHERE id = ?::uuid",
+                status, sessionId);
     }
 
-    /**
-     * Mark a session as awaiting officer input before the next stage.
-     * Stamps the just-completed stage's timestamp into stage_completed_at JSONB.
-     */
     public void markAwaitingOfficer(String sessionId, String justCompleted, String nextStage) {
         jdbc.update("""
                 UPDATE lc_v2.check_sessions
@@ -58,7 +68,6 @@ public class SessionStore {
                 """, nextStage, justCompleted, sessionId);
     }
 
-    /** Clear the awaiting flag when an officer triggers the next stage. */
     public void clearAwaitingOfficer(String sessionId, String runningStage) {
         jdbc.update("""
                 UPDATE lc_v2.check_sessions
@@ -67,7 +76,6 @@ public class SessionStore {
                 """, runningStage.toUpperCase(), sessionId);
     }
 
-    /** Returns the next stage the officer is expected to trigger, or null. */
     public String getNextStage(String sessionId) {
         var rows = jdbc.queryForList(
                 "SELECT next_stage FROM lc_v2.check_sessions WHERE id = ?::uuid", sessionId);
@@ -76,91 +84,19 @@ public class SessionStore {
         return v == null ? null : v.toString();
     }
 
-    public void updateCompleted(String sessionId, Boolean compliant, String finalReportJson) {
-        // Merge SignoffStage's keys into the existing final_report JSONB rather
-        // than overwriting it. Reconcile + Examine stages persist their sections
-        // progressively (mergeFinalReportSection) and we must not clobber them
-        // when the pipeline finalises at sign-off.
-        if (finalReportJson == null) finalReportJson = "{}";
+    /**
+     * Mark the session COMPLETED. {@code compliant} is the system verdict.
+     * The "final report" lives in pipeline_steps(signoff/report) — written by
+     * PipelineService at finalize. This call only updates session-level scalars.
+     */
+    public void updateCompleted(String sessionId, Boolean compliant) {
         jdbc.update("""
                 UPDATE lc_v2.check_sessions
                 SET status = 'COMPLETED',
                     compliant = ?,
-                    final_report = COALESCE(final_report, '{}'::jsonb) || ?::jsonb,
                     completed_at = NOW()
                 WHERE id = ?::uuid
-                """, compliant, finalReportJson, sessionId);
-    }
-
-    /**
-     * Progressively merge a stage's result section into final_report JSONB.
-     * Keys: "lc", "parse", "reconcile", "examine". Each stage calls this at its
-     * end so officers can reload past sessions and see what each stage produced
-     * — even when the in-memory StageContext has been evicted.
-     *
-     * @param sectionKey  top-level key inside final_report JSONB (e.g. "reconcile")
-     * @param sectionJson JSON string for the section's value
-     */
-    public void mergeFinalReportSection(String sessionId, String sectionKey, String sectionJson) {
-        if (sectionJson == null) sectionJson = "null";
-        jdbc.update("""
-                UPDATE lc_v2.check_sessions
-                SET final_report = COALESCE(final_report, '{}'::jsonb)
-                                   || jsonb_build_object(?, ?::jsonb)
-                WHERE id = ?::uuid
-                """, sectionKey, sectionJson, sessionId);
-    }
-
-    /**
-     * Append one row to {@code final_report.examine}. Creates the array if absent.
-     * Used by ExamineStage so each completed CheckResult lands in DB immediately,
-     * letting the worklist API return rows in real time during execution.
-     */
-    public void appendExamineResult(String sessionId, String rowJson) {
-        if (rowJson == null || rowJson.isBlank()) return;
-        jdbc.update("""
-                UPDATE lc_v2.check_sessions
-                SET final_report = jsonb_set(
-                        COALESCE(final_report, '{}'::jsonb),
-                        '{examine}',
-                        COALESCE(final_report->'examine', '[]'::jsonb) || ?::jsonb)
-                WHERE id = ?::uuid
-                """, rowJson, sessionId);
-    }
-
-    /**
-     * Upsert one row in final_report.examine, keyed by ruleId. Replaces if a row
-     * with the same ruleId exists; otherwise appends. Used so PENDING rows pre-inserted
-     * at the start of the check phase get replaced in-place by their final verdict.
-     */
-    public void upsertExamineResult(String sessionId, String ruleId, String rowJson) {
-        if (rowJson == null || rowJson.isBlank() || ruleId == null) return;
-        jdbc.update("""
-                UPDATE lc_v2.check_sessions
-                SET final_report = jsonb_set(
-                  COALESCE(final_report, '{}'::jsonb),
-                  '{examine}',
-                  COALESCE(
-                    (SELECT jsonb_agg(elem)
-                     FROM jsonb_array_elements(COALESCE(final_report->'examine','[]'::jsonb)) elem
-                     WHERE elem->>'ruleId' <> ?),
-                    '[]'::jsonb)
-                  || jsonb_build_array(?::jsonb)
-                )
-                WHERE id = ?::uuid
-                """, ruleId, rowJson, sessionId);
-    }
-
-    /** Read a single top-level section from final_report. Returns null if absent. */
-    public String getFinalReportSection(String sessionId, String sectionKey) {
-        try {
-            return jdbc.queryForObject("""
-                    SELECT (final_report -> ?)::text
-                    FROM lc_v2.check_sessions WHERE id = ?::uuid
-                    """, String.class, sectionKey, sessionId);
-        } catch (org.springframework.dao.EmptyResultDataAccessException e) {
-            return null;
-        }
+                """, compliant, sessionId);
     }
 
     public void updateFailed(String sessionId, String error) {
@@ -171,15 +107,63 @@ public class SessionStore {
                 """, error, sessionId);
     }
 
-    /** Create a document row for an uploaded file. Returns document UUID. */
+    public boolean sessionExists(String sessionId) {
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM lc_v2.check_sessions WHERE id = ?::uuid",
+                Integer.class, sessionId);
+        return count != null && count > 0;
+    }
+
+    /** List sessions for the home page. lc_number / beneficiary_name come from v_session_overview. */
+    public List<Map<String, Object>> listSessions(int limit) {
+        return jdbc.queryForList("""
+                SELECT session_id::text AS id,
+                       status, compliant, doc_count, created_at, completed_at,
+                       error, next_stage, awaiting_officer,
+                       stage_completed_at::text AS stage_completed_at,
+                       lc_number, beneficiary_name
+                FROM   lc_v2.v_session_overview
+                ORDER  BY created_at DESC
+                LIMIT  ?
+                """, limit);
+    }
+
+    /**
+     * Get a single session with documents list. {@code final_report} is no
+     * longer a column — callers that need the report read v_signoff_report.
+     */
+    public Map<String, Object> getSession(String sessionId) {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT id, status, compliant, doc_count, error, created_at, completed_at,
+                       next_stage, awaiting_officer, stage_completed_at::text AS stage_completed_at
+                FROM   lc_v2.check_sessions WHERE id = ?::uuid
+                """, sessionId);
+        if (rows.isEmpty()) return null;
+        Map<String, Object> session = rows.get(0);
+        session.put("documents", getDocuments(sessionId));
+        return session;
+    }
+
+    // ───────────────────────────────────────────────────────────────────────
+    // documents
+    // ───────────────────────────────────────────────────────────────────────
+
+    /**
+     * Create a document row. Filename-classified docs auto-confirm (the
+     * registry is the system's source of truth); only {@code UNKNOWN} docs
+     * require officer confirmation via {@link #patchDocument}.
+     */
     public String createDocument(String sessionId, DocType docType,
                                   String originalFilename, int pageCount) {
         String docId = UUID.randomUUID().toString();
+        boolean autoConfirmed = docType != DocType.UNKNOWN;
         jdbc.update("""
                 INSERT INTO lc_v2.documents
-                  (id, session_id, doc_type, original_filename, page_count, parse_status, created_at)
-                VALUES (?::uuid, ?::uuid, ?, ?, ?, 'PENDING', NOW())
-                """, docId, sessionId, docType.name(), originalFilename, pageCount);
+                  (id, session_id, doc_type, original_filename, page_count,
+                   parse_status, confirmed_by_officer, created_at)
+                VALUES (?::uuid, ?::uuid, ?, ?, ?, 'PENDING', ?, NOW())
+                """, docId, sessionId, docType.name(), originalFilename, pageCount,
+                autoConfirmed);
         return docId;
     }
 
@@ -191,92 +175,24 @@ public class SessionStore {
     }
 
     public void updateDocumentStatus(String documentId, String parseStatus) {
-        jdbc.update("""
-                UPDATE lc_v2.documents SET parse_status = ? WHERE id = ?::uuid
-                """, parseStatus, documentId);
-    }
-
-    /** Persist a pipeline event (for SSE replay and trace). */
-    public void appendEvent(String sessionId, long seq, String eventJson) {
-        jdbc.update("""
-                INSERT INTO lc_v2.pipeline_events (session_id, seq, event, created_at)
-                VALUES (?::uuid, ?, ?::jsonb, NOW())
-                ON CONFLICT (session_id, seq) DO NOTHING
-                """, sessionId, seq, eventJson);
-    }
-
-    /** List all sessions ordered by creation time desc, up to limit. */
-    public List<Map<String, Object>> listSessions(int limit) {
-        return jdbc.queryForList("""
-                SELECT s.id, s.status, s.compliant, s.doc_count, s.created_at, s.completed_at,
-                       s.error, s.next_stage, s.awaiting_officer,
-                       s.stage_completed_at::text AS stage_completed_at,
-                       (SELECT er.fields->>'lc_number'
-                        FROM lc_v2.documents d
-                        JOIN lc_v2.extraction_results er ON er.document_id = d.id AND er.is_consensus
-                        WHERE d.session_id = s.id AND d.doc_type = 'LC' LIMIT 1) AS lc_number,
-                       (SELECT er.fields->>'beneficiary_name'
-                        FROM lc_v2.documents d
-                        JOIN lc_v2.extraction_results er ON er.document_id = d.id AND er.is_consensus
-                        WHERE d.session_id = s.id AND d.doc_type = 'LC' LIMIT 1) AS beneficiary_name
-                FROM lc_v2.check_sessions s
-                ORDER BY s.created_at DESC
-                LIMIT ?
-                """, limit);
-    }
-
-    /** Get a single session by ID (with document list). */
-    public Map<String, Object> getSession(String sessionId) {
-        List<Map<String, Object>> rows = jdbc.queryForList("""
-                SELECT id, status, compliant, doc_count, error, created_at, completed_at,
-                       next_stage, awaiting_officer, stage_completed_at::text AS stage_completed_at,
-                       final_report::text AS final_report
-                FROM lc_v2.check_sessions WHERE id = ?::uuid
-                """, sessionId);
-        if (rows.isEmpty()) return null;
-        Map<String, Object> session = rows.get(0);
-        session.put("documents", getDocuments(sessionId));
-        return session;
+        jdbc.update("UPDATE lc_v2.documents SET parse_status = ? WHERE id = ?::uuid",
+                parseStatus, documentId);
     }
 
     public List<Map<String, Object>> getDocuments(String sessionId) {
         return jdbc.queryForList("""
-                SELECT id, doc_type, original_filename, parse_status, page_count, created_at
-                FROM lc_v2.documents WHERE session_id = ?::uuid ORDER BY created_at
+                SELECT id, doc_type, original_filename, parse_status, page_count,
+                       confirmed_by_officer, created_at
+                FROM   lc_v2.documents WHERE session_id = ?::uuid ORDER BY created_at
                 """, sessionId);
     }
-
-    /** Get pipeline events for trace replay. Returns events with type/ts/seq top-level for the frontend. */
-    public List<Map<String, Object>> getEvents(String sessionId) {
-        return jdbc.queryForList("""
-                SELECT (event->>'seq')::bigint     AS seq,
-                       (event->>'type')            AS type,
-                       (event->>'ts')              AS ts,
-                       (event->>'sessionId')       AS sessionId,
-                       event
-                FROM lc_v2.pipeline_events
-                WHERE session_id = ?::uuid
-                ORDER BY seq
-                """, sessionId);
-    }
-
-    public boolean sessionExists(String sessionId) {
-        Integer count = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM lc_v2.check_sessions WHERE id = ?::uuid",
-                Integer.class, sessionId);
-        return count != null && count > 0;
-    }
-
-    // ───────────────────────────────────────────────────────────────────────
-    // Documents — extended access for officer actions
-    // ───────────────────────────────────────────────────────────────────────
 
     public Map<String, Object> getDocument(String docId) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
                 SELECT id, session_id, doc_type, original_filename, file_sha256,
                        page_count, parse_status, classification_conf,
                        confirmed_by_officer, created_at
-                FROM lc_v2.documents WHERE id = ?::uuid
+                FROM   lc_v2.documents WHERE id = ?::uuid
                 """, docId);
         return rows.isEmpty() ? null : rows.get(0);
     }
@@ -298,161 +214,204 @@ public class SessionStore {
             if (!first) sql.append(", ");
             sql.append("confirmed_by_officer = ?"); params.add(confirmedByOfficer); first = false;
         }
-        if (first) return; // nothing to patch
+        if (first) return;
         sql.append(" WHERE id = ?::uuid");
         params.add(docId);
         jdbc.update(sql.toString(), params.toArray());
     }
 
-    // ───────────────────────────────────────────────────────────────────────
-    // Extraction results
-    // ───────────────────────────────────────────────────────────────────────
-
-    /** All extraction-result rows for a single document (one per slot + consensus row). */
-    public List<Map<String, Object>> getExtractionResults(String documentId) {
-        return jdbc.queryForList("""
-                SELECT id, document_id, session_id, extractor_slot,
-                       fields::text AS fields, off_schema_items::text AS off_schema_items,
-                       overall_confidence, is_consensus, extracted_at
-                FROM lc_v2.extraction_results
-                WHERE document_id = ?::uuid
-                ORDER BY is_consensus DESC, extracted_at
-                """, documentId);
+    public List<String> getDocumentIds(String sessionId) {
+        return jdbc.query(
+                "SELECT id::text FROM lc_v2.documents WHERE session_id = ?::uuid",
+                (rs, n) -> rs.getString(1),
+                sessionId);
     }
 
-    /** Insert one extraction-result row (called by ParseStage for each slot + consensus). */
-    public void insertExtractionResult(String documentId, String sessionId, String slot,
-                                        String fieldsJson, String offSchemaJson,
-                                        Double overallConfidence, boolean isConsensus) {
+    // ───────────────────────────────────────────────────────────────────────
+    // pipeline_steps — unified system-output store
+    // ───────────────────────────────────────────────────────────────────────
+
+    /**
+     * Upsert one row in pipeline_steps. Stage outputs are idempotent — re-running
+     * the same stage overwrites the prior row keyed by (session, stage, step_key).
+     */
+    public void upsertPipelineStep(String sessionId, String stage, String stepKey,
+                                    String status, String resultJson,
+                                    Long durationMs, String error) {
+        if (resultJson == null || resultJson.isBlank()) resultJson = "{}";
         jdbc.update("""
-                INSERT INTO lc_v2.extraction_results
-                  (document_id, session_id, extractor_slot, fields, off_schema_items,
-                   overall_confidence, is_consensus, extracted_at)
-                VALUES (?::uuid, ?::uuid, ?, ?::jsonb, ?::jsonb, ?, ?, NOW())
-                """, documentId, sessionId, slot, fieldsJson, offSchemaJson,
-                overallConfidence, isConsensus);
+                INSERT INTO lc_v2.pipeline_steps
+                  (session_id, stage, step_key, status, started_at, completed_at,
+                   duration_ms, result, error, created_at)
+                VALUES (?::uuid, ?, ?, ?, NOW(), NOW(), ?, ?::jsonb, ?, NOW())
+                ON CONFLICT (session_id, stage, step_key) DO UPDATE
+                SET status       = EXCLUDED.status,
+                    completed_at = EXCLUDED.completed_at,
+                    duration_ms  = EXCLUDED.duration_ms,
+                    result       = EXCLUDED.result,
+                    error        = EXCLUDED.error
+                """, sessionId, stage, stepKey, status, durationMs, resultJson, error);
     }
 
-    /** Officer field correction → updates the consensus row's JSONB in-place. */
-    public void upsertFieldCorrection(String documentId, String fieldKey, String value, String note) {
-        // Ensure a consensus row exists; if not, create an empty one.
-        Integer existing = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM lc_v2.extraction_results WHERE document_id = ?::uuid AND is_consensus",
-                Integer.class, documentId);
-        if (existing == null || existing == 0) {
-            jdbc.update("""
-                    INSERT INTO lc_v2.extraction_results
-                      (document_id, session_id, extractor_slot, fields, is_consensus, extracted_at)
-                    SELECT ?::uuid, session_id, 'consensus', '{}'::jsonb, true, NOW()
-                    FROM lc_v2.documents WHERE id = ?::uuid
-                    """, documentId, documentId);
+    /** Read the result JSONB of a single pipeline step (raw text); null if absent. */
+    public String getPipelineStepResult(String sessionId, String stage, String stepKey) {
+        try {
+            return jdbc.queryForObject("""
+                    SELECT result::text FROM lc_v2.pipeline_steps
+                    WHERE session_id = ?::uuid AND stage = ? AND step_key = ?
+                    """, String.class, sessionId, stage, stepKey);
+        } catch (org.springframework.dao.EmptyResultDataAccessException e) {
+            return null;
         }
-        // jsonb_set with the corrected value envelope
-        String envelope = String.format(
-                "{\"value\": %s, \"confidence\": \"HIGH\", \"manual\": true, \"note\": %s}",
-                jsonStringLit(value), note == null ? "null" : jsonStringLit(note));
-        jdbc.update("""
-                UPDATE lc_v2.extraction_results
-                SET fields = jsonb_set(fields, ?::text[], ?::jsonb, true)
-                WHERE document_id = ?::uuid AND is_consensus
-                """, "{" + fieldKey + "}", envelope, documentId);
     }
 
-    private static String jsonStringLit(String s) {
-        if (s == null) return "null";
-        return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"")
-                .replace("\n", "\\n").replace("\r", "\\r") + "\"";
+    /** All check-result rows for a session, ordered by start time. */
+    public List<Map<String, Object>> getCheckResults(String sessionId) {
+        return jdbc.queryForList("""
+                SELECT rule_id, check_type, system_verdict, confidence,
+                       explanation, evidence::text AS evidence,
+                       trigger_trace::text AS trigger_trace,
+                       duration_ms, started_at, completed_at, error
+                FROM   lc_v2.v_check_results
+                WHERE  session_id = ?::uuid
+                ORDER  BY started_at, rule_id
+                """, sessionId);
     }
 
-    // ───────────────────────────────────────────────────────────────────────
-    // Reconcile state
-    // ───────────────────────────────────────────────────────────────────────
+    /** Reconcile rows for a session, ordered by group then field key. */
+    public List<Map<String, Object>> getReconcileRows(String sessionId) {
+        return jdbc.queryForList("""
+                SELECT field_key, label, field_group, field_type, row_verdict,
+                       discrepancy_detail,
+                       value_by_doc_type::text AS value_by_doc_type,
+                       cell_status::text       AS cell_status,
+                       cell_detail::text       AS cell_detail
+                FROM   lc_v2.v_reconcile_rows
+                WHERE  session_id = ?::uuid
+                ORDER  BY field_group NULLS LAST, field_key
+                """, sessionId);
+    }
 
-    public Map<String, Object> getReconcileState(String sessionId) {
+    /** LC parse view as a Map (raw_mt700, fields, raw_fields, derived, warnings); null if absent. */
+    public Map<String, Object> getLcParse(String sessionId) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
-                SELECT session_id, locked, locked_at, locked_by_officer,
-                       triage::text AS triage, created_at
-                FROM lc_v2.reconcile_state WHERE session_id = ?::uuid
+                SELECT raw_mt700,
+                       fields::text     AS fields,
+                       raw_fields::text AS raw_fields,
+                       derived::text    AS derived,
+                       warnings::text   AS warnings,
+                       parsed_at
+                FROM   lc_v2.v_lc_parse
+                WHERE  session_id = ?::uuid
                 """, sessionId);
         return rows.isEmpty() ? null : rows.get(0);
     }
 
-    private void ensureReconcileRow(String sessionId) {
+    /** examine/meta result — adhoc rules, consistency, trigger traces. */
+    public Map<String, Object> getExamineMeta(String sessionId) {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT adhoc_rules::text         AS adhoc_rules,
+                       consistency_warnings::text AS consistency_warnings,
+                       consistency::text         AS consistency,
+                       trigger_traces::text      AS trigger_traces
+                FROM   lc_v2.v_examine_meta
+                WHERE  session_id = ?::uuid
+                """, sessionId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /** Per-doc consensus extract (fields, off-schema, overall_confidence); null if absent. */
+    public Map<String, Object> getDocConsensus(String docId) {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT fields::text           AS fields,
+                       off_schema_items::text AS off_schema_items,
+                       overall_confidence,
+                       extracted_at
+                FROM   lc_v2.v_doc_extracts_consensus
+                WHERE  document_id = ?::uuid
+                """, docId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /** Per-doc per-slot extract rows. */
+    public List<Map<String, Object>> getDocSlots(String docId) {
+        return jdbc.queryForList("""
+                SELECT slot, fields::text AS fields, extracted_at
+                FROM   lc_v2.v_doc_extracts_slots
+                WHERE  document_id = ?::uuid
+                ORDER  BY slot
+                """, docId);
+    }
+
+    // ───────────────────────────────────────────────────────────────────────
+    // pipeline_events — append-only SSE replay tape
+    // ───────────────────────────────────────────────────────────────────────
+
+    public void appendEvent(String sessionId, long seq, String eventJson) {
         jdbc.update("""
-                INSERT INTO lc_v2.reconcile_state (session_id, locked, triage, created_at)
-                VALUES (?::uuid, false, '{}'::jsonb, NOW())
-                ON CONFLICT (session_id) DO NOTHING
+                INSERT INTO lc_v2.pipeline_events (session_id, seq, event, created_at)
+                VALUES (?::uuid, ?, ?::jsonb, NOW())
+                ON CONFLICT (session_id, seq) DO NOTHING
+                """, sessionId, seq, eventJson);
+    }
+
+    public List<Map<String, Object>> getEvents(String sessionId) {
+        return jdbc.queryForList("""
+                SELECT (event->>'seq')::bigint     AS seq,
+                       (event->>'type')            AS type,
+                       (event->>'ts')              AS ts,
+                       (event->>'sessionId')       AS sessionId,
+                       event
+                FROM lc_v2.pipeline_events
+                WHERE session_id = ?::uuid
+                ORDER BY seq
                 """, sessionId);
     }
 
-    public void upsertReconcileTriage(String sessionId, String fieldKey, String decision) {
-        ensureReconcileRow(sessionId);
+    // ───────────────────────────────────────────────────────────────────────
+    // officer_actions — append-only audit log
+    // ───────────────────────────────────────────────────────────────────────
+
+    /**
+     * Append one row to officer_actions. Append-only audit log; "current state"
+     * of any officer-mutable thing is the latest row per (session, action, target).
+     * Read via the views (v_cell_decisions / v_rule_overrides / v_lock_state /
+     * v_field_corrections / v_signoff).
+     */
+    public void appendOfficerAction(String sessionId, String action, String target,
+                                     String payloadJson, String officerId, String note) {
+        if (payloadJson == null || payloadJson.isBlank()) payloadJson = "{}";
         jdbc.update("""
-                UPDATE lc_v2.reconcile_state
-                SET triage = jsonb_set(triage, ?::text[], to_jsonb(?::text), true)
-                WHERE session_id = ?::uuid
-                """, "{" + fieldKey + "}", decision, sessionId);
+                INSERT INTO lc_v2.officer_actions
+                  (session_id, action, target, payload, officer_id, note, acted_at)
+                VALUES (?::uuid, ?, ?, ?::jsonb, ?, ?, NOW())
+                """, sessionId, action, target, payloadJson, officerId, note);
     }
 
-    public void lockSession(String sessionId, String officerId) {
-        ensureReconcileRow(sessionId);
-        jdbc.update("""
-                UPDATE lc_v2.reconcile_state
-                SET locked = true, locked_at = NOW(), locked_by_officer = ?
-                WHERE session_id = ?::uuid
-                """, officerId, sessionId);
-    }
-
-    public void unlockSession(String sessionId, String officerId) {
-        jdbc.update("""
-                UPDATE lc_v2.reconcile_state
-                SET locked = false, locked_at = NULL, locked_by_officer = NULL
-                WHERE session_id = ?::uuid
+    /** Lock state (locked, locked_at, locked_by_officer). May return null. */
+    public Map<String, Object> getLockState(String sessionId) {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT locked, locked_at, locked_by_officer, unlock_reason
+                FROM   lc_v2.v_lock_state WHERE session_id = ?::uuid
                 """, sessionId);
-    }
-
-    // ── Per-cell decisions (matrix UI) ────────────────────────────────────
-
-    public void upsertCellDecision(String sessionId, String fieldKey, String docType,
-                                    String decision, String note, String officerId) {
-        jdbc.update("""
-                INSERT INTO lc_v2.reconcile_cell_decisions
-                  (session_id, field_key, doc_type, decision, note, officer_id, decided_at)
-                VALUES (?::uuid, ?, ?, ?, ?, ?, NOW())
-                ON CONFLICT (session_id, field_key, doc_type) DO UPDATE
-                SET decision = EXCLUDED.decision,
-                    note = EXCLUDED.note,
-                    officer_id = EXCLUDED.officer_id,
-                    decided_at = NOW()
-                """, sessionId, fieldKey, docType, decision, note, officerId);
-    }
-
-    public void deleteCellDecision(String sessionId, String fieldKey, String docType) {
-        jdbc.update("""
-                DELETE FROM lc_v2.reconcile_cell_decisions
-                WHERE session_id = ?::uuid AND field_key = ? AND doc_type = ?
-                """, sessionId, fieldKey, docType);
+        return rows.isEmpty() ? null : rows.get(0);
     }
 
     public List<Map<String, Object>> getCellDecisions(String sessionId) {
         return jdbc.queryForList("""
-                SELECT field_key, doc_type, decision, note, officer_id, decided_at
-                FROM lc_v2.reconcile_cell_decisions
-                WHERE session_id = ?::uuid
-                ORDER BY decided_at
+                SELECT field_key, doc_type, decision, value, note, officer_id, decided_at
+                FROM   lc_v2.v_cell_decisions
+                WHERE  session_id = ?::uuid
+                ORDER  BY decided_at
                 """, sessionId);
     }
 
-    // ───────────────────────────────────────────────────────────────────────
-    // Examine overrides
-    // ───────────────────────────────────────────────────────────────────────
-
     public List<Map<String, Object>> getOverrides(String sessionId) {
         return jdbc.queryForList("""
-                SELECT id, session_id, rule_id, new_status, reason, note, flagged, created_at
-                FROM lc_v2.examine_overrides
-                WHERE session_id = ?::uuid
-                ORDER BY created_at DESC
+                SELECT rule_id, new_status, reason, flagged, note, officer_id, created_at
+                FROM   lc_v2.v_rule_overrides
+                WHERE  session_id = ?::uuid
+                ORDER  BY created_at DESC
                 """, sessionId);
     }
 
@@ -466,124 +425,98 @@ public class SessionStore {
         return result;
     }
 
-    public void insertOverride(String sessionId, String ruleId, String newStatus,
-                                String reason, String note, boolean flagged) {
-        jdbc.update("""
-                INSERT INTO lc_v2.examine_overrides
-                  (session_id, rule_id, new_status, reason, note, flagged, created_at)
-                VALUES (?::uuid, ?, ?, ?, ?, ?, NOW())
-                """, sessionId, ruleId, newStatus, reason, note, flagged);
+    /** All field corrections for a document (latest-wins per fieldKey, projected by view). */
+    public List<Map<String, Object>> getFieldCorrections(String docId) {
+        return jdbc.queryForList("""
+                SELECT field_key, value, issue_kind, note, officer_id, corrected_at
+                FROM   lc_v2.v_field_corrections
+                WHERE  document_id = ?::uuid
+                ORDER  BY field_key
+                """, docId);
     }
-
-    public void deleteOverridesForRule(String sessionId, String ruleId) {
-        jdbc.update("""
-                DELETE FROM lc_v2.examine_overrides
-                WHERE session_id = ?::uuid AND rule_id = ?
-                """, sessionId, ruleId);
-    }
-
-    // ───────────────────────────────────────────────────────────────────────
-    // Sign-off
-    // ───────────────────────────────────────────────────────────────────────
 
     public Map<String, Object> getSignoff(String sessionId) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
-                SELECT id, session_id, decision,
+                SELECT decision,
                        discrepancy_dispositions::text AS discrepancy_dispositions,
                        officer_note, signed_at, officer_id, frozen
-                FROM lc_v2.signoff WHERE session_id = ?::uuid
+                FROM   lc_v2.v_signoff WHERE session_id = ?::uuid
                 """, sessionId);
         return rows.isEmpty() ? null : rows.get(0);
     }
 
-    public void insertSignoff(String sessionId, String decision, String dispositionsJson,
-                               String officerNote, String officerId) {
-        jdbc.update("""
-                INSERT INTO lc_v2.signoff
-                  (session_id, decision, discrepancy_dispositions, officer_note,
-                   signed_at, officer_id, frozen)
-                VALUES (?::uuid, ?, ?::jsonb, ?, NOW(), ?, true)
-                ON CONFLICT (session_id) DO UPDATE SET
-                  decision = EXCLUDED.decision,
-                  discrepancy_dispositions = EXCLUDED.discrepancy_dispositions,
-                  officer_note = EXCLUDED.officer_note,
-                  signed_at = EXCLUDED.signed_at,
-                  officer_id = EXCLUDED.officer_id,
-                  frozen = true
-                """, sessionId, decision, dispositionsJson, officerNote, officerId);
-    }
-
     public boolean isSigned(String sessionId) {
-        Integer count = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM lc_v2.signoff WHERE session_id = ?::uuid AND frozen",
-                Integer.class, sessionId);
+        Integer count = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM lc_v2.officer_actions
+                WHERE session_id = ?::uuid AND action = 'signoff'
+                """, Integer.class, sessionId);
         return count != null && count > 0;
     }
 
     // ───────────────────────────────────────────────────────────────────────
-    // Re-run support: clear downstream rows when the officer re-runs from a stage
+    // dynamic_rules — per-LC rules generated at runtime
     // ───────────────────────────────────────────────────────────────────────
 
-    /**
-     * Wipe rows that belong to {@code fromStage} and every downstream stage.
-     * Caller is responsible for resetting the in-memory {@link com.lc.v2.checker.pipeline.StageContext}
-     * fields and the in-process {@link com.lc.v2.checker.infra.storage.PdfBytesCache}
-     * for the matching docIds.
-     *
-     * Stage cascade (each row applies if fromStage <= the listed stage):
-     *   intake    → documents, extraction_results, reconcile_state, examine_overrides, signoff
-     *   parse     → extraction_results, reconcile_state, examine_overrides, signoff
-     *   reconcile → reconcile_state, examine_overrides, signoff
-     *   examine   → examine_overrides, signoff
-     *   signoff   → signoff
-     */
-    public void clearDownstreamState(String sessionId, String fromStage) {
-        String stage = fromStage == null ? "" : fromStage.toLowerCase();
-        // All-clear → return list of doc IDs so caller can purge the PDF cache.
-        if (stage.equals("intake")) {
-            jdbc.update("DELETE FROM lc_v2.signoff             WHERE session_id = ?::uuid", sessionId);
-            jdbc.update("DELETE FROM lc_v2.examine_overrides   WHERE session_id = ?::uuid", sessionId);
-            jdbc.update("DELETE FROM lc_v2.reconcile_state     WHERE session_id = ?::uuid", sessionId);
-            jdbc.update("DELETE FROM lc_v2.extraction_results  WHERE session_id = ?::uuid", sessionId);
-            jdbc.update("DELETE FROM lc_v2.documents           WHERE session_id = ?::uuid", sessionId);
-            jdbc.update("UPDATE lc_v2.check_sessions SET final_report = NULL, compliant = NULL, error = NULL, status = 'INTAKE', completed_at = NULL WHERE id = ?::uuid", sessionId);
-            return;
-        }
-        if (stage.equals("parse")) {
-            jdbc.update("DELETE FROM lc_v2.signoff             WHERE session_id = ?::uuid", sessionId);
-            jdbc.update("DELETE FROM lc_v2.examine_overrides   WHERE session_id = ?::uuid", sessionId);
-            jdbc.update("DELETE FROM lc_v2.reconcile_state     WHERE session_id = ?::uuid", sessionId);
-            jdbc.update("DELETE FROM lc_v2.extraction_results  WHERE session_id = ?::uuid", sessionId);
-            jdbc.update("UPDATE lc_v2.documents SET parse_status = 'PENDING', confirmed_by_officer = false WHERE session_id = ?::uuid", sessionId);
-            jdbc.update("UPDATE lc_v2.check_sessions SET final_report = NULL, compliant = NULL, error = NULL, status = 'PARSE', completed_at = NULL WHERE id = ?::uuid", sessionId);
-            return;
-        }
-        if (stage.equals("reconcile")) {
-            jdbc.update("DELETE FROM lc_v2.signoff             WHERE session_id = ?::uuid", sessionId);
-            jdbc.update("DELETE FROM lc_v2.examine_overrides   WHERE session_id = ?::uuid", sessionId);
-            jdbc.update("DELETE FROM lc_v2.reconcile_state     WHERE session_id = ?::uuid", sessionId);
-            jdbc.update("UPDATE lc_v2.check_sessions SET final_report = NULL, compliant = NULL, error = NULL, status = 'RECONCILE', completed_at = NULL WHERE id = ?::uuid", sessionId);
-            return;
-        }
-        if (stage.equals("examine")) {
-            jdbc.update("DELETE FROM lc_v2.signoff             WHERE session_id = ?::uuid", sessionId);
-            jdbc.update("DELETE FROM lc_v2.examine_overrides   WHERE session_id = ?::uuid", sessionId);
-            jdbc.update("UPDATE lc_v2.check_sessions SET final_report = NULL, compliant = NULL, error = NULL, status = 'EXAMINE', completed_at = NULL WHERE id = ?::uuid", sessionId);
-            return;
-        }
-        if (stage.equals("signoff")) {
-            jdbc.update("DELETE FROM lc_v2.signoff WHERE session_id = ?::uuid", sessionId);
-            jdbc.update("UPDATE lc_v2.check_sessions SET status = 'SIGNOFF', completed_at = NULL WHERE id = ?::uuid", sessionId);
-            return;
-        }
-        log.warn("clearDownstreamState: unknown stage '{}'", fromStage);
+    public void putDynamicRules(String cacheKey, String rulesJson) {
+        jdbc.update("""
+                INSERT INTO lc_v2.dynamic_rules (cache_key, rules_json, created_at)
+                VALUES (?, ?::jsonb, NOW())
+                ON CONFLICT (cache_key) DO UPDATE
+                SET rules_json = EXCLUDED.rules_json,
+                    created_at = NOW()
+                """, cacheKey, rulesJson);
     }
 
-    /** Return the list of document ids for a session — used by re-run to evict the PDF cache. */
-    public List<String> getDocumentIds(String sessionId) {
-        return jdbc.query(
-                "SELECT id::text FROM lc_v2.documents WHERE session_id = ?::uuid",
-                (rs, n) -> rs.getString(1),
-                sessionId);
+    public String getDynamicRules(String cacheKey) {
+        try {
+            return jdbc.queryForObject(
+                    "SELECT rules_json::text FROM lc_v2.dynamic_rules WHERE cache_key = ?",
+                    String.class, cacheKey);
+        } catch (org.springframework.dao.EmptyResultDataAccessException e) {
+            return null;
+        }
+    }
+
+    // ───────────────────────────────────────────────────────────────────────
+    // Re-run support — clear pipeline_steps for a stage and downstream.
+    //
+    // Officer actions are PRESERVED across reruns (audit trail). Only
+    // system-output rows in pipeline_steps are wiped, allowing each stage
+    // to re-emit its rows on the new run.
+    // ───────────────────────────────────────────────────────────────────────
+
+    private static final List<String> STAGE_ORDER = List.of(
+            "intake", "parse", "reconcile", "examine", "signoff");
+
+    public void clearDownstreamState(String sessionId, String fromStage) {
+        String stage = fromStage == null ? "" : fromStage.toLowerCase();
+        int idx = STAGE_ORDER.indexOf(stage);
+        if (idx < 0) {
+            log.warn("clearDownstreamState: unknown stage '{}'", fromStage);
+            return;
+        }
+        // Wipe pipeline_steps for fromStage and every stage after it.
+        List<String> stages = STAGE_ORDER.subList(idx, STAGE_ORDER.size());
+        for (String s : stages) {
+            jdbc.update("DELETE FROM lc_v2.pipeline_steps WHERE session_id = ?::uuid AND stage = ?",
+                    sessionId, s);
+        }
+        // Reset session-level scalars.
+        jdbc.update("""
+                UPDATE lc_v2.check_sessions
+                SET status = ?, compliant = NULL, error = NULL, completed_at = NULL
+                WHERE id = ?::uuid
+                """, stage.toUpperCase(), sessionId);
+        // Re-run from intake also wipes documents (the inputs).
+        if (idx == 0) {
+            jdbc.update("DELETE FROM lc_v2.documents WHERE session_id = ?::uuid", sessionId);
+        } else if (idx == 1) {
+            // Re-run from parse: documents reset to PENDING for re-extraction.
+            jdbc.update("""
+                    UPDATE lc_v2.documents SET parse_status = 'PENDING',
+                                                confirmed_by_officer = false
+                    WHERE session_id = ?::uuid
+                    """, sessionId);
+        }
     }
 }

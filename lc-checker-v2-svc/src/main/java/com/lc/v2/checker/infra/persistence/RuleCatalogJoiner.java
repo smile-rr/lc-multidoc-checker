@@ -65,7 +65,7 @@ public class RuleCatalogJoiner {
      * results with the catalog + officer overrides.
      *
      * @param sessionId          session UUID
-     * @param checkResults       parsed from final_report.results in the session
+     * @param checkResults       read from v_check_results (pipeline_steps examine/&lt;rule_id&gt;)
      * @param extractsByDocType  best-effort map of extraction confidence per doc; nullable
      */
     public List<EnrichedRule> join(String sessionId,
@@ -142,45 +142,49 @@ public class RuleCatalogJoiner {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private Map<String, Rule> loadAdhocRules(String sessionId) {
-        String json = sessionStore.getFinalReportSection(sessionId, "examine_meta");
-        if (json == null || json.isBlank() || "null".equals(json)) return Map.of();
+    /** Read examine/meta from pipeline_steps (was final_report.examine_meta). */
+    private Map<String, Object> readExamineMeta(String sessionId) {
+        Map<String, Object> meta = sessionStore.getExamineMeta(sessionId);
+        if (meta == null) return Map.of();
+        Map<String, Object> out = new LinkedHashMap<>();
         try {
-            Map<String, Object> meta = MAPPER.readValue(json, new TypeReference<>() {});
-            Object list = meta.get("adhoc_rules");
-            if (!(list instanceof List<?> rows) || rows.isEmpty()) return Map.of();
-            Map<String, Rule> out = new LinkedHashMap<>();
-            for (Object row : rows) {
-                Rule r = MAPPER.convertValue(row, Rule.class);
-                if (r != null && r.ruleId() != null) out.put(r.ruleId(), r);
+            String adhoc = (String) meta.get("adhoc_rules");
+            if (adhoc != null && !adhoc.isBlank()) {
+                out.put("adhoc_rules", MAPPER.readValue(adhoc, new TypeReference<List<Object>>() {}));
             }
-            return out;
+            String traces = (String) meta.get("trigger_traces");
+            if (traces != null && !traces.isBlank()) {
+                out.put("trigger_traces", MAPPER.readValue(traces, new TypeReference<Map<String, Object>>() {}));
+            }
         } catch (Exception e) {
-            log.warn("Failed to load adhoc rules for session {}: {}", sessionId, e.toString());
-            return Map.of();
+            log.warn("Failed to parse examine meta for session {}: {}", sessionId, e.toString());
         }
+        return out;
+    }
+
+    private Map<String, Rule> loadAdhocRules(String sessionId) {
+        Object list = readExamineMeta(sessionId).get("adhoc_rules");
+        if (!(list instanceof List<?> rows) || rows.isEmpty()) return Map.of();
+        Map<String, Rule> out = new LinkedHashMap<>();
+        for (Object row : rows) {
+            Rule r = MAPPER.convertValue(row, Rule.class);
+            if (r != null && r.ruleId() != null) out.put(r.ruleId(), r);
+        }
+        return out;
     }
 
     private Map<String, List<String>> loadTriggerTraces(String sessionId) {
-        String json = sessionStore.getFinalReportSection(sessionId, "examine_meta");
-        if (json == null || json.isBlank() || "null".equals(json)) return Map.of();
-        try {
-            Map<String, Object> meta = MAPPER.readValue(json, new TypeReference<>() {});
-            Object traces = meta.get("trigger_traces");
-            if (!(traces instanceof Map<?, ?> m)) return Map.of();
-            Map<String, List<String>> out = new LinkedHashMap<>();
-            for (Map.Entry<?, ?> e : m.entrySet()) {
-                if (e.getValue() instanceof List<?> ls) {
-                    List<String> strs = new ArrayList<>(ls.size());
-                    for (Object o : ls) strs.add(String.valueOf(o));
-                    out.put(String.valueOf(e.getKey()), strs);
-                }
+        Object traces = readExamineMeta(sessionId).get("trigger_traces");
+        if (!(traces instanceof Map<?, ?> m)) return Map.of();
+        Map<String, List<String>> out = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : m.entrySet()) {
+            if (e.getValue() instanceof List<?> ls) {
+                List<String> strs = new ArrayList<>(ls.size());
+                for (Object o : ls) strs.add(String.valueOf(o));
+                out.put(String.valueOf(e.getKey()), strs);
             }
-            return out;
-        } catch (Exception e) {
-            log.warn("Failed to load trigger traces for session {}: {}", sessionId, e.toString());
-            return Map.of();
         }
+        return out;
     }
 
     private static String sourceFromCheckType(String checkType) {

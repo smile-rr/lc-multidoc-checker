@@ -92,7 +92,7 @@ public class AdhocRuleValidator {
                     p.fieldKeys(),
                     true,
                     p.triggers(),
-                    RuleOrigin.ADHOC,
+                    RuleOrigin.DYNAMIC,
                     p.evidenceLcClause(),
                     null
             ));

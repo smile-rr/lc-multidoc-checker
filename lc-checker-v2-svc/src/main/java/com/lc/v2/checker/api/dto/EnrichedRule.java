@@ -37,8 +37,8 @@ public record EnrichedRule(
         List<ArticleRef> ucpRefs,
         List<ArticleRef> isbpRefs,
         Boolean waivable,
-        String origin,                  // CATALOG | ADHOC
-        String evidenceLcClause,        // ad-hoc only — :46A:/:47A: span that motivated the rule
+        String origin,                  // CATALOG | DYNAMIC
+        String evidenceLcClause,        // DYNAMIC only — :46A:/:47A: span that motivated the rule
         List<String> triggerTrace,      // human-readable steps from RuleTriggerEvaluator
         String ucpExcerpt               // verbatim UCP/ISBP quote from the rule catalog (for drawer display)
 ) {}

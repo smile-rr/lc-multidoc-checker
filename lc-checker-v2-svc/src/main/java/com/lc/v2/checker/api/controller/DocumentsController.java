@@ -94,26 +94,38 @@ public class DocumentsController {
         Map<String, Object> doc = sessionStore.getDocument(docId);
         if (doc == null) return ResponseEntity.notFound().build();
 
-        List<Map<String, Object>> rows = sessionStore.getExtractionResults(docId);
-        Map<String, Map<String, Object>> bySlot = new LinkedHashMap<>();
-        Map<String, Object> consensusFields = Map.of();
-        List<Object> offSchema = List.of();
+        // Consensus extract (read from v_doc_extracts_consensus)
+        Map<String, Object> consensus = sessionStore.getDocConsensus(docId);
+        Map<String, Object> consensusFields = consensus == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(parseJsonObject((String) consensus.get("fields")));
+        List<Object> offSchema = consensus == null
+                ? List.of()
+                : parseJsonArray((String) consensus.get("off_schema_items"));
         Double overallConf = null;
+        if (consensus != null && consensus.get("overall_confidence") instanceof Number n) {
+            overallConf = n.doubleValue();
+        }
 
-        for (Map<String, Object> row : rows) {
-            String slot = (String) row.get("extractor_slot");
-            String fieldsJson = (String) row.get("fields");
-            String offSchemaJson = (String) row.get("off_schema_items");
-            Map<String, Object> fields = parseJsonObject(fieldsJson);
-            boolean isConsensus = Boolean.TRUE.equals(row.get("is_consensus"));
-            if (isConsensus) {
-                consensusFields = fields;
-                offSchema = parseJsonArray(offSchemaJson);
-                Object oc = row.get("overall_confidence");
-                if (oc instanceof Number n) overallConf = n.doubleValue();
-            } else {
-                bySlot.put(slot, fields);
-            }
+        // Per-slot extracts (read from v_doc_extracts_slots)
+        Map<String, Map<String, Object>> bySlot = new LinkedHashMap<>();
+        for (Map<String, Object> row : sessionStore.getDocSlots(docId)) {
+            String slot = (String) row.get("slot");
+            bySlot.put(slot, parseJsonObject((String) row.get("fields")));
+        }
+
+        // Officer corrections — overlay on the consensus fields. Each correction
+        // wraps the corrected value in the same envelope shape that vision
+        // extraction produces, so frontend extractValue/extractConf still work.
+        for (Map<String, Object> c : sessionStore.getFieldCorrections(docId)) {
+            String fk = (String) c.get("field_key");
+            if (fk == null) continue;
+            Map<String, Object> envelope = new LinkedHashMap<>();
+            envelope.put("value", c.get("value"));
+            envelope.put("confidence", "HIGH");
+            envelope.put("manual", true);
+            envelope.put("note", c.get("note"));
+            consensusFields.put(fk, envelope);
         }
 
         Map<String, String> fieldLabels = new LinkedHashMap<>();
@@ -148,9 +160,17 @@ public class DocumentsController {
 
         if (req.docType() != null) {
             eventBus.docTypeChanged(sessionId, docId, req.docType(), req.officerId());
+            // New: officer_actions audit row
+            String prevType = doc.get("doc_type") == null ? null : doc.get("doc_type").toString();
+            String payload = String.format("{\"from\":%s,\"to\":\"%s\"}",
+                    prevType == null ? "null" : "\"" + prevType + "\"", req.docType());
+            sessionStore.appendOfficerAction(sessionId, "doc_type_changed", docId,
+                    payload, req.officerId(), null);
         }
         if ("REVIEWED".equalsIgnoreCase(req.parseStatus())) {
             eventBus.docReviewed(sessionId, docId, req.officerId());
+            sessionStore.appendOfficerAction(sessionId, "doc_reviewed", docId,
+                    "{}", req.officerId(), null);
         }
 
         return ResponseEntity.ok(sessionStore.getDocument(docId));
@@ -164,8 +184,21 @@ public class DocumentsController {
         Map<String, Object> doc = sessionStore.getDocument(docId);
         if (doc == null) return ResponseEntity.notFound().build();
 
-        sessionStore.upsertFieldCorrection(docId, fieldKey, req.value(), req.note());
         eventBus.fieldCorrected(sessionId, docId, fieldKey, req.value(), req.issueKind(), req.officerId());
+        // Officer correction → append-only officer_actions row.
+        // The consensus extract in pipeline_steps stays immutable; the view
+        // layer overlays the latest correction in DocumentsController.getExtracts.
+        try {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("value", req.value());
+            payload.put("issue_kind", req.issueKind());
+            sessionStore.appendOfficerAction(sessionId, "field_corrected",
+                    docId + ":" + fieldKey,
+                    objectMapper.writeValueAsString(payload),
+                    req.officerId(), req.note());
+        } catch (Exception e) {
+            log.warn("[{}] officer_actions append failed for field_corrected: {}", sessionId, e.getMessage());
+        }
         log.info("[{}] field correction doc={} key={} value={} kind={}",
                 sessionId, docId, fieldKey, req.value(), req.issueKind());
 

@@ -175,31 +175,46 @@ function CellView({ row, docType, cell, decision, locked, focused, onClick }) {
   const v = cell.verdict || 'NA';
   const value = cell.value;
 
-  // Officer-decided cells override the verdict visual
+  // Officer-decided cells override the verdict visual.
+  // For 'edited' decisions: display the *edited* value (the officer's correction),
+  // not the stale extracted value. Other decisions show the original value with
+  // the decision badge and color tone.
   if (decision) {
+    const isEdited = decision.decision === 'edited';
+    const displayValue = isEdited && decision.value != null && decision.value !== ''
+      ? decision.value
+      : value;
     const tone = decision.decision === 'accept_match' ? 'green'
       : decision.decision === 'genuine' ? 'red'
       : decision.decision === 'parse_error' ? 'gold'
-      : decision.decision === 'edited' ? 'blue'
+      : isEdited ? 'blue'
       : 'gray';
     const toneCls = {
       green: 'bg-status-greenSoft text-status-green',
       red:   'bg-status-redSoft text-status-red',
       gold:  'bg-status-goldSoft text-status-gold',
-      blue:  'bg-status-blueSoft text-status-blue',
+      blue:  'bg-status-blueSoft text-status-blue border-l-2 border-l-status-blue',
       gray:  'bg-slate2 text-muted',
     }[tone];
+    const editedFromHint = isEdited && value != null && String(value) !== String(displayValue)
+      ? `was: ${value}`
+      : null;
     return (
       <td
         onClick={!locked ? onClick : undefined}
         className={`px-3 py-2 align-top border-r border-line/60 cursor-pointer transition-colors ${toneCls} ${focusRing}`}
-        title={decision.note || decision.decision}
+        title={decision.note || (editedFromHint ?? decision.decision)}
       >
         <div className="text-[12px] font-mono break-words">
-          {value != null && value !== '' ? value : <span className="opacity-50">—</span>}
+          {displayValue != null && displayValue !== '' ? displayValue : <span className="opacity-50">—</span>}
         </div>
-        <div className="text-[9px] uppercase tracking-wider font-mono mt-0.5">
-          ✓ {decision.decision.replace('_', ' ')}
+        <div className="text-[9px] uppercase tracking-wider font-mono mt-0.5 flex items-center gap-1">
+          <span>✓ {decision.decision.replace('_', ' ')}</span>
+          {editedFromHint && (
+            <span className="text-status-blue/60 normal-case tracking-normal truncate max-w-[120px]">
+              · {editedFromHint}
+            </span>
+          )}
         </div>
       </td>
     );

@@ -8,6 +8,7 @@ import com.lc.v2.checker.infra.persistence.RuleCatalogJoiner;
 import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.pipeline.PipelineEventBus;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -52,10 +53,9 @@ public class RulesController {
     public ResponseEntity<Map<String, Object>> getRules(@PathVariable String sessionId) {
         if (!sessionStore.sessionExists(sessionId)) return ResponseEntity.notFound().build();
 
-        List<CheckResult> results = readCheckResultsFromFinalReport(sessionId);
+        List<CheckResult> results = readCheckResults(sessionId);
         // Note: extractsByDocType is null here — attention chips that depend on
         // extraction signals (SPLIT/HANDWRITING) only fire if the data is in-context.
-        // Future: persist the consensus extracts and rehydrate here.
         List<EnrichedRule> enriched = joiner.join(sessionId, results, null);
         return ResponseEntity.ok(Map.of("rules", enriched));
     }
@@ -67,7 +67,17 @@ public class RulesController {
         if (!sessionStore.sessionExists(sessionId)) return ResponseEntity.notFound().build();
         if (sessionStore.isSigned(sessionId)) return frozen();
 
-        sessionStore.insertOverride(sessionId, ruleId, req.newStatus(), req.reason(), req.note(), req.flagged());
+        try {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("new_status", req.newStatus());
+            payload.put("reason", req.reason());
+            payload.put("flagged", req.flagged());
+            sessionStore.appendOfficerAction(sessionId, "rule_override", ruleId,
+                    objectMapper.writeValueAsString(payload),
+                    req.officerId(), req.note());
+        } catch (Exception e) {
+            log.warn("[{}] officer_actions append failed for rule_override: {}", sessionId, e.getMessage());
+        }
         eventBus.ruleOverridden(sessionId, ruleId, req.newStatus(), req.reason(), req.flagged(), req.officerId());
         log.info("[{}] override rule={} new={} reason={} flagged={}",
                 sessionId, ruleId, req.newStatus(), req.reason(), req.flagged());
@@ -86,51 +96,39 @@ public class RulesController {
         if (!sessionStore.sessionExists(sessionId)) return ResponseEntity.notFound().build();
         if (sessionStore.isSigned(sessionId)) return frozen();
 
-        sessionStore.deleteOverridesForRule(sessionId, ruleId);
         String officerId = req == null ? null : req.officerId();
+        sessionStore.appendOfficerAction(sessionId, "rule_override_cleared", ruleId,
+                "{}", officerId, null);
         eventBus.overrideCleared(sessionId, ruleId, officerId);
         log.info("[{}] override cleared rule={}", sessionId, ruleId);
         return ResponseEntity.ok(Map.of("ok", true, "ruleId", ruleId));
     }
 
-    /** Pull the {results: [...]} array out of session.final_report (JSON string). */
+    /** Read every per-rule outcome from {@code v_check_results}. */
     @SuppressWarnings("unchecked")
-    private List<CheckResult> readCheckResultsFromFinalReport(String sessionId) {
-        Map<String, Object> session = sessionStore.getSession(sessionId);
-        if (session == null) return List.of();
-        Object finalReport = session.get("final_report");
-        if (!(finalReport instanceof String fr) || fr.isBlank()) return List.of();
-        try {
-            Map<String, Object> parsed = objectMapper.readValue(fr, Map.class);
-            // Examine stage persists progressively under "examine" (list of result rows).
-            // SignoffStage writes the legacy "results" key. Prefer "examine" — it's
-            // populated as soon as Examine runs, before sign-off.
-            Object rs = parsed.get("examine");
-            if (!(rs instanceof List<?>)) rs = parsed.get("results");
-            if (!(rs instanceof List<?> list)) return List.of();
-            List<CheckResult> out = new ArrayList<>(list.size());
-            for (Object obj : list) {
-                if (!(obj instanceof Map<?, ?> map)) continue;
-                Map<String, Object> m = (Map<String, Object>) map;
-                String ruleId = (String) m.get("ruleId");
-                String verdictStr = (String) m.get("verdict");
-                if (ruleId == null || verdictStr == null) continue;
-                CheckResult.Verdict verdict;
-                try { verdict = CheckResult.Verdict.valueOf(verdictStr); }
-                catch (IllegalArgumentException e) { continue; }
-                String explanation = (String) m.getOrDefault("explanation", "");
-                Object confObj = m.get("confidence");
-                double confidence = confObj instanceof Number n ? n.doubleValue() : 0.0;
-                String checkType = (String) m.get("checkType");
-                Object evObj = m.get("evidence");
-                Map<String, Object> evidence = evObj instanceof Map<?, ?> em ? (Map<String, Object>) em : null;
-                out.add(new CheckResult(ruleId, verdict, explanation, evidence, confidence, checkType));
+    private List<CheckResult> readCheckResults(String sessionId) {
+        List<Map<String, Object>> rows = sessionStore.getCheckResults(sessionId);
+        List<CheckResult> out = new ArrayList<>(rows.size());
+        for (Map<String, Object> r : rows) {
+            String ruleId = (String) r.get("rule_id");
+            String verdictStr = (String) r.get("system_verdict");
+            if (ruleId == null || verdictStr == null) continue;
+            CheckResult.Verdict verdict;
+            try { verdict = CheckResult.Verdict.valueOf(verdictStr); }
+            catch (IllegalArgumentException e) { continue; }
+            String explanation = (String) r.getOrDefault("explanation", "");
+            double confidence = r.get("confidence") instanceof Number n ? n.doubleValue() : 0.0;
+            String checkType = (String) r.get("check_type");
+            Map<String, Object> evidence = null;
+            String evJson = (String) r.get("evidence");
+            if (evJson != null && !evJson.isBlank()) {
+                try {
+                    evidence = objectMapper.readValue(evJson, Map.class);
+                } catch (Exception e) { /* leave null */ }
             }
-            return out;
-        } catch (Exception e) {
-            log.warn("[{}] could not parse final_report: {}", sessionId, e.getMessage());
-            return List.of();
+            out.add(new CheckResult(ruleId, verdict, explanation, evidence, confidence, checkType));
         }
+        return out;
     }
 
     private static <T> ResponseEntity<T> frozen() {
