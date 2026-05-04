@@ -173,6 +173,8 @@ public class AgentRuleExecutor {
                 log.warn("Unknown verdict '{}' for rule {}, defaulting to DOUBTS", verdictStr, ruleId);
                 verdict = CheckResult.Verdict.DOUBTS;
             }
+            // NA→FAIL flip is centralised in ExamineStage.runRule so SpEL and
+            // Agent paths apply the same policy uniformly. Don't pre-flip here.
             return new CheckResult(ruleId, verdict, explanation, null, confidence, checkType);
         } catch (Exception e) {
             log.error("Failed to parse LLM response for rule {}: {} | raw={}", ruleId, e.getMessage(), response);

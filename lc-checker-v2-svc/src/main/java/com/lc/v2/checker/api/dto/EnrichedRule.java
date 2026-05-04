@@ -43,5 +43,6 @@ public record EnrichedRule(
         String ucpExcerpt,              // verbatim UCP/ISBP quote from the rule catalog (for drawer display)
         Long durationMs,                // wall-clock duration of this rule's execution; backend-computed
         String startedAt,               // ISO-8601 timestamp from pipeline_steps
-        String completedAt              // ISO-8601 timestamp from pipeline_steps
+        String completedAt,             // ISO-8601 timestamp from pipeline_steps
+        String canonicalField           // canonical-field key for UI grouping (currency / amount / …)
 ) {}

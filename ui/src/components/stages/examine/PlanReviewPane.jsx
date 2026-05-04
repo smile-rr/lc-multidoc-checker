@@ -13,7 +13,7 @@ export function PlanReviewPane({ adhocRules, collapsedByDefault }) {
   if (!expanded) {
     return (
       <div className="bg-slate2 border-b border-line px-6 py-2 flex items-center gap-3 text-[11px] font-mono">
-        <span className="text-status-gold">★ {list.length} ad-hoc rule{list.length === 1 ? '' : 's'} discovered</span>
+        <span className="text-status-gold">✦ AI Plan · {list.length} rule{list.length === 1 ? '' : 's'} suggested from LC text</span>
         <span className="text-muted">— see worklist</span>
         <button
           className="ml-auto text-muted hover:text-navy-1 underline-offset-2 hover:underline"
@@ -28,8 +28,8 @@ export function PlanReviewPane({ adhocRules, collapsedByDefault }) {
   return (
     <div className="bg-slate2 border-b border-line px-6 py-3">
       <div className="flex items-center gap-3 mb-2">
-        <span className="text-[10px] tracking-[0.2em] uppercase text-muted font-mono">PLAN · DISCOVERED RULES</span>
-        <span className="text-[10px] font-mono text-status-gold">{list.length} proposed</span>
+        <span className="text-[10px] tracking-[0.2em] uppercase text-muted font-mono">✦ AI PLAN · LC-DERIVED RULES</span>
+        <span className="text-[10px] font-mono text-status-gold">{list.length} suggested</span>
         {collapsedByDefault && (
           <button
             className="ml-auto text-[10px] font-mono text-muted hover:text-navy-1"

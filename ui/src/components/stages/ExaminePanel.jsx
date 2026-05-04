@@ -20,8 +20,12 @@ import { EyebrowLabel } from '../ui/EyebrowLabel';
 import { GhostButton } from '../ui/Button';
 
 const DEFAULT_FILTER = {};
-const DEFAULT_NAV = 'article';
-const DEFAULT_SORT = { col: null, dir: null };
+// "Default" mode: no grouping at all — every row in one flat list, sorted by
+// article. Article-grouping was confusing because each rule is its own article,
+// so groups had a single member each. The other modes (doc/field/origin) still
+// produce meaningful clusters.
+const DEFAULT_NAV = 'default';
+const DEFAULT_SORT = { col: 'article', dir: 'asc' };
 
 const SEV_RANK = { CRITICAL: 4, MAJOR: 3, MINOR: 2, OBSERVATION: 1 };
 const STATUS_RANK = { FAIL: 0, DOUBTS: 1, PASS: 2, NOT_APPLICABLE: 3 };
@@ -98,12 +102,27 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
       else if ((r.effectiveVerdict || r.verdict) === 'NOT_APPLICABLE') na.push(r);
       else active.push(r);
     }
+    // In Default mode "no grouping" means literally no grouping anywhere —
+    // active + NA + out-of-scope all collapse into one flat sorted list.
+    // The verdict pill on each row still tells the officer the status.
+    if (navMode === 'default') {
+      const all = [...active, ...na, ...oos];
+      return {
+        groupedActive: all.length ? { '': all } : {},
+        groupedNa: {},
+        groupedOutOfScope: {},
+        flatActive: active,
+        flatNa: na,
+        flatOutOfScope: oos,
+        activeCount: all.length,
+      };
+    }
     const groupOf = (rs) => {
       const out = {};
       for (const r of rs) {
-        const key = navMode === 'article' ? (r.article || '—')
-          : navMode === 'doc' ? ((r.scope || [])[0] || '—')
-          : navMode === 'origin' ? (r.origin || 'CATALOG')
+        const key = navMode === 'doc' ? ((r.scope || [])[0] || '—')
+          : navMode === 'origin' ? (r.origin === 'ADHOC' ? 'AI Plan' : 'Catalog')
+          : navMode === 'field' ? (r.canonicalField || 'Other / Planned')
           : (r.evidence?.lc?.toString().split(':')[0] || 'Other');
         (out[key] = out[key] || []).push(r);
       }
@@ -121,6 +140,17 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
   }, [sorted, navMode]);
 
   const [diagFilter, setDiagFilter] = useState(null);
+  // Filter rail open/closed state — persisted in localStorage so the officer's
+  // last preference sticks across sessions (and tab reloads). Default: open.
+  const [filterCollapsed, setFilterCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const v = window.localStorage?.getItem('examineFilterCollapsed');
+    return v === 'true';
+  });
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage?.setItem('examineFilterCollapsed', String(filterCollapsed));
+  }, [filterCollapsed]);
   // Filter the worklist scope from the DiagnosticHeader pills.
   // null=all, 'ran'=PASS/FAIL/DOUBTS, 'na'=NOT_APPLICABLE, 'oos'=out-of-scope, 'pending', 'failed'.
   const effectiveBuckets = useMemo(() => {
@@ -148,11 +178,12 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
   }, [buckets, diagFilter, navMode]);
 
   function groupByNav(rs) {
+    if (navMode === 'default') return rs.length ? { '': rs } : {};
     const out = {};
     for (const r of rs) {
-      const key = navMode === 'article' ? (r.article || '—')
-        : navMode === 'doc' ? ((r.scope || [])[0] || '—')
-        : navMode === 'origin' ? (r.origin || 'CATALOG')
+      const key = navMode === 'doc' ? ((r.scope || [])[0] || '—')
+        : navMode === 'origin' ? (r.origin === 'ADHOC' ? 'AI Plan' : 'Catalog')
+        : navMode === 'field' ? (r.canonicalField || 'Other / Planned')
         : (r.evidence?.lc?.toString().split(':')[0] || 'Other');
       (out[key] = out[key] || []).push(r);
     }
@@ -161,7 +192,8 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
 
   const selected = rules.find(r => r.ruleId === selectedId);
 
-  const isDirty = JSON.stringify(filter) !== '{}' || navMode !== DEFAULT_NAV || sort.col !== null;
+  const isDirty = JSON.stringify(filter) !== '{}' || navMode !== DEFAULT_NAV
+    || JSON.stringify(sort) !== JSON.stringify(DEFAULT_SORT);
   const hasStateForSave = isDirty
     && !savedViews.find(v =>
       JSON.stringify(v.filter || {}) === JSON.stringify(filter) &&
@@ -321,6 +353,8 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
           deleteView={remove}
           activeView={activeView}
           hasStateForSave={hasStateForSave}
+          collapsed={filterCollapsed}
+          onToggleCollapsed={() => setFilterCollapsed(c => !c)}
         />
 
         <div className="flex-1 flex flex-col min-w-0 bg-white">
@@ -356,10 +390,24 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
               </div>
               <div className="flex items-center gap-1 text-[10px] font-mono">
                 <span className="text-muted mr-1">GROUP BY</span>
-                {[['article','Article'], ['doc','Document'], ['field','Field'], ['origin','Origin']].map(([id, l]) => (
+                {/* Default = no grouping, single sorted list. The "Origin" mode
+                    is only useful when at least one AI-Plan rule is present —
+                    otherwise it would group everything under "Catalog" which is
+                    no different from Default. Hide the button in that case. */}
+                {(() => {
+                  const hasAdhoc = rules.some(r => r.origin === 'ADHOC');
+                  const opts = [
+                    ['default', 'Default',  'No grouping — flat list sorted by article'],
+                    ['field',   'Field',    'Group by canonical field (currency, amount, …)'],
+                    ['doc',     'Document', 'Group by document type (INV / BOL / …)'],
+                  ];
+                  if (hasAdhoc) opts.push(['origin', 'Origin', 'Group by Catalog vs AI Plan']);
+                  return opts;
+                })().map(([id, l, tip]) => (
                   <button
                     key={id}
                     onClick={() => setNavMode(id)}
+                    title={tip}
                     className={`px-2 py-0.5 rounded transition-colors
                       ${navMode === id ? 'bg-navy-1 text-white' : 'border border-line text-muted hover:text-navy-1 hover:bg-slate2'}`}
                   >

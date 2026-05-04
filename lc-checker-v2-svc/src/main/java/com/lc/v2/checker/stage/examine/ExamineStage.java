@@ -229,19 +229,31 @@ public class ExamineStage implements Stage {
         }
     }
 
+    /**
+     * Emit a FAIL verdict when the trigger evaluator says NOT_APPLICABLE
+     * because mandatory LC fields / data are missing.
+     *
+     * <p>Design choice: the system never auto-decides NOT_APPLICABLE. If the
+     * catalog declares a field/condition mandatory and it isn't there, the
+     * rule fails with a clear "required X missing" explanation. Only the
+     * officer can mark a rule N/A via override.
+     */
     private void emitNa(StageContext ctx, RuleAndDecision rad, int idx, int total) {
         Rule rule = rad.rule();
         ctx.eventBus.ruleStarted(ctx.sessionId, rule.ruleId(), rule.ruleId(),
                 idx, total, rule.checkType());
+        String reason = String.join("; ", rad.decision().trace());
+        String explanation = "Required data missing — " + (reason.isBlank()
+                ? "rule prerequisites not met" : reason);
         CheckResult result = new CheckResult(rule.ruleId(),
-                CheckResult.Verdict.NOT_APPLICABLE,
-                String.join("; ", rad.decision().trace()),
+                CheckResult.Verdict.FAIL,
+                explanation,
                 null, 1.0, rule.checkType());
         ctx.checkResults.add(result);
         appendCheckResult(ctx, result);
         ctx.eventBus.ruleChecked(ctx.sessionId, rule.ruleId(),
                 result.verdict().name(), result.confidence(),
-                rule.origin().name(), "NOT_APPLICABLE", rad.decision().trace());
+                rule.origin().name(), "MISSING_REQUIRED", rad.decision().trace());
     }
 
     /** Synthetic NOT_APPLICABLE row for SKIP'd rules so the worklist's
@@ -274,6 +286,10 @@ public class ExamineStage implements Stage {
                     "Evaluation error: " + e.getClass().getSimpleName() + ": " + e.getMessage(),
                     null, 0.0, rule.checkType());
         }
+        // Single chokepoint for NA→FAIL policy. Covers every path that produces
+        // a CheckResult: SpEL (incl. MultiDocHelpers) and AgentRuleExecutor.
+        // Only the officer override path can land a row at NOT_APPLICABLE.
+        result = flipSystemNa(result);
         ctx.checkResults.add(result);
         appendCheckResult(ctx, result);
         List<String> trace = traces.getOrDefault(rule.ruleId(), List.of());
@@ -301,6 +317,24 @@ public class ExamineStage implements Stage {
                     "FAILED", 0.0, "CATALOG", "PERSIST_ERROR",
                     List.of("persist error: " + e.getClass().getSimpleName() + ": " + e.getMessage()));
         }
+    }
+
+    /**
+     * Flip NOT_APPLICABLE → FAIL for any system-produced verdict. The LLM /
+     * SpEL helper wrote the original explanation; we strip a leading
+     * "NOT_APPLICABLE" / "N/A" word if present to avoid double-prefixing,
+     * then prepend "Required data missing — ".
+     */
+    private static CheckResult flipSystemNa(CheckResult r) {
+        if (r == null || r.verdict() != CheckResult.Verdict.NOT_APPLICABLE) return r;
+        String prior = r.explanation() == null ? "" : r.explanation().trim();
+        String stripped = prior
+                .replaceFirst("(?i)^not[_ ]applicable\\s*[\\u2014\\-:]\\s*", "")
+                .replaceFirst("(?i)^n/a\\s*[\\u2014\\-:]\\s*", "");
+        String explanation = "Required data missing — " + (stripped.isBlank()
+                ? "rule prerequisites not met" : stripped);
+        return new CheckResult(r.ruleId(), CheckResult.Verdict.FAIL, explanation,
+                r.evidence(), r.confidence(), r.checkType());
     }
 
     private Long computeDuration(String ruleId) {

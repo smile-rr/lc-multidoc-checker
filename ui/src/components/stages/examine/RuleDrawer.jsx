@@ -61,7 +61,7 @@ export function RuleDrawer({ rule, onClose, onOverride, onResetOverride }) {
         {rule.origin === 'ADHOC' && rule.evidenceLcClause && (
           <div className="px-5 py-4 border-b border-line/50">
             <div className="text-[9px] tracking-[0.2em] uppercase text-status-gold mb-2 font-mono flex items-center gap-1">
-              <span>★</span><span>LC EVIDENCE</span>
+              <span>✦</span><span>AI PLAN — LC EVIDENCE</span>
             </div>
             <pre className="text-[11px] font-mono whitespace-pre-wrap bg-slate2 border-l-2 border-status-gold pl-3 py-2 pr-2 rounded-sm text-navy-1">
               {rule.evidenceLcClause}

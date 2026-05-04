@@ -48,14 +48,22 @@ export function SessionPage() {
     return () => { setRunningInfo(null); setEventCount(0); };
   }, [id, session?.status, session?.doc_count, sessionCompleted, events.length, setRunningInfo, setEventCount]);
 
-  // Refetch session when SSE signals progress (or after a rerun resets state)
+  // Refetch session when SSE signals progress (or after a rerun resets state).
+  // Listening to a StageStarted count too — without it, the session.status
+  // stays at the previous AWAITING_OFFICER value after the officer clicks
+  // Continue, so per-stage hooks (useRules' EXAMINE polling, ExaminePanel's
+  // showPhaseStrip) never kick in until something else triggers a refresh.
+  const stagesStartedCount = useMemo(
+    () => events.filter(e => e?.type === 'StageStarted').length,
+    [events]
+  );
   useEffect(() => {
-    if (stagesCompleted.size > 0 || sessionCompleted || officerActions.length > 0 || signedOff
-        || cancelled || stagesRerun > 0) {
+    if (stagesStartedCount > 0 || stagesCompleted.size > 0 || sessionCompleted
+        || officerActions.length > 0 || signedOff || cancelled || stagesRerun > 0) {
       refresh();
     }
-  }, [stagesCompleted.size, sessionCompleted, officerActions.length, signedOff,
-      cancelled, stagesRerun, refresh]);
+  }, [stagesStartedCount, stagesCompleted.size, sessionCompleted, officerActions.length,
+      signedOff, cancelled, stagesRerun, refresh]);
 
   // ── Gates ──────────────────────────────────────────────────────────────
   const docs = session?.documents ?? [];
@@ -107,7 +115,13 @@ export function SessionPage() {
     const next = STAGE_ORDER[i + 1];
     // Trigger backend run only if session is awaiting that stage.
     if (session?.awaiting_officer && session?.next_stage?.toLowerCase() === next) {
-      try { await runStage(id, next, OFFICER_ID); }
+      try {
+        await runStage(id, next, OFFICER_ID);
+        // Pull the fresh session state so child panels (ExaminePanel etc.)
+        // see status='EXAMINE' immediately and start polling/streaming —
+        // otherwise we land on the next tab with stale 'AWAITING_OFFICER'.
+        await refresh();
+      }
       catch (e) { console.error('runStage failed', e); /* navigate anyway */ }
     }
     setActiveStage(next);

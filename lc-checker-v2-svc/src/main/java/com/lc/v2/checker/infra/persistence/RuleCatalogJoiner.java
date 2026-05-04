@@ -151,7 +151,8 @@ public class RuleCatalogJoiner {
                     rule != null ? rule.ucpExcerpt() : null,
                     t.durationMs(),
                     t.startedAt(),
-                    t.completedAt()
+                    t.completedAt(),
+                    rule != null ? rule.canonicalField() : null
             ));
         }
         return result;
@@ -204,14 +205,24 @@ public class RuleCatalogJoiner {
         return out;
     }
 
+    /**
+     * The {@code source} label in the worklist describes WHICH ENGINE executed
+     * the rule — it's orthogonal to the rule's {@code origin}
+     * (CATALOG vs DYNAMIC/planned). Two axes, two badges:
+     *
+     *   source  → engine: PROG | AGENT | AGENT+TOOL
+     *   origin  → provenance: CATALOG (no badge) | DYNAMIC (gold "AH" pill)
+     *
+     * AGENTIC_ADHOC is the catalog's name for an ad-hoc rule that is being
+     * executed; it always pairs with origin=DYNAMIC, so the engine is the
+     * useful axis here — render as plain "AGENT".
+     */
     private static String sourceFromCheckType(String checkType) {
         if (checkType == null) return "PROG";
         return switch (checkType) {
             case "PROGRAMMATIC" -> "PROG";
-            case "AGENT" -> "AI";
-            case "AGENT_TOOL" -> "AI+tool";
-            case "AGENTIC_ADHOC" -> "AI·adhoc";
-            case "PROGRAMMATIC_AGENT" -> "AI+tool"; // legacy alias
+            case "AGENT", "AGENTIC_ADHOC" -> "AGENT";
+            case "AGENT_TOOL", "PROGRAMMATIC_AGENT" -> "AGENT+TOOL";
             default -> "PROG";
         };
     }
@@ -228,12 +239,27 @@ public class RuleCatalogJoiner {
                 .map(this::formatArticle).orElse(rule.ucpRefs().get(0));
     }
 
+    /**
+     * Compact article label for the worklist column. Examiners recognise
+     * "UCP 18a-iii" / "ISBP C8" instantly; the verbose
+     * "UCP 600 Art. 18(a(iii))" wastes column width and is harder to scan.
+     *
+     * Format:  &lt;prefix&gt; &lt;article&gt;&lt;paragraph&gt;   with parens replaced by hyphens.
+     *   UCP-18-a-iii  → "UCP 18a-iii"
+     *   UCP-30-b      → "UCP 30b"
+     *   ISBP-C8       → "ISBP C8"
+     */
     private String formatArticle(ArticleRef ref) {
         if (ref == null) return "";
-        String prefix = "ISBP821".equals(ref.source()) ? "ISBP" : "UCP 600";
-        StringBuilder sb = new StringBuilder(prefix).append(" Art. ").append(ref.article());
+        String prefix = "ISBP821".equals(ref.source()) ? "ISBP" : "UCP";
+        StringBuilder sb = new StringBuilder(prefix).append(" ").append(ref.article());
         if (ref.paragraph() != null && !ref.paragraph().isBlank()) {
-            sb.append("(").append(ref.paragraph()).append(")");
+            String para = ref.paragraph()
+                    .replace("(", "-")
+                    .replace(")", "");
+            // ISBP paragraphs already include the section letter (e.g. "C8");
+            // UCP paragraphs are short ("a", "a-iii") and concatenate directly.
+            sb.append(para);
         }
         return sb.toString();
     }
@@ -298,7 +324,7 @@ public class RuleCatalogJoiner {
     private String computeAgree(Rule rule, Map<DocType, DocumentExtract> extractsByDocType) {
         if (rule == null || extractsByDocType == null) return "—";
         if (rule.isAgent() && !"AGENT_TOOL".equals(rule.checkType())
-                && !"PROGRAMMATIC_AGENT".equals(rule.checkType())) return "AI";
+                && !"PROGRAMMATIC_AGENT".equals(rule.checkType())) return "AGENT";
         // For PROG / PROG+AI, derive from primary doc's consensus tier
         for (String docName : rule.scope()) {
             DocType dt = safeDocType(docName);

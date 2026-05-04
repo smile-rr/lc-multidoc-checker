@@ -106,6 +106,30 @@ export function ParsePanel({ session, stagesCompleted, events, refresh, onContin
     if (parseDone) refreshLc();
   }, [parseDone, refreshLc]);
 
+  // Auto-refresh the active doc's extracts when an ExtractionProgress event
+  // signals "complete" for that doc's type. Without this the FieldsPanel shows
+  // stale data until the officer clicks another doc and back.
+  const activeDocType = useMemo(
+    () => (session?.documents ?? []).find(d => d.id === activeId)?.doc_type ?? null,
+    [session?.documents, activeId]
+  );
+  useEffect(() => {
+    if (!activeDocType || isLcActive || !events?.length) return;
+    // Walk backward; refresh on the most-recent ExtractionProgress for this doc
+    // type whose status is 'complete' or starts with 'failed'. Cheap because
+    // events array updates on SSE arrival, and we only re-walk when it grows.
+    for (let i = events.length - 1; i >= 0; i--) {
+      const e = events[i];
+      if (e?.type !== 'ExtractionProgress') continue;
+      if (e.data?.docType !== activeDocType) continue;
+      const s = String(e.data?.status || '');
+      if (s === 'complete' || s.startsWith('failed')) {
+        refreshExtracts();
+        break;
+      }
+    }
+  }, [events, activeDocType, isLcActive, refreshExtracts]);
+
   // Default-active to LC if present, else first doc.
   useEffect(() => {
     if (lcDoc && !activeId) { setActiveId(lcDoc.id); return; }

@@ -17,7 +17,37 @@ const SEV_COLORS = {
   OBSERVATION: '#0066cc',
 };
 
-export function FilterRail({ rules, filter, setFilter, savedViews, applyView, saveCurrent, deleteView, activeView, hasStateForSave }) {
+export function FilterRail({ rules, filter, setFilter, savedViews, applyView, saveCurrent, deleteView, activeView, hasStateForSave, collapsed, onToggleCollapsed }) {
+  // Active filter count (for the badge shown when collapsed).
+  const activeCount = Object.values(filter || {}).reduce((n, set) =>
+    n + (set instanceof Set ? set.size : (Array.isArray(set) ? set.length : 0)), 0);
+
+  if (collapsed) {
+    return (
+      <aside className="bg-white border-r border-line flex-shrink-0 flex flex-col items-center py-2 gap-2" style={{ width: 40 }}>
+        {/* Big single click target — entire strip toggles open. */}
+        <button
+          onClick={onToggleCollapsed}
+          className="w-8 h-8 rounded border border-line bg-white hover:bg-navy-1 hover:text-white text-muted flex items-center justify-center transition-colors"
+          title="Show filter rail"
+          aria-label="Show filter rail"
+        >
+          <span className="text-[14px] leading-none">»</span>
+        </button>
+        <button
+          onClick={onToggleCollapsed}
+          className="flex flex-col items-center gap-1.5 text-[9px] tracking-[0.2em] uppercase text-muted font-mono py-2 hover:text-navy-1"
+          title={`Filters · ${activeCount} active`}
+          style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+        >
+          <span>⌕ FILTERS</span>
+          {activeCount > 0 && (
+            <span className="px-1 rounded bg-navy-1 text-white tabular-nums">{activeCount}</span>
+          )}
+        </button>
+      </aside>
+    );
+  }
   const docs = [...new Set(rules.flatMap(r => r.scope || []))].sort();
 
   const statusOpts = ['PASS', 'FAIL', 'DOUBTS', 'FAILED', 'NOT_APPLICABLE'].map(s => ({
@@ -42,11 +72,14 @@ export function FilterRail({ rules, filter, setFilter, savedViews, applyView, sa
     id, label,
     count: rules.filter(r => (r.attention || []).includes(id)).length,
   }));
+  // The `source` axis describes WHICH ENGINE evaluated the rule
+  // (Programmatic SpEL, plain Agent prompt, or Agent+Tool callback).
+  // Provenance (catalog vs ad-hoc / planner-generated) is a separate axis,
+  // surfaced via the Origin filter below.
   const sourceOpts = [
-    ['PROG',     'Programmatic'],
-    ['AI',       'Agent'],
-    ['AI+tool',  'Agent + tool'],
-    ['AI·adhoc', 'Agent · ad-hoc'],
+    ['PROG',       'Programmatic'],
+    ['AGENT',      'Agent'],
+    ['AGENT+TOOL', 'Agent + tool'],
   ].map(([id, label]) => ({
     id, label,
     count: rules.filter(r => r.source === id).length,
@@ -60,7 +93,7 @@ export function FilterRail({ rules, filter, setFilter, savedViews, applyView, sa
   });
   const originOpts = [
     ['CATALOG', 'Catalog'],
-    ['ADHOC',   'Ad-hoc'],
+    ['ADHOC',   'AI Plan'],
   ].map(([id, label]) => ({
     id, label,
     count: rules.filter(r => (r.origin || 'CATALOG') === id).length,
@@ -80,8 +113,24 @@ export function FilterRail({ rules, filter, setFilter, savedViews, applyView, sa
         hasStateForSave={hasStateForSave}
       />
       <div className="py-3 flex-1">
-        <div className="px-3 mb-2 text-[9px] tracking-[0.2em] uppercase text-navy-1 font-semibold flex items-center gap-1.5 font-mono">
-          <span>⌕</span><span>FILTERS</span>
+        <div className="px-3 mb-2 flex items-center justify-between gap-1.5">
+          <span className="text-[9px] tracking-[0.2em] uppercase text-navy-1 font-semibold flex items-center gap-1.5 font-mono">
+            <span>⌕</span><span>FILTERS</span>
+            {activeCount > 0 && (
+              <span className="px-1 rounded bg-navy-1 text-white tabular-nums">{activeCount}</span>
+            )}
+          </span>
+          {onToggleCollapsed && (
+            <button
+              onClick={onToggleCollapsed}
+              className="px-1.5 h-5 rounded border border-line text-muted hover:text-white hover:bg-navy-1 flex items-center gap-1 text-[9px] tracking-[0.15em] uppercase font-mono transition-colors"
+              title="Hide filter rail"
+              aria-label="Hide filter rail"
+            >
+              <span className="text-[11px] leading-none">«</span>
+              <span>hide</span>
+            </button>
+          )}
         </div>
         <FilterSection title="Status"          k="status"    options={statusOpts}    filter={filter} setFilter={setFilter} />
         <FilterSection title="Severity"        k="severity"  options={sevOpts}       filter={filter} setFilter={setFilter} />
