@@ -83,6 +83,13 @@ export function RuleDrawer({ rule, width = 540, session, onClose, onOverride, on
                   <DocTypeBadge type={s} />
                 </button>
               ))}
+              <button
+                onClick={() => setDocViewer({ docType: 'LC' })}
+                title="Open LC (MT700) for reference"
+                className="text-[9px] tracking-wider px-1.5 py-0.5 rounded font-mono border border-teal-2/40 text-teal-2 bg-teal-1/10 hover:bg-teal-1/20 transition"
+              >
+                📄 LC ref
+              </button>
             </div>
             <div className="text-[13px] font-semibold tracking-tight leading-snug text-navy-1">{rule.label}</div>
             {(rule.attention || []).length > 0 && (
@@ -197,15 +204,10 @@ export function RuleDrawer({ rule, width = 540, session, onClose, onOverride, on
           <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => setOverrideOpen(true)}
-              className="px-3 py-1.5 rounded text-[11px] border border-line hover:bg-white"
+              className="px-3 py-1.5 rounded text-[11px] border border-navy-1 bg-navy-1 text-white hover:bg-navy-2"
+              title="Set a different verdict; optionally flag this as an agent quality issue"
             >
               ✎ Override verdict
-            </button>
-            <button
-              onClick={() => setOverrideOpen(true)}
-              className="px-3 py-1.5 rounded text-[11px] border border-status-red text-status-red hover:bg-status-redSoft"
-            >
-              ⚑ Flag agent error
             </button>
             {ov && (
               <button
@@ -215,7 +217,9 @@ export function RuleDrawer({ rule, width = 540, session, onClose, onOverride, on
                 ↻ Reset to system verdict
               </button>
             )}
-            <span className="ml-auto text-[10px] text-muted font-mono">audit trail captures all actions</span>
+            <span className="ml-auto text-[10px] text-muted font-mono">
+              QA flag is a checkbox inside override · audit trail captures all actions
+            </span>
           </div>
         ) : (
           <OverrideForm

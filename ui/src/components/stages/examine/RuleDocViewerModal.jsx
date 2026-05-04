@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ParseViewer } from '../parse/ParseViewer';
 import { Mt700TextViewer } from '../parse/Mt700TextViewer';
 import { LcFieldsPanel } from '../parse/LcFieldsPanel';
@@ -21,27 +21,31 @@ export function RuleDocViewerModal({ open, onClose, session, scope, initialDocTy
     if (!session) return [];
     const docs = session.documents || [];
     const lc = docs.find(d => d.doc_type === 'LC');
-    const inScope = (scope || []).filter(s => s !== 'LC');
+    // LC is the master reference for every rule — always pin it first if the
+    // session has one, regardless of whether `scope` lists it.
     const out = [];
-    // Always pin LC first if it's in scope or session has one and rule references LC fields.
-    if (lc && (scope || []).includes('LC')) out.push({ doc: lc, label: 'LC (MT700)', isLc: true });
-    for (const dt of inScope) {
+    if (lc) out.push({ doc: lc, label: 'LC (MT700)', isLc: true });
+    const seen = new Set(['LC']);
+    for (const dt of scope || []) {
+      if (seen.has(dt)) continue;
+      seen.add(dt);
       const match = docs.find(d => d.doc_type === dt);
       if (match) out.push({ doc: match, label: docTypeMeta(dt).name, isLc: false });
     }
-    // If no scope-doc tabs at all, fall back to LC (so the modal still has content).
-    if (out.length === 0 && lc) out.push({ doc: lc, label: 'LC (MT700)', isLc: true });
     return out;
   }, [session, scope]);
 
-  const initial = tabs.findIndex(t => t.doc?.doc_type === initialDocType);
-  const [activeIdx, setActiveIdx] = useState(initial >= 0 ? initial : 0);
-
-  // Reset active tab whenever the entry doc changes (different rule clicked).
+  // Pick initial tab on first open; thereafter, user controls activeIdx — we
+  // do NOT auto-revert when the modal stays open. Once the modal closes and
+  // re-opens (with a possibly different initialDocType), we re-seed.
+  const [activeIdx, setActiveIdx] = useState(0);
+  const wasOpenRef = useRef(false);
   useEffect(() => {
-    if (!open) return;
-    const i = tabs.findIndex(t => t.doc?.doc_type === initialDocType);
-    setActiveIdx(i >= 0 ? i : 0);
+    if (open && !wasOpenRef.current) {
+      const i = tabs.findIndex(t => t.doc?.doc_type === initialDocType);
+      setActiveIdx(i >= 0 ? i : 0);
+    }
+    wasOpenRef.current = open;
   }, [open, initialDocType, tabs]);
 
   // Esc closes

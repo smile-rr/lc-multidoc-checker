@@ -39,9 +39,12 @@ export function OverrideForm({ ruleId, currentVerdict, initialFlagged, onSubmit,
         >
           {REASONS.map(r => <option key={r}>{r}</option>)}
         </select>
-        <label className="ml-2 flex items-center gap-1.5 text-[11px]">
+        <label
+          className="ml-2 flex items-center gap-1.5 text-[11px] cursor-pointer"
+          title="Optional QA signal — sends this rule to the agent-error review queue (does not change the verdict)"
+        >
           <input type="checkbox" checked={flagged} onChange={e => setFlagged(e.target.checked)} />
-          Flag agent error
+          ⚑ Flag as agent error
         </label>
       </div>
       <textarea
