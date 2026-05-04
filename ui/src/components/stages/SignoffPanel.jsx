@@ -173,25 +173,6 @@ export function SignoffPanel({ session, stagesCompleted, events, onBack }) {
         }
         actions={
           <>
-            {/* Primary CTA promoted to the toolbar so it's always in view —
-                officer no longer has to scroll past the discrepancy list to
-                find the sign-off button. */}
-            {!canSign && blockerText && (
-              <span
-                className="text-[10px] font-mono text-status-gold px-2 py-1 rounded bg-status-goldSoft"
-                title={blockerText}
-              >
-                ⚠ {blockerText}
-              </span>
-            )}
-            <PrimaryButton
-              size="sm"
-              onClick={handleSign}
-              disabled={!canSign}
-              tone={canSign ? 'teal' : undefined}
-            >
-              🔒 Sign off &amp; freeze
-            </PrimaryButton>
             <RerunButton sessionId={sessionId} stage="signoff" devMode={devMode} disabled={signoffData?.signed} />
             <StageNavButtons stage="signoff" onBack={onBack} />
           </>
@@ -260,6 +241,29 @@ export function SignoffPanel({ session, stagesCompleted, events, onBack }) {
             </Card>
 
             <OfficerNote value={note} onChange={setNote} />
+
+            {/* Primary CTA — directly under the officer's note, the last input
+                the officer fills before signing. Conclusion of the input flow. */}
+            <Card>
+              <PrimaryButton
+                size="lg"
+                onClick={handleSign}
+                disabled={!canSign}
+                tone={canSign ? 'teal' : undefined}
+                className="w-full justify-center"
+              >
+                🔒 Sign off &amp; freeze record
+              </PrimaryButton>
+              {!canSign && blockerText && (
+                <div className="text-[10px] text-status-gold mt-2 font-mono text-center">
+                  ⚠ {blockerText}
+                </div>
+              )}
+              <div className="text-[10px] text-muted mt-2 font-mono">
+                Sign-off stamps officer ID, timestamp, and the entire dataset (parsed values, rule
+                outcomes, overrides, dispositions, note) into an immutable audit record.
+              </div>
+            </Card>
 
             {decision === 'REFUSE' && (
               <Mt734Preview

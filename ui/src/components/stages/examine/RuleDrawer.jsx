@@ -51,59 +51,95 @@ export function RuleDrawer({ rule, width = 540, session, onClose, onOverride, on
 
   return (
     <aside className="bg-white border-l border-line flex flex-col flex-shrink-0 overflow-hidden" style={{ width }}>
-      {/* ── Header ──────────────────────────────────────────────────── */}
-      <div className="px-5 py-3 border-b border-line">
-        <div className="flex items-start gap-3">
+      {/* ── Header — spec-sheet layout with labelled metadata lanes ───── */}
+      <div className="border-b border-line">
+        {/* Row 1: verdict tile (left edge, full-bleed) + title + close */}
+        <div className="flex items-stretch">
           <div
-            className="shrink-0 flex items-center gap-1.5 px-2 py-1 rounded font-mono text-[10px] tracking-wider font-semibold"
-            style={{ color: v.fg, background: v.bg }}
+            className="shrink-0 flex flex-col items-center justify-center gap-0.5 px-3"
+            style={{ color: v.fg, background: v.bg, minWidth: 80 }}
           >
-            <span className="text-[12px] leading-none">{v.glyph}</span>
-            <span>{v.l}</span>
+            <span className="text-[20px] leading-none font-semibold">{v.glyph}</span>
+            <span className="text-[9px] tracking-[0.18em] font-mono font-semibold">{v.l}</span>
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1 flex-wrap">
-              <span className="text-[10px] text-navy-1 font-mono font-semibold">{rule.ruleId}</span>
-              {rule.article && (
-                <span className="text-[10px] text-muted font-mono">· {rule.article}</span>
-              )}
-              <SeverityChip severity={rule.severity} />
-              {rule.checkType && (
-                <span className="text-[9px] tracking-wider px-1.5 py-0.5 rounded font-mono border border-line text-muted">
-                  {rule.checkType}
-                </span>
-              )}
-              {(rule.scope || []).slice(0, 4).map(s => (
-                <button
-                  key={s}
-                  onClick={() => setDocViewer({ docType: s })}
-                  title={`Open ${s} source document`}
-                  className="hover:brightness-95 active:brightness-90 transition rounded"
-                >
-                  <DocTypeBadge type={s} />
-                </button>
-              ))}
-              <button
-                onClick={() => setDocViewer({ docType: 'LC' })}
-                title="Open LC (MT700) for reference"
-                className="text-[9px] tracking-wider px-1.5 py-0.5 rounded font-mono border border-teal-2/40 text-teal-2 bg-teal-1/10 hover:bg-teal-1/20 transition"
-              >
-                📄 LC ref
-              </button>
-            </div>
-            <div className="text-[13px] font-semibold tracking-tight leading-snug text-navy-1">{rule.label}</div>
-            {(rule.attention || []).length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-2">
-                {rule.attention.map(t => <AttentionChip key={t} tag={t} />)}
+          <div className="flex-1 min-w-0 px-4 py-3 flex items-start gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="text-[9px] tracking-[0.22em] uppercase text-muted font-mono mb-0.5">
+                Rule
               </div>
-            )}
+              <div className="text-[14px] font-semibold tracking-tight leading-snug text-navy-1">
+                {rule.label}
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="text-[#a1a1a6] hover:text-navy-1 text-[16px] leading-none shrink-0 mt-0.5"
+              title="Close (Esc)"
+            >✕</button>
           </div>
-          <button
-            onClick={onClose}
-            className="text-[#a1a1a6] hover:text-navy-1 text-[16px] leading-none shrink-0"
-            title="Close (Esc)"
-          >✕</button>
         </div>
+
+        {/* Row 2: spec lanes — each lane is a labelled cell with a thin
+            separator between them. Officer can scan: ID · severity · authority
+            · execution tier without the chips bleeding into each other. */}
+        <dl className="grid grid-cols-[auto_auto_1fr_auto] gap-px bg-line/60 border-t border-line/60">
+          <SpecLane label="ID">
+            <span className="text-[11px] font-mono font-semibold text-navy-1">{rule.ruleId}</span>
+          </SpecLane>
+          <SpecLane label="Severity">
+            <SeverityChip severity={rule.severity} />
+          </SpecLane>
+          <SpecLane label="Authority">
+            <span className="text-[11px] font-mono text-navy-1">{rule.article || '—'}</span>
+          </SpecLane>
+          <SpecLane label="Tier">
+            {rule.checkType
+              ? <TierBadge tier={rule.checkType} />
+              : <span className="text-[11px] text-muted">—</span>}
+          </SpecLane>
+        </dl>
+
+        {/* Row 3: scope lane — separated from spec lanes because the chips
+            here are interactive (open the doc-viewer modal). */}
+        <div className="px-4 py-2.5 bg-slate2/40 border-t border-line/60 flex items-center gap-3 flex-wrap">
+          <span className="text-[9px] tracking-[0.22em] uppercase text-muted font-mono shrink-0">
+            Applies to
+          </span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {/* LC first — it's the master reference document for every rule. */}
+            <button
+              onClick={() => setDocViewer({ docType: 'LC' })}
+              title="Open LC (MT700) for reference"
+              className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold font-mono px-1.5 py-0.5 rounded ring-1 ring-teal-2/40 text-teal-2 bg-teal-1/10 hover:bg-teal-1/20 active:brightness-90 transition leading-none"
+            >
+              <span>📄</span>
+              <span>LC</span>
+            </button>
+            {(rule.scope || []).filter(s => s !== 'LC').slice(0, 4).map(s => (
+              <button
+                key={s}
+                onClick={() => setDocViewer({ docType: s })}
+                title={`Open ${s} source document`}
+                className="inline-flex items-center hover:brightness-95 active:brightness-90 transition rounded ring-1 ring-line leading-none"
+              >
+                <DocTypeBadge type={s} />
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Row 4: flags (attention chips) — only when present. Lives in its
+            own zone so the regular metadata stays calm when nothing's flagged. */}
+        {(rule.attention || []).length > 0 && (
+          <div className="px-4 py-2 bg-status-goldSoft/30 border-t border-line/60 flex items-center gap-3 flex-wrap">
+            <span className="text-[9px] tracking-[0.22em] uppercase text-status-gold font-mono font-semibold shrink-0">
+              Flags
+            </span>
+            <div className="flex flex-wrap gap-1">
+              {rule.attention.map(t => <AttentionChip key={t} tag={t} />)}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Body ─────────────────────────────────────────────────────── */}
@@ -249,6 +285,38 @@ export function RuleDrawer({ rule, width = 540, session, onClose, onOverride, on
 // ────────────────────────────────────────────────────────────────────
 // Helpers
 // ────────────────────────────────────────────────────────────────────
+
+// One labelled cell in the header spec-sheet grid. Eyebrow above, value below.
+// The 1px gap between cells (gap-px on the grid) becomes a hairline divider —
+// no extra borders needed.
+function SpecLane({ label, children }) {
+  return (
+    <div className="bg-white px-3 py-2 min-w-[80px] flex flex-col gap-0.5">
+      <span className="text-[8.5px] tracking-[0.22em] uppercase text-muted font-mono">{label}</span>
+      <span className="flex items-center">{children}</span>
+    </div>
+  );
+}
+
+const TIER_BADGE = {
+  PROGRAMMATIC: { label: 'PROG',    fg: '#0f5c3e', bg: '#d1fae5' },
+  AGENT:        { label: 'AGENT',   fg: '#1e40af', bg: '#dbeafe' },
+  AGENT_TOOL:   { label: 'AGENT+T', fg: '#6b21a8', bg: '#ede9fe' },
+  AGENTIC:      { label: 'AGENTIC', fg: '#9a3412', bg: '#ffedd5' },
+};
+function TierBadge({ tier }) {
+  const m = TIER_BADGE[tier];
+  if (!m) return <span className="text-[11px] text-muted font-mono">{tier}</span>;
+  return (
+    <span
+      className="inline-flex items-center text-[9.5px] font-mono font-semibold tracking-wider px-1.5 py-0.5 rounded"
+      style={{ color: m.fg, background: m.bg }}
+      title={`Execution tier: ${tier}`}
+    >
+      {m.label}
+    </span>
+  );
+}
 
 function Section({ eyebrow, tone = 'neutral', children }) {
   const accent = {
