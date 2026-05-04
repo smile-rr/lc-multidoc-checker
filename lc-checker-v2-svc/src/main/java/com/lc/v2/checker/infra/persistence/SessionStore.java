@@ -108,10 +108,18 @@ public class SessionStore {
     }
 
     public boolean sessionExists(String sessionId) {
+        if (!isValidUuid(sessionId)) return false;
         Integer count = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM lc_v2.check_sessions WHERE id = ?::uuid",
                 Integer.class, sessionId);
         return count != null && count > 0;
+    }
+
+    /** Treat malformed UUIDs as "not found" rather than letting a 500 escape. */
+    private static boolean isValidUuid(String s) {
+        if (s == null) return false;
+        try { UUID.fromString(s); return true; }
+        catch (IllegalArgumentException e) { return false; }
     }
 
     /** List sessions for the home page. lc_number / beneficiary_name come from v_session_overview. */
@@ -133,6 +141,7 @@ public class SessionStore {
      * longer a column — callers that need the report read v_signoff_report.
      */
     public Map<String, Object> getSession(String sessionId) {
+        if (!isValidUuid(sessionId)) return null;
         List<Map<String, Object>> rows = jdbc.queryForList("""
                 SELECT id, status, compliant, doc_count, error, created_at, completed_at,
                        next_stage, awaiting_officer, stage_completed_at::text AS stage_completed_at

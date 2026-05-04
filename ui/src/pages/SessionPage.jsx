@@ -117,17 +117,36 @@ export function SessionPage() {
     if (i > 0) setActiveStage(STAGE_ORDER[i - 1]);
   };
 
-  if (loading || activeStage === null) {
+  if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
         <Spinner label="Loading session…" />
       </div>
     );
   }
-  if (error) {
+  if (error || !session) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center gap-3">
+        <div className="text-[18px] font-semibold text-navy-1">Session not found</div>
+        <div className="text-[13px] text-muted font-mono break-all max-w-md text-center">
+          {id}
+        </div>
+        {error && error.length > 0 && error.length < 200 && (
+          <div className="text-[11px] text-status-red font-mono">{error}</div>
+        )}
+        <a
+          href="/"
+          className="text-[12px] mt-2 px-3 py-1.5 rounded border border-line text-navy-1 hover:bg-slate2 transition-colors"
+        >
+          ← Back to home
+        </a>
+      </div>
+    );
+  }
+  if (activeStage === null) {
     return (
       <div className="h-full flex items-center justify-center">
-        <p className="text-status-red text-sm">{error}</p>
+        <Spinner label="Loading session…" />
       </div>
     );
   }
