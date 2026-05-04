@@ -8,8 +8,11 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.lc.v2.checker.domain.rule.Rule;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,12 +22,19 @@ import org.springframework.stereotype.Component;
 
 /**
  * Loads and caches the rule catalog from catalog.yml at application startup.
- * Fail-fast: missing file or empty catalog throws at boot.
+ * Fail-fast: missing file, empty catalog, unknown check_type, or non-conforming
+ * rule IDs throw at boot.
  */
 @Component
 public class RuleCatalogRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(RuleCatalogRegistry.class);
+
+    private static final Set<String> VALID_CHECK_TYPES =
+            Set.of("PROGRAMMATIC", "AGENT", "AGENT_TOOL", "AGENTIC");
+
+    private static final Pattern ID_PATTERN =
+            Pattern.compile("^(CCY|AMT|DATE|PARTY|GOODS|SHIP|DOC|COND)-\\d{2}$");
 
     private final List<Rule> allRules;
     private final List<Rule> enabledRules;
@@ -47,14 +57,15 @@ public class RuleCatalogRegistry {
         if (parsed == null || parsed.rules() == null || parsed.rules().isEmpty()) {
             throw new IllegalStateException("Rule catalog at " + catalogPath + " is empty");
         }
-        this.allRules = List.copyOf(parsed.rules());
-        this.enabledRules = allRules.stream().filter(Rule::enabled).toList();
-        for (Rule r : allRules) {
-            if ("PROGRAMMATIC_AGENT".equals(r.checkType())) {
-                log.warn("Rule {} uses deprecated checkType PROGRAMMATIC_AGENT — alias of AGENT_TOOL; "
-                        + "update catalog.yml", r.ruleId());
-            }
+
+        List<Rule> normalised = new ArrayList<>(parsed.rules().size());
+        for (Rule r : parsed.rules()) {
+            validate(r);
+            normalised.add(applyTierDefaults(r));
         }
+        this.allRules = List.copyOf(normalised);
+        this.enabledRules = allRules.stream().filter(Rule::enabled).toList();
+
         for (Rule r : allRules) {
             if (r.triggers() != null && r.triggerDocs() != null && !r.triggerDocs().isEmpty()) {
                 log.warn("Rule {} declares both triggers and triggerDocs — triggers wins, "
@@ -64,6 +75,47 @@ public class RuleCatalogRegistry {
         log.info("RuleCatalogRegistry loaded {} rules ({} enabled, {} with compound triggers)",
                 allRules.size(), enabledRules.size(),
                 allRules.stream().filter(r -> r.triggers() != null).count());
+    }
+
+    private static void validate(Rule r) {
+        if (r.ruleId() == null || !ID_PATTERN.matcher(r.ruleId()).matches()) {
+            throw new IllegalStateException(
+                    "Rule ID '" + r.ruleId() + "' does not match pattern "
+                            + "^(CCY|AMT|DATE|PARTY|GOODS|SHIP|DOC|COND)-\\d{2}$");
+        }
+        if (r.checkType() == null || !VALID_CHECK_TYPES.contains(r.checkType())) {
+            throw new IllegalStateException(
+                    "Rule " + r.ruleId() + " has unknown check_type '" + r.checkType()
+                            + "'; expected one of " + VALID_CHECK_TYPES);
+        }
+    }
+
+    /**
+     * Apply tier defaults for {@code thinkingEnabled} / {@code maxIterations} when
+     * the catalog entry omits them. Catalog values always win.
+     */
+    private static Rule applyTierDefaults(Rule r) {
+        Boolean thinking = r.thinkingEnabled();
+        Integer maxIter = r.maxIterations();
+        switch (r.checkType()) {
+            case "AGENTIC" -> {
+                if (thinking == null) thinking = Boolean.TRUE;
+                if (maxIter == null) maxIter = 4;
+            }
+            case "AGENT", "AGENT_TOOL" -> {
+                if (thinking == null) thinking = Boolean.FALSE;
+            }
+            default -> { /* PROGRAMMATIC — no LLM, fields stay null */ }
+        }
+        return new Rule(
+                r.ruleId(), r.name(), r.version(), r.canonicalField(),
+                r.appliesTo(), r.scope(), r.triggerDocs(), r.lcFieldsRequired(),
+                r.checkType(), r.severity(), r.polarity(), r.waivable(),
+                r.ucpRefs(), r.isbpRefs(),
+                r.expression(), r.promptInstruction(), r.fieldKeys(),
+                r.enabled(), r.triggers(),
+                thinking, maxIter,
+                r.ucpExcerpt());
     }
 
     public List<Rule> all() { return allRules; }

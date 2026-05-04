@@ -10,7 +10,6 @@ import com.lc.v2.checker.infra.observability.PipelineStage;
 import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.infra.rules.RuleCatalogRegistry;
 import com.lc.v2.checker.infra.rules.RuleTriggerEvaluator;
-import com.lc.v2.checker.infra.rules.RuleTriggerEvaluator.Outcome;
 import com.lc.v2.checker.infra.rules.RuleTriggerEvaluator.TriggerDecision;
 import com.lc.v2.checker.pipeline.Stage;
 import com.lc.v2.checker.pipeline.StageContext;
@@ -19,7 +18,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,11 +27,9 @@ import org.springframework.stereotype.Component;
  * Stage 3 — Examine.
  *
  * Each catalog rule is evaluated through {@link RuleTriggerEvaluator}:
- *   FIRE           → dispatch to SpelEvaluator (PROGRAMMATIC) or AgentRuleExecutor (AGENT)
- *   NOT_APPLICABLE → emit a NA row with the trigger trace as explanation (visible to officer)
- *   SKIP           → drop silently (rule's doc universe absent)
- *
- * Trigger traces are persisted in pipeline_steps(examine/meta).trigger_traces for UI tooltips.
+ *   FIRE           → dispatch to SpelEvaluator (PROGRAMMATIC) or AgentRuleExecutor (AGENT/AGENT_TOOL/AGENTIC)
+ *   NOT_APPLICABLE → emit FAIL with "Required data missing" (system never auto-decides N/A)
+ *   SKIP           → drop silently (rule's doc universe absent) — surfaced as out-of-scope row
  */
 @PipelineStage(name = "examine")
 @Component
@@ -47,13 +43,9 @@ public class ExamineStage implements Stage {
     private final SessionStore sessionStore;
     private final ObjectMapper objectMapper;
     private final RuleTriggerEvaluator triggerEvaluator;
-    private final LcRulePlannerAgent plannerAgent;
     private final com.lc.v2.checker.stage.parse.Mt700Parser mt700Parser;
 
     private final Map<String, List<String>> traces = new LinkedHashMap<>();
-    /** Per-rule wall-clock start, populated when PENDING is upserted. Used to
-     *  compute duration_ms on the eventual rule-completion upsert so the UI does
-     *  not have to derive durations from event timestamps. */
     private final Map<String, Long> ruleStartMs = new LinkedHashMap<>();
 
     public ExamineStage(RuleCatalogRegistry catalog,
@@ -62,7 +54,6 @@ public class ExamineStage implements Stage {
                         SessionStore sessionStore,
                         ObjectMapper objectMapper,
                         RuleTriggerEvaluator triggerEvaluator,
-                        LcRulePlannerAgent plannerAgent,
                         com.lc.v2.checker.stage.parse.Mt700Parser mt700Parser) {
         this.catalog = catalog;
         this.spelEvaluator = spelEvaluator;
@@ -70,7 +61,6 @@ public class ExamineStage implements Stage {
         this.sessionStore = sessionStore;
         this.objectMapper = objectMapper;
         this.triggerEvaluator = triggerEvaluator;
-        this.plannerAgent = plannerAgent;
         this.mt700Parser = mt700Parser;
     }
 
@@ -83,16 +73,9 @@ public class ExamineStage implements Stage {
         ctx.eventBus.stageStarted(ctx.sessionId, "examine");
         traces.clear();
 
-        // Phase timings — emitted as ExaminePhase SSE events so the UI phase strip
-        // can render reliably without inferring from rule-count thresholds.
-        Map<String, Long> phaseStarts = new LinkedHashMap<>();
-        long deriveStart = System.currentTimeMillis();
-        phaseStarts.put("derive", deriveStart);
-
-        // Step 0a: rehydrate ctx.lc from v_lc_parse if the in-memory copy
-        // was lost (JVM restart, stage-cache eviction). Without this, every
-        // field-dependent rule returns NOT_APPLICABLE because the envelope
-        // appears empty.
+        // Step 0a: rehydrate ctx.lc from v_lc_parse if the in-memory copy was lost
+        // (JVM restart, stage-cache eviction). Without this, every field-dependent
+        // rule returns NOT_APPLICABLE because the envelope appears empty.
         if (ctx.lc == null) {
             try {
                 ctx.lc = rehydrateLc(ctx.sessionId);
@@ -105,9 +88,8 @@ public class ExamineStage implements Stage {
             }
         }
 
-        // Step 0b: refresh derived LC envelope. Examine "owns" derive→plan→check
-        // as one unit, so a re-examine reflects any LC text edits without needing
-        // a Parse-stage rerun.
+        // Step 0b: refresh derived LC envelope so re-examines reflect any LC text
+        // edits without needing a Parse-stage rerun.
         if (ctx.lc != null) {
             try {
                 com.lc.v2.checker.domain.lc.LcDerived fresh =
@@ -126,10 +108,6 @@ public class ExamineStage implements Stage {
                     + "field-dependent rules will return NOT_APPLICABLE", ctx.sessionId);
         }
 
-        long deriveEnd = System.currentTimeMillis();
-        ctx.eventBus.examinePhase(ctx.sessionId, "derive", deriveEnd - deriveStart, null, null);
-        phaseStarts.put("plan", deriveEnd);
-
         // Step 1: build trigger-evaluation context.
         ExamineContext ec = buildContext(ctx);
         log.info("[{}] Examine context: presentedDocs={}, lcFields={}, derivedKeys={}, consistencyMarks={}",
@@ -138,120 +116,54 @@ public class ExamineStage implements Stage {
                 ec.lcDerived() == null ? 0 : ec.lcDerived().size(),
                 ec.consistencyClauses() == null ? 0 : ec.consistencyClauses().size());
 
-        // Step 2: fan out — planner future runs in parallel with PROGRAMMATIC catalog evaluation.
-        CompletableFuture<List<Rule>> plannerFuture = CompletableFuture.supplyAsync(
-                () -> safePlannerCall(ctx, ec));
-
-        // Step 3: classify catalog rules; PROGRAMMATIC rules run inline now,
-        // AGENT rules deferred to a queue that drains after planner joins.
-        List<Rule> toFireProg = new ArrayList<>();
-        List<Rule> toFireAgent = new ArrayList<>();
-        List<RuleAndDecision> naList = new ArrayList<>();
+        // Step 2: classify rules — preserve catalog order across NA / FIRE / SKIP
+        // so the worklist, progress meter and execution all advance sequentially
+        // (no NA-block-then-FIRE-block jump).
+        record Classified(Rule rule, RuleTriggerEvaluator.Outcome outcome, RuleAndDecision rad) {}
+        List<Classified> classified = new ArrayList<>();
         List<RuleAndDecision> skipList = new ArrayList<>();
+        int totalActive = 0;
         for (Rule rule : catalog.enabledRules()) {
-            classify(rule, ec, toFireProg, toFireAgent, naList, skipList);
+            TriggerDecision d = triggerEvaluator.evaluate(rule, ec);
+            traces.put(rule.ruleId(), d.trace());
+            switch (d.outcome()) {
+                case FIRE -> { classified.add(new Classified(rule, d.outcome(), null)); totalActive++; }
+                case NOT_APPLICABLE -> { classified.add(new Classified(rule, d.outcome(), new RuleAndDecision(rule, d))); totalActive++; }
+                case SKIP -> skipList.add(new RuleAndDecision(rule, d));
+            }
         }
 
-        // Step 4: NA rows first (catalog order); then PROGRAMMATIC rules.
-        List<Rule> adhocRules = plannerFuture.join();
-        List<RuleAndDecision> adhocNa = new ArrayList<>();
-        for (Rule r : adhocRules) classify(r, ec, toFireProg, toFireAgent, adhocNa, skipList);
-
-        long planEnd = System.currentTimeMillis();
-        ctx.eventBus.examinePhase(ctx.sessionId, "plan",
-                planEnd - phaseStarts.get("plan"), null, adhocRules.size());
-        phaseStarts.put("check", planEnd);
-
-        int total = naList.size() + adhocNa.size() + toFireProg.size() + toFireAgent.size();
+        int total = totalActive;
         int[] idx = {0};
 
-        ctx.eventBus.examinePhase(ctx.sessionId, "check", 0L, total, null);
+        // Pre-insert PENDING rows so the worklist materialises immediately.
+        for (Classified c : classified) upsertPendingRow(ctx, c.rule());
 
-        // Pre-insert PENDING rows so the worklist materialises immediately. Each row
-        // gets upserted in place when the rule actually completes. SKIPs are not
-        // pre-inserted — they emit synthetic [OUT_OF_SCOPE] NA rows via emitSkipped.
-        // Insertion order = catalog order (then adhoc), so v_check_results returns
-        // rules in the same sequence the catalog declares them — which is what the
-        // worklist's default sort key reads.
-        List<Rule> catalogFireOrder = new ArrayList<>();
-        for (Rule rule : catalog.enabledRules()) {
-            if (toFireProg.contains(rule) || toFireAgent.contains(rule)) catalogFireOrder.add(rule);
+        // Catalog-order execution — NA emitted in place, no block hopping.
+        for (Classified c : classified) {
+            if (c.outcome() == RuleTriggerEvaluator.Outcome.FIRE) {
+                runRule(ctx, c.rule(), ++idx[0], total);
+            } else {
+                emitNa(ctx, c.rad(), ++idx[0], total);
+            }
         }
-        List<Rule> adhocFireOrder = new ArrayList<>();
-        for (Rule rule : adhocRules) {
-            if (toFireProg.contains(rule) || toFireAgent.contains(rule)) adhocFireOrder.add(rule);
-        }
-        for (Rule rule : catalogFireOrder) upsertPendingRow(ctx, rule);
-        for (Rule rule : adhocFireOrder) upsertPendingRow(ctx, rule);
-        for (RuleAndDecision rad : naList) upsertPendingRow(ctx, rad.rule());
-        for (RuleAndDecision rad : adhocNa) upsertPendingRow(ctx, rad.rule());
-
-        for (RuleAndDecision rad : naList) emitNa(ctx, rad, ++idx[0], total);
-        for (RuleAndDecision rad : adhocNa) emitNa(ctx, rad, ++idx[0], total);
-        // Run rules in catalog-declared order — PROG and AGENT interleaved as the
-        // catalog lists them. Officers reading the live worklist (and post-hoc
-        // audit log) see the same sequence as catalog.yml.
-        for (Rule rule : catalogFireOrder) runRule(ctx, rule, ++idx[0], total);
-        // Adhoc rules (planner-generated) trail at the end, in planner-emit order.
-        for (Rule rule : adhocFireOrder) runRule(ctx, rule, ++idx[0], total);
-        // Out-of-scope rows: surface SKIPs as synthetic NA rows so the worklist's
-        // Out-of-Scope section has content (UI keys on the [OUT_OF_SCOPE] prefix).
+        // Out-of-scope rows surface as synthetic NA rows for the worklist's
+        // Out-of-Scope section.
         for (RuleAndDecision rad : skipList) emitSkipped(ctx, rad);
 
-        log.info("[{}] Examine: {} fire-prog, {} fire-agent, {} NA, {} adhoc-proposed",
-                ctx.sessionId, toFireProg.size(), toFireAgent.size(),
-                naList.size() + adhocNa.size(), adhocRules.size());
+        long fireCount = classified.stream().filter(c -> c.outcome() == RuleTriggerEvaluator.Outcome.FIRE).count();
+        long naCount = classified.stream().filter(c -> c.outcome() == RuleTriggerEvaluator.Outcome.NOT_APPLICABLE).count();
+        log.info("[{}] Examine: {} fire, {} NA, {} skipped",
+                ctx.sessionId, fireCount, naCount, skipList.size());
 
-        // Step 6: persist meta sections (examine array is now built progressively).
-        persistResults(ctx, adhocRules);
-
-        ctx.eventBus.examinePhase(ctx.sessionId, "review",
-                System.currentTimeMillis() - phaseStarts.get("check"), null, null);
+        persistResults(ctx);
 
         ctx.eventBus.stageCompleted(ctx.sessionId, "examine", System.currentTimeMillis() - start);
         log.info("[{}] Examine complete: {} results, {}ms",
                 ctx.sessionId, ctx.checkResults.size(), System.currentTimeMillis() - start);
     }
 
-    private List<Rule> safePlannerCall(StageContext ctx, ExamineContext ec) {
-        try {
-            return plannerAgent.propose(ctx, ec);
-        } catch (Exception e) {
-            log.warn("[{}] planner failed: {}", ctx.sessionId, e.getMessage());
-            return List.of();
-        }
-    }
 
-    private void classify(Rule rule, ExamineContext ec,
-                          List<Rule> prog, List<Rule> agent,
-                          List<RuleAndDecision> na, List<RuleAndDecision> skip) {
-        TriggerDecision d = triggerEvaluator.evaluate(rule, ec);
-        traces.put(rule.ruleId(), d.trace());
-        switch (d.outcome()) {
-            case FIRE -> {
-                if (rule.isProgrammatic()) prog.add(rule); else agent.add(rule);
-                log.debug("rule {} FIRE: {}", rule.ruleId(), firstReason(d.trace()));
-            }
-            case NOT_APPLICABLE -> {
-                na.add(new RuleAndDecision(rule, d));
-                log.debug("rule {} NA: {}", rule.ruleId(), firstReason(d.trace()));
-            }
-            case SKIP -> {
-                skip.add(new RuleAndDecision(rule, d));
-                log.info("rule {} SKIP: {}", rule.ruleId(), firstReason(d.trace()));
-            }
-        }
-    }
-
-    /**
-     * Emit a FAIL verdict when the trigger evaluator says NOT_APPLICABLE
-     * because mandatory LC fields / data are missing.
-     *
-     * <p>Design choice: the system never auto-decides NOT_APPLICABLE. If the
-     * catalog declares a field/condition mandatory and it isn't there, the
-     * rule fails with a clear "required X missing" explanation. Only the
-     * officer can mark a rule N/A via override.
-     */
     private void emitNa(StageContext ctx, RuleAndDecision rad, int idx, int total) {
         Rule rule = rad.rule();
         ctx.eventBus.ruleStarted(ctx.sessionId, rule.ruleId(), rule.ruleId(),
@@ -267,12 +179,9 @@ public class ExamineStage implements Stage {
         appendCheckResult(ctx, result);
         ctx.eventBus.ruleChecked(ctx.sessionId, rule.ruleId(),
                 result.verdict().name(), result.confidence(),
-                rule.origin().name(), "MISSING_REQUIRED", rad.decision().trace());
+                "CATALOG", "MISSING_REQUIRED", rad.decision().trace());
     }
 
-    /** Synthetic NOT_APPLICABLE row for SKIP'd rules so the worklist's
-     *  Out-of-Scope section has content. The {@code [OUT_OF_SCOPE]} prefix
-     *  is what the UI keys on to route the row out of the Active group. */
     private void emitSkipped(StageContext ctx, RuleAndDecision rad) {
         Rule rule = rad.rule();
         String reason = String.join("; ", rad.decision().trace());
@@ -301,16 +210,13 @@ public class ExamineStage implements Stage {
                     "Evaluation error: " + e.getClass().getSimpleName() + ": " + e.getMessage(),
                     null, 0.0, rule.checkType());
         }
-        // Single chokepoint for NA→FAIL policy. Covers every path that produces
-        // a CheckResult: SpEL (incl. MultiDocHelpers) and AgentRuleExecutor.
-        // Only the officer override path can land a row at NOT_APPLICABLE.
         result = flipSystemNa(result);
         ctx.checkResults.add(result);
         appendCheckResult(ctx, result);
         List<String> trace = traces.getOrDefault(rule.ruleId(), List.of());
         ctx.eventBus.ruleChecked(ctx.sessionId, rule.ruleId(),
                 result.verdict().name(), result.confidence(),
-                rule.origin().name(), "FIRE", trace);
+                "CATALOG", "FIRE", trace);
     }
 
     private void appendCheckResult(StageContext ctx, CheckResult r) {
@@ -322,6 +228,12 @@ public class ExamineStage implements Stage {
             stepResult.put("confidence", r.confidence());
             stepResult.put("duration_ms", durationMs);
             stepResult.put("trigger_trace", traces.getOrDefault(r.ruleId(), List.of()));
+            if (r.toolCalls() != null && !r.toolCalls().isEmpty()) {
+                stepResult.put("tool_calls", r.toolCalls());
+            }
+            if (r.conditionResults() != null && !r.conditionResults().isEmpty()) {
+                stepResult.put("condition_results", r.conditionResults());
+            }
             sessionStore.upsertPipelineStep(ctx.sessionId, "examine", r.ruleId(),
                     r.verdict().name(), objectMapper.writeValueAsString(stepResult),
                     durationMs, null);
@@ -334,12 +246,6 @@ public class ExamineStage implements Stage {
         }
     }
 
-    /**
-     * Flip NOT_APPLICABLE → FAIL for any system-produced verdict. The LLM /
-     * SpEL helper wrote the original explanation; we strip a leading
-     * "NOT_APPLICABLE" / "N/A" word if present to avoid double-prefixing,
-     * then prepend "Required data missing — ".
-     */
     private static CheckResult flipSystemNa(CheckResult r) {
         if (r == null || r.verdict() != CheckResult.Verdict.NOT_APPLICABLE) return r;
         String prior = r.explanation() == null ? "" : r.explanation().trim();
@@ -349,7 +255,8 @@ public class ExamineStage implements Stage {
         String explanation = "Required data missing — " + (stripped.isBlank()
                 ? "rule prerequisites not met" : stripped);
         return new CheckResult(r.ruleId(), CheckResult.Verdict.FAIL, explanation,
-                r.evidence(), r.confidence(), r.checkType());
+                r.evidence(), r.confidence(), r.checkType(),
+                r.toolCalls(), r.conditionResults());
     }
 
     private Long computeDuration(String ruleId) {
@@ -369,8 +276,6 @@ public class ExamineStage implements Stage {
         } catch (Exception e) {
             log.error("[{}] pre-insert PENDING row failed for {}: {}",
                     ctx.sessionId, rule.ruleId(), e.getMessage(), e);
-            // Don't continue with stale state — let the stage fail loudly so the
-            // officer/UI sees an explicit error instead of "0/2 — 2 pending" mystery.
             throw new IllegalStateException(
                     "Cannot pre-insert PENDING row for " + rule.ruleId()
                             + " — examine cannot proceed: " + e.getMessage(), e);
@@ -385,9 +290,6 @@ public class ExamineStage implements Stage {
         Set<String> presented = ctx.extracts.keySet().stream()
                 .map(DocType::name).collect(Collectors.toUnmodifiableSet());
         if (presented.isEmpty()) {
-            // In-memory ctx.extracts can be empty if Examine runs after a JVM restart
-            // (the StageContext cache is wiped). Fall back to the documents table so
-            // the officer at least sees which rules were considered.
             Set<String> fromDb = sessionStore.getDocuments(ctx.sessionId).stream()
                     .map(d -> (String) d.get("doc_type"))
                     .filter(t -> t != null && !"UNKNOWN".equals(t) && !"LC".equals(t))
@@ -402,12 +304,6 @@ public class ExamineStage implements Stage {
         return new ExamineContext(lcFields, lcDerived, presented, consistencyClauses);
     }
 
-    /**
-     * Map LcConsistencyChecker warnings to per-clause status. Each warning code
-     * is associated with the LC fields whose values contradicted; those fields
-     * are stamped CONTRADICTORY:&lt;description&gt;. Other fields default to OK
-     * (callers that read this map use {@code getOrDefault(field, "OK")}).
-     */
     private Map<String, String> consistencyClauseMap(StageContext ctx) {
         if (ctx.lc == null || ctx.lc.consistencyWarnings().isEmpty()) return Map.of();
         Map<String, String> m = new LinkedHashMap<>();
@@ -423,7 +319,7 @@ public class ExamineStage implements Stage {
                     m.put("port_of_loading", contradictory);
                     m.put("port_of_discharge", contradictory);
                 }
-                default -> { /* unknown code: no field mapping, surface in trace via ConsistencyOk */ }
+                default -> { /* unknown code */ }
             }
         }
         return m;
@@ -435,11 +331,6 @@ public class ExamineStage implements Stage {
 
     private record RuleAndDecision(Rule rule, TriggerDecision decision) {}
 
-    /**
-     * Re-parse MT700 from {@code v_lc_parse} if ctx.lc is null. Deterministic;
-     * cheap. Survives JVM restarts because IntakeStage persists the raw text
-     * to pipeline_steps(intake/lc_parse).
-     */
     private com.lc.v2.checker.domain.lc.LcParseResult rehydrateLc(String sessionId) {
         Map<String, Object> view = sessionStore.getLcParse(sessionId);
         if (view == null) return null;
@@ -453,13 +344,10 @@ public class ExamineStage implements Stage {
         }
     }
 
-    private void persistResults(StageContext ctx, List<Rule> adhocRules) {
-        // The examine[] array is built progressively via appendCheckResult — do not
-        // re-serialise it here, that would create duplicate rows. Only meta lands now.
+    private void persistResults(StageContext ctx) {
         try {
             Map<String, Object> meta = new LinkedHashMap<>();
             meta.put("trigger_traces", traces);
-            meta.put("adhoc_rules", adhocRules);
             if (ctx.lc != null && !ctx.lc.consistencyWarnings().isEmpty()) {
                 meta.put("consistency", ctx.lc.consistencyWarnings());
             }

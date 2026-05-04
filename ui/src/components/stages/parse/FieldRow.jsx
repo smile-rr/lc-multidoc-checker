@@ -64,7 +64,7 @@ export function FieldRow({ label, fieldKey, value, conf, manual, slotValues, onC
           </button>
         </div>
       </div>
-      {expanded && conflict && (
+      {expanded && slotsDisagree && (
         <div className="mt-2 ml-[176px] grid gap-2" style={{ gridTemplateColumns: `repeat(${slotIds.length}, minmax(0, 1fr))` }}>
           {slotIds.map(slot => {
             const v = String(slots[slot] ?? '—');

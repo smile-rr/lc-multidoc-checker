@@ -13,33 +13,35 @@ import java.util.List;
  * if {@code triggers} is null and {@code triggerDocs} non-empty, the loader synthesises an
  * AllOf(DocsPresent(...)) from triggerDocs.
  *
- * {@code origin} distinguishes static catalog rules from ad-hoc rules proposed at runtime by
- * LcRulePlannerAgent. {@code evidenceLcClause} is the source span (substring of :46A:/:47A:)
- * that motivated an ad-hoc rule — null for catalog rules.
+ * Execution tiers (checkType): PROGRAMMATIC | AGENT | AGENT_TOOL | AGENTIC.
+ *   - thinkingEnabled: per-rule override of the global enable_thinking gate; null = use tier default.
+ *   - maxIterations:   AGENTIC convergence cap; null = use tier default (4).
  */
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record Rule(
         String ruleId,
-        String canonicalField,    // canonical-field key for UI grouping (null for ad-hoc / "Other / Planned")
-        List<String> appliesTo,   // doc-type universe this rule examines when those docs are presented
+        String name,
+        int version,
+        String canonicalField,
+        List<String> appliesTo,
         List<String> scope,
         List<String> triggerDocs,
         List<String> lcFieldsRequired,
-        String checkType,         // PROGRAMMATIC | AGENT | AGENT_TOOL | AGENTIC_ADHOC (legacy: PROGRAMMATIC_AGENT)
-        String severity,          // CRITICAL | MAJOR | MINOR
-        String polarity,          // POSITIVE | NEGATIVE
+        String checkType,
+        String severity,
+        String polarity,
         boolean waivable,
         List<String> ucpRefs,
         List<String> isbpRefs,
-        String expression,        // SpEL for PROGRAMMATIC rules; null for AGENT
-        String promptInstruction, // injected into LLM prompt; null for PROGRAMMATIC
+        String expression,
+        String promptInstruction,
         List<String> fieldKeys,
         boolean enabled,
         Triggers.TriggerNode triggers,
-        RuleOrigin origin,
-        String evidenceLcClause,
-        String ucpExcerpt        // Quoted UCP/ISBP text injected into LLM prompt under "Rule excerpt"
+        Boolean thinkingEnabled,
+        Integer maxIterations,
+        String ucpExcerpt
 ) {
     public Rule {
         appliesTo = appliesTo == null ? List.of() : List.copyOf(appliesTo);
@@ -49,13 +51,13 @@ public record Rule(
         ucpRefs = ucpRefs == null ? List.of() : List.copyOf(ucpRefs);
         isbpRefs = isbpRefs == null ? List.of() : List.copyOf(isbpRefs);
         fieldKeys = fieldKeys == null ? List.of() : List.copyOf(fieldKeys);
-        if (origin == null) origin = RuleOrigin.CATALOG;
+        if (version <= 0) version = 1;
     }
 
     public boolean isProgrammatic() { return "PROGRAMMATIC".equals(checkType); }
-    public boolean isAgent() {
-        return "AGENT".equals(checkType) || "AGENT_TOOL".equals(checkType)
-                || "AGENTIC_ADHOC".equals(checkType)
-                || "PROGRAMMATIC_AGENT".equals(checkType); // legacy alias
-    }
+    public boolean isAgent()        { return "AGENT".equals(checkType); }
+    public boolean isAgentTool()    { return "AGENT_TOOL".equals(checkType); }
+    public boolean isAgentic()      { return "AGENTIC".equals(checkType); }
+    /** True if the rule is executed by AgentRuleExecutor (any non-PROGRAMMATIC tier). */
+    public boolean isLlm()          { return !isProgrammatic(); }
 }

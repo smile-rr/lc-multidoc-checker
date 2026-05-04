@@ -96,31 +96,31 @@ refs:
     heading: "Original Documents and Copies"
     text: "At least one original of each document stipulated in the credit must be presented. A document apparently bearing the document issuer's original signature, mark, stamp, or label is treated as an original."
 
-  - id: UCP-18-a-i
+  - id: UCP-18-a-1
     source: UCP600
     article: "18"
-    paragraph: "a(i)"
+    paragraph: "a(1)"
     heading: "Commercial Invoice — Issued by Beneficiary"
     text: "A commercial invoice must appear to have been issued by the beneficiary (except as provided in article 38)."
 
-  - id: UCP-18-a-ii
+  - id: UCP-18-a-2
     source: UCP600
     article: "18"
-    paragraph: "a(ii)"
+    paragraph: "a(2)"
     heading: "Commercial Invoice — Made Out in Name of Applicant"
     text: "A commercial invoice must be made out in the name of the applicant (except as provided in sub-article 38(g))."
 
-  - id: UCP-18-a-iii
+  - id: UCP-18-a-3
     source: UCP600
     article: "18"
-    paragraph: "a(iii)"
+    paragraph: "a(3)"
     heading: "Commercial Invoice — Same Currency"
     text: "A commercial invoice must be made out in the currency of the credit."
 
-  - id: UCP-18-a-iv
+  - id: UCP-18-a-4
     source: UCP600
     article: "18"
-    paragraph: "a(iv)"
+    paragraph: "a(4)"
     heading: "Commercial Invoice — Need Not Be Signed"
     text: "A commercial invoice need not be signed."
 
@@ -145,38 +145,38 @@ refs:
     heading: "Commercial Invoice — Signature"
     text: "An invoice need not be signed unless the credit specifically requires a signed invoice."
 
-  - id: UCP-20-a-i
+  - id: UCP-20-a-1
     source: UCP600
     article: "20"
-    paragraph: "a(i)"
+    paragraph: "a(1)"
     heading: "Bill of Lading — Carrier and Signature"
     text: "A bill of lading must indicate the name of the carrier and be signed by the carrier or a named agent for or on behalf of the carrier, or the master or a named agent for or on behalf of the master. Any signature by an agent must indicate whether the agent has signed for or on behalf of the carrier or for or on behalf of the master."
 
-  - id: UCP-20-a-ii
+  - id: UCP-20-a-2
     source: UCP600
     article: "20"
-    paragraph: "a(ii)"
+    paragraph: "a(2)"
     heading: "Bill of Lading — On Board"
     text: "A bill of lading must indicate that the goods have been shipped on board a named vessel at the port of loading stated in the credit, by pre-printed wording or by an on board notation indicating the date on which the goods have been shipped on board."
 
-  - id: UCP-20-a-iii
+  - id: UCP-20-a-3
     source: UCP600
     article: "20"
-    paragraph: "a(iii)"
+    paragraph: "a(3)"
     heading: "Bill of Lading — Ports"
     text: "A bill of lading must indicate the port of loading and the port of discharge as stated in the credit."
 
-  - id: UCP-20-a-iv
+  - id: UCP-20-a-4
     source: UCP600
     article: "20"
-    paragraph: "a(iv)"
+    paragraph: "a(4)"
     heading: "Bill of Lading — Full Set"
     text: "A bill of lading must be the sole original or, if issued in more than one original, be the full set as indicated on the bill of lading."
 
-  - id: UCP-20-a-vi
+  - id: UCP-20-a-6
     source: UCP600
     article: "20"
-    paragraph: "a(vi)"
+    paragraph: "a(6)"
     heading: "Bill of Lading — Charter Party"
     text: "A bill of lading must contain no indication that it is subject to a charter party."
 
@@ -250,24 +250,24 @@ refs:
     heading: "Insurance — Coverage Amount"
     text: "The insurance document must indicate the amount of insurance coverage and be in the same currency as the credit. The amount of coverage must be at least 110% of the CIF or CIP value of the goods."
 
-  - id: UCP-28-f-i
+  - id: UCP-28-f-1
     source: UCP600
     article: "28"
-    paragraph: "f(i)"
+    paragraph: "f(1)"
     heading: "Insurance — Currency"
     text: "An insurance document must indicate that the amount of insurance coverage is in the same currency as the credit."
 
-  - id: UCP-28-f-ii
+  - id: UCP-28-f-2
     source: UCP600
     article: "28"
-    paragraph: "f(ii)"
+    paragraph: "f(2)"
     heading: "Insurance — 110% Rule"
     text: "When the CIF or CIP value cannot be determined from the documents, the amount of insurance coverage must be calculated on the basis of the amount for which honour or negotiation is requested, or on the gross value of the goods as shown on the invoice, whichever is greater. The minimum coverage is 110% of that value."
 
-  - id: UCP-28-f-iii
+  - id: UCP-28-f-3
     source: UCP600
     article: "28"
-    paragraph: "f(iii)"
+    paragraph: "f(3)"
     heading: "Insurance — Coverage Route"
     text: "The insurance document must indicate that risks are covered at least between the place of taking in charge or shipment and the place of discharge or final destination as stated in the credit."
 

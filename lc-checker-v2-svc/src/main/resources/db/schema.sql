@@ -14,7 +14,6 @@
 --                        signoff/report is just another step
 --   pipeline_events      append-only SSE replay log
 --   officer_actions      every officer decision (UNIFIED, append-only)
---   dynamic_rules        per-LC rules generated at runtime
 --                        (replaces adhoc_rule_cache; sha256-keyed)
 --
 -- Schema evolution lives in views below. New stage = zero DDL.
@@ -176,19 +175,6 @@ CREATE INDEX IF NOT EXISTS idx_oa_action_target
 CREATE INDEX IF NOT EXISTS idx_oa_officer
     ON lc_v2.officer_actions (officer_id, acted_at DESC);
 
--- ---------------------------------------------------------------------------
--- dynamic_rules — per-LC rules generated at runtime by LcRulePlannerAgent.
---
--- "Dynamic" contrasts with the static UCP/ISBP catalog (catalog.yml). Future
--- origins (officer-authored, prior-LC lookup) reuse this same table with a
--- different `origin` value on each rule entry.
--- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS lc_v2.dynamic_rules (
-    cache_key   TEXT PRIMARY KEY,                  -- sha256(lcRawText | catalogVersion)
-    rules_json  JSONB NOT NULL,
-    created_at  TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
 -- ============================================================================
 -- Views — projections over pipeline_steps + officer_actions.
 --
@@ -292,9 +278,11 @@ WHERE   stage = 'examine'
   AND   step_key NOT LIKE 'phase:%'
   AND   step_key <> 'meta';
 
-CREATE OR REPLACE VIEW lc_v2.v_examine_meta AS
+-- Drop-then-create: v_examine_meta lost the adhoc_rules column when the
+-- planner was removed; CREATE OR REPLACE VIEW cannot drop columns in Postgres.
+DROP VIEW IF EXISTS lc_v2.v_examine_meta;
+CREATE VIEW lc_v2.v_examine_meta AS
 SELECT  session_id,
-        result->'adhoc_rules'              AS adhoc_rules,
         result->'consistency_warnings'     AS consistency_warnings,
         result->'consistency'              AS consistency,
         result->'trigger_traces'           AS trigger_traces

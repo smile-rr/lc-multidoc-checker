@@ -31,8 +31,7 @@ public sealed interface PipelineEvent permits
         PipelineEvent.Unlocked,
         PipelineEvent.RuleOverridden,
         PipelineEvent.OverrideCleared,
-        PipelineEvent.SignedOff,
-        PipelineEvent.ExaminePhase {
+        PipelineEvent.SignedOff {
 
     String sessionId();
     Instant timestamp();
@@ -74,12 +73,4 @@ public sealed interface PipelineEvent permits
     record RuleOverridden(String sessionId, String ruleId, String newStatus, String reason, boolean flagged, String officerId, Instant timestamp) implements PipelineEvent {}
     record OverrideCleared(String sessionId, String ruleId, String officerId, Instant timestamp) implements PipelineEvent {}
     record SignedOff(String sessionId, String decision, String officerId, Instant timestamp) implements PipelineEvent {}
-
-    /** Examine sub-stage transition: derive | plan | check | review.
-     *  durationMs = ms spent on the named phase up to this transition (null if unknown).
-     *  total      = total rules to check (only set on phase=="check").
-     *  adhocCount = ad-hoc rules proposed (only set on phase=="plan"). */
-    record ExaminePhase(String sessionId, String phase, Long durationMs,
-                        Integer total, Integer adhocCount, Instant timestamp)
-            implements PipelineEvent {}
 }

@@ -9,7 +9,6 @@ import com.lc.v2.checker.domain.common.DocType;
 import com.lc.v2.checker.domain.document.DocumentExtract;
 import com.lc.v2.checker.domain.result.CheckResult;
 import com.lc.v2.checker.domain.rule.Rule;
-import com.lc.v2.checker.domain.rule.RuleOrigin;
 import com.lc.v2.checker.infra.refs.ArticleRefRegistry;
 import com.lc.v2.checker.infra.rules.RuleCatalogRegistry;
 import java.sql.Timestamp;
@@ -42,17 +41,32 @@ public class RuleCatalogJoiner {
     private static final Logger log = LoggerFactory.getLogger(RuleCatalogJoiner.class);
 
     /** Single source of truth for human-readable rule labels (server-canonical). */
+    /**
+     * Topic-prefix catalog labels. The catalog's {@code name} field is the source
+     * of truth; this static map is a fallback used only when a result references
+     * a rule no longer present in the catalog (e.g. mid-migration rows).
+     */
     private static final Map<String, String> LABELS = Map.ofEntries(
-            Map.entry("OP01-CURRENCY-CONSISTENT",          "Currency consistent across docs and LC"),
-            Map.entry("OP02-AMOUNT-WITHIN-LC",             "Invoice (and draft) total within LC amount + tolerance"),
-            Map.entry("OP03-DOC-DATE-VALID",               "No document dated later than presentation date"),
-            Map.entry("OP04-PRESENTATION-WINDOW",          "Presentation within 21 days of shipment and before LC expiry"),
-            Map.entry("OP05-BENEFICIARY-CONSISTENT",       "Beneficiary name consistent across all docs"),
-            Map.entry("OP06-GOODS-DESCRIPTION-CORRESPONDS","Goods description corresponds with LC :45A:"),
-            Map.entry("OP07-BL-ONBOARD-VALID",             "B/L on-board notation valid and ports match LC"),
-            Map.entry("OP08-BL-CLEAN",                     "B/L is clean (no defect/damage clauses)"),
-            Map.entry("OP09-46A-DOC-SET-COMPLETE",         "All :46A: required documents and originals presented"),
-            Map.entry("OP10-BC-WC-46A-COMPLIANCE",         "Beneficiary / warranty certificate satisfies :46A:/:47A: conditions")
+            Map.entry("CCY-01",   "Currency consistent across LC, invoice, and draft"),
+            Map.entry("AMT-01",   "Invoice amount within LC (respecting :39A: tolerance)"),
+            Map.entry("AMT-02",   "Draft amount equals invoice amount"),
+            Map.entry("DATE-01",  "No document dated later than presentation date"),
+            Map.entry("DATE-02",  "Presentation within 21 days of shipment and before LC expiry"),
+            Map.entry("PARTY-01", "Invoice issued by the beneficiary"),
+            Map.entry("PARTY-02", "Beneficiary name consistent across all submitted documents"),
+            Map.entry("PARTY-03", "Draft drawn on the drawee named in the credit"),
+            Map.entry("GOODS-01", "Invoice goods description corresponds to LC :45A:"),
+            Map.entry("GOODS-02", "Quantity / packages consistent between invoice and packing list"),
+            Map.entry("GOODS-03", "Shipping marks consistent between packing list and B/L"),
+            Map.entry("SHIP-01",  "B/L bears on-board notation"),
+            Map.entry("SHIP-02",  "B/L ports of loading and discharge match LC"),
+            Map.entry("SHIP-03",  "Invoice Incoterms consistent with B/L freight notation"),
+            Map.entry("DOC-01",   "Full set of B/L originals presented"),
+            Map.entry("DOC-02",   "B/L is clean (no defect or damage clauses)"),
+            Map.entry("DOC-03",   "Beneficiary certificate signed when LC requires signature"),
+            Map.entry("DOC-04",   "Documents comply on face with LC terms (general)"),
+            Map.entry("COND-01",  "Beneficiary certificate satisfies all :46A: / :47A: conditions"),
+            Map.entry("COND-02",  "Warranty certificate satisfies all :46A: / :47A: conditions")
     );
 
     private final RuleCatalogRegistry catalog;
@@ -85,13 +99,14 @@ public class RuleCatalogJoiner {
                                     Map<DocType, DocumentExtract> extractsByDocType,
                                     Map<String, RuleTiming> timingByRule) {
         Map<String, Map<String, Object>> overridesByRule = sessionStore.getLatestOverridesByRule(sessionId);
-        Map<String, Rule> adhocById = loadAdhocRules(sessionId);
         Map<String, List<String>> tracesById = loadTriggerTraces(sessionId);
+        Map<String, Map<String, Object>> tracesByRuleResult = loadResultExtras(sessionId);
         List<EnrichedRule> result = new ArrayList<>(checkResults.size());
 
         for (CheckResult cr : checkResults) {
-            Rule rule = catalog.byId(cr.ruleId()).orElse(adhocById.get(cr.ruleId()));
-            String label = LABELS.getOrDefault(cr.ruleId(), cr.ruleId());
+            Rule rule = catalog.byId(cr.ruleId()).orElse(null);
+            String label = rule != null && rule.name() != null
+                    ? rule.name() : LABELS.getOrDefault(cr.ruleId(), cr.ruleId());
 
             String severity = rule != null ? rule.severity() : "MINOR";
             String checkType = cr.checkType() != null ? cr.checkType()
@@ -125,6 +140,11 @@ public class RuleCatalogJoiner {
             String agree = computeAgree(rule, extractsByDocType);
 
             RuleTiming t = timingByRule.getOrDefault(cr.ruleId(), RuleTiming.EMPTY);
+            Map<String, Object> extras = tracesByRuleResult.getOrDefault(cr.ruleId(), Map.of());
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> toolCalls = (List<Map<String, Object>>) extras.get("tool_calls");
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> conditionResults = (List<Map<String, Object>>) extras.get("condition_results");
             result.add(new EnrichedRule(
                     cr.ruleId(),
                     label,
@@ -139,20 +159,20 @@ public class RuleCatalogJoiner {
                     evidence,
                     cr.confidence(),
                     agree,
-                    null,                       // reliab not yet tracked in POC
+                    null,
                     attention,
                     override,
                     ucpFull,
                     isbpFull,
                     rule != null ? rule.waivable() : null,
-                    rule != null && rule.origin() != null ? rule.origin().name() : RuleOrigin.CATALOG.name(),
-                    rule != null ? rule.evidenceLcClause() : null,
                     tracesById.get(cr.ruleId()),
                     rule != null ? rule.ucpExcerpt() : null,
                     t.durationMs(),
                     t.startedAt(),
                     t.completedAt(),
-                    rule != null ? rule.canonicalField() : null
+                    rule != null ? rule.canonicalField() : null,
+                    toolCalls,
+                    conditionResults
             ));
         }
         return result;
@@ -160,33 +180,18 @@ public class RuleCatalogJoiner {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    /** Read examine/meta from pipeline_steps (was final_report.examine_meta). */
+    /** Read examine/meta from pipeline_steps. */
     private Map<String, Object> readExamineMeta(String sessionId) {
         Map<String, Object> meta = sessionStore.getExamineMeta(sessionId);
         if (meta == null) return Map.of();
         Map<String, Object> out = new LinkedHashMap<>();
         try {
-            String adhoc = (String) meta.get("adhoc_rules");
-            if (adhoc != null && !adhoc.isBlank()) {
-                out.put("adhoc_rules", MAPPER.readValue(adhoc, new TypeReference<List<Object>>() {}));
-            }
             String traces = (String) meta.get("trigger_traces");
             if (traces != null && !traces.isBlank()) {
                 out.put("trigger_traces", MAPPER.readValue(traces, new TypeReference<Map<String, Object>>() {}));
             }
         } catch (Exception e) {
             log.warn("Failed to parse examine meta for session {}: {}", sessionId, e.toString());
-        }
-        return out;
-    }
-
-    private Map<String, Rule> loadAdhocRules(String sessionId) {
-        Object list = readExamineMeta(sessionId).get("adhoc_rules");
-        if (!(list instanceof List<?> rows) || rows.isEmpty()) return Map.of();
-        Map<String, Rule> out = new LinkedHashMap<>();
-        for (Object row : rows) {
-            Rule r = MAPPER.convertValue(row, Rule.class);
-            if (r != null && r.ruleId() != null) out.put(r.ruleId(), r);
         }
         return out;
     }
@@ -206,23 +211,47 @@ public class RuleCatalogJoiner {
     }
 
     /**
-     * The {@code source} label in the worklist describes WHICH ENGINE executed
-     * the rule — it's orthogonal to the rule's {@code origin}
-     * (CATALOG vs DYNAMIC/planned). Two axes, two badges:
-     *
-     *   source  → engine: PROG | AGENT | AGENT+TOOL
-     *   origin  → provenance: CATALOG (no badge) | DYNAMIC (gold "AH" pill)
-     *
-     * AGENTIC_ADHOC is the catalog's name for an ad-hoc rule that is being
-     * executed; it always pairs with origin=DYNAMIC, so the engine is the
-     * useful axis here — render as plain "AGENT".
+     * Pull {@code tool_calls} and {@code condition_results} from each
+     * {@code pipeline_steps(examine/<rule_id>).result} JSONB so the UI drawer
+     * can render the agent timeline. Returns an empty map on any read error.
+     */
+    private Map<String, Map<String, Object>> loadResultExtras(String sessionId) {
+        try {
+            Map<String, String> raw = sessionStore.getExamineRuleResultJson(sessionId);
+            Map<String, Map<String, Object>> out = new LinkedHashMap<>();
+            for (Map.Entry<String, String> e : raw.entrySet()) {
+                String json = e.getValue();
+                if (json == null || json.isBlank()) continue;
+                try {
+                    Map<String, Object> parsed = MAPPER.readValue(json, new TypeReference<>() {});
+                    Map<String, Object> extras = new LinkedHashMap<>();
+                    if (parsed.get("tool_calls") instanceof List<?> tc && !tc.isEmpty()) {
+                        extras.put("tool_calls", tc);
+                    }
+                    if (parsed.get("condition_results") instanceof List<?> cr && !cr.isEmpty()) {
+                        extras.put("condition_results", cr);
+                    }
+                    if (!extras.isEmpty()) out.put(e.getKey(), extras);
+                } catch (Exception ignored) { /* best-effort */ }
+            }
+            return out;
+        } catch (Exception e) {
+            log.debug("loadResultExtras failed for {}: {}", sessionId, e.getMessage());
+            return Map.of();
+        }
+    }
+
+    /**
+     * Tier label rendered in the worklist row.
+     *   PROGRAMMATIC → PROG · AGENT → AGENT · AGENT_TOOL → AGENT+T · AGENTIC → AGENTIC
      */
     private static String sourceFromCheckType(String checkType) {
         if (checkType == null) return "PROG";
         return switch (checkType) {
             case "PROGRAMMATIC" -> "PROG";
-            case "AGENT", "AGENTIC_ADHOC" -> "AGENT";
-            case "AGENT_TOOL", "PROGRAMMATIC_AGENT" -> "AGENT+TOOL";
+            case "AGENT" -> "AGENT";
+            case "AGENT_TOOL" -> "AGENT+T";
+            case "AGENTIC" -> "AGENTIC";
             default -> "PROG";
         };
     }
@@ -245,7 +274,7 @@ public class RuleCatalogJoiner {
      * "UCP 600 Art. 18(a(iii))" wastes column width and is harder to scan.
      *
      * Format:  &lt;prefix&gt; &lt;article&gt;&lt;paragraph&gt;   with parens replaced by hyphens.
-     *   UCP-18-a-iii  → "UCP 18a-iii"
+     *   UCP-18-a-3    → "UCP 18a-3"
      *   UCP-30-b      → "UCP 30b"
      *   ISBP-C8       → "ISBP C8"
      */
@@ -323,8 +352,7 @@ public class RuleCatalogJoiner {
 
     private String computeAgree(Rule rule, Map<DocType, DocumentExtract> extractsByDocType) {
         if (rule == null || extractsByDocType == null) return "—";
-        if (rule.isAgent() && !"AGENT_TOOL".equals(rule.checkType())
-                && !"PROGRAMMATIC_AGENT".equals(rule.checkType())) return "AGENT";
+        if (rule.isAgent()) return "AGENT";
         // For PROG / PROG+AI, derive from primary doc's consensus tier
         for (String docName : rule.scope()) {
             DocType dt = safeDocType(docName);

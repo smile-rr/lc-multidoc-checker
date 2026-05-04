@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * JDBC store for the lc_v2 schema (six tables: check_sessions, documents,
- * pipeline_steps, pipeline_events, officer_actions, dynamic_rules).
+ * pipeline_steps, pipeline_events, officer_actions).
  *
  * <p>Conventions:
  * <ul>
@@ -316,11 +316,10 @@ public class SessionStore {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
-    /** examine/meta result — adhoc rules, consistency, trigger traces. */
+    /** examine/meta result — consistency warnings, trigger traces. */
     public Map<String, Object> getExamineMeta(String sessionId) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
-                SELECT adhoc_rules::text         AS adhoc_rules,
-                       consistency_warnings::text AS consistency_warnings,
+                SELECT consistency_warnings::text AS consistency_warnings,
                        consistency::text         AS consistency,
                        trigger_traces::text      AS trigger_traces
                 FROM   lc_v2.v_examine_meta
@@ -463,27 +462,25 @@ public class SessionStore {
     }
 
     // ───────────────────────────────────────────────────────────────────────
-    // dynamic_rules — per-LC rules generated at runtime
+    // examine — per-rule result JSON for drawer extras (tool_calls, condition_results)
     // ───────────────────────────────────────────────────────────────────────
 
-    public void putDynamicRules(String cacheKey, String rulesJson) {
-        jdbc.update("""
-                INSERT INTO lc_v2.dynamic_rules (cache_key, rules_json, created_at)
-                VALUES (?, ?::jsonb, NOW())
-                ON CONFLICT (cache_key) DO UPDATE
-                SET rules_json = EXCLUDED.rules_json,
-                    created_at = NOW()
-                """, cacheKey, rulesJson);
-    }
-
-    public String getDynamicRules(String cacheKey) {
-        try {
-            return jdbc.queryForObject(
-                    "SELECT rules_json::text FROM lc_v2.dynamic_rules WHERE cache_key = ?",
-                    String.class, cacheKey);
-        } catch (org.springframework.dao.EmptyResultDataAccessException e) {
-            return null;
+    /** Map of {ruleId → result JSONB text} for every persisted examine rule row. */
+    public Map<String, String> getExamineRuleResultJson(String sessionId) {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT step_key, result::text AS result
+                FROM   lc_v2.pipeline_steps
+                WHERE  session_id = ?::uuid
+                  AND  stage = 'examine'
+                  AND  step_key <> 'meta'
+                """, sessionId);
+        Map<String, String> out = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> r : rows) {
+            Object key = r.get("step_key");
+            Object res = r.get("result");
+            if (key != null && res != null) out.put(String.valueOf(key), String.valueOf(res));
         }
+        return out;
     }
 
     // ───────────────────────────────────────────────────────────────────────

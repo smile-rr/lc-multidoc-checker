@@ -10,8 +10,8 @@ import { DiagnosticHeader } from './examine/DiagnosticHeader';
 import { FilterRail } from './examine/FilterRail';
 import { WorklistTable } from './examine/WorklistTable';
 import { RuleDrawer } from './examine/RuleDrawer';
-import { ExaminePhaseStrip } from './examine/ExaminePhaseStrip';
-import { PlanReviewPane } from './examine/PlanReviewPane';
+import { RuleReferenceModal } from './examine/RuleReferenceModal';
+import { ResizeHandle } from './parse/ResizeHandle';
 import { OFFICER_ID } from '../../lib/officer';
 import { StagePage } from '../ui/StagePage';
 import { StageToolbar } from '../ui/StageToolbar';
@@ -39,7 +39,7 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
 
   const examineMeta = session?.finalReport?.examine_meta;
   const sessionStatus = session?.status;
-  const { rules, adhocRules, consistencyWarnings, loading, refresh, override, reset } = useRules(sessionId, sessionStatus, examineMeta);
+  const { rules, consistencyWarnings, loading, refresh, override, reset } = useRules(sessionId, sessionStatus, examineMeta);
   const { views: savedViews, save, remove } = useSavedViews();
 
   const [filter, setFilter] = useState(DEFAULT_FILTER);
@@ -47,6 +47,18 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
   const [sort, setSort] = useState(DEFAULT_SORT);
   const [selectedId, setSelectedId] = useState(null);
   const [activeView, setActiveView] = useState('default');
+  const [referenceOpen, setReferenceOpen] = useState(false);
+
+  // Drawer width — drag-resizable, persisted across sessions like Parse.
+  const STORAGE_DRAWER_W = 'lcv2-examine-drawer-width';
+  const [drawerWidth, setDrawerWidth] = useState(() => {
+    const v = parseInt(typeof window !== 'undefined' ? localStorage.getItem(STORAGE_DRAWER_W) || '' : '', 10);
+    return Number.isFinite(v) && v >= 360 ? v : 540;
+  });
+  const setDrawerWidthByDrag = (w) => {
+    setDrawerWidth(w);
+    try { localStorage.setItem(STORAGE_DRAWER_W, String(w)); } catch {}
+  };
 
   useEffect(() => {
     const m = savedViews.find(v =>
@@ -64,9 +76,12 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
     if (filter.status?.length && !filter.status.includes(v)) return false;
     if (filter.severity?.length && !filter.severity.includes(r.severity)) return false;
     if (filter.attention?.length && !(r.attention || []).some(t => filter.attention.includes(t))) return false;
-    if (filter.source?.length && !filter.source.includes(r.source)) return false;
+    if (filter.checkType?.length && !filter.checkType.includes(r.checkType)) return false;
     if (filter.scope?.length && !(r.scope || []).some(s => filter.scope.includes(s))) return false;
-    if (filter.origin?.length && !filter.origin.includes(r.origin || 'CATALOG')) return false;
+    if (filter.topic?.length) {
+      const prefix = (r.ruleId || '').split('-')[0];
+      if (!filter.topic.includes(prefix)) return false;
+    }
     return true;
   }), [rules, filter]);
 
@@ -81,8 +96,7 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
         case 'rule':     return r.label || r.ruleId;
         case 'severity': return SEV_RANK[r.severity] ?? 0;
         case 'source':   return r.source || '';
-        case 'agree':    return r.agree || '';
-        case 'reliab':   return r.reliab ?? -1;
+        case 'duration': return r.durationMs ?? -1;
         default: return 0;
       }
     };
@@ -122,7 +136,7 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
       const out = {};
       for (const r of rs) {
         const key = navMode === 'doc' ? ((r.scope || [])[0] || '—')
-          : navMode === 'origin' ? (r.origin === 'ADHOC' ? 'AI Plan' : 'Catalog')
+          : navMode === 'topic' ? ((r.ruleId || '').split('-')[0] || 'Other')
           : navMode === 'field' ? (r.canonicalField || 'Other / Planned')
           : (r.evidence?.lc?.toString().split(':')[0] || 'Other');
         (out[key] = out[key] || []).push(r);
@@ -183,7 +197,7 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
     const out = {};
     for (const r of rs) {
       const key = navMode === 'doc' ? ((r.scope || [])[0] || '—')
-        : navMode === 'origin' ? (r.origin === 'ADHOC' ? 'AI Plan' : 'Catalog')
+        : navMode === 'topic' ? ((r.ruleId || '').split('-')[0] || 'Other')
         : navMode === 'field' ? (r.canonicalField || 'Other / Planned')
         : (r.evidence?.lc?.toString().split(':')[0] || 'Other');
       (out[key] = out[key] || []).push(r);
@@ -230,32 +244,6 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
   const examineDone = stagesCompleted?.has('examine');
   const canContinue = devMode || examineDone;
 
-  // Walk events to find latest ExaminePhase to drive the toolbar's review-phase counter.
-  const currentPhase = useMemo(() => {
-    if (!events || examineDone) return examineDone ? 'review' : null;
-    let p = null;
-    for (const e of events) {
-      if (e?.type === 'StageStarted' && e.data?.stageName === 'examine') p = null;
-      if (e?.type === 'ExaminePhase') p = e.data?.phase || p;
-    }
-    return p;
-  }, [events, examineDone]);
-  const showPhaseStrip = (session?.status || '').toUpperCase() === 'EXAMINE' || examineDone;
-  const planAdhocCount = (adhocRules || []).length;
-  const showPlanPane = (currentPhase === 'plan' || (currentPhase && currentPhase !== 'derive' && planAdhocCount > 0));
-  const collapsePlan = examineDone || currentPhase === 'review';
-
-  const deriveSummary = useMemo(() => {
-    const fr = session?.finalReport;
-    const lcSection = fr?.lc;
-    const derived = lcSection?.derived;
-    if (!derived) return null;
-    const inco = derived.incoterms_class || derived.incotermsClass;
-    const tol = derived.effective_tolerance?.pct ?? derived.effectiveTolerance?.pct;
-    const tenor = derived.tenor_class || derived.tenorClass;
-    return [inco, tol != null ? `±${tol}%` : null, tenor].filter(Boolean).join(' · ') || null;
-  }, [session]);
-
   // Two-state toolbar meta — mirrors Parse stage's "extracting M/N" → "M/N reviewed" pattern.
   // While running: per-phase progress meter consuming SSE events.
   // While complete: a calm verdict snapshot in monospace, status-coloured.
@@ -276,16 +264,20 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
   }, [planned]);
 
   const isRunning = examineProgress.phase === 'running';
+  // While running, show only a minimal "current rule" pill in the toolbar — the
+  // DiagnosticHeader below carries the authoritative bucket counts (ran / N/A /
+  // out-of-scope / pending), so we don't duplicate progress in two places.
   const meta = isRunning ? (
-    <StageProgressMeter
-      phase="running"
-      label={examineProgress.label || 'Examine'}
-      sub={examineProgress.sub}
-      idx={examineProgress.idx ?? completedCount}
-      total={examineProgress.total ?? planned.length}
-      secsSinceLast={examineProgress.secsSinceLast}
-      isStale={examineProgress.isStale}
-    />
+    <span className="text-[11px] flex items-center gap-1.5 font-mono">
+      <span className="w-1.5 h-1.5 rounded-full bg-status-blue animate-pulse" />
+      <span className="text-status-blue">running</span>
+      {examineProgress.label && (
+        <span className="text-muted">· {examineProgress.label}</span>
+      )}
+      {examineProgress.sub && (
+        <span className="text-muted/70">({examineProgress.sub})</span>
+      )}
+    </span>
   ) : (
     <span className="text-[11px] flex items-center gap-2 font-mono">
       <span className={`w-1.5 h-1.5 rounded-full ${verdictTally.fail > 0 ? 'bg-status-red' : verdictTally.doubts > 0 ? 'bg-status-gold' : 'bg-status-green'}`} />
@@ -310,6 +302,12 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
         meta={meta}
         actions={
           <>
+            <GhostButton
+              onClick={() => setReferenceOpen(true)}
+              title="Open the full v2 rule catalog with UCP 600 / ISBP 821 citations"
+            >
+              📖 reference
+            </GhostButton>
             <RerunButton sessionId={sessionId} stage="examine" devMode={devMode} />
             <StageNavButtons
               stage="examine"
@@ -330,18 +328,6 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
         statusFilter={diagFilter}
         onStatusFilter={setDiagFilter}
       />
-
-      {showPhaseStrip && (
-        <ExaminePhaseStrip
-          events={events}
-          session={session}
-          examineDone={examineDone}
-          deriveSummary={deriveSummary}
-        />
-      )}
-      {showPlanPane && (
-        <PlanReviewPane adhocRules={adhocRules} collapsedByDefault={collapsePlan} />
-      )}
 
       <div className="flex flex-1 overflow-hidden">
         <FilterRail
@@ -391,20 +377,13 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
               </div>
               <div className="flex items-center gap-1 text-[10px] font-mono">
                 <span className="text-muted mr-1">GROUP BY</span>
-                {/* Default = no grouping, single sorted list. The "Origin" mode
-                    is only useful when at least one AI-Plan rule is present —
-                    otherwise it would group everything under "Catalog" which is
-                    no different from Default. Hide the button in that case. */}
-                {(() => {
-                  const hasAdhoc = rules.some(r => r.origin === 'ADHOC');
-                  const opts = [
-                    ['default', 'Default',  'No grouping — flat list sorted by article'],
-                    ['field',   'Field',    'Group by canonical field (currency, amount, …)'],
-                    ['doc',     'Document', 'Group by document type (INV / BOL / …)'],
-                  ];
-                  if (hasAdhoc) opts.push(['origin', 'Origin', 'Group by Catalog vs AI Plan']);
-                  return opts;
-                })().map(([id, l, tip]) => (
+                {/* Default = no grouping, single sorted list. */}
+                {[
+                  ['default', 'Default',  'No grouping — flat list sorted by article'],
+                  ['field',   'Field',    'Group by canonical field (currency, amount, …)'],
+                  ['doc',     'Document', 'Group by document type (INV / BOL / …)'],
+                  ['topic',   'Topic',    'Group by rule topic (CCY / AMT / DATE / …)'],
+                ].map(([id, l, tip]) => (
                   <button
                     key={id}
                     onClick={() => setNavMode(id)}
@@ -438,16 +417,30 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
         </div>
 
         {selected && (
-          <RuleDrawer
-            rule={selected}
-            adhocRules={adhocRules}
-            consistencyWarnings={consistencyWarnings}
-            onClose={() => setSelectedId(null)}
-            onOverride={handleOverride}
-            onResetOverride={handleResetOverride}
-          />
+          <>
+            <ResizeHandle
+              width={drawerWidth}
+              onResize={setDrawerWidthByDrag}
+              min={420}
+              max={900}
+            />
+            <RuleDrawer
+              rule={selected}
+              width={drawerWidth}
+              session={session}
+              onClose={() => setSelectedId(null)}
+              onOverride={handleOverride}
+              onResetOverride={handleResetOverride}
+            />
+          </>
         )}
       </div>
+
+      <RuleReferenceModal
+        open={referenceOpen}
+        onClose={() => setReferenceOpen(false)}
+        rules={rules}
+      />
     </StagePage>
   );
 }

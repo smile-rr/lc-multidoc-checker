@@ -38,37 +38,19 @@ export function useRules(sessionId, sessionStatus, examineMeta) {
     return undefined;
   }, [sessionId, sessionStatus, refresh]);
 
-  const adhocRules = useMemo(
-    () => (examineMeta?.adhoc_rules || []),
-    [examineMeta],
-  );
   const consistencyWarnings = useMemo(
     () => (examineMeta?.consistency || []),
     [examineMeta],
   );
   const triggerTraces = examineMeta?.trigger_traces || {};
-  const adhocIdSet = useMemo(
-    () => new Set(adhocRules.map(r => r.rule_id || r.ruleId)),
-    [adhocRules],
-  );
-  const adhocEvidenceById = useMemo(() => {
-    const m = {};
-    for (const r of adhocRules) {
-      const id = r.rule_id || r.ruleId;
-      if (id) m[id] = r.evidenceLcClause || r.evidence_lc_clause || null;
-    }
-    return m;
-  }, [adhocRules]);
 
   const rules = useMemo(() => rawRules.map((r, i) => {
-    const origin = r.origin || (adhocIdSet.has(r.ruleId) ? 'ADHOC' : 'CATALOG');
-    const evidenceLcClause = r.evidenceLcClause || adhocEvidenceById[r.ruleId] || null;
     const triggerTrace = triggerTraces[r.ruleId] || null;
-    // seqNum = position in the backend's response. The backend now emits rules
-    // in catalog-declared order, so this is the canonical "rule sequence" used
+    // seqNum = position in the backend's response. Backend emits rules in
+    // catalog-declared order, so this is the canonical "rule sequence" used
     // as the worklist's default sort key.
-    return { ...r, origin, evidenceLcClause, triggerTrace, seqNum: i };
-  }), [rawRules, adhocIdSet, adhocEvidenceById, triggerTraces]);
+    return { ...r, triggerTrace, seqNum: i };
+  }), [rawRules, triggerTraces]);
 
   const override = useCallback(async (ruleId, body) => {
     await overrideRule(sessionId, ruleId, body);
@@ -80,5 +62,5 @@ export function useRules(sessionId, sessionStatus, examineMeta) {
     await refresh();
   }, [sessionId, refresh]);
 
-  return { rules, adhocRules, consistencyWarnings, loading, error, refresh, override, reset };
+  return { rules, consistencyWarnings, loading, error, refresh, override, reset };
 }

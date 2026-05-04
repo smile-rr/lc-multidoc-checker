@@ -75,17 +75,17 @@ export function FilterRail({ rules, filter, setFilter, savedViews, applyView, sa
     id, label,
     count: rules.filter(r => (r.attention || []).includes(id)).length,
   }));
-  // The `source` axis describes WHICH ENGINE evaluated the rule
-  // (Programmatic SpEL, plain Agent prompt, or Agent+Tool callback).
-  // Provenance (catalog vs ad-hoc / planner-generated) is a separate axis,
-  // surfaced via the Origin filter below.
-  const sourceOpts = [
-    ['PROG',       'Programmatic'],
-    ['AGENT',      'Agent'],
-    ['AGENT+TOOL', 'Agent + tool'],
+  // The `tier` axis describes which engine evaluated the rule. The backend
+  // exposes both `checkType` (canonical) and `source` (compact display label);
+  // we filter on `checkType` so the four tiers map cleanly.
+  const tierOpts = [
+    ['PROGRAMMATIC', 'Programmatic'],
+    ['AGENT',        'Agent'],
+    ['AGENT_TOOL',   'Agent + tool'],
+    ['AGENTIC',      'Agentic'],
   ].map(([id, label]) => ({
     id, label,
-    count: rules.filter(r => r.source === id).length,
+    count: rules.filter(r => r.checkType === id).length,
   }));
   const docOpts = docs.map(d => {
     const t = docTypeMeta(d);
@@ -94,16 +94,27 @@ export function FilterRail({ rules, filter, setFilter, savedViews, applyView, sa
       count: rules.filter(r => (r.scope || []).includes(d)).length,
     };
   });
-  const originOpts = [
-    ['CATALOG', 'Catalog'],
-    ['ADHOC',   'AI Plan'],
-  ].map(([id, label]) => ({
-    id, label,
-    count: rules.filter(r => (r.origin || 'CATALOG') === id).length,
-    color: id === 'ADHOC' ? '#8a5700' : '#0066cc',
-  }));
-  const adhocCount = rules.filter(r => r.origin === 'ADHOC').length;
-  const showAdhocOnly = () => setFilter({ ...filter, origin: ['ADHOC'] });
+  // Topic filter — derived from rule_id prefix (CCY / AMT / DATE / PARTY /
+  // GOODS / SHIP / DOC / COND). Mirrors how the catalog is grouped.
+  const TOPIC_LABELS = {
+    CCY:   'Currency',
+    AMT:   'Amount',
+    DATE:  'Dates',
+    PARTY: 'Parties',
+    GOODS: 'Goods',
+    SHIP:  'Shipment',
+    DOC:   'Documents',
+    COND:  'Conditions',
+  };
+  const presentTopics = [...new Set(rules.map(r => (r.ruleId || '').split('-')[0]).filter(Boolean))];
+  const topicOpts = presentTopics
+    .filter(t => TOPIC_LABELS[t])
+    .sort()
+    .map(t => ({
+      id: t,
+      label: `${t} · ${TOPIC_LABELS[t]}`,
+      count: rules.filter(r => (r.ruleId || '').startsWith(t + '-')).length,
+    }));
 
   return (
     <aside className="bg-white border-r border-line overflow-auto flex-shrink-0 flex flex-col" style={{ width: 240 }}>
@@ -139,18 +150,10 @@ export function FilterRail({ rules, filter, setFilter, savedViews, applyView, sa
         <FilterSection title="Status"          k="status"    options={statusOpts}    filter={filter} setFilter={setFilter} />
         <FilterSection title="Severity"        k="severity"  options={sevOpts}       filter={filter} setFilter={setFilter} />
         <FilterSection title="Need attention"  k="attention" options={attentionOpts} filter={filter} setFilter={setFilter} />
-        <FilterSection title="Source"          k="source"    options={sourceOpts}    filter={filter} setFilter={setFilter} />
+        <FilterSection title="Tier"            k="checkType" options={tierOpts}      filter={filter} setFilter={setFilter} />
         <FilterSection title="Document"        k="scope"     options={docOpts}       filter={filter} setFilter={setFilter} />
-        <FilterSection title="Origin"          k="origin"    options={originOpts}    filter={filter} setFilter={setFilter} />
-        {adhocCount > 0 && (
-          <button
-            onClick={showAdhocOnly}
-            className="mx-3 mt-2 mb-3 w-[calc(100%-1.5rem)] px-2 py-1.5 rounded text-[10px] bg-status-gold/10 text-status-gold hover:bg-status-gold/20 flex items-center gap-1.5 font-mono"
-            title="Show only ad-hoc rules discovered from this LC"
-          >
-            <span>★</span>
-            <span>{adhocCount} rules discovered from this LC</span>
-          </button>
+        {topicOpts.length > 0 && (
+          <FilterSection title="Topic"         k="topic"     options={topicOpts}     filter={filter} setFilter={setFilter} />
         )}
       </div>
     </aside>

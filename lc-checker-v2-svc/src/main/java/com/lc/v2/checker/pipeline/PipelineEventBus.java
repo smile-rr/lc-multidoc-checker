@@ -126,9 +126,4 @@ public class PipelineEventBus {
         emit(new PipelineEvent.SignedOff(sessionId, decision, officerId, java.time.Instant.now()));
     }
 
-    public void examinePhase(String sessionId, String phase, Long durationMs,
-                              Integer total, Integer adhocCount) {
-        emit(new PipelineEvent.ExaminePhase(sessionId, phase, durationMs, total, adhocCount,
-                java.time.Instant.now()));
-    }
 }
