@@ -4,16 +4,16 @@
 # Uses the shared PostgreSQL instance at 192.168.31.214:5436 (same as v1).
 # V2 schema lives in the lc_v2 schema within the same lc_checker database.
 #
-# Ports:
-#   9082 — lc-checker-v2-svc (Spring Boot API)
-#   9080 — lc-checker-v2-ui  (React UI)
+# Traefik routing (shared-infra network):
+#   lccheck-v2.infra.local      → UI (nginx) — local dev
+#   lccheck-v2.moments-plus.com → UI (nginx) — public, passcode-gated for / only
+#   /api/* on public domain     → UI → SVC (no auth, same as v1 fix)
 #
-# Run alongside v1 — services use a separate network (lc-checker-v2-net)
-# but can share MinIO and Langfuse at their fixed addresses.
+# Internal network (lc-checker-v2-net): container-to-container only.
 #
 # Usage (on Ubuntu):
-#   docker compose build
-#   docker compose up -d
+#   docker compose -f infra/docker-compose.yml build
+#   docker compose -f infra/docker-compose.yml up -d
 
 name: lc-checker-v2
 
@@ -22,30 +22,46 @@ services:
   lc-checker-v2-svc:
     build:
       context: ../lc-checker-v2-svc
-    image: lc-checker-v2-svc:latest
+    image: lc-checker-v2-svc:v2
     container_name: lc-checker-v2-svc
-    ports:
-      - "${API_PORT:-9082}:9082"
-    env_file: .env.ubuntu
+    # No host port: only reachable from ui-v2 container via lc-checker-v2-net
+    env_file: ../.env.ubuntu
     volumes:
       - ../test/cases:/opt/test-cases:ro
     restart: unless-stopped
     networks:
       - lc-checker-v2-net
+      - shared-infra
 
   ui-v2:
     build:
       context: ../ui
-    image: lc-checker-v2-ui:latest
+    image: lc-checker-v2-ui:v2
     container_name: lc-checker-v2-ui
-    ports:
-      - "${UI_PORT:-9080}:80"
     depends_on:
       - lc-checker-v2-svc
     restart: unless-stopped
     networks:
       - lc-checker-v2-net
+      - shared-infra
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=shared-infra"
+      - "traefik.http.services.lc-checker-v2-ui.loadbalancer.server.port=80"
+      # Local UI router
+      - "traefik.http.routers.lc-checker-v2-ui-local.rule=Host(`lccheck-v2.infra.local`)"
+      - "traefik.http.routers.lc-checker-v2-ui-local.entrypoints=web"
+      - "traefik.http.routers.lc-checker-v2-ui-local.service=lc-checker-v2-ui"
+      # Public router (auth-gated) — covers both UI and /api on the same host;
+      # the passcode-gate cookie set on UI login is sent with /api/* requests too.
+      - "traefik.http.routers.lc-checker-v2-ui-public.rule=Host(`lccheck-v2.moments-plus.com`)"
+      - "traefik.http.routers.lc-checker-v2-ui-public.entrypoints=web,websecure"
+      - "traefik.http.routers.lc-checker-v2-ui-public.middlewares=passcode-auth@docker"
+      - "traefik.http.routers.lc-checker-v2-ui-public.service=lc-checker-v2-ui"
 
 networks:
   lc-checker-v2-net:
     driver: bridge
+  shared-infra:
+    name: shared-infra
+    external: true
