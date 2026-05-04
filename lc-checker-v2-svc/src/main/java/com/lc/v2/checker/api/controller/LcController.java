@@ -1,6 +1,7 @@
 package com.lc.v2.checker.api.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lc.v2.checker.infra.fields.FieldPoolRegistry;
 import com.lc.v2.checker.infra.lc.Lc46aRequiredDocsParser;
 import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.pipeline.PipelineService;
@@ -33,13 +34,26 @@ public class LcController {
     private final Lc46aRequiredDocsParser parser;
     private final ObjectMapper objectMapper;
     private final PipelineService pipelineService;
+    private final FieldPoolRegistry fieldPool;
 
     public LcController(SessionStore sessionStore, Lc46aRequiredDocsParser parser,
-                         ObjectMapper objectMapper, PipelineService pipelineService) {
+                         ObjectMapper objectMapper, PipelineService pipelineService,
+                         FieldPoolRegistry fieldPool) {
         this.sessionStore = sessionStore;
         this.parser = parser;
         this.objectMapper = objectMapper;
         this.pipelineService = pipelineService;
+        this.fieldPool = fieldPool;
+    }
+
+    private Map<String, String> labelsFor(java.util.Set<String> keys) {
+        Map<String, String> labels = new LinkedHashMap<>();
+        for (String k : keys) {
+            fieldPool.byKey(k).ifPresent(fd -> {
+                if (fd.nameEn() != null) labels.put(k, fd.nameEn());
+            });
+        }
+        return labels;
     }
 
     /**
@@ -64,6 +78,7 @@ public class LcController {
             response.put("fields", lc.envelope().fields());
             response.put("rawFields", lc.rawFields());
             response.put("warnings", lc.consistencyWarnings());
+            response.put("fieldLabels", labelsFor(lc.envelope().fields().keySet()));
             return ResponseEntity.ok(response);
         }
 
@@ -73,17 +88,32 @@ public class LcController {
             response.put("fields", Map.of());
             response.put("rawFields", Map.of());
             response.put("warnings", List.of());
+            response.put("fieldLabels", Map.of());
             return ResponseEntity.ok(response);
         }
 
-        // Final fallback — pull raw text from final_report.lc.raw.
+        // Final fallback — rehydrate from final_report.lc snapshot persisted by IntakeStage.
+        // Survives JVM restarts and StageContext eviction. Snapshot shape:
+        //   { raw, fields, rawFields, derived, warnings }
         Map<String, Object> session = sessionStore.getSession(sessionId);
-        String text = readLcRawText(session);
+        Map<String, Object> snapshot = readLcSnapshot(session);
+        String text = snapshot.get("raw") instanceof String s ? s : "";
+        Map<String, Object> fields = snapshot.get("fields") instanceof Map<?, ?> fm
+                ? castMap(fm) : Map.of();
+        Map<String, Object> rawFields = snapshot.get("rawFields") instanceof Map<?, ?> rm
+                ? castMap(rm) : Map.of();
+        List<?> warnings = snapshot.get("warnings") instanceof List<?> wl ? wl : List.of();
         response.put("text", text);
-        response.put("fields", Map.of());
-        response.put("rawFields", Map.of());
-        response.put("warnings", List.of());
+        response.put("fields", fields);
+        response.put("rawFields", rawFields);
+        response.put("warnings", warnings);
+        response.put("fieldLabels", labelsFor(fields.keySet()));
         return ResponseEntity.ok(response);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castMap(Map<?, ?> m) {
+        return (Map<String, Object>) m;
     }
 
     @GetMapping("/required-docs")
@@ -122,16 +152,20 @@ public class LcController {
 
     @SuppressWarnings("unchecked")
     private String readLcRawText(Map<String, Object> session) {
+        Object raw = readLcSnapshot(session).get("raw");
+        return raw instanceof String r ? r : "";
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> readLcSnapshot(Map<String, Object> session) {
+        if (session == null) return Map.of();
         Object fr = session.get("final_report");
-        if (!(fr instanceof String s) || s.isBlank()) return "";
+        if (!(fr instanceof String s) || s.isBlank()) return Map.of();
         try {
             Map<String, Object> parsed = objectMapper.readValue(s, Map.class);
             Object lc = parsed.get("lc");
-            if (lc instanceof Map<?, ?> m) {
-                Object raw = m.get("raw");
-                if (raw instanceof String r) return r;
-            }
+            if (lc instanceof Map<?, ?> m) return (Map<String, Object>) m;
         } catch (Exception e) { /* swallow */ }
-        return "";
+        return Map.of();
     }
 }

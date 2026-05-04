@@ -32,7 +32,32 @@ export function SessionPage() {
   const { data: reconcileData } = useReconcile(id);
   const { data: signoffData } = useSignoff(id);
 
-  const [activeStage, setActiveStage] = useState('intake');
+  const [activeStage, setActiveStage] = useState(null);
+
+  // Initialize active stage from session state on first load — open at the
+  // latest stage the session reached so officers don't have to click forward.
+  useEffect(() => {
+    if (activeStage !== null || !session) return;
+    const status = String(session.status ?? '').toUpperCase();
+    if (signoffData?.signed || status === 'COMPLETED') {
+      setActiveStage('signoff');
+      return;
+    }
+    if (session.awaiting_officer && session.next_stage) {
+      const next = String(session.next_stage).toLowerCase();
+      if (STAGE_ORDER.includes(next)) {
+        setActiveStage(next);
+        return;
+      }
+    }
+    // Highest completed stage + 1 (capped at signoff)
+    let lastIdx = -1;
+    for (let i = 0; i < STAGE_ORDER.length; i++) {
+      if (stagesCompleted.has(STAGE_ORDER[i])) lastIdx = i;
+    }
+    const next = lastIdx >= 0 ? STAGE_ORDER[Math.min(lastIdx + 1, STAGE_ORDER.length - 1)] : 'intake';
+    setActiveStage(next);
+  }, [activeStage, session, signoffData?.signed, stagesCompleted]);
 
   // Sync top-nav running chip with live counts
   useEffect(() => {
@@ -102,7 +127,7 @@ export function SessionPage() {
     if (i > 0) setActiveStage(STAGE_ORDER[i - 1]);
   };
 
-  if (loading) {
+  if (loading || activeStage === null) {
     return (
       <div className="h-full flex items-center justify-center">
         <Spinner label="Loading session…" />

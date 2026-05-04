@@ -11,7 +11,18 @@ export function useLc(sessionId) {
     if (!sessionId) return;
     setLoading(true);
     try {
-      setData(await getLc(sessionId));
+      const next = await getLc(sessionId);
+      // Keep last-known fields if a transient response arrives empty while
+      // we already have populated data — avoids the "MT700 not yet parsed"
+      // flash when the officer navigates back to Parse.
+      setData(prev => {
+        const prevHasFields = prev && prev.fields && Object.keys(prev.fields).length > 0;
+        const nextHasFields = next && next.fields && Object.keys(next.fields).length > 0;
+        if (prevHasFields && !nextHasFields) {
+          return { ...next, fields: prev.fields, rawFields: prev.rawFields ?? {}, fieldLabels: prev.fieldLabels ?? {} };
+        }
+        return next;
+      });
       setError(null);
     } catch (e) {
       setError(e.message);

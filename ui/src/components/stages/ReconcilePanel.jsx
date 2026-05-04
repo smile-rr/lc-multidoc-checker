@@ -14,10 +14,9 @@ import { BulkDecisionMenu } from './reconcile/BulkDecisionMenu';
 import { docTypeMeta } from '../../constants/docTypes';
 import { CorrectionModal } from './parse/CorrectionModal';
 import { OFFICER_ID } from '../../lib/officer';
-import { StagePage, StageBody } from '../ui/StagePage';
+import { StagePage } from '../ui/StagePage';
 import { StageToolbar } from '../ui/StageToolbar';
 import { StageNavButtons } from '../ui/StageNavButtons';
-import { PageContainer } from '../ui/PageContainer';
 import { PrimaryButton, SecondaryButton, GhostButton } from '../ui/Button';
 import { EyebrowLabel } from '../ui/EyebrowLabel';
 
@@ -319,39 +318,44 @@ export function ReconcilePanel({ session, stagesCompleted, events, onContinue, o
         }
       />
 
-      <StageBody tone="slate" className="px-6 py-5">
-        <PageContainer>
-          {/* Filter bar */}
-          <div className="flex items-center gap-2 mb-3 flex-wrap">
-            <EyebrowLabel>filter</EyebrowLabel>
-            {['ALL', 'DISCREPANCY', 'TOLERANCE', 'MISSING', 'MATCH'].map(f => (
+      {/* Custom flex-col body — matrix owns vertical space, dock bar pinned at bottom. */}
+      <div className="flex-1 min-h-0 flex flex-col bg-slate2">
+        {/* Filter row — single line, no wrap */}
+        <div className="shrink-0 px-6 pt-4 pb-2 flex items-center gap-2 overflow-x-auto">
+          <EyebrowLabel>filter</EyebrowLabel>
+          <div className="inline-flex rounded border border-line bg-white overflow-hidden">
+            {['ALL', 'DISCREPANCY', 'TOLERANCE', 'MISSING', 'MATCH'].map((f, i) => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
-                className={`text-[10px] font-mono px-2 py-0.5 rounded border transition-colors
+                className={`text-[10px] font-mono px-2.5 py-1 transition-colors
+                  ${i > 0 ? 'border-l border-line' : ''}
                   ${filter === f
-                    ? 'bg-navy-1 text-white border-navy-1'
-                    : 'border-line text-muted hover:text-navy-1 hover:bg-white'}`}
+                    ? 'bg-navy-1 text-white'
+                    : 'text-muted hover:text-navy-1 hover:bg-slate2'}`}
               >
                 {f}
               </button>
             ))}
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="search field…"
-              className="text-[11px] font-mono border border-line rounded px-2 py-1 ml-2 focus:outline-none focus:border-teal-1"
-            />
-            {(filter !== 'ALL' || search) && (
-              <GhostButton onClick={() => { setFilter('ALL'); setSearch(''); }}>↻ reset</GhostButton>
-            )}
-            <span className="ml-auto text-[10px] text-muted font-mono">
-              {undecidedCount} cell{undecidedCount === 1 ? '' : 's'} pending decision
-            </span>
           </div>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="search field…"
+            className="text-[11px] font-mono border border-line rounded px-2 py-1 focus:outline-none focus:border-teal-1"
+          />
+          {(filter !== 'ALL' || search) && (
+            <GhostButton onClick={() => { setFilter('ALL'); setSearch(''); }}>↻ reset</GhostButton>
+          )}
+          <span className="ml-auto text-[10px] text-muted font-mono whitespace-nowrap">
+            {undecidedCount} cell{undecidedCount === 1 ? '' : 's'} pending decision
+          </span>
+        </div>
 
+        {/* Matrix — flex-1 absorbs all remaining vertical space */}
+        <div className="flex-1 min-h-0 px-6 pb-3">
           {loading && rows.length === 0 ? (
-            <div className="bg-white border border-line rounded-[10px] p-8 text-center text-muted text-sm">
+            <div className="bg-white border border-line rounded-[10px] p-8 text-center text-muted text-sm h-full">
               Loading reconcile matrix…
             </div>
           ) : (
@@ -368,18 +372,19 @@ export function ReconcilePanel({ session, stagesCompleted, events, onContinue, o
               onColumnBulk={handleColumnBulk}
             />
           )}
+        </div>
 
-          <LockSummaryPanel
-            locked={locked}
-            lockedAt={data?.lockedAt}
-            lockedBy={data?.lockedBy}
-            needTriage={undecidedCount}
-            genuineCount={cellDecisions.filter(d => d.decision === 'genuine').length}
-            parseErrorCount={cellDecisions.filter(d => d.decision === 'parse_error').length}
-            onUnlockClick={locked ? () => setUnlockOpen(true) : null}
-          />
-        </PageContainer>
-      </StageBody>
+        {/* Slim bottom dock */}
+        <LockSummaryPanel
+          locked={locked}
+          lockedAt={data?.lockedAt}
+          lockedBy={data?.lockedBy}
+          needTriage={undecidedCount}
+          genuineCount={cellDecisions.filter(d => d.decision === 'genuine').length}
+          parseErrorCount={cellDecisions.filter(d => d.decision === 'parse_error').length}
+          onUnlockClick={locked ? () => setUnlockOpen(true) : null}
+        />
+      </div>
 
       {drawerCell && (
         <CellDecisionDrawer

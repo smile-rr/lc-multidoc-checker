@@ -5,7 +5,7 @@ import { ConfChip } from '../../shared/ConfChip';
  * One field row. Shows label, value (consensus), confidence chip, agreement chip,
  * +compare expand (when slot values differ), and a ✎ correct button.
  */
-export function FieldRow({ label, value, conf, manual, slotValues, onCorrect }) {
+export function FieldRow({ label, fieldKey, value, conf, manual, slotValues, onCorrect }) {
   const [expanded, setExpanded] = useState(false);
   const slots = slotValues ?? {};
   const slotIds = Object.keys(slots);
@@ -16,7 +16,7 @@ export function FieldRow({ label, value, conf, manual, slotValues, onCorrect }) 
     <div className={`px-4 py-2.5 border-b border-line/50 ${tone}`}>
       <div className="grid grid-cols-[160px_1fr_auto] gap-3 items-baseline">
         <div className="flex items-center gap-1.5">
-          <span className="text-[11px] text-muted">{label}</span>
+          <span className="text-[11px] text-navy-1" title={fieldKey}>{label}</span>
           {manual && (
             <span className="text-[9px] px-1 rounded bg-status-blueSoft text-status-blue font-mono" title="Officer-corrected">
               ✎

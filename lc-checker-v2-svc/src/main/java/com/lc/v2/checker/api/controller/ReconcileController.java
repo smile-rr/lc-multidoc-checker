@@ -144,6 +144,9 @@ public class ReconcileController {
 
     private List<ReconcileResponse.ReconRow> buildRowsFromCtx(List<ReconField> reconFields) {
         List<ReconcileResponse.ReconRow> out = new ArrayList<>(reconFields.size());
+        long withValues = reconFields.stream().filter(rf ->
+                rf.valueByDocType() != null && !rf.valueByDocType().isEmpty()).count();
+        log.debug("buildRowsFromCtx: {} fields, {} with values", reconFields.size(), withValues);
         for (ReconField rf : reconFields) {
             FieldDefinition fd = fieldPool.byKey(rf.fieldKey()).orElse(null);
             String group = groupOf(rf.fieldKey());
@@ -185,12 +188,21 @@ public class ReconcileController {
                 String fk = str(m.get("fieldKey"));
                 if (fk == null) continue;
                 Map<String, Object> values = (Map<String, Object>) m.getOrDefault("valueByDocType", Map.of());
-                // Best-effort cells (legacy data may not have per-cell verdicts)
+                Map<String, Object> cellStatus = (Map<String, Object>) m.getOrDefault("cellStatus", Map.of());
+                Map<String, Object> cellDetail = (Map<String, Object>) m.getOrDefault("cellDetail", Map.of());
+                String rowVerdict = str(m.getOrDefault("verdict", "NA"));
+                // Build a cell for every doc-type that has either a verdict OR a value.
+                // (MISSING cells appear in cellStatus only; MATCH cells in both.)
+                java.util.LinkedHashSet<String> dts = new java.util.LinkedHashSet<>();
+                dts.addAll(cellStatus.keySet());
+                dts.addAll(values.keySet());
                 Map<String, ReconcileResponse.ReconCell> cells = new LinkedHashMap<>();
-                for (var e : values.entrySet()) {
-                    cells.put(e.getKey(), new ReconcileResponse.ReconCell(
-                            e.getValue() == null ? null : e.getValue().toString(),
-                            "MATCH", null, null));
+                for (String dt : dts) {
+                    Object v = values.get(dt);
+                    String verdict = str(cellStatus.getOrDefault(dt, rowVerdict));
+                    String detail = str(cellDetail.get(dt));
+                    cells.put(dt, new ReconcileResponse.ReconCell(
+                            v == null ? null : v.toString(), verdict, detail, null));
                 }
                 out.add(new ReconcileResponse.ReconRow(
                         fk,

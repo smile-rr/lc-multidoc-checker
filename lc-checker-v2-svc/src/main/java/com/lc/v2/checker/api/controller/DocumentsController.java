@@ -3,6 +3,7 @@ package com.lc.v2.checker.api.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lc.v2.checker.api.dto.DocPatchRequest;
 import com.lc.v2.checker.api.dto.FieldCorrectionRequest;
+import com.lc.v2.checker.infra.fields.FieldPoolRegistry;
 import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.infra.storage.S3FileStore;
 import com.lc.v2.checker.pipeline.PipelineEventBus;
@@ -42,13 +43,16 @@ public class DocumentsController {
     private final S3FileStore s3Store;
     private final PipelineEventBus eventBus;
     private final ObjectMapper objectMapper;
+    private final FieldPoolRegistry fieldPool;
 
     public DocumentsController(SessionStore sessionStore, S3FileStore s3Store,
-                              PipelineEventBus eventBus, ObjectMapper objectMapper) {
+                              PipelineEventBus eventBus, ObjectMapper objectMapper,
+                              FieldPoolRegistry fieldPool) {
         this.sessionStore = sessionStore;
         this.s3Store = s3Store;
         this.eventBus = eventBus;
         this.objectMapper = objectMapper;
+        this.fieldPool = fieldPool;
     }
 
     @GetMapping("/pdf")
@@ -112,9 +116,19 @@ public class DocumentsController {
             }
         }
 
+        Map<String, String> fieldLabels = new LinkedHashMap<>();
+        java.util.Set<String> allKeys = new java.util.LinkedHashSet<>(consensusFields.keySet());
+        for (Map<String, Object> slotFields : bySlot.values()) allKeys.addAll(slotFields.keySet());
+        for (String k : allKeys) {
+            fieldPool.byKey(k).ifPresent(fd -> {
+                if (fd.nameEn() != null) fieldLabels.put(k, fd.nameEn());
+            });
+        }
+
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("document", doc);
         response.put("fields", consensusFields);
+        response.put("fieldLabels", fieldLabels);
         response.put("offSchemaItems", offSchema);
         response.put("slotResults", bySlot);
         response.put("overallConfidence", overallConf);

@@ -21,6 +21,7 @@ export function FieldsPanel({ doc, extracts, events, onCorrect, onMarkReviewed, 
   const fields = extracts?.fields ?? {};
   const slotResults = extracts?.slotResults ?? {};
   const offSchema = extracts?.offSchemaItems ?? [];
+  const fieldLabels = extracts?.fieldLabels ?? {};
   const fieldKeys = Object.keys(fields);
   const t = docTypeMeta(doc.doc_type);
   const reviewed = doc.parse_status === 'REVIEWED';
@@ -121,7 +122,8 @@ export function FieldsPanel({ doc, extracts, events, onCorrect, onMarkReviewed, 
                 return (
                   <FieldRow
                     key={k}
-                    label={k}
+                    label={fieldLabels[k] ?? k}
+                    fieldKey={k}
                     value={v}
                     conf={conf}
                     manual={manual}

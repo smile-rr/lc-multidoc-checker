@@ -47,8 +47,8 @@ export function ReconcileMatrix({ rows, docTypes, decisionsByCell, locked, onCel
   }
 
   return (
-    <div className="bg-white border border-line rounded-[10px] overflow-hidden">
-      <div className="overflow-auto max-h-[calc(100vh-280px)]">
+    <div className="bg-white border border-line rounded-[10px] overflow-hidden h-full flex flex-col">
+      <div className="flex-1 min-h-0 overflow-auto">
         <table className="w-full border-collapse text-[12px] tabular-nums">
           <thead className="sticky top-0 z-20">
             <tr className="bg-slate2 border-b border-line">
@@ -68,9 +68,6 @@ export function ReconcileMatrix({ rows, docTypes, decisionsByCell, locked, onCel
                       <div className="min-w-0">
                         <div className="text-[11px] font-semibold tracking-tight truncate" style={{ color: meta.color }}>
                           {meta.name}
-                        </div>
-                        <div className="text-[9px] tracking-[0.2em] uppercase font-mono text-muted">
-                          {meta.short}
                         </div>
                       </div>
                       {!locked && onColumnBulk && (
@@ -132,7 +129,6 @@ function RowView({ row, sortedDocs, decisionsByCell, locked, onCellClick, onRowB
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="text-[12px] text-navy-1 truncate">{row.label || row.fieldKey}</div>
-            <div className="text-[10px] text-muted font-mono truncate">{row.fieldKey}</div>
           </div>
           {!locked && onRowBulk && attentionCount > 1 && (
             <button

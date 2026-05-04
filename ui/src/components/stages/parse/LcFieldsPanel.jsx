@@ -28,6 +28,7 @@ export function LcFieldsPanel({ data, loading, width }) {
 
   const fields = data?.fields ?? {};
   const rawFields = data?.rawFields ?? {};
+  const fieldLabels = data?.fieldLabels ?? {};
   const fieldKeys = Object.keys(fields);
   const tagKeys = Object.keys(rawFields);
 
@@ -67,7 +68,9 @@ export function LcFieldsPanel({ data, loading, width }) {
           ) : (
             fieldKeys.map(k => (
               <div key={k} className="px-4 py-2 border-b border-line/50 flex items-start gap-3">
-                <span className="text-[10px] tracking-wider uppercase text-muted font-mono w-44 shrink-0">{k}</span>
+                <span className="text-[11px] text-navy-1 w-44 shrink-0" title={k}>
+                  {fieldLabels[k] ?? k}
+                </span>
                 <span className="text-[12px] text-navy-1 font-mono flex-1 break-words">
                   {formatValue(extractValue(fields[k]))}
                 </span>
