@@ -5,18 +5,20 @@ import { ConfChip } from '../../shared/ConfChip';
  * One field row. Shows label, value (consensus), confidence chip, agreement chip,
  * +compare expand (when slot values differ), and a ✎ correct button.
  */
-export function FieldRow({ label, fieldKey, value, conf, manual, slotValues, onCorrect }) {
+export function FieldRow({ label, fieldKey, value, conf, manual, slotValues, onCorrect, reviewed }) {
   const [expanded, setExpanded] = useState(false);
   const slots = slotValues ?? {};
   const slotIds = Object.keys(slots);
   const slotsDisagree = slotIds.length > 1
     && slotIds.some(s => String(slots[s]) !== String(value));
-  // Slot disagreement only "needs attention" when the officer hasn't decided yet.
-  // After an officer correction, the field is canonical — drop the gold attention
-  // treatment but keep +compare available for inspection.
-  const needsAttention = slotsDisagree && !manual;
-  const tone = manual
-    ? 'bg-status-blueSoft/30'                    // calm, decided
+  // "Needs attention" = slots disagree AND officer hasn't acted on it.
+  // Acting on it means either a manual correction OR marking the doc reviewed
+  // (review = officer accepted the consensus). Both collapse the gold tone
+  // into the calm "decided" blue.
+  const decided = manual || reviewed;
+  const needsAttention = slotsDisagree && !decided;
+  const tone = decided
+    ? (slotsDisagree ? 'bg-status-blueSoft/30' : '')   // calm, decided
     : slotsDisagree ? 'bg-status-goldSoft' : '';
   return (
     <div className={`px-4 py-2.5 border-b border-line/50 ${tone}`}>

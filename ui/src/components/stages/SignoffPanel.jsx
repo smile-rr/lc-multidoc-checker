@@ -34,7 +34,20 @@ export function SignoffPanel({ session, stagesCompleted, events, onBack }) {
   const sessionId = session?.id;
 
   const { rules } = useRules(sessionId);
-  const { data: signoffData, sign, fetchMt734 } = useSignoff(sessionId);
+  const { data: signoffData, refresh: refreshSignoff, sign, fetchMt734 } = useSignoff(sessionId);
+
+  // SSE-driven refresh: pull signoff state when examine completes (so the
+  // signoff CTA can appear) and when another tab signs off (multi-tab sync).
+  const examineDoneFromEvents = stagesCompleted?.has('examine');
+  useEffect(() => { if (examineDoneFromEvents) refreshSignoff(); },
+    [examineDoneFromEvents, refreshSignoff]);
+  const signedOffEventCount = useMemo(
+    () => (events || []).filter(e => e?.type === 'SignedOff').length,
+    [events]
+  );
+  useEffect(() => {
+    if (signedOffEventCount > 0) refreshSignoff();
+  }, [signedOffEventCount, refreshSignoff]);
 
   // Sort findings by review priority — INV failures before BOL, etc.
   // Severity stays a secondary sort within the same doc-type bucket.
@@ -86,11 +99,22 @@ export function SignoffPanel({ session, stagesCompleted, events, onBack }) {
     }
   }, [decision, advice, loadingAdvice, fetchMt734]);
 
+  // Hook must run on every render — never below the signed-off early return,
+  // or React sees the hook count drop and throws "fewer hooks than expected".
+  const signoffDone = stagesCompleted?.has('signoff');
+  const signoffProgress = useStageProgress(events, 'signoff', session?.status, signoffDone);
+
   if (signoffData?.signed) {
     return (
       <SignedRecordView
         session={session}
         record={signoffData.record}
+        rules={rules}
+        failures={failures}
+        doubts={doubts}
+        lowConf={lowConf}
+        overrides={overrides}
+        flagged={flagged}
         fetchMt734={fetchMt734}
         onBack={onBack}
       />
@@ -125,8 +149,6 @@ export function SignoffPanel({ session, stagesCompleted, events, onBack }) {
     });
   };
 
-  const signoffDone = stagesCompleted?.has('signoff');
-  const signoffProgress = useStageProgress(events, 'signoff', session?.status, signoffDone);
   const blockerText = !decision ? 'Select a decision'
     : !allDispositioned && decision !== 'ACCEPT' ? 'Disposition all discrepancies'
     : !note.trim() ? "Officer's note is required" : '';

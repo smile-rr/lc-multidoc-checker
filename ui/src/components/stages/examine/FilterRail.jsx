@@ -22,17 +22,20 @@ export function FilterRail({ rules, filter, setFilter, savedViews, applyView, sa
   const activeCount = Object.values(filter || {}).reduce((n, set) =>
     n + (set instanceof Set ? set.size : (Array.isArray(set) ? set.length : 0)), 0);
 
+  // Same toggle style for both collapsed/expanded — top-right of the sidebar,
+  // intentionally low-contrast so it doesn't compete with the worklist.
+  const toggleBtnClass = "w-5 h-5 rounded text-[#c0c4cc] hover:text-muted flex items-center justify-center transition-colors flex-shrink-0";
+
   if (collapsed) {
     return (
       <aside className="bg-white border-r border-line flex-shrink-0 flex flex-col items-center py-2 gap-2" style={{ width: 40 }}>
-        {/* Big single click target — entire strip toggles open. */}
         <button
           onClick={onToggleCollapsed}
-          className="w-8 h-8 rounded border border-line bg-white hover:bg-navy-1 hover:text-white text-muted flex items-center justify-center transition-colors"
+          className={toggleBtnClass}
           title="Show filter rail"
           aria-label="Show filter rail"
         >
-          <span className="text-[14px] leading-none">»</span>
+          <span className="text-[12px] leading-none font-mono">&gt;</span>
         </button>
         <button
           onClick={onToggleCollapsed}
@@ -104,6 +107,18 @@ export function FilterRail({ rules, filter, setFilter, savedViews, applyView, sa
 
   return (
     <aside className="bg-white border-r border-line overflow-auto flex-shrink-0 flex flex-col" style={{ width: 240 }}>
+      {onToggleCollapsed && (
+        <div className="flex justify-end px-2 pt-2">
+          <button
+            onClick={onToggleCollapsed}
+            className={toggleBtnClass}
+            title="Hide filter rail"
+            aria-label="Hide filter rail"
+          >
+            <span className="text-[12px] leading-none font-mono">&lt;</span>
+          </button>
+        </div>
+      )}
       <SavedViewsSection
         views={savedViews}
         activeId={activeView}
@@ -113,24 +128,13 @@ export function FilterRail({ rules, filter, setFilter, savedViews, applyView, sa
         hasStateForSave={hasStateForSave}
       />
       <div className="py-3 flex-1">
-        <div className="px-3 mb-2 flex items-center justify-between gap-1.5">
+        <div className="px-3 mb-2 flex items-center gap-1.5">
           <span className="text-[9px] tracking-[0.2em] uppercase text-navy-1 font-semibold flex items-center gap-1.5 font-mono">
             <span>⌕</span><span>FILTERS</span>
             {activeCount > 0 && (
               <span className="px-1 rounded bg-navy-1 text-white tabular-nums">{activeCount}</span>
             )}
           </span>
-          {onToggleCollapsed && (
-            <button
-              onClick={onToggleCollapsed}
-              className="px-1.5 h-5 rounded border border-line text-muted hover:text-white hover:bg-navy-1 flex items-center gap-1 text-[9px] tracking-[0.15em] uppercase font-mono transition-colors"
-              title="Hide filter rail"
-              aria-label="Hide filter rail"
-            >
-              <span className="text-[11px] leading-none">«</span>
-              <span>hide</span>
-            </button>
-          )}
         </div>
         <FilterSection title="Status"          k="status"    options={statusOpts}    filter={filter} setFilter={setFilter} />
         <FilterSection title="Severity"        k="severity"  options={sevOpts}       filter={filter} setFilter={setFilter} />

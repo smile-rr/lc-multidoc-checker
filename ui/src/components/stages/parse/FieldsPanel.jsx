@@ -128,6 +128,7 @@ export function FieldsPanel({ doc, extracts, events, onCorrect, onMarkReviewed, 
                     conf={conf}
                     manual={manual}
                     slotValues={slotVals}
+                    reviewed={reviewed}
                     onCorrect={() => onCorrect({ key: k, value: v, slotValues: slotVals })}
                   />
                 );

@@ -45,7 +45,11 @@ export function WorklistRow({ rule, selected, onClick }) {
         ${isPending ? 'text-muted' : ''}`}
       style={{ boxShadow: `inset 4px 0 0 0 ${meta.bar}` }}
     >
-      <td className="pl-3 pr-2 py-2" style={{ width: 80 }}>
+      <td className="pl-3 pr-2 py-2 text-[10px] text-[#a1a1a6] font-mono tabular-nums" style={{ width: 40 }}>
+        {rule.seqNum != null ? rule.seqNum + 1 : ''}
+      </td>
+      <td className="px-2 py-2 text-[10px] text-muted whitespace-nowrap font-mono">{rule.article}</td>
+      <td className="px-2 py-2" style={{ width: 88 }}>
         <span
           className={`inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded font-mono text-[10px] font-semibold tracking-wider
             ${isPending ? 'animate-pulse' : ''}`}
@@ -54,21 +58,6 @@ export function WorklistRow({ rule, selected, onClick }) {
           <span className={`text-[11px] leading-none ${isPending ? 'animate-spin' : ''}`}>{meta.icon}</span>
           <span>{meta.label}</span>
         </span>
-      </td>
-      <td className="px-2 py-2 text-[10px] text-muted whitespace-nowrap font-mono">{rule.article}</td>
-      <td className="px-2 py-2 text-[10px] font-mono">
-        {(rule.scope || []).map(s => {
-          const t = docTypeMeta(s);
-          return (
-            <span
-              key={s}
-              className="mr-0.5 px-1 py-0.5 rounded text-[9px]"
-              style={{ background: t.color + '12', color: t.color }}
-            >
-              {t.short}
-            </span>
-          );
-        })}
       </td>
       <td className="px-2 py-2 text-[12px]">
         <span className="text-[10px] text-[#a1a1a6] mr-1.5 font-mono">{rule.ruleId}</span>
@@ -82,6 +71,20 @@ export function WorklistRow({ rule, selected, onClick }) {
           </span>
         )}
         {rule.label}
+      </td>
+      <td className="px-2 py-2 text-[10px] font-mono">
+        {(rule.scope || []).map(s => {
+          const t = docTypeMeta(s);
+          return (
+            <span
+              key={s}
+              className="mr-0.5 px-1 py-0.5 rounded text-[9px]"
+              style={{ background: t.color + '12', color: t.color }}
+            >
+              {t.short}
+            </span>
+          );
+        })}
       </td>
       <td className="px-2 py-2"><SeverityChip severity={rule.severity} /></td>
       <td className="px-2 py-2 text-[10px] text-muted font-mono">

@@ -10,7 +10,7 @@ const DISP_OPTIONS = [
   ['REFUSE', 'Refuse this finding'],
 ];
 
-export function DiscrepancyCard({ rule, disposition, onSet, onClear }) {
+export function DiscrepancyCard({ rule, disposition, onSet, onClear, readOnly }) {
   return (
     <div className="px-4 py-3">
       <div className="flex items-start gap-3 mb-2">
@@ -53,27 +53,29 @@ export function DiscrepancyCard({ rule, disposition, onSet, onClear }) {
           )}
         </div>
       </div>
-      <div className="ml-8 flex items-center gap-1 flex-wrap">
-        {DISP_OPTIONS.map(([d, l]) => (
-          <button
-            key={d}
-            onClick={() => onSet(rule.ruleId, d)}
-            className={`text-[10px] px-2 py-1 rounded border
-              ${disposition === d ? 'bg-navy-1 text-white border-navy-1' : 'border-line hover:bg-slate2'}`}
-          >
-            {l}
-          </button>
-        ))}
-        {disposition !== 'PENDING' && (
-          <button
-            onClick={() => onClear(rule.ruleId)}
-            title="Clear this disposition"
-            className="text-[10px] px-2 py-1 rounded text-muted hover:bg-slate2 hover:text-navy-1 flex items-center gap-1 font-mono"
-          >
-            ↻ CLEAR
-          </button>
-        )}
-      </div>
+      {!readOnly && (
+        <div className="ml-8 flex items-center gap-1 flex-wrap">
+          {DISP_OPTIONS.map(([d, l]) => (
+            <button
+              key={d}
+              onClick={() => onSet(rule.ruleId, d)}
+              className={`text-[10px] px-2 py-1 rounded border
+                ${disposition === d ? 'bg-navy-1 text-white border-navy-1' : 'border-line hover:bg-slate2'}`}
+            >
+              {l}
+            </button>
+          ))}
+          {disposition !== 'PENDING' && (
+            <button
+              onClick={() => onClear(rule.ruleId)}
+              title="Clear this disposition"
+              className="text-[10px] px-2 py-1 rounded text-muted hover:bg-slate2 hover:text-navy-1 flex items-center gap-1 font-mono"
+            >
+              ↻ CLEAR
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

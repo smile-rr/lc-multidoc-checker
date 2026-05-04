@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { StageProgressMeter } from '../shared/StageProgressMeter';
 import { useStageProgress } from '../../hooks/useStageProgress';
 import { useDevMode } from '../../context/DevModeContext';
@@ -34,6 +34,10 @@ export function IntakePanel({ session, stagesCompleted, events, refresh, onConti
   const running = session?.status === 'INTAKE';
   const intakeDone = stagesCompleted?.has('intake') || session?.next_stage === 'parse';
   const progress = useStageProgress(events, 'intake', session?.status, intakeDone);
+
+  // When intake completes, the LC :46A: required-doc list becomes available.
+  // Pull it without requiring the officer to interact with anything.
+  useEffect(() => { if (intakeDone) refreshRequired?.(); }, [intakeDone, refreshRequired]);
 
   const reviewNeeded = useMemo(() =>
     sortByDocType(docs.filter(d => d.doc_type === 'UNKNOWN' || d.confirmed_by_officer === false)), [docs]);

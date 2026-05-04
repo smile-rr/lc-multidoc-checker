@@ -130,6 +130,17 @@ export function ParsePanel({ session, stagesCompleted, events, refresh, onContin
     }
   }, [events, activeDocType, isLcActive, refreshExtracts]);
 
+  // Multi-tab: when another officer corrects a field on the active doc, refresh.
+  const fieldCorrectionCount = useMemo(
+    () => (events || []).filter(e =>
+      e?.type === 'FieldCorrected' && e?.data?.docId === activeId
+    ).length,
+    [events, activeId]
+  );
+  useEffect(() => {
+    if (fieldCorrectionCount > 0 && !isLcActive) refreshExtracts();
+  }, [fieldCorrectionCount, isLcActive, refreshExtracts]);
+
   // Default-active to LC if present, else first doc.
   useEffect(() => {
     if (lcDoc && !activeId) { setActiveId(lcDoc.id); return; }

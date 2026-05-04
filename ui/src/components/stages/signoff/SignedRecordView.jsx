@@ -1,5 +1,16 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Mt734Preview } from './Mt734Preview';
+import { VerdictBand } from './VerdictBand';
+import { DiscrepancyCard } from './DiscrepancyCard';
+import { ReviewWorthyPasses } from './ReviewWorthyPasses';
+import { OfficerNote } from './OfficerNote';
+import { DecisionRadio } from './DecisionRadio';
+import { AuditTrailPanel } from './AuditTrailPanel';
+import { StagePage, StageBody } from '../../ui/StagePage';
+import { StageToolbar } from '../../ui/StageToolbar';
+import { PageContainer } from '../../ui/PageContainer';
+import { Card } from '../../ui/Card';
+import { EyebrowLabel } from '../../ui/EyebrowLabel';
 
 const TONE = {
   ACCEPT:  { c: '#1a7a43', bg: '#f0fdf4', label: 'DOCUMENTS COMPLIANT', icon: '✓' },
@@ -7,19 +18,37 @@ const TONE = {
   REFUSE:  { c: '#cc0011', bg: '#fff1f0', label: 'DOCUMENTS REFUSED', icon: '✕' },
 };
 
-/** Immutable post-sign-off page. */
-export function SignedRecordView({ session, record, fetchMt734, onBack }) {
+/**
+ * Read-only sign-off view shown after the record is frozen. Renders the same
+ * 2-column layout the officer used to sign — discrepancies + dispositions,
+ * officer note, decision, audit trail — all sealed and uneditable, with the
+ * immutable stamp banner on top and an Export JSON / MT734 actions row.
+ */
+export function SignedRecordView({
+  session, record, rules = [], failures = [], doubts = [], lowConf = [],
+  overrides = 0, flagged = 0, fetchMt734, onBack,
+}) {
   const decision = record?.decision || 'ACCEPT';
-  const t = TONE[decision] || TONE.ACCEPT;
+  const tone = TONE[decision] || TONE.ACCEPT;
   const officer = record?.officer_id || '—';
-  const signedAt = record?.signed_at ? formatTs(record.signed_at) : new Date().toISOString().slice(0, 16).replace('T', ' ');
+  const signedAt = record?.signed_at ? formatTs(record.signed_at) : '';
+  const note = record?.officer_note || '';
+
+  // Dispositions are persisted as a JSON string on the record. Parse once.
+  const dispositions = useMemo(() => {
+    const raw = record?.discrepancy_dispositions;
+    if (!raw) return {};
+    if (typeof raw === 'object') return raw;
+    try { return JSON.parse(raw); } catch { return {}; }
+  }, [record?.discrepancy_dispositions]);
+
   const [showMt734, setShowMt734] = useState(false);
   const [advice, setAdvice] = useState(null);
   const [loadingAdvice, setLoadingAdvice] = useState(false);
 
   const onMt734Toggle = async () => {
     setShowMt734(o => !o);
-    if (!showMt734 && advice == null) {
+    if (!showMt734 && advice == null && fetchMt734) {
       setLoadingAdvice(true);
       try { setAdvice(await fetchMt734()); }
       catch { setAdvice('(failed to fetch)'); }
@@ -38,21 +67,21 @@ export function SignedRecordView({ session, record, fetchMt734, onBack }) {
   };
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex-1 grid place-items-center bg-slate2 px-6 overflow-auto">
-        <div className="max-w-[640px] text-center py-12">
-          <div className="w-14 h-14 mx-auto rounded-full grid place-items-center mb-4"
-               style={{ background: t.bg, color: t.c }}>
-            <span className="text-[28px]">{t.icon}</span>
-          </div>
-          <div className="text-[10px] tracking-[0.25em] uppercase mb-2 font-mono" style={{ color: t.c }}>
-            SIGNED OFF · IMMUTABLE
-          </div>
-          <h2 className="text-[24px] font-semibold tracking-tight mb-2">{t.label}</h2>
-          <div className="text-[12px] text-muted font-mono">
-            {(session?.id ?? '').slice(0, 8)} · {officer} · {signedAt}
-          </div>
-          <div className="mt-6 flex items-center justify-center gap-2 flex-wrap">
+    <StagePage>
+      <StageToolbar
+        title="Sign-off"
+        meta={
+          <span className="text-[11px] text-muted font-mono flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded font-mono text-[10px] tracking-wider"
+                  style={{ background: tone.bg, color: tone.c }}>
+              <span>🔒</span>
+              <span>SIGNED · IMMUTABLE</span>
+            </span>
+            {officer} · {signedAt}
+          </span>
+        }
+        actions={
+          <div className="flex items-center gap-2">
             <button
               onClick={exportJson}
               className="px-3 py-1.5 rounded text-[12px] border border-line bg-white hover:bg-slate2"
@@ -70,20 +99,82 @@ export function SignedRecordView({ session, record, fetchMt734, onBack }) {
             {onBack && (
               <button
                 onClick={onBack}
-                className="px-3 py-1.5 rounded text-[12px] text-muted hover:bg-white"
+                className="px-3 py-1.5 rounded text-[12px] text-muted hover:bg-slate2"
               >
                 ↩ back to Examine
               </button>
             )}
           </div>
-          {decision === 'REFUSE' && showMt734 && (
-            <div className="mt-6 text-left">
+        }
+      />
+
+      <StageBody tone="slate">
+        <PageContainer className="px-6 py-5 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5">
+
+          <div className="space-y-5">
+            <VerdictBand
+              decision={decision}
+              failures={failures.length}
+              doubts={doubts.length}
+              lowConfPasses={lowConf.length}
+            />
+
+            <Card padding="">
+              <div className="px-4 py-3 border-b border-line flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <EyebrowLabel>DISCREPANCIES · {failures.length}</EyebrowLabel>
+                  <div className="text-[13px] font-semibold tracking-tight">
+                    Findings as recorded at sign-off
+                  </div>
+                </div>
+                <div className="text-[11px] text-muted font-mono">
+                  {Object.keys(dispositions).length}/{failures.length} dispositioned
+                </div>
+              </div>
+              {failures.length === 0 ? (
+                <div className="px-4 py-6 text-center text-[12px] text-muted">
+                  No discrepancies — documents on their face appeared to comply.
+                </div>
+              ) : (
+                <div className="divide-y divide-line/50">
+                  {failures.map(f => (
+                    <DiscrepancyCard
+                      key={f.ruleId}
+                      rule={f}
+                      disposition={dispositions[f.ruleId] ?? 'PENDING'}
+                      readOnly
+                    />
+                  ))}
+                </div>
+              )}
+            </Card>
+
+            <ReviewWorthyPasses rules={lowConf} />
+
+            <OfficerNote value={note} readOnly />
+          </div>
+
+          {/* Right column */}
+          <div className="space-y-4">
+            <Card>
+              <DecisionRadio decision={decision} readOnly />
+            </Card>
+
+            {decision === 'REFUSE' && showMt734 && (
               <Mt734Preview open={true} onToggle={onMt734Toggle} advice={advice} loading={loadingAdvice} />
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+            )}
+
+            <AuditTrailPanel
+              session={session}
+              totalRules={rules.length}
+              overrides={overrides}
+              agentFlags={flagged}
+            />
+          </div>
+
+        </PageContainer>
+      </StageBody>
+    </StagePage>
   );
 }
 

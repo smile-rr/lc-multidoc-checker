@@ -21,11 +21,11 @@ import { GhostButton } from '../ui/Button';
 
 const DEFAULT_FILTER = {};
 // "Default" mode: no grouping at all — every row in one flat list, sorted by
-// article. Article-grouping was confusing because each rule is its own article,
-// so groups had a single member each. The other modes (doc/field/origin) still
-// produce meaningful clusters.
+// rule sequence (catalog-declared order). The backend emits rules in catalog
+// order; we mirror that order here so the officer's worklist matches both
+// the catalog yaml and the live execution sequence.
 const DEFAULT_NAV = 'default';
-const DEFAULT_SORT = { col: 'article', dir: 'asc' };
+const DEFAULT_SORT = { col: 'seq', dir: 'asc' };
 
 const SEV_RANK = { CRITICAL: 4, MAJOR: 3, MINOR: 2, OBSERVATION: 1 };
 const STATUS_RANK = { FAIL: 0, DOUBTS: 1, PASS: 2, NOT_APPLICABLE: 3 };
@@ -74,6 +74,7 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
     if (!sort.col) return filtered;
     const key = (r) => {
       switch (sort.col) {
+        case 'seq':      return r.seqNum ?? 9999;
         case 'status':   return STATUS_RANK[r.effectiveVerdict || r.verdict] ?? 9;
         case 'article':  return r.article || '';
         case 'scope':    return (r.scope || [])[0] || '';

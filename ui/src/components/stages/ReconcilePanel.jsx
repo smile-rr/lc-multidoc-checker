@@ -36,6 +36,20 @@ export function ReconcilePanel({ session, stagesCompleted, events, onContinue, o
   const { data, loading, refresh, lock, unlock, decideCell, clearCell } = useReconcile(sessionId);
   const { correct } = useDocActions(sessionId);
 
+  // SSE-driven refresh: when reconcile stage completes (cells materialise) or
+  // another tab triggers a triage / lock / unlock, pull fresh data.
+  const reconcileDone = stagesCompleted?.has('reconcile');
+  useEffect(() => { if (reconcileDone) refresh(); }, [reconcileDone, refresh]);
+  const reconcileEventCount = useMemo(
+    () => (events || []).filter(e =>
+      e?.type === 'Locked' || e?.type === 'Unlocked' || e?.type === 'ReconcileTriaged'
+    ).length,
+    [events]
+  );
+  useEffect(() => {
+    if (reconcileEventCount > 0) refresh();
+  }, [reconcileEventCount, refresh]);
+
   const [filter, setFilter] = useState('ALL');
   const [search, setSearch] = useState('');
   const [unlockOpen, setUnlockOpen] = useState(false);

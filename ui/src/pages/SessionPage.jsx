@@ -81,30 +81,68 @@ export function SessionPage() {
   const examineGate = !!stagesCompleted?.has('examine');
   const signoffGate = !!signoffData?.signed;
 
+  // SSE only carries StageCompleted for live sessions — its ring buffer doesn't
+  // reach back to a session signed hours ago. Merge the persisted
+  // session.stage_completed_at map (and the signoff record) so the breadcrumb
+  // ticks survive a page reload.
+  const effectiveCompleted = useMemo(() => {
+    const out = new Set(stagesCompleted);
+    const raw = session?.stage_completed_at;
+    if (raw) {
+      try {
+        const m = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        for (const k of Object.keys(m || {})) out.add(k);
+      } catch { /* ignore malformed */ }
+    }
+    if (signoffGate) out.add('signoff');
+    return out;
+  }, [stagesCompleted, session?.stage_completed_at, signoffGate]);
+
   const reachable = useMemo(() => {
     if (devMode) return new Set(STAGE_ORDER);
+    // Once signed, the session is an immutable record — every stage opens for
+    // read-only review. Without this, a page-reload on an old signed session
+    // gets `examineGate=false` (StageCompleted SSE events aren't in the ring
+    // buffer anymore) and the breadcrumb locks the officer out of the audit
+    // trail they just signed.
+    if (signoffGate) return new Set(STAGE_ORDER);
     const r = new Set(['intake']);
     if (intakeGate) r.add('parse');
     if (intakeGate && parseGate) r.add('reconcile');
     if (intakeGate && parseGate && reconcileGate) r.add('examine');
     if (intakeGate && parseGate && reconcileGate && examineGate) r.add('signoff');
     return r;
-  }, [devMode, intakeGate, parseGate, reconcileGate, examineGate]);
+  }, [devMode, signoffGate, intakeGate, parseGate, reconcileGate, examineGate]);
 
-  // Initialize active stage on first load — land on the highest reachable
-  // stage so officers don't have to click forward, but never past where their
-  // upstream officer-gates are still pending. "Reachable" is gate-driven, not
-  // pipeline-status-driven: e.g. if Parse is mid-review (parseGate=false),
-  // Reconcile isn't reachable yet so we stay on Parse.
+  // Initialize active stage on first load.
+  //
+  // Important: dev mode makes every tab CLICKABLE (`reachable`), but the
+  // pipeline itself is still officer-paced — Continue must be clicked stage by
+  // stage. So the landing tab follows the strict gate flow, not `reachable`.
+  // Otherwise dev mode lands the officer on Signoff right after upload, which
+  // breaks the natural intake→parse→… review flow.
+  const landingTarget = useMemo(() => {
+    if (signoffData?.signed) return 'signoff';
+    let t = 'intake';
+    if (intakeGate) t = 'parse';
+    if (intakeGate && parseGate) t = 'reconcile';
+    if (intakeGate && parseGate && reconcileGate) t = 'examine';
+    if (intakeGate && parseGate && reconcileGate && examineGate) t = 'signoff';
+    return t;
+  }, [intakeGate, parseGate, reconcileGate, examineGate, signoffData?.signed]);
+
+  // Defer initial landing until BOTH session and signoff have resolved.
+  // Without waiting on signoffData, a fresh page-load on a signed session
+  // computes landingTarget on the first render (signoffData still null →
+  // falls back to gate logic → lands on reconcile). By the time signoffData
+  // arrives a tick later, activeStage is already pinned and the recomputed
+  // 'signoff' target is ignored.
   useEffect(() => {
-    if (activeStage !== null || !session) return;
-    if (signoffData?.signed) { setActiveStage('signoff'); return; }
-    let target = 'intake';
-    for (const s of STAGE_ORDER) {
-      if (reachable.has(s)) target = s;
-    }
-    setActiveStage(target);
-  }, [activeStage, session, signoffData?.signed, reachable]);
+    if (activeStage !== null) return;
+    if (!session) return;
+    if (signoffData === null) return;
+    setActiveStage(landingTarget);
+  }, [activeStage, session, signoffData, landingTarget]);
 
   // goNext: officer trigger to advance the pipeline by one stage.
   // Calls POST /sessions/{id}/stages/{nextStage}/run on the backend, then navigates.
@@ -175,7 +213,7 @@ export function SessionPage() {
 
       <SessionStatusBar
         activeStage={activeStage}
-        completedStages={stagesCompleted}
+        completedStages={effectiveCompleted}
         reachable={reachable}
         onSelect={setActiveStage}
         events={events}

@@ -123,8 +123,15 @@ function RowView({ row, sortedDocs, decisionsByCell, locked, onCellClick, onRowB
     return (v === 'DISCREPANCY' || v === 'TOLERANCE' || v === 'MISSING') ? n + 1 : n;
   }, 0);
 
+  // Once the dataset is locked, every attention cell has been triaged (the lock
+  // gate enforces it). Swap the red "needs triage" row tint for a neutral
+  // sealed-slate tint so the locked matrix reads as a finalised ledger without
+  // implying corrections were made.
+  const rowTint = isAttention
+    ? (locked ? 'bg-slate2/60' : 'bg-status-redSoft/20')
+    : 'hover:bg-slate2/40';
   return (
-    <tr className={`border-b border-line/60 group ${isAttention ? 'bg-status-redSoft/20' : 'hover:bg-slate2/40'}`}>
+    <tr className={`border-b border-line/60 group ${rowTint}`}>
       <td className="sticky left-0 z-10 bg-white px-3 py-2 align-top border-r border-line">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
@@ -184,17 +191,27 @@ function CellView({ row, docType, cell, decision, locked, focused, onClick }) {
     const displayValue = isEdited && decision.value != null && decision.value !== ''
       ? decision.value
       : value;
+    // Tone semantics distinguish what the officer actually did at the cell:
+    //   accept_match  → green   (sided with the parser, fields match in spirit)
+    //   genuine       → red while triaging; sealed-slate once locked
+    //                   (nothing was corrected — locking just freezes the fact
+    //                    that this cell was acknowledged as a real discrepancy,
+    //                    so blue would lie about a correction that never
+    //                    happened)
+    //   parse_error   → gold    (parser fault, value untrustworthy)
+    //   edited        → blue    (officer wrote a new value)
     const tone = decision.decision === 'accept_match' ? 'green'
-      : decision.decision === 'genuine' ? 'red'
+      : decision.decision === 'genuine' ? (locked ? 'sealed' : 'red')
       : decision.decision === 'parse_error' ? 'gold'
       : isEdited ? 'blue'
       : 'gray';
     const toneCls = {
-      green: 'bg-status-greenSoft text-status-green',
-      red:   'bg-status-redSoft text-status-red',
-      gold:  'bg-status-goldSoft text-status-gold',
-      blue:  'bg-status-blueSoft text-status-blue border-l-2 border-l-status-blue',
-      gray:  'bg-slate2 text-muted',
+      green:  'bg-status-greenSoft text-status-green',
+      red:    'bg-status-redSoft text-status-red',
+      gold:   'bg-status-goldSoft text-status-gold',
+      blue:   'bg-status-blueSoft text-status-blue border-l-2 border-l-status-blue',
+      sealed: 'bg-slate2 text-navy-1/70 border-l-2 border-l-navy-1/30',
+      gray:   'bg-slate2 text-muted',
     }[tone];
     const editedFromHint = isEdited && value != null && String(value) !== String(displayValue)
       ? `was: ${value}`

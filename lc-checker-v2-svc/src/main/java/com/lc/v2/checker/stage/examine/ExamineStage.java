@@ -170,16 +170,30 @@ public class ExamineStage implements Stage {
         // Pre-insert PENDING rows so the worklist materialises immediately. Each row
         // gets upserted in place when the rule actually completes. SKIPs are not
         // pre-inserted — they emit synthetic [OUT_OF_SCOPE] NA rows via emitSkipped.
-        for (Rule rule : toFireProg) upsertPendingRow(ctx, rule);
-        for (Rule rule : toFireAgent) upsertPendingRow(ctx, rule);
+        // Insertion order = catalog order (then adhoc), so v_check_results returns
+        // rules in the same sequence the catalog declares them — which is what the
+        // worklist's default sort key reads.
+        List<Rule> catalogFireOrder = new ArrayList<>();
+        for (Rule rule : catalog.enabledRules()) {
+            if (toFireProg.contains(rule) || toFireAgent.contains(rule)) catalogFireOrder.add(rule);
+        }
+        List<Rule> adhocFireOrder = new ArrayList<>();
+        for (Rule rule : adhocRules) {
+            if (toFireProg.contains(rule) || toFireAgent.contains(rule)) adhocFireOrder.add(rule);
+        }
+        for (Rule rule : catalogFireOrder) upsertPendingRow(ctx, rule);
+        for (Rule rule : adhocFireOrder) upsertPendingRow(ctx, rule);
         for (RuleAndDecision rad : naList) upsertPendingRow(ctx, rad.rule());
         for (RuleAndDecision rad : adhocNa) upsertPendingRow(ctx, rad.rule());
 
         for (RuleAndDecision rad : naList) emitNa(ctx, rad, ++idx[0], total);
         for (RuleAndDecision rad : adhocNa) emitNa(ctx, rad, ++idx[0], total);
-        for (Rule rule : toFireProg) runRule(ctx, rule, ++idx[0], total);
-        // Step 5: AGENT batch — single virtual queue drains catalog + adhoc together.
-        for (Rule rule : toFireAgent) runRule(ctx, rule, ++idx[0], total);
+        // Run rules in catalog-declared order — PROG and AGENT interleaved as the
+        // catalog lists them. Officers reading the live worklist (and post-hoc
+        // audit log) see the same sequence as catalog.yml.
+        for (Rule rule : catalogFireOrder) runRule(ctx, rule, ++idx[0], total);
+        // Adhoc rules (planner-generated) trail at the end, in planner-emit order.
+        for (Rule rule : adhocFireOrder) runRule(ctx, rule, ++idx[0], total);
         // Out-of-scope rows: surface SKIPs as synthetic NA rows so the worklist's
         // Out-of-Scope section has content (UI keys on the [OUT_OF_SCOPE] prefix).
         for (RuleAndDecision rad : skipList) emitSkipped(ctx, rad);
@@ -271,6 +285,7 @@ public class ExamineStage implements Stage {
     }
 
     private void runRule(StageContext ctx, Rule rule, int idx, int total) {
+        ruleStartMs.put(rule.ruleId(), System.currentTimeMillis());
         ctx.eventBus.ruleStarted(ctx.sessionId, rule.ruleId(), rule.ruleId(),
                 idx, total, rule.checkType());
         CheckResult result;
@@ -343,7 +358,6 @@ public class ExamineStage implements Stage {
     }
 
     private void upsertPendingRow(StageContext ctx, Rule rule) {
-        ruleStartMs.put(rule.ruleId(), System.currentTimeMillis());
         try {
             Map<String, Object> stepResult = new LinkedHashMap<>();
             stepResult.put("check_type", rule.checkType());

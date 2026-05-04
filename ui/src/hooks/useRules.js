@@ -60,11 +60,14 @@ export function useRules(sessionId, sessionStatus, examineMeta) {
     return m;
   }, [adhocRules]);
 
-  const rules = useMemo(() => rawRules.map(r => {
+  const rules = useMemo(() => rawRules.map((r, i) => {
     const origin = r.origin || (adhocIdSet.has(r.ruleId) ? 'ADHOC' : 'CATALOG');
     const evidenceLcClause = r.evidenceLcClause || adhocEvidenceById[r.ruleId] || null;
     const triggerTrace = triggerTraces[r.ruleId] || null;
-    return { ...r, origin, evidenceLcClause, triggerTrace };
+    // seqNum = position in the backend's response. The backend now emits rules
+    // in catalog-declared order, so this is the canonical "rule sequence" used
+    // as the worklist's default sort key.
+    return { ...r, origin, evidenceLcClause, triggerTrace, seqNum: i };
   }), [rawRules, adhocIdSet, adhocEvidenceById, triggerTraces]);
 
   const override = useCallback(async (ruleId, body) => {

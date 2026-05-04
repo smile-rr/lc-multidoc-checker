@@ -16,10 +16,11 @@ export function WorklistTable({ groupedActive, groupedNa, groupedOutOfScope,
       <table className="w-full text-[11px] border-collapse">
         <thead className="bg-white border-b border-line sticky top-0 z-10">
           <tr>
-            <SortHeader label="Status"   col="status"   sort={sort} setSort={setSort} width={88} />
+            <SortHeader label="#"        col="seq"      sort={sort} setSort={setSort} width={40} />
             <SortHeader label="Article"  col="article"  sort={sort} setSort={setSort} />
-            <SortHeader label="Scope"    col="scope"    sort={sort} setSort={setSort} />
+            <SortHeader label="Status"   col="status"   sort={sort} setSort={setSort} width={88} />
             <SortHeader label="Rule"     col="rule"     sort={sort} setSort={setSort} />
+            <SortHeader label="Scope"    col="scope"    sort={sort} setSort={setSort} />
             <SortHeader label="Severity" col="severity" sort={sort} setSort={setSort} />
             <SortHeader label="Source"   col="source"   sort={sort} setSort={setSort} />
             <SortHeader label="Agree"    col="agree"    sort={sort} setSort={setSort} />
@@ -61,7 +62,7 @@ function ActiveSection({ grouped, navMode, selectedId, onSelect }) {
               reads as one continuous sorted list. */}
           {group !== '' && (
             <tr className="bg-slate2 border-b border-line">
-              <td colSpan={9} className="px-3 py-1.5">
+              <td colSpan={10} className="px-3 py-1.5">
                 <span className="text-[10px] tracking-[0.2em] uppercase text-muted font-semibold font-mono">
                   {navMode === 'doc' ? (docTypeMeta(group)?.name || group) : group}
                   <span className="ml-2 text-[#a1a1a6] font-normal">
@@ -92,7 +93,7 @@ function FoldableSection({ label, grouped, navMode, selectedId, onSelect }) {
   return (
     <>
       <tr className="bg-slate2 border-b border-line">
-        <td colSpan={9} className="px-3 py-1.5">
+        <td colSpan={10} className="px-3 py-1.5">
           <button
             onClick={() => setOpen(o => !o)}
             className="text-[10px] tracking-[0.2em] uppercase text-muted font-semibold font-mono hover:text-navy-1"
@@ -104,7 +105,7 @@ function FoldableSection({ label, grouped, navMode, selectedId, onSelect }) {
       {open && Object.entries(grouped).map(([group, items]) => (
         <React.Fragment key={group}>
           <tr className="bg-white border-b border-line/50">
-            <td colSpan={9} className="px-6 py-1">
+            <td colSpan={10} className="px-6 py-1">
               <span className="text-[10px] uppercase tracking-[0.15em] text-muted font-mono">
                 {navMode === 'doc' ? (docTypeMeta(group)?.name || group) : group}
                 <span className="ml-2 text-[#a1a1a6] font-normal">{items.length}</span>
