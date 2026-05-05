@@ -1,5 +1,15 @@
-import React, { useEffect, useState } from 'react';
-import { PdfViewer } from '../../shared/PdfViewer';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
+
+// Code-split the PDF viewer (react-pdf + pdfjs-dist worker bundle ~500 KB)
+// so HomePage and other stages don't pay for it.
+const PdfViewer = lazy(() =>
+  import('../../shared/PdfViewer').then((m) => ({ default: m.PdfViewer }))
+);
+
+// Module-level cache so flipping between docs in the Parse stage doesn't
+// re-fetch the bytes. Browser HTTP cache covers cross-session, but this
+// also avoids the blob() decode roundtrip on every switch.
+const blobCache = new Map(); // docId -> Blob
 
 /**
  * Wraps the shared PdfViewer for non-LC docs; falls back to a plain raw-text
@@ -14,9 +24,13 @@ export function ParseViewer({ sessionId, doc, page, onNumPages }) {
 
   useEffect(() => {
     if (!doc || doc.doc_type === 'LC') return;
-    setBlob(null);
     setLoadErr(null);
 
+    const cached = blobCache.get(doc.id);
+    if (cached) { setBlob(cached); return; }
+
+    setBlob(null);
+    let cancelled = false;
     const url = `/api/v2/sessions/${sessionId}/documents/${doc.id}/pdf`;
     fetch(url)
       .then((res) => {
@@ -29,8 +43,13 @@ export function ParseViewer({ sessionId, doc, page, onNumPages }) {
         }
         return res.blob();
       })
-      .then((b) => setBlob(b))
-      .catch((e) => setLoadErr(e.message));
+      .then((b) => {
+        if (cancelled) return;
+        blobCache.set(doc.id, b);
+        setBlob(b);
+      })
+      .catch((e) => { if (!cancelled) setLoadErr(e.message); });
+    return () => { cancelled = true; };
   }, [sessionId, doc?.id, doc?.doc_type]);
 
   if (!doc) {
@@ -65,12 +84,14 @@ Use the Fields panel on the right to inspect parsed values.`}
   }
 
   return (
-    <PdfViewer
-      file={blob}
-      page={page}
-      onNumPages={onNumPages}
-      maxHeightClass="h-full"
-      docType={doc.doc_type}
-    />
+    <Suspense fallback={<div className="p-6 text-sm text-muted">Loading viewer…</div>}>
+      <PdfViewer
+        file={blob}
+        page={page}
+        onNumPages={onNumPages}
+        maxHeightClass="h-full"
+        docType={doc.doc_type}
+      />
+    </Suspense>
   );
 }

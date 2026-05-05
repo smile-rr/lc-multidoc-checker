@@ -12,4 +12,17 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          if (id.includes('pdfjs-dist') || id.includes('react-pdf')) return 'pdf';
+          if (id.includes('react-router')) return 'router';
+          if (id.includes('react-diff-viewer')) return 'diff';
+          if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/scheduler/')) return 'react';
+        },
+      },
+    },
+  },
 });

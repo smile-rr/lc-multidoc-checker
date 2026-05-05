@@ -2,10 +2,12 @@ import React, { useState } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
+import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { docTypeMeta } from '../../constants/docTypes';
 
-// Same CDN-hosted worker as v1 — avoids bundling pdf.worker.
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// Self-hosted worker (bundled by Vite) — no third-party CDN dependency,
+// served under our long-cache /assets/ rule.
+pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
 
 const BASE_WIDTH = 560;
 const ZOOM_MIN = 0.5;
@@ -23,6 +25,7 @@ export function PdfViewer({ src, file, page, onNumPages, maxHeightClass = 'h-ful
   const [numPages, setNumPages] = useState(0);
   const [zoom, setZoom] = useState(1.0);
   const [err, setErr] = useState(null);
+  const [progress, setProgress] = useState(null); // { loaded, total } | null
 
   const docFile = file ?? src ?? null;
 
@@ -67,19 +70,66 @@ export function PdfViewer({ src, file, page, onNumPages, maxHeightClass = 'h-ful
 
       <Document
         file={docFile}
-        onLoadSuccess={(d) => { setNumPages(d.numPages); onNumPages?.(d.numPages); }}
+        onLoadSuccess={(d) => { setNumPages(d.numPages); onNumPages?.(d.numPages); setProgress(null); }}
         onLoadError={(e) => setErr(e.message)}
-        loading={<div className="p-6 text-sm text-muted">Loading PDF…</div>}
+        onLoadProgress={({ loaded, total }) => setProgress({ loaded, total })}
+        loading={<DocumentSkeleton zoom={zoom} progress={progress} />}
       >
         <div className="py-4 flex flex-col items-center gap-4">
           {page
-            ? <Page pageNumber={page} width={BASE_WIDTH * zoom} renderTextLayer={false} />
+            ? <Page pageNumber={page} width={BASE_WIDTH * zoom} renderTextLayer={false}
+                    loading={<PageSkeleton width={BASE_WIDTH * zoom} />} />
             : Array.from({ length: numPages }, (_, i) => (
-                <Page key={i} pageNumber={i + 1} width={BASE_WIDTH * zoom} renderTextLayer={false} />
+                <Page key={i} pageNumber={i + 1} width={BASE_WIDTH * zoom} renderTextLayer={false}
+                      loading={<PageSkeleton width={BASE_WIDTH * zoom} />} />
               ))
           }
         </div>
       </Document>
+    </div>
+  );
+}
+
+function fmtKB(n) {
+  if (!Number.isFinite(n)) return '';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function PageSkeleton({ width }) {
+  // 8.5 × 11 letter ratio fallback; close enough for skeleton placeholder.
+  const height = Math.round(width * 1.294);
+  return (
+    <div
+      className="bg-slate2/60 border border-line rounded animate-pulse"
+      style={{ width, height }}
+      aria-label="Loading page"
+    />
+  );
+}
+
+function DocumentSkeleton({ zoom, progress }) {
+  const width = BASE_WIDTH * zoom;
+  const pct = progress?.total
+    ? Math.min(100, Math.round((progress.loaded / progress.total) * 100))
+    : null;
+  return (
+    <div className="py-4 flex flex-col items-center gap-3">
+      <PageSkeleton width={width} />
+      <div className="text-xs text-muted font-mono flex items-center gap-2">
+        <span>Loading PDF…</span>
+        {progress?.total ? (
+          <>
+            <span className="w-32 h-1.5 bg-slate2 rounded overflow-hidden">
+              <span className="block h-full bg-navy-1/60 transition-all" style={{ width: `${pct}%` }} />
+            </span>
+            <span>{fmtKB(progress.loaded)} / {fmtKB(progress.total)}</span>
+          </>
+        ) : progress?.loaded ? (
+          <span>{fmtKB(progress.loaded)}</span>
+        ) : null}
+      </div>
     </div>
   );
 }

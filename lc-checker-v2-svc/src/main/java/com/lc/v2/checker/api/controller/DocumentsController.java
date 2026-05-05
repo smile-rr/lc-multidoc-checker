@@ -12,8 +12,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.time.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +24,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -57,9 +60,21 @@ public class DocumentsController {
 
     @GetMapping("/pdf")
     public ResponseEntity<byte[]> downloadPdf(@PathVariable String sessionId,
-                                              @PathVariable String docId) {
+                                              @PathVariable String docId,
+                                              @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) {
         Map<String, Object> doc = sessionStore.getDocument(docId);
         if (doc == null) return ResponseEntity.notFound().build();
+
+        // docId is content-addressed (immutable per upload) → strong ETag = quoted docId.
+        String etag = "\"" + docId + "\"";
+        CacheControl cacheControl = CacheControl.maxAge(Duration.ofDays(30)).cachePublic().immutable();
+
+        if (ifNoneMatch != null && ifNoneMatch.contains(etag)) {
+            return ResponseEntity.status(304)
+                    .eTag(etag)
+                    .cacheControl(cacheControl)
+                    .build();
+        }
 
         Optional<byte[]> bytes;
         try {
@@ -85,6 +100,8 @@ public class DocumentsController {
         headers.setContentType(MediaType.APPLICATION_PDF);
         headers.setContentLength(bytes.get().length);
         headers.setContentDispositionFormData("inline", filename);
+        headers.setETag(etag);
+        headers.setCacheControl(cacheControl);
         return new ResponseEntity<>(bytes.get(), headers, 200);
     }
 
