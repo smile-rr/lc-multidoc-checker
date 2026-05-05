@@ -15,7 +15,6 @@ export function TopNav() {
       <Link to="/" className="font-bold text-white text-sm tracking-wide hover:text-white/80">
         LC Checker <span className="text-teal-1">v2</span>
       </Link>
-      <span className="text-white/40 text-xs">Multi-document UCP 600 Compliance</span>
 
       <nav className="ml-auto flex items-center gap-2">
         <button
@@ -31,6 +30,9 @@ export function TopNav() {
         <HistoryDropdown />
         <Link to="/" className="text-white/50 hover:text-white text-xs px-2.5 py-1 rounded hover:bg-[#2c2c2e] transition-colors">
           New Check
+        </Link>
+        <Link to="/admin" className="text-white/50 hover:text-white text-xs px-2.5 py-1 rounded hover:bg-[#2c2c2e] transition-colors">
+          Governance
         </Link>
       </nav>
     </header>

@@ -3,9 +3,12 @@ package com.lc.v2.checker.pipeline;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lc.v2.checker.domain.common.DocType;
 import com.lc.v2.checker.infra.fields.DocTypeRegistry;
+import com.lc.v2.checker.infra.observability.TraceNames;
 import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.infra.storage.PdfBytesCache;
 import com.lc.v2.checker.infra.stream.PipelineEventChannel;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -41,16 +44,24 @@ public class PipelineService {
     private final DocTypeRegistry docTypeRegistry;
     private final ObjectMapper objectMapper;
     private final PdfBytesCache pdfCache;
+    private final Tracer tracer;
 
     /** Per-session context cache so stage runs can find prior in-memory state. */
     private final Map<String, StageContext> contextCache = new ConcurrentHashMap<>();
+
+    /**
+     * Per-session root tracing span. Opened on session creation, closed on terminal
+     * stage (sign-off) or fatal failure. Every stage run re-attaches this span as
+     * the current scope so child stage/LLM spans inherit it as parent.
+     */
+    private final Map<String, Span> sessionSpans = new ConcurrentHashMap<>();
 
     @Lazy @Autowired private PipelineService self;
 
     public PipelineService(LcV2Pipeline pipeline, PipelineEventBus eventBus,
                            PipelineEventChannel eventChannel, SessionStore sessionStore,
                            DocTypeRegistry docTypeRegistry, ObjectMapper objectMapper,
-                           PdfBytesCache pdfCache) {
+                           PdfBytesCache pdfCache, Tracer tracer) {
         this.pipeline = pipeline;
         this.eventBus = eventBus;
         this.eventChannel = eventChannel;
@@ -58,6 +69,7 @@ public class PipelineService {
         this.docTypeRegistry = docTypeRegistry;
         this.objectMapper = objectMapper;
         this.pdfCache = pdfCache;
+        this.tracer = tracer;
     }
 
     /**
@@ -82,6 +94,37 @@ public class PipelineService {
 
         StageContext ctx = buildContext(sessionId, effectiveLcText, documents);
         contextCache.put(sessionId, ctx);
+
+        // Open the per-session root tracing span. All stage spans (parse,
+        // examine) and their LLM children attach under this in Langfuse so
+        // one session = one trace tree. setNoParent() detaches it from the
+        // incoming HTTP server span (which the LlmOnlySpanFilter drops) —
+        // otherwise Langfuse sees the session span as orphaned and renders
+        // the trace as unnamed.
+        // We also clear the current span scope before building the span so
+        // the OTel bridge cannot silently pick up the controller's HTTP
+        // server span as the parent context (a known quirk where
+        // setNoParent on the bridge is observed to be ignored when a
+        // current scope is active). And we set langfuse.trace.name as an
+        // attribute so Langfuse displays the trace name even if it tries
+        // to derive it from a child span first (children get the same tag
+        // via TraceNames.* below).
+        String traceName = TraceNames.forSession(sessionId);
+        Span sessionSpan;
+        Tracer.SpanInScope clearedScope = tracer.withSpan(null);
+        try {
+            sessionSpan = tracer.spanBuilder()
+                    .setNoParent()
+                    .name(traceName)
+                    .tag("session.id", sessionId)
+                    .tag("langfuse.session.id", sessionId)
+                    .tag("langfuse.trace.name", traceName)
+                    .tag("doc_count", String.valueOf(docCount))
+                    .start();
+        } finally {
+            if (clearedScope != null) clearedScope.close();
+        }
+        sessionSpans.put(sessionId, sessionSpan);
 
         // Kick off Intake. Subsequent stages require explicit officer triggers.
         self.runStageAsync(sessionId, ctx, 0);
@@ -135,12 +178,18 @@ public class PipelineService {
     @Async
     public void runStageAsync(String sessionId, StageContext ctx, int idx) {
         String stageName = pipeline.nameAt(idx);
+        // Re-attach the session root span on this async thread so any spans
+        // started inside the stage (parse, examine, vision.generate, gen_ai.*)
+        // inherit it as parent.
+        Span sessionSpan = sessionSpans.get(sessionId);
+        Tracer.SpanInScope sessionScope = sessionSpan != null ? tracer.withSpan(sessionSpan) : null;
         try {
             sessionStore.updateStatus(sessionId, stageName.toUpperCase());
             boolean ok = pipeline.runOne(ctx, idx);
             if (!ok) {
                 if (ctx.hasFatalError()) {
                     sessionStore.updateFailed(sessionId, ctx.fatalError.getMessage());
+                    endSessionSpan(sessionId, ctx.fatalError.getMessage());
                 }
                 return;
             }
@@ -160,7 +209,17 @@ public class PipelineService {
         } catch (Exception e) {
             log.error("[{}] stage={} failed: {}", sessionId, stageName, e.getMessage(), e);
             sessionStore.updateFailed(sessionId, e.getMessage());
+            endSessionSpan(sessionId, e.getMessage());
+        } finally {
+            if (sessionScope != null) sessionScope.close();
         }
+    }
+
+    private void endSessionSpan(String sessionId, String error) {
+        Span span = sessionSpans.remove(sessionId);
+        if (span == null) return;
+        if (error != null) span.tag("error", error);
+        span.end();
     }
 
     private void finalize(String sessionId, StageContext ctx) {
@@ -180,6 +239,7 @@ public class PipelineService {
             }
         }
         sessionStore.updateCompleted(sessionId, compliant);
+        endSessionSpan(sessionId, null);
         if (sessionStore.isSigned(sessionId)) {
             eventChannel.complete(sessionId);
             contextCache.remove(sessionId);

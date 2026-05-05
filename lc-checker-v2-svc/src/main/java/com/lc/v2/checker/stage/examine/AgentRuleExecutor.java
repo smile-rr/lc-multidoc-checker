@@ -6,9 +6,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lc.v2.checker.domain.common.ArticleRef;
 import com.lc.v2.checker.domain.result.CheckResult;
 import com.lc.v2.checker.domain.rule.Rule;
+import com.lc.v2.checker.infra.observability.TraceNames;
 import com.lc.v2.checker.infra.refs.ArticleRefRegistry;
 import com.lc.v2.checker.pipeline.StageContext;
 import com.lc.v2.checker.stage.examine.tools.ExamineToolRegistry;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -51,6 +54,7 @@ public class AgentRuleExecutor {
     private final ArticleRefRegistry refs;
     private final ResourceLoader resourceLoader;
     private final ExamineToolRegistry toolRegistry;
+    private final Tracer tracer;
     private final String systemPrompt;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -59,32 +63,56 @@ public class AgentRuleExecutor {
     public AgentRuleExecutor(ChatClient.Builder chatClientBuilder,
                               ArticleRefRegistry refs,
                               ResourceLoader resourceLoader,
-                              ExamineToolRegistry toolRegistry) throws IOException {
+                              ExamineToolRegistry toolRegistry,
+                              Tracer tracer) throws IOException {
         this.chatClientBuilder = chatClientBuilder;
         this.refs = refs;
         this.resourceLoader = resourceLoader;
         this.toolRegistry = toolRegistry;
+        this.tracer = tracer;
         try (InputStream in = new ClassPathResource("prompts/system/check-system.st").getInputStream()) {
             this.systemPrompt = new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }
     }
 
     public CheckResult execute(Rule rule, StageContext ctx) {
-        return switch (rule.checkType()) {
-            case "AGENT" -> callPlain(rule, ctx);
-            case "AGENT_TOOL" -> callWithTools(rule, ctx, 1);
-            case "AGENTIC" -> callWithTools(rule, ctx,
-                    rule.maxIterations() == null ? 4 : rule.maxIterations());
-            default -> {
-                log.warn("[{}] AgentRuleExecutor invoked for unsupported checkType={} rule={}",
-                        ctx.sessionId, rule.checkType(), rule.ruleId());
-                yield callPlain(rule, ctx);
+        // Wrap every agent call in a rule-named span so Langfuse groups its
+        // Spring-AI gen_ai.* child(ren) under the rule_id. The gen_ai.system
+        // tag here ensures the LlmOnlySpanFilter keeps the span on export.
+        Span span = tracer.nextSpan().name("rule." + rule.ruleId()).start();
+        try (Tracer.SpanInScope ws = tracer.withSpan(span)) {
+            span.tag("gen_ai.system", "qwen-bailian");
+            span.tag("gen_ai.operation.name", "chat");
+            span.tag("rule_id", rule.ruleId());
+            span.tag("rule_check_type", rule.checkType() == null ? "" : rule.checkType());
+            if (rule.name() != null) span.tag("rule_name", rule.name());
+            if (ctx != null && ctx.sessionId != null) {
+                span.tag("session.id", ctx.sessionId);
+                span.tag("langfuse.session.id", ctx.sessionId);
+                span.tag("langfuse.trace.name", TraceNames.forSession(ctx.sessionId));
             }
-        };
+            return switch (rule.checkType()) {
+                case "AGENT" -> callPlain(rule, ctx);
+                case "AGENT_TOOL" -> callWithTools(rule, ctx, 1);
+                case "AGENTIC" -> callWithTools(rule, ctx,
+                        rule.maxIterations() == null ? 4 : rule.maxIterations());
+                default -> {
+                    log.warn("[{}] AgentRuleExecutor invoked for unsupported checkType={} rule={}",
+                            ctx.sessionId, rule.checkType(), rule.ruleId());
+                    yield callPlain(rule, ctx);
+                }
+            };
+        } catch (Throwable t) {
+            span.tag("error", String.valueOf(t.getMessage()));
+            throw t;
+        } finally {
+            span.end();
+        }
     }
 
     private CheckResult callPlain(Rule rule, StageContext ctx) {
         String userPrompt = buildPrompt(rule, ctx, false);
+        tagInput(userPrompt);
         try {
             String response = chatClientBuilder.build().prompt()
                     .options(buildOptions(rule, null))
@@ -92,6 +120,7 @@ public class AgentRuleExecutor {
                     .user(userPrompt)
                     .call()
                     .content();
+            tagOutput(response);
             return parseResponse(rule.ruleId(), rule.checkType(), response, null);
         } catch (Exception e) {
             log.error("[{}] LLM call failed rule={}: {}", ctx.sessionId, rule.ruleId(), e.getMessage());
@@ -106,6 +135,7 @@ public class AgentRuleExecutor {
         // Pass the session ID through the user prompt so the model can include it
         // in tool-call arguments (the registry takes sessionId as a parameter).
         userPrompt = "Session ID for tool calls: " + ctx.sessionId + "\n\n" + userPrompt;
+        tagInput(userPrompt);
 
         List<Map<String, Object>> toolCalls = toolRegistry.beginCapture();
         try {
@@ -116,6 +146,7 @@ public class AgentRuleExecutor {
                     .user(userPrompt)
                     .call()
                     .content();
+            tagOutput(response);
             // AGENTIC convergence cap: if the model emitted no terminal JSON and we
             // hit the iteration ceiling, surface NEEDS_REVIEW with the trace.
             CheckResult parsed = parseResponse(rule.ruleId(), rule.checkType(), response,
@@ -235,6 +266,29 @@ public class AgentRuleExecutor {
                     + "omit it otherwise.");
         }
         return sb.toString();
+    }
+
+    private static final int TRACE_VALUE_MAX = 8000;
+
+    private static String trimForTrace(String s) {
+        if (s == null) return "";
+        return s.length() <= TRACE_VALUE_MAX ? s : s.substring(0, TRACE_VALUE_MAX) + "…";
+    }
+
+    /** Tags input on the current rule.* span so the prompt is visible in Langfuse. */
+    private void tagInput(String prompt) {
+        Span s = tracer.currentSpan();
+        if (s == null || prompt == null) return;
+        s.tag("input.value", trimForTrace(prompt));
+        s.tag("gen_ai.prompt", trimForTrace(prompt));
+    }
+
+    /** Tags model output on the current rule.* span. Token usage is carried by Spring AI's child gen_ai span. */
+    private void tagOutput(String response) {
+        Span s = tracer.currentSpan();
+        if (s == null || response == null) return;
+        s.tag("output.value", trimForTrace(response));
+        s.tag("gen_ai.completion", trimForTrace(response));
     }
 
     private static String safeText(ArticleRef a) {

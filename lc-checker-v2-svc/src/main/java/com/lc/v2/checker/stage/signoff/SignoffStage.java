@@ -1,7 +1,6 @@
 package com.lc.v2.checker.stage.signoff;
 
 import com.lc.v2.checker.domain.result.CheckResult;
-import com.lc.v2.checker.infra.observability.PipelineStage;
 import com.lc.v2.checker.pipeline.Stage;
 import com.lc.v2.checker.pipeline.StageContext;
 import java.util.LinkedHashMap;
@@ -21,7 +20,6 @@ import org.springframework.stereotype.Component;
  * Stores the final report in ctx.finalReport (serialized to DB by PipelineService).
  * Officer disposition UI, MT734 template, and session freeze are post-POC extensions.
  */
-@PipelineStage(name = "signoff")
 @Component
 public class SignoffStage implements Stage {
 

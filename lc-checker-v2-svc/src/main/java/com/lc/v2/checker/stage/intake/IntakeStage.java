@@ -3,7 +3,6 @@ package com.lc.v2.checker.stage.intake;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lc.v2.checker.domain.common.DocType;
 import com.lc.v2.checker.domain.lc.LcParseResult;
-import com.lc.v2.checker.infra.observability.PipelineStage;
 import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.infra.storage.PdfBytesCache;
 import com.lc.v2.checker.infra.storage.S3FileStore;
@@ -35,7 +34,6 @@ import org.springframework.stereotype.Component;
  * downstream stages (reconcile, examine, the :46A: required-doc gate) cannot
  * proceed without an LC reference.</p>
  */
-@PipelineStage(name = "intake")
 @Component
 public class IntakeStage implements Stage {
 

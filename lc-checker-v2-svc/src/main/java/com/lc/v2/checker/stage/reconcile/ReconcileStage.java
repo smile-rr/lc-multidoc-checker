@@ -5,7 +5,6 @@ import com.lc.v2.checker.domain.common.DocType;
 import com.lc.v2.checker.domain.reconcile.ReconField;
 import com.lc.v2.checker.infra.fields.FieldDefinition;
 import com.lc.v2.checker.infra.fields.FieldPoolRegistry;
-import com.lc.v2.checker.infra.observability.PipelineStage;
 import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.pipeline.Stage;
 import com.lc.v2.checker.pipeline.StageContext;
@@ -33,7 +32,6 @@ import org.springframework.stereotype.Component;
  * remains in {@code status} so ExamineStage's NOT_APPLICABLE shortcut still
  * works without change.</p>
  */
-@PipelineStage(name = "reconcile")
 @Component
 public class ReconcileStage implements Stage {
 

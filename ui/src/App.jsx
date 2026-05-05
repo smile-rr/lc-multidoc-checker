@@ -6,6 +6,7 @@ import { TopNav } from './components/shell/TopNav';
 import { DevModeBanner } from './components/shell/DevModeBanner';
 import { HomePage } from './pages/HomePage';
 import { SessionPage } from './pages/SessionPage';
+import { AdminApp } from './admin/AdminApp';
 
 function KeyedSessionPage() {
   const { id } = useParams();
@@ -23,6 +24,7 @@ export function App() {
             <Routes>
               <Route path="/" element={<HomePage />} />
               <Route path="/session/:id" element={<KeyedSessionPage />} />
+              <Route path="/admin/*" element={<AdminApp />} />
             </Routes>
           </main>
         </div>

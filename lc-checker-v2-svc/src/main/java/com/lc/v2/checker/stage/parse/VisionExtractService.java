@@ -10,7 +10,10 @@ import com.lc.v2.checker.infra.config.ExtractorSlotConfig;
 import com.lc.v2.checker.infra.config.ExtractorSlotConfig.SlotEntry;
 import com.lc.v2.checker.infra.config.ExtractorSlotProperties;
 import com.lc.v2.checker.infra.fields.DocTypeRegistry;
+import com.lc.v2.checker.infra.observability.TraceNames;
 import com.lc.v2.checker.pipeline.PipelineEventBus;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -53,11 +56,14 @@ public class VisionExtractService {
     private final ExtractorSlotConfig slotConfig;
     private final DocTypeRegistry docTypeRegistry;
     private final ObjectMapper objectMapper;
+    private final Tracer tracer;
 
-    public VisionExtractService(ExtractorSlotConfig slotConfig, DocTypeRegistry docTypeRegistry) {
+    public VisionExtractService(ExtractorSlotConfig slotConfig, DocTypeRegistry docTypeRegistry,
+                                 Tracer tracer) {
         this.slotConfig = slotConfig;
         this.docTypeRegistry = docTypeRegistry;
         this.objectMapper = new ObjectMapper();
+        this.tracer = tracer;
     }
 
     /**
@@ -98,14 +104,18 @@ public class VisionExtractService {
         }
         emit(sessionId, eventBus, docType.name(), "render", "rendered_" + base64Pages.size() + "_pages");
 
-        // Run all enabled slots in parallel; slot source name = <model>_<N>
+        // Run all enabled slots in parallel; slot source name = <model>_<N>.
+        // Capture the current trace span (the "parse" stage span set by
+        // ParseStage) so the async slot threads can re-attach it as parent
+        // for the child vision.generate span.
+        Span parentSpan = tracer.currentSpan();
         Map<String, CompletableFuture<FieldEnvelope>> futures = new LinkedHashMap<>();
         for (SlotEntry slot : slots) {
             String sourceName = slot.sourceName();
             emit(sessionId, eventBus, docType.name(), sourceName, "calling_" + slot.props().getModel());
             futures.put(sourceName, CompletableFuture.supplyAsync(
                     () -> runSlot(sourceName, slot.props(), base64Pages, promptText, docType,
-                            sessionId, eventBus)));
+                            sessionId, eventBus, parentSpan, filename)));
         }
 
         // Collect results; per-slot timeout from config
@@ -157,16 +167,106 @@ public class VisionExtractService {
 
     private FieldEnvelope runSlot(String sourceName, ExtractorSlotProperties slot,
                                    List<String> base64Pages, String promptText, DocType docType,
-                                   String sessionId, PipelineEventBus eventBus) {
+                                   String sessionId, PipelineEventBus eventBus, Span parentSpan,
+                                   String docName) {
+        // Re-attach the parse-stage span on this async thread so the
+        // vision.generate child below inherits it as parent. Then start the
+        // gen_ai-shaped span Langfuse renders as a generation.
+        Tracer.SpanInScope parentScope = parentSpan != null ? tracer.withSpan(parentSpan) : null;
         try {
-            log.debug("[VisionExtract] slot={} docType={}", sourceName, docType);
-            String responseJson = callVlm(slot, base64Pages, promptText);
-            emit(sessionId, eventBus, docType.name(), sourceName, "parsing_response");
-            return parseResponse(responseJson);
-        } catch (Exception e) {
-            log.error("[VisionExtract] slot={} error: {}", sourceName, e.getMessage());
-            return null;
+            // Span name carries the doc type so it shows in the Langfuse
+            // generation list as e.g. "vision.generate INV".
+            Span span = tracer.nextSpan().name("vision.generate " + docType.name()).start();
+            try (Tracer.SpanInScope ws = tracer.withSpan(span)) {
+                span.tag("gen_ai.system", providerOf(slot.getBaseUrl()));
+                span.tag("gen_ai.operation.name", "chat");
+                span.tag("gen_ai.request.model", String.valueOf(slot.getModel()));
+                span.tag("doc_type", docType.name());
+                span.tag("doc_name", docName == null ? "" : docName);
+                span.tag("slot", sourceName);
+                if (sessionId != null) {
+                    span.tag("session.id", sessionId);
+                    span.tag("langfuse.session.id", sessionId);
+                    span.tag("langfuse.trace.name", TraceNames.forSession(sessionId));
+                }
+                span.tag("input.pages", String.valueOf(base64Pages.size()));
+                // Prompt text only (image bytes excluded — too large for traces).
+                span.tag("input.value", trimForTrace(promptText));
+                span.tag("gen_ai.prompt", trimForTrace(promptText));
+                log.debug("[VisionExtract] slot={} docType={}", sourceName, docType);
+                String responseJson = callVlm(slot, base64Pages, promptText);
+                emit(sessionId, eventBus, docType.name(), sourceName, "parsing_response");
+                tagUsageAndOutput(span, responseJson);
+                return parseResponse(responseJson);
+            } catch (Exception e) {
+                span.tag("error", String.valueOf(e.getMessage()));
+                log.error("[VisionExtract] slot={} error: {}", sourceName, e.getMessage());
+                return null;
+            } finally {
+                span.end();
+            }
+        } finally {
+            if (parentScope != null) parentScope.close();
         }
+    }
+
+    private static final int TRACE_VALUE_MAX = 8000;
+
+    private static String trimForTrace(String s) {
+        if (s == null) return "";
+        return s.length() <= TRACE_VALUE_MAX ? s : s.substring(0, TRACE_VALUE_MAX) + "…";
+    }
+
+    /**
+     * Read OpenAI-compatible {@code usage} + {@code choices[0].message.content} from the
+     * raw response and surface them on the span as Langfuse-friendly attributes
+     * (input/output bodies + token counts). Best-effort: any parse failure just leaves
+     * the tags off.
+     */
+    private void tagUsageAndOutput(Span span, String responseJson) {
+        if (responseJson == null) return;
+        try {
+            JsonNode root = objectMapper.readTree(responseJson);
+            JsonNode usage = root.path("usage");
+            if (usage.isObject()) {
+                long pt = usage.path("prompt_tokens").asLong(-1);
+                long ct = usage.path("completion_tokens").asLong(-1);
+                long tt = usage.path("total_tokens").asLong(-1);
+                if (pt >= 0) {
+                    span.tag("gen_ai.usage.input_tokens", String.valueOf(pt));
+                    span.tag("gen_ai.usage.prompt_tokens", String.valueOf(pt));
+                }
+                if (ct >= 0) {
+                    span.tag("gen_ai.usage.output_tokens", String.valueOf(ct));
+                    span.tag("gen_ai.usage.completion_tokens", String.valueOf(ct));
+                }
+                if (tt >= 0) {
+                    span.tag("gen_ai.usage.total_tokens", String.valueOf(tt));
+                }
+            }
+            String content = root.path("choices").path(0).path("message").path("content").asText("");
+            if (!content.isEmpty()) {
+                span.tag("output.value", trimForTrace(content));
+                span.tag("gen_ai.completion", trimForTrace(content));
+            }
+            String finish = root.path("choices").path(0).path("finish_reason").asText(null);
+            if (finish != null) span.tag("gen_ai.response.finish_reason", finish);
+            String responseModel = root.path("model").asText(null);
+            if (responseModel != null) span.tag("gen_ai.response.model", responseModel);
+        } catch (Exception e) {
+            log.debug("[VisionExtract] usage/output trace parse skipped: {}", e.getMessage());
+        }
+    }
+
+    private static String providerOf(String baseUrl) {
+        if (baseUrl == null) return "unknown";
+        String s = baseUrl.toLowerCase();
+        if (s.contains("dashscope")) return "qwen-bailian";
+        if (s.contains("ollama") || s.contains(":11434")) return "ollama";
+        if (s.contains("minimax")) return "minimax";
+        if (s.contains("zhipu") || s.contains("glm")) return "glm";
+        if (s.contains("moonshot") || s.contains("kimi")) return "kimi";
+        return "openai-compatible";
     }
 
     private String callVlm(ExtractorSlotProperties slot, List<String> base64Pages, String promptText) {
