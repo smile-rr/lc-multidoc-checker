@@ -20,7 +20,7 @@ export const useStore = (selector) => {
   return selector(state);
 };
 
-export const STATES = ['DRAFT', 'IN_REVIEW', 'SHADOW', 'STAGED', 'PUBLISHED'];
+export const STATES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'RELEASED'];
 
 export const transitionRule = (ruleId, to, actor, note) => {
   const r = state.rules.find((x) => x.rule_id === ruleId);
@@ -30,7 +30,7 @@ export const transitionRule = (ruleId, to, actor, note) => {
     from: r.state, to, actor, at: new Date().toISOString(), note,
   });
   r.state = to;
-  if (to === 'PUBLISHED') r.publishedVersion = r.workingVersion;
+  if (to === 'RELEASED') r.publishedVersion = r.workingVersion;
   emit();
 };
 
@@ -48,10 +48,10 @@ export const transitionPrompt = (promptId, to, actor, note) => {
 export const updatePromptBody = (promptId, body, actor) => {
   const p = state.prompts.find((x) => x.id === promptId);
   if (!p) return;
-  if (p.state === 'PUBLISHED') {
+  if (p.state === 'RELEASED') {
     state.lifecycleEvents.unshift({
       id: 'e' + Date.now(), artifact: 'prompt', artifactId: promptId,
-      from: 'PUBLISHED', to: 'DRAFT', actor, at: new Date().toISOString(),
+      from: 'RELEASED', to: 'DRAFT', actor, at: new Date().toISOString(),
       note: 'Edited body — auto-forked to draft.',
     });
     p.state = 'DRAFT';
@@ -65,10 +65,10 @@ export const updatePromptBody = (promptId, body, actor) => {
 export const updateRuleField = (ruleId, field, value, actor) => {
   const r = state.rules.find((x) => x.rule_id === ruleId);
   if (!r) return;
-  if (r.state === 'PUBLISHED') {
+  if (r.state === 'RELEASED') {
     state.lifecycleEvents.unshift({
       id: 'e' + Date.now(), artifact: 'rule', artifactId: ruleId,
-      from: 'PUBLISHED', to: 'DRAFT', actor, at: new Date().toISOString(),
+      from: 'RELEASED', to: 'DRAFT', actor, at: new Date().toISOString(),
       note: `Edited ${field} — auto-forked to draft.`,
     });
     r.state = 'DRAFT';

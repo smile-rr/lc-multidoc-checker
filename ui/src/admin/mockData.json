@@ -1,11 +1,12 @@
 {
-  "generatedAt": "2026-05-04T16:03:43.490Z",
+  "generatedAt": "2026-05-05T00:53:00.141Z",
   "catalogVersion": "3.0.0-design",
   "rules": [
     {
       "rule_id": "DATE-01",
       "name": "No document dated after presentation date",
       "category": "DATE",
+      "enabled": false,
       "version": 1,
       "severity": "MAJOR",
       "polarity": "POSITIVE",
@@ -89,7 +90,7 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
@@ -102,6 +103,7 @@
       "rule_id": "DATE-02",
       "name": "Presentation within 21 days of shipment and before LC expiry",
       "category": "DATE",
+      "enabled": true,
       "version": 1,
       "severity": "CRITICAL",
       "polarity": "POSITIVE",
@@ -178,12 +180,12 @@
           ]
         }
       ],
-      "state": "IN_REVIEW",
+      "state": "SUBMITTED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": "maya",
       "boundPromptId": "check/DATE-02",
-      "boundPromptState": "PUBLISHED",
+      "boundPromptState": "RELEASED",
       "lastEditedAt": "2026-04-11T09:00:00Z",
       "lastEditedBy": "maya"
     },
@@ -191,6 +193,7 @@
       "rule_id": "DATE-03",
       "name": "No shipment after latest shipment date",
       "category": "DATE",
+      "enabled": false,
       "version": 1,
       "severity": "CRITICAL",
       "polarity": "POSITIVE",
@@ -257,7 +260,7 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
@@ -270,6 +273,7 @@
       "rule_id": "DATE-04",
       "name": "Drawing date within LC validity",
       "category": "DATE",
+      "enabled": false,
       "version": 1,
       "severity": "MAJOR",
       "polarity": "POSITIVE",
@@ -338,7 +342,7 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
@@ -351,6 +355,7 @@
       "rule_id": "DOCSET-01",
       "name": "All :46A: required documents are presented",
       "category": "DOCSET",
+      "enabled": true,
       "version": 1,
       "severity": "CRITICAL",
       "polarity": "POSITIVE",
@@ -395,7 +400,7 @@
       "eval_cases": [
         {
           "id": "DS01-01",
-          "scenario": "LC requires 4 docs, all 4 present",
+          "scenario": "LC requires 4 docs, all 4 present and clearly labelled",
           "expected": "PASS",
           "citations": [
             "UCP-14-a"
@@ -403,7 +408,7 @@
         },
         {
           "id": "DS01-02",
-          "scenario": "LC requires inspection cert; not in presentation",
+          "scenario": "LC requires inspection certificate; absent from presentation",
           "expected": "FAIL",
           "citations": [
             "UCP-14-a"
@@ -411,11 +416,27 @@
         },
         {
           "id": "DS01-03",
-          "scenario": "LC requires 'cert of origin'; presented FORM-A",
-          "expected": "PASS",
+          "scenario": "LC requires 'Certificate of Origin'; presentation has 'FORM-A' (commonly accepted equivalent)",
+          "expected": "DOUBTS",
           "citations": [
             "UCP-14-a",
             "UCP-14-f"
+          ]
+        },
+        {
+          "id": "DS01-04",
+          "scenario": "LC requires beneficiary cert AND inspection report; only beneficiary cert present",
+          "expected": "FAIL",
+          "citations": [
+            "UCP-14-a"
+          ]
+        },
+        {
+          "id": "DS01-05",
+          "scenario": "LC :47A: mentions 'shipping advice' once; nothing matching that label presented",
+          "expected": "DOUBTS",
+          "citations": [
+            "UCP-14-a"
           ]
         }
       ],
@@ -424,7 +445,7 @@
       "workingVersion": 1,
       "draftAuthor": "maya",
       "boundPromptId": "check/DOCSET-01",
-      "boundPromptState": "PUBLISHED",
+      "boundPromptState": "RELEASED",
       "lastEditedAt": "2026-04-14T09:00:00Z",
       "lastEditedBy": "maya"
     },
@@ -432,6 +453,7 @@
       "rule_id": "DOCSET-02",
       "name": "Number of originals/copies as required by LC and UCP 17",
       "category": "DOCSET",
+      "enabled": false,
       "version": 1,
       "severity": "MAJOR",
       "polarity": "POSITIVE",
@@ -506,7 +528,7 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
@@ -519,6 +541,7 @@
       "rule_id": "DOCSET-03",
       "name": "Full set of B/L originals presented",
       "category": "DOCSET",
+      "enabled": false,
       "version": 1,
       "severity": "CRITICAL",
       "polarity": "POSITIVE",
@@ -577,7 +600,7 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
@@ -590,6 +613,7 @@
       "rule_id": "AMT-01",
       "name": "Invoice currency equals LC currency",
       "category": "AMT",
+      "enabled": true,
       "version": 1,
       "severity": "CRITICAL",
       "polarity": "POSITIVE",
@@ -665,7 +689,7 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
@@ -678,6 +702,7 @@
       "rule_id": "AMT-02",
       "name": "Invoice amount within LC respecting UCP 30 tolerance",
       "category": "AMT",
+      "enabled": true,
       "version": 1,
       "severity": "CRITICAL",
       "polarity": "NEGATIVE",
@@ -790,12 +815,12 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
       "boundPromptId": "check/AMT-02",
-      "boundPromptState": "PUBLISHED",
+      "boundPromptState": "RELEASED",
       "lastEditedAt": "2026-04-18T09:00:00Z",
       "lastEditedBy": "maya"
     },
@@ -803,6 +828,7 @@
       "rule_id": "AMT-03",
       "name": "Draft amount equals invoice amount",
       "category": "AMT",
+      "enabled": true,
       "version": 1,
       "severity": "CRITICAL",
       "polarity": "POSITIVE",
@@ -862,7 +888,7 @@
           ]
         }
       ],
-      "state": "STAGED",
+      "state": "APPROVED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": "ling",
@@ -875,6 +901,7 @@
       "rule_id": "AMT-04",
       "name": "Quantity tolerance UCP 30(b) applied where applicable",
       "category": "AMT",
+      "enabled": false,
       "version": 1,
       "severity": "MAJOR",
       "polarity": "POSITIVE",
@@ -945,12 +972,12 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
       "boundPromptId": "check/AMT-04",
-      "boundPromptState": "PUBLISHED",
+      "boundPromptState": "RELEASED",
       "lastEditedAt": "2026-04-20T09:00:00Z",
       "lastEditedBy": "maya"
     },
@@ -958,6 +985,7 @@
       "rule_id": "PARTY-01",
       "name": "Invoice issued by the beneficiary",
       "category": "PARTY",
+      "enabled": true,
       "version": 1,
       "severity": "CRITICAL",
       "polarity": "POSITIVE",
@@ -1031,7 +1059,7 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
@@ -1044,6 +1072,7 @@
       "rule_id": "PARTY-02",
       "name": "Invoice made out to applicant",
       "category": "PARTY",
+      "enabled": false,
       "version": 1,
       "severity": "MAJOR",
       "polarity": "POSITIVE",
@@ -1109,12 +1138,12 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
       "boundPromptId": "check/PARTY-02",
-      "boundPromptState": "PUBLISHED",
+      "boundPromptState": "RELEASED",
       "lastEditedAt": "2026-04-22T09:00:00Z",
       "lastEditedBy": "maya"
     },
@@ -1122,6 +1151,7 @@
       "rule_id": "PARTY-03",
       "name": "Draft drawn on the drawee named in the credit",
       "category": "PARTY",
+      "enabled": false,
       "version": 1,
       "severity": "CRITICAL",
       "polarity": "POSITIVE",
@@ -1187,7 +1217,7 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
@@ -1200,6 +1230,7 @@
       "rule_id": "PARTY-04",
       "name": "Beneficiary name consistent across all submitted documents",
       "category": "PARTY",
+      "enabled": true,
       "version": 1,
       "severity": "MAJOR",
       "polarity": "POSITIVE",
@@ -1309,12 +1340,12 @@
           ]
         }
       ],
-      "state": "SHADOW",
+      "state": "APPROVED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": "ling",
       "boundPromptId": "check/PARTY-04",
-      "boundPromptState": "PUBLISHED",
+      "boundPromptState": "RELEASED",
       "lastEditedAt": "2026-04-24T09:00:00Z",
       "lastEditedBy": "ling"
     },
@@ -1322,6 +1353,7 @@
       "rule_id": "GOODS-01",
       "name": "Invoice goods description corresponds to LC :45A:",
       "category": "GOODS",
+      "enabled": true,
       "version": 1,
       "severity": "MAJOR",
       "polarity": "POSITIVE",
@@ -1404,12 +1436,12 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
       "boundPromptId": "check/GOODS-01",
-      "boundPromptState": "PUBLISHED",
+      "boundPromptState": "RELEASED",
       "lastEditedAt": "2026-04-25T09:00:00Z",
       "lastEditedBy": "maya"
     },
@@ -1417,6 +1449,7 @@
       "rule_id": "GOODS-02",
       "name": "Other docs goods description in general terms, not conflicting",
       "category": "GOODS",
+      "enabled": false,
       "version": 1,
       "severity": "MAJOR",
       "polarity": "POSITIVE",
@@ -1495,12 +1528,12 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
       "boundPromptId": "check/GOODS-02",
-      "boundPromptState": "PUBLISHED",
+      "boundPromptState": "RELEASED",
       "lastEditedAt": "2026-04-26T09:00:00Z",
       "lastEditedBy": "maya"
     },
@@ -1508,6 +1541,7 @@
       "rule_id": "GOODS-03",
       "name": "Quantity / packages consistent between invoice and packing list",
       "category": "GOODS",
+      "enabled": false,
       "version": 1,
       "severity": "MAJOR",
       "polarity": "POSITIVE",
@@ -1568,7 +1602,7 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
@@ -1581,6 +1615,7 @@
       "rule_id": "GOODS-04",
       "name": "Shipping marks consistent between packing list and B/L",
       "category": "GOODS",
+      "enabled": false,
       "version": 1,
       "severity": "MINOR",
       "polarity": "POSITIVE",
@@ -1639,7 +1674,7 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
@@ -1652,6 +1687,7 @@
       "rule_id": "GOODS-05",
       "name": "Invoice Incoterms consistent with B/L freight notation",
       "category": "GOODS",
+      "enabled": false,
       "version": 1,
       "severity": "MAJOR",
       "polarity": "POSITIVE",
@@ -1719,7 +1755,7 @@
           ]
         }
       ],
-      "state": "IN_REVIEW",
+      "state": "SUBMITTED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": "maya",
@@ -1732,6 +1768,7 @@
       "rule_id": "TRANS-01",
       "name": "B/L bears on-board notation (or pre-printed shipped on board)",
       "category": "TRANS",
+      "enabled": true,
       "version": 1,
       "severity": "CRITICAL",
       "polarity": "POSITIVE",
@@ -1798,7 +1835,7 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
@@ -1811,6 +1848,7 @@
       "rule_id": "TRANS-02",
       "name": "B/L signed properly per UCP 20(a)(i)",
       "category": "TRANS",
+      "enabled": false,
       "version": 1,
       "severity": "CRITICAL",
       "polarity": "POSITIVE",
@@ -1878,12 +1916,12 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
       "boundPromptId": "check/TRANS-02",
-      "boundPromptState": "PUBLISHED",
+      "boundPromptState": "RELEASED",
       "lastEditedAt": "2026-04-11T09:00:00Z",
       "lastEditedBy": "maya"
     },
@@ -1891,6 +1929,7 @@
       "rule_id": "TRANS-03",
       "name": "B/L is clean — no defect or damage clauses",
       "category": "TRANS",
+      "enabled": true,
       "version": 1,
       "severity": "MAJOR",
       "polarity": "NEGATIVE",
@@ -1964,12 +2003,12 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
       "boundPromptId": "check/TRANS-03",
-      "boundPromptState": "PUBLISHED",
+      "boundPromptState": "RELEASED",
       "lastEditedAt": "2026-04-12T09:00:00Z",
       "lastEditedBy": "maya"
     },
@@ -1977,6 +2016,7 @@
       "rule_id": "TRANS-04",
       "name": "B/L ports of loading and discharge match LC",
       "category": "TRANS",
+      "enabled": false,
       "version": 1,
       "severity": "MAJOR",
       "polarity": "POSITIVE",
@@ -2049,7 +2089,7 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
@@ -2062,6 +2102,7 @@
       "rule_id": "TRANS-05",
       "name": "Transhipment per LC instructions",
       "category": "TRANS",
+      "enabled": false,
       "version": 1,
       "severity": "MAJOR",
       "polarity": "POSITIVE",
@@ -2136,12 +2177,12 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
       "boundPromptId": "check/TRANS-05",
-      "boundPromptState": "PUBLISHED",
+      "boundPromptState": "RELEASED",
       "lastEditedAt": "2026-04-14T09:00:00Z",
       "lastEditedBy": "maya"
     },
@@ -2149,6 +2190,7 @@
       "rule_id": "INS-01",
       "name": "Insurance currency equals LC currency",
       "category": "INS",
+      "enabled": false,
       "version": 1,
       "severity": "CRITICAL",
       "polarity": "POSITIVE",
@@ -2214,7 +2256,7 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
@@ -2227,6 +2269,7 @@
       "rule_id": "INS-02",
       "name": "Insurance amount at least 110% of CIF/CIP value",
       "category": "INS",
+      "enabled": false,
       "version": 1,
       "severity": "CRITICAL",
       "polarity": "POSITIVE",
@@ -2296,12 +2339,12 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
       "boundPromptId": "check/INS-02",
-      "boundPromptState": "PUBLISHED",
+      "boundPromptState": "RELEASED",
       "lastEditedAt": "2026-04-16T09:00:00Z",
       "lastEditedBy": "maya"
     },
@@ -2309,6 +2352,7 @@
       "rule_id": "INS-03",
       "name": "Insurance dated not later than shipment date",
       "category": "INS",
+      "enabled": false,
       "version": 1,
       "severity": "CRITICAL",
       "polarity": "POSITIVE",
@@ -2369,7 +2413,7 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
@@ -2382,6 +2426,7 @@
       "rule_id": "CERT-01",
       "name": "Beneficiary certificate signed when LC requires signature",
       "category": "CERT",
+      "enabled": false,
       "version": 1,
       "severity": "MAJOR",
       "polarity": "POSITIVE",
@@ -2454,7 +2499,7 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
@@ -2467,6 +2512,7 @@
       "rule_id": "CERT-02",
       "name": "Beneficiary certificate satisfies all :46A: / :47A: conditions",
       "category": "CERT",
+      "enabled": false,
       "version": 1,
       "severity": "MAJOR",
       "polarity": "POSITIVE",
@@ -2551,12 +2597,12 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
       "boundPromptId": "check/CERT-02",
-      "boundPromptState": "PUBLISHED",
+      "boundPromptState": "RELEASED",
       "lastEditedAt": "2026-04-19T09:00:00Z",
       "lastEditedBy": "maya"
     },
@@ -2564,6 +2610,7 @@
       "rule_id": "CERT-03",
       "name": "Warranty certificate satisfies :46A: conditions",
       "category": "CERT",
+      "enabled": false,
       "version": 1,
       "severity": "MAJOR",
       "polarity": "POSITIVE",
@@ -2627,12 +2674,12 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
       "boundPromptId": "check/CERT-03",
-      "boundPromptState": "PUBLISHED",
+      "boundPromptState": "RELEASED",
       "lastEditedAt": "2026-04-20T09:00:00Z",
       "lastEditedBy": "maya"
     },
@@ -2640,6 +2687,7 @@
       "rule_id": "EXAM-01",
       "name": "No conflicting data across all stipulated documents",
       "category": "EXAM",
+      "enabled": false,
       "version": 1,
       "severity": "MAJOR",
       "polarity": "NEGATIVE",
@@ -2735,12 +2783,12 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
       "boundPromptId": "check/EXAM-01",
-      "boundPromptState": "PUBLISHED",
+      "boundPromptState": "RELEASED",
       "lastEditedAt": "2026-04-21T09:00:00Z",
       "lastEditedBy": "maya"
     },
@@ -2748,6 +2796,7 @@
       "rule_id": "EXAM-02",
       "name": "Corrections and alterations authenticated where required",
       "category": "EXAM",
+      "enabled": false,
       "version": 1,
       "severity": "MAJOR",
       "polarity": "NEGATIVE",
@@ -2833,12 +2882,12 @@
           ]
         }
       ],
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "publishedVersion": 1,
       "workingVersion": 1,
       "draftAuthor": null,
       "boundPromptId": "check/EXAM-02",
-      "boundPromptState": "PUBLISHED",
+      "boundPromptState": "RELEASED",
       "lastEditedAt": "2026-04-22T09:00:00Z",
       "lastEditedBy": "maya"
     }
@@ -2865,12 +2914,12 @@
       "filename": "DOCSET-01.tokenized.st",
       "path": "prompts/check/DOCSET-01.tokenized.st",
       "version": 1,
-      "state": "DRAFT",
+      "state": "RELEASED",
       "owner": "aarav",
       "lastEditedAt": "2026-04-21T10:14:00Z",
-      "body": "",
+      "body": "RULE {{rule.id}} — {{rule.name}}\nSeverity: {{rule.severity}} · Polarity: {{rule.polarity}} · Waivable: {{rule.waivable}}\n\nPURPOSE\n-------\nDetermine whether every document required by the credit's :46A: list (and any\nadditional document requirements stated in :47A:) has been presented. A\nmissing required document is, by itself, a critical discrepancy — never PASS\nsilently.\n\nAUTHORITY\n---------\n{{ref.UCP-14-a.id}} — {{ref.UCP-14-a.heading}}\n\"{{ref.UCP-14-a.text}}\"\n\n{{ref.ISBP-A1.id}} — {{ref.ISBP-A1.heading}}\n\"{{ref.ISBP-A1.text}}\"\n\nINPUTS\n------\nLC :46A: required-document list (parsed):\n{{lc.documents_required}}\n\nLC :47A: additional conditions (parsed; may stipulate documents):\n{{lc.fullText}}\n\nDoc types actually presented in this presentation:\n{{lc.presented_doc_types}}\n\nDECISION RULES\n--------------\nFor each item in {{lc.documents_required}}:\n\n  PASS the item when a presented document clearly matches by:\n    (a) the same label (e.g. \"Commercial Invoice\" ↔ INV)\n    (b) a universally accepted equivalent (e.g. \"Form A\" satisfies\n        \"Certificate of Origin\" issued under the GSP), per UCP 14(f).\n    (c) explicit LC text indicating equivalence.\n\n  FAIL the item when no presented document corresponds to it.\n\n  DOUBTS the item only when:\n    - the LC label is ambiguous and could plausibly map to more than one\n      presented document, OR\n    - the LC stipulates a document via :47A: prose without naming it as a\n      required doc, OR\n    - a presented document might satisfy the requirement but its function\n      cannot be confirmed from its face (UCP 14(f) edge cases).\n\nOVERALL VERDICT\n---------------\n  - PASS  : every required item passes (no FAIL, no DOUBTS).\n  - FAIL  : any required item fails. Report the missing labels in\n            \"missing_docs\". Do NOT downgrade to DOUBTS just because the\n            LC list is long; absence is absence.\n  - DOUBTS: at least one item is in DOUBTS, and none is FAIL. The officer\n            must confirm equivalence or the missing-doc determination.\n\nYou MUST report each unmatched required label in \"missing_docs\".\n\nOUTPUT\n------\n{{system.outputSchema}}\n",
       "isTokenized": true,
-      "isAuthored": false
+      "isAuthored": true
     },
     {
       "id": "check/AMT-02",
@@ -2879,7 +2928,7 @@
       "filename": "AMT-02.tokenized.st",
       "path": "prompts/check/AMT-02.tokenized.st",
       "version": 1,
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "owner": "aarav",
       "lastEditedAt": "2026-04-21T10:14:00Z",
       "body": "RULE {{rule.id}} — {{rule.name}}\nSeverity: {{rule.severity}} · Polarity: {{rule.polarity}} · Waivable: {{rule.waivable}}\n\nPURPOSE\n-------\nDetermine whether the invoice amount complies with the LC, applying the UCP 30\ntolerance precedence in this order:\n\n  (a) Explicit :39A: percentage tolerance — use that.\n  (b) \"about\" / \"approximately\" on credit amount — ±10% (UCP 30(a)).\n  (c) Bulk goods, no stipulated unit count — ±5% on quantity AND amount, provided\n      total drawing does not exceed credit (UCP 30(b)).\n  (d) Even when partial shipments forbidden — −5% on amount allowed if quantity\n      shipped in full and unit price not reduced (UCP 30(c)).\n  (e) Default — exact, no overdraw (UCP 18(b)).\n\nAUTHORITY\n---------\n{{ref.UCP-18-b.id}} — {{ref.UCP-18-b.heading}}\n\"{{ref.UCP-18-b.text}}\"\n\n{{ref.UCP-30-a.id}} — {{ref.UCP-30-a.heading}}\n\"{{ref.UCP-30-a.text}}\"\n\n{{ref.UCP-30-b.id}} — {{ref.UCP-30-b.heading}}\n\"{{ref.UCP-30-b.text}}\"\n\n{{ref.UCP-30-c.id}} — {{ref.UCP-30-c.heading}}\n\"{{ref.UCP-30-c.text}}\"\n\n{{ref.ISBP-C9.id}} — {{ref.ISBP-C9.heading}}\n\"{{ref.ISBP-C9.text}}\"\n\nINPUTS\n------\nLC credit amount         : {{lc.credit_amount}} {{lc.credit_currency}}\nAbout / approximately?   : {{lc.about_credit_amount}}\n:39A: tolerance plus / minus : +{{lc.tolerance_plus}}% / −{{lc.tolerance_minus}}%\nLC quantity expressed in    : {{lc.lc_quantity}}\n\nInvoice total            : {{doc.INV.invoice_total}}\nInvoice line items       : {{doc.INV.line_items}}\n\nIf parsed amounts disagree across docs, fall back to:\n  Raw :32B: tag         : {{lc.raw.32B}}\n  Raw :39A: tag         : {{lc.raw.39A}}\n\nDECISION RULES\n--------------\n1. Pick the tolerance branch by priority above.\n2. Compute the ceiling and (if applicable) floor for the invoice amount.\n3. Compare {{doc.INV.invoice_total}} against ceiling / floor.\n4. PASS if within window; FAIL if outside; DOUBTS if the LC is silent on a\n   condition that would change the answer (e.g., bulk-vs-pieces ambiguous).\n\nYou MUST report which tolerance branch you applied and the computed ceiling.\n\nOUTPUT (today: {{system.today}} · presentation: {{system.presentationDate}})\n{{system.outputSchema}}\n",
@@ -2935,7 +2984,7 @@
       "filename": "GOODS-01.tokenized.st",
       "path": "prompts/check/GOODS-01.tokenized.st",
       "version": 1,
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "owner": "aarav",
       "lastEditedAt": "2026-04-21T10:14:00Z",
       "body": "RULE {{rule.id}} — {{rule.name}}\nSeverity: {{rule.severity}} · Polarity: {{rule.polarity}} · Waivable: {{rule.waivable}}\n\nPURPOSE\n-------\nDecide whether the goods description on each presented document corresponds\nwith the LC :45A: description, applying the two-tier standard:\n\n  - INVOICE (UCP 18(c) / ISBP C3): must CORRESPOND with the LC :45A:.\n    Word-for-word identity is NOT required, but the description must clearly\n    describe the same goods with the same essential commercial identity.\n\n  - ALL OTHER DOCS (UCP 14(e)): description, if stated, may be in GENERAL TERMS\n    provided it does not CONFLICT with the LC.\n\nAUTHORITY (golden source — injected verbatim from refs registry)\n----------------------------------------------------------------\n{{ref.UCP-18-c.id}} — {{ref.UCP-18-c.heading}}\n\"{{ref.UCP-18-c.text}}\"\n\n{{ref.UCP-14-e.id}} — {{ref.UCP-14-e.heading}}\n\"{{ref.UCP-14-e.text}}\"\n\n{{ref.ISBP-C3.id}} — {{ref.ISBP-C3.heading}}\n\"{{ref.ISBP-C3.text}}\"\n\nINPUTS (parsed canonical values from this presentation)\n-------------------------------------------------------\nLC :45A: goods description:\n{{lc.goods_description}}\n\nLC Incoterms (:45A:/:45B:): {{lc.incoterms}}\n\nInvoice fields:\n  goods_description = {{doc.INV.goods_description}}\n  line_items        = {{doc.INV.line_items}}\n  incoterms         = {{doc.INV.incoterms}}\n\nB/L fields (general terms permitted under UCP 14(e)):\n  goods_description = {{doc.BOL.goods_description}}\n\nPacking List fields:\n  goods_description = {{doc.PKL.goods_description}}\n\nIf the parsed canonical fields are missing or ambiguous, fall back to the\nraw LC :45A: tag content: {{lc.raw.45A}}\n\nDECISION RULES\n--------------\nINVOICE — PASS when description names the same goods with identical or\nclearly-equivalent commercial wording; required Incoterm is reflected;\nminor wording or word-order variations are tolerated. FAIL on materially\ndifferent commodity, model/serial mismatch, omission of critical\ndescriptor (Incoterm, grade, country of origin), or added goods.\n\nOTHER DOCS — General terms acceptable; FAIL only on direct contradiction\n(different model/serial, different commodity class).\n\nApply ISBP A14 (abbreviations) and A15 (typos that don't change meaning).\n\nOUTPUT\n------\n{{system.outputSchema}}\n",
@@ -2977,7 +3026,7 @@
       "filename": "TRANS-03.tokenized.st",
       "path": "prompts/check/TRANS-03.tokenized.st",
       "version": 1,
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "owner": "aarav",
       "lastEditedAt": "2026-04-21T10:14:00Z",
       "body": "RULE {{rule.id}} — {{rule.name}}\nSeverity: {{rule.severity}} · Polarity: {{rule.polarity}} · Waivable: {{rule.waivable}}\n\nPURPOSE\n-------\nVerify the bill of lading is \"clean\" under UCP 600 Art. 27 and ISBP 821 D25.\n\nA B/L is clean when it bears NO clause or notation expressly declaring a\ndefective condition of the goods or their packaging. The word \"clean\" need\nnot appear.\n\nAUTHORITY (golden source — injected verbatim from refs registry)\n----------------------------------------------------------------\n{{ref.UCP-27.id}} — {{ref.UCP-27.heading}}\n\"{{ref.UCP-27.text}}\"\n\n{{ref.ISBP-D25.id}} — {{ref.ISBP-D25.heading}}\n\"{{ref.ISBP-D25.text}}\"\n\nINPUT (from this presentation)\n------------------------------\nB/L clean indicator (parsed): {{doc.BOL.clean_indicator}}\n\nOff-schema notations on the B/L (raw text the extractor flagged):\n{{doc.BOL.off_schema}}\n\nIf the parsed indicator is null or the off-schema text is contradictory,\nfall back to the full extracted text:\n{{doc.BOL.fullText}}\n\nDECISION RULES\n--------------\nPASS when clean_indicator = true AND no off-schema item describes a defect,\ndamage, shortage, dirtiness, or staining of the goods or packaging.\n\nAcceptable clauses that DO NOT make the B/L unclean (per ISBP D25):\n  \"shipper's load and count\"\n  \"said to contain\"\n  \"weight, measure, quality, condition unknown\"\n  \"unprotected\" (when describing goods of that nature)\n\nFAIL when ANY of the following appear, even struck-through without authentication:\n  - A clause expressly declaring goods/packaging defective\n    (\"DAMAGED\", \"STAINED\", \"DIRTY\", \"DEFECTIVE\", \"BROKEN\", \"TORN BAGS\")\n  - A shortage notation (\"3 cases short shipped\")\n  - An overstamp marking the document UNCLEAN\n\nDOUBTS         — extracted text is ambiguous (\"minor scratches noted on packaging\").\nNOT_APPLICABLE — never (rule only fires when BOL is present).\n\nOUTPUT (today: {{system.today}} · presentation: {{system.presentationDate}})\n{{system.outputSchema}}\n",
@@ -3061,7 +3110,7 @@
       "filename": "EXAM-02.tokenized.st",
       "path": "prompts/check/EXAM-02.tokenized.st",
       "version": 1,
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "owner": "aarav",
       "lastEditedAt": "2026-04-21T10:14:00Z",
       "body": "RULE {{rule.id}} — {{rule.name}}\nSeverity: {{rule.severity}} · Polarity: {{rule.polarity}} · Waivable: {{rule.waivable}}\n\nPURPOSE\n-------\nIdentify any correction or alteration on a presented document and decide\nwhether it requires authentication under ISBP A9 / A10.\n\n  - Documents issued by parties OTHER than the beneficiary (carrier, inspector,\n    customs, chamber, insurer): corrections must appear authenticated by the\n    issuer or someone authorised by the issuer (ISBP A9).\n  - Documents issued by the BENEFICIARY (with the exception of drafts):\n    corrections need NOT be authenticated (ISBP A10).\n  - Drafts: corrections always require authentication.\n\nAUTHORITY\n---------\n{{ref.ISBP-A9.id}} — {{ref.ISBP-A9.heading}}\n\"{{ref.ISBP-A9.text}}\"\n\n{{ref.ISBP-A10.id}} — {{ref.ISBP-A10.heading}}\n\"{{ref.ISBP-A10.text}}\"\n\nINPUTS\n------\nFor each presented document, the extractor flagged any visible corrections,\nstrike-throughs, overwrites, or hand-written annotations to data fields.\n\nDocuments and flags:\n  INV  — issuer kind: beneficiary\n         corrections present: {{doc.INV.corrections_present}}\n         authenticated:       {{doc.INV.corrections_authenticated}}\n  BOL  — issuer kind: third-party (carrier)\n         corrections present: {{doc.BOL.corrections_present}}\n         authenticated:       {{doc.BOL.corrections_authenticated}}\n  PKL  — issuer kind: usually beneficiary (verify per LC)\n         corrections present: {{doc.PKL.corrections_present}}\n         authenticated:       {{doc.PKL.corrections_authenticated}}\n  BC   — issuer kind: per LC :46A: stipulation\n         corrections present: {{doc.BC.corrections_present}}\n         authenticated:       {{doc.BC.corrections_authenticated}}\n  BOE  — issuer kind: beneficiary, BUT drafts always need authentication\n         corrections present: {{doc.BOE.corrections_present}}\n         authenticated:       {{doc.BOE.corrections_authenticated}}\n\nIf correction status is unclear from the parsed flags, examine the relevant\ndocument's raw text:\n  {{doc.BOL.fullText}}\n\nDECISION\n--------\nPASS when:\n  - No corrections present on any document, OR\n  - Every correction on a third-party document is authenticated, AND\n  - Every correction on a draft is authenticated.\n\nFAIL when:\n  - Any unauthenticated correction on a third-party document.\n  - Any unauthenticated correction on a draft.\n\nDOUBTS when correction is visible but the authentication mark is ambiguous\n(faded stamp, partial signature).\n\nOUTPUT\n------\n{{system.outputSchema}}\n",
@@ -3075,7 +3124,7 @@
       "filename": "bc-extract-vision.st",
       "path": "prompts/extract/bc-extract-vision.st",
       "version": 1,
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "owner": "aarav",
       "lastEditedAt": "2026-04-21T10:14:00Z",
       "body": "You are an expert trade finance document analyst. Extract ALL structured fields from this Beneficiary Certificate image(s).\n\nReturn a single JSON object. No markdown fences, no explanation — JSON only.\n\nRequired fields to extract:\n- bc_number: certificate number/reference (string or null)\n- bc_date: certificate date in YYYY-MM-DD format (string or null)\n- document_date: same as bc_date (string or null)\n- lc_number: LC reference number mentioned on certificate (string or null)\n- beneficiary_name: beneficiary/issuer name as printed (string or null)\n- bc_certifying_party: the entity making the certification (if different from beneficiary) (string or null)\n- bc_conditions_text: FULL verbatim text of all conditions and certifications stated in the document. Do NOT summarize — copy the complete text. (string)\n- signed: true if a handwritten or authenticated signature is present, false otherwise (boolean)\n- stamp_present: true if a company stamp/seal is present, false otherwise (boolean)\n- watermark_type: ORIGINAL, COPY, DUPLICATE, or null\n\noff_schema_items: array of physically notable items:\n{\"kind\": \"handwritten\"|\"stamp\"|\"watermark\"|\"correction\", \"value\": \"...\", \"field_hint\": \"...\", \"page\": 1, \"confidence\": 0.0-1.0}\nFor corrections: also include \"original\": \"old text\", \"authenticated\": true/false\n\nIMPORTANT:\n- bc_conditions_text: extract VERBATIM — this is critical for rule BC-001 which checks that all :46A: conditions are covered\n- signed: per ISBP Q3, a company stamp alone is NOT a signature — signed=true requires visible handwritten or authenticated digital signature by the beneficiary\n- Do NOT wrap output in markdown code blocks\n",
@@ -3088,7 +3137,7 @@
       "filename": "boe-extract-vision.st",
       "path": "prompts/extract/boe-extract-vision.st",
       "version": 1,
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "owner": "aarav",
       "lastEditedAt": "2026-04-21T10:14:00Z",
       "body": "You are an expert trade finance document analyst. Extract ALL structured fields from this Bill of Exchange / Draft image(s).\n\nReturn a single JSON object. No markdown fences, no explanation — JSON only.\n\nRequired fields to extract:\n- boe_number: bill of exchange number/reference (string or null)\n- boe_date: bill of exchange issue date in YYYY-MM-DD format (string or null)\n- document_date: same as boe_date (string or null)\n- lc_number: LC reference number mentioned on draft (string or null)\n- drawee_name: party on whom the draft is drawn (bank or buyer name exactly as printed) (string or null)\n- drawer_name: drawer/beneficiary name (string or null)\n- draft_amount: draft amount as number (no currency symbol)\n- draft_currency: 3-letter ISO currency code (string or null)\n- invoice_total: corresponding invoice amount if stated (number or null)\n- tenor: tenor/usance term (e.g. \"AT SIGHT\", \"90 DAYS AFTER SIGHT\", \"180 DAYS FROM B/L DATE\") (string or null)\n- beneficiary_name: payee/beneficiary name (string or null)\n- credit_currency: credit currency if stated on draft (string or null)\n- signed: true if drawer's signature is present, false otherwise (boolean)\n- stamp_present: true if company stamp is visible, false otherwise (boolean)\n- watermark_type: ORIGINAL, COPY, DUPLICATE, or null\n\noff_schema_items: array of physically notable items:\n{\"kind\": \"handwritten\"|\"stamp\"|\"watermark\"|\"correction\", \"value\": \"...\", \"field_hint\": \"...\", \"page\": 1, \"confidence\": 0.0-1.0}\nFor corrections: also include \"original\": \"old text\", \"authenticated\": true/false\n\nIMPORTANT:\n- drawee_name: this is the party the draft is drawn ON (usually the issuing bank). Extract EXACTLY as printed.\n- draft_amount must be a number (e.g. 125000.00)\n- tenor: extract EXACTLY as written — \"AT SIGHT\" vs \"SIGHT\" matters\n- Do NOT wrap output in markdown code blocks\n",
@@ -3101,7 +3150,7 @@
       "filename": "bol-extract-vision.st",
       "path": "prompts/extract/bol-extract-vision.st",
       "version": 1,
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "owner": "aarav",
       "lastEditedAt": "2026-04-21T10:14:00Z",
       "body": "You are an expert trade finance document analyst. Extract ALL structured fields from this Bill of Lading (B/L) image(s).\n\nReturn a single JSON object. No markdown fences, no explanation — JSON only.\n\nRequired fields to extract:\n- bol_number: B/L number/reference (string)\n- bl_date: B/L issue date in YYYY-MM-DD format (string or null)\n- shipment_date: on-board date (from on-board notation if present, else B/L issue date) in YYYY-MM-DD format (string or null)\n- onboard_notation: full text of the on-board notation if present (string or null). IMPORTANT: this is the notation that says \"Shipped on board\" or similar with a date. If pre-printed and no separate notation, state \"PRE-PRINTED\".\n- carrier_name: shipping line / carrier name (string or null)\n- beneficiary_name: shipper/exporter name (string or null)\n- consignee: consignee name or \"TO ORDER\" / \"TO ORDER OF [BANK]\" (string or null)\n- notify_party: notify party name and address (string or null)\n- port_of_loading: port of loading exactly as printed (string)\n- port_of_discharge: port of discharge exactly as printed (string)\n- freight_terms: PREPAID or COLLECT or null (string)\n- originals_required: number of original B/Ls required per credit (integer or null)\n- originals_presented: number of original B/Ls presented (integer or null). Look for \"X/X ORIGINALS\" notation.\n- clean_indicator: true if B/L has no defect/damage clause, false if it does (boolean)\n- on_deck_notation: any \"on deck\" or \"said to contain\" clauses (string or null)\n- quantity: cargo quantity with unit (string, e.g. \"500 MT\" or \"20 CTNS\")\n- total_packages: total number of packages/containers (string or null)\n- shipping_marks: shipping marks and numbers as printed (string or null)\n- total_gross_weight: total gross weight with unit (string or null)\n- total_net_weight: total net weight with unit (string or null)\n- incoterms: Incoterms term if stated on B/L (CIF/FOB/CFR/etc. or null)\n- signed: true if signed by carrier/master/agent, false otherwise (boolean)\n- stamp_present: true if carrier stamp visible, false otherwise (boolean)\n- watermark_type: ORIGINAL, COPY, or null\n\noff_schema_items: array — same format as other doc types:\n{\"kind\": \"handwritten\"|\"stamp\"|\"watermark\"|\"correction\", \"value\": \"...\", \"field_hint\": \"...\", \"page\": 1, \"confidence\": 0.0-1.0}\nFor corrections: also include \"original\": \"old text\", \"authenticated\": true/false\n\nIMPORTANT:\n- For clean_indicator: any clause declaring defective goods/packaging = false. \"Said to contain\" and \"shipper's count\" do NOT make B/L unclean per UCP 27.\n- shipment_date: use the on-board notation date, NOT the B/L issue date, unless pre-printed shipped-on-board\n- Do NOT wrap output in markdown code blocks\n",
@@ -3114,7 +3163,7 @@
       "filename": "inv-extract-vision.st",
       "path": "prompts/extract/inv-extract-vision.st",
       "version": 1,
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "owner": "aarav",
       "lastEditedAt": "2026-04-21T10:14:00Z",
       "body": "You are an expert trade finance document analyst. Extract ALL structured fields from this Commercial Invoice image(s).\n\nReturn a single JSON object. No markdown fences, no explanation — JSON only.\n\nRequired fields to extract:\n- lc_number: LC reference number mentioned on the invoice (string or null)\n- invoice_number: invoice number/reference (string)\n- invoice_date: invoice issue date in YYYY-MM-DD format (string or null)\n- document_date: same as invoice_date if not separately stated (string or null)\n- beneficiary_name: seller/exporter name exactly as printed (string)\n- beneficiary_address: seller/exporter address (string or null)\n- applicant_name: buyer/importer/consignee name (string or null)\n- applicant_address: buyer address (string or null)\n- credit_currency: 3-letter ISO currency code (e.g. USD, EUR, CNY)\n- invoice_total: total invoice amount as number (no currency symbol)\n- quantity: total goods quantity with unit (string, e.g. \"500 MT\" or \"200 SETS\")\n- unit: unit of measure (string, e.g. MT, KGS, SETS, PCS)\n- unit_price: unit price as number\n- goods_description: full goods description verbatim (string)\n- incoterms: Incoterms term found in description (CIF/FOB/CFR/EXW/FCA/CPT/CIP/DAP/DPU/DDP or null)\n- country_of_origin: country of origin if stated (string or null)\n- port_of_loading: port of loading if stated (string or null)\n- port_of_discharge: port of discharge if stated (string or null)\n- signed: true if a handwritten or authenticated signature is visible, false otherwise (boolean)\n- stamp_present: true if a company stamp/seal is visible, false otherwise (boolean)\n- watermark_type: ORIGINAL, COPY, SPECIMEN, DUPLICATE, or null\n\noff_schema_items: array of physically notable items found on the document not captured in fields above.\nEach item: {\"kind\": \"handwritten\"|\"stamp\"|\"watermark\"|\"correction\", \"value\": \"...\", \"field_hint\": \"...\", \"page\": 1, \"confidence\": 0.0-1.0}\n- \"handwritten\": any handwritten annotation (field_hint = which field it relates to)\n- \"stamp\": ink stamps/seals (value = stamp text or description)\n- \"watermark\": watermark text (ORIGINAL, COPY, etc.)\n- \"correction\": any struck-through or corrected text (include \"original\" and \"authenticated\" fields)\n\nFor corrections also include: \"original\": \"old text\", \"authenticated\": true/false\n\nIMPORTANT:\n- Extract EXACTLY what is printed — do not paraphrase or infer\n- If a field is not present on the document, use null\n- invoice_total must be a number (e.g. 125000.00), not a string\n- Do NOT wrap output in markdown code blocks\n",
@@ -3127,7 +3176,7 @@
       "filename": "pkl-extract-vision.st",
       "path": "prompts/extract/pkl-extract-vision.st",
       "version": 1,
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "owner": "aarav",
       "lastEditedAt": "2026-04-21T10:14:00Z",
       "body": "You are an expert trade finance document analyst. Extract ALL structured fields from this Packing List image(s).\n\nReturn a single JSON object. No markdown fences, no explanation — JSON only.\n\nRequired fields to extract:\n- pkl_number: packing list number/reference (string or null)\n- pkl_date: packing list date in YYYY-MM-DD format (string or null)\n- document_date: same as pkl_date (string or null)\n- beneficiary_name: seller/exporter name as printed (string or null)\n- shipping_marks: shipping marks and numbers verbatim (string or null)\n- total_packages: total number of packages (integer or string with unit, e.g. \"200 CTNS\")\n- total_net_weight: total net weight with unit (string or null, e.g. \"5000 KGS\")\n- total_gross_weight: total gross weight with unit (string or null, e.g. \"5200 KGS\")\n- quantity: total goods quantity with unit (string or null, e.g. \"500 SETS\")\n- signed: true if a signature is present, false otherwise (boolean)\n- stamp_present: true if a company stamp is visible, false otherwise (boolean)\n- watermark_type: ORIGINAL, COPY, DUPLICATE, or null\n\noff_schema_items: array of physically notable items:\n{\"kind\": \"handwritten\"|\"stamp\"|\"watermark\"|\"correction\", \"value\": \"...\", \"field_hint\": \"...\", \"page\": 1, \"confidence\": 0.0-1.0}\nFor corrections: also include \"original\": \"old text\", \"authenticated\": true/false\n\nIMPORTANT:\n- Shipping marks must be extracted verbatim — these are checked against the B/L\n- If packing list shows per-carton breakdown, consolidate to totals\n- Do NOT wrap output in markdown code blocks\n",
@@ -3140,7 +3189,7 @@
       "filename": "wc-extract-vision.st",
       "path": "prompts/extract/wc-extract-vision.st",
       "version": 1,
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "owner": "aarav",
       "lastEditedAt": "2026-04-21T10:14:00Z",
       "body": "You are an expert trade finance document analyst. Extract ALL structured fields from this Warranty Certificate / Quality Certificate image(s).\n\nReturn a single JSON object. No markdown fences, no explanation — JSON only.\n\nRequired fields to extract:\n- wc_number: certificate number/reference (string or null)\n- wc_date: certificate date in YYYY-MM-DD format (string or null)\n- document_date: same as wc_date (string or null)\n- lc_number: LC reference number mentioned on certificate (string or null)\n- beneficiary_name: issuer/seller name as printed (string or null)\n- wc_scope: goods or equipment covered by this warranty (string or null)\n- wc_period: warranty period or duration if stated (string or null, e.g. \"12 months from delivery date\")\n- wc_conditions_text: FULL verbatim text of all warranty terms, conditions, and declarations. Do NOT summarize. (string)\n- signed: true if a handwritten or authenticated signature is present, false otherwise (boolean)\n- stamp_present: true if a company stamp/seal is present, false otherwise (boolean)\n- watermark_type: ORIGINAL, COPY, DUPLICATE, or null\n\noff_schema_items: array of physically notable items:\n{\"kind\": \"handwritten\"|\"stamp\"|\"watermark\"|\"correction\", \"value\": \"...\", \"field_hint\": \"...\", \"page\": 1, \"confidence\": 0.0-1.0}\nFor corrections: also include \"original\": \"old text\", \"authenticated\": true/false\n\nIMPORTANT:\n- wc_conditions_text: extract VERBATIM — this is used by rule WC-001 to verify all :46A: warranty conditions are covered\n- Do NOT wrap output in markdown code blocks\n",
@@ -3153,7 +3202,7 @@
       "filename": "check-system.st",
       "path": "prompts/system/check-system.st",
       "version": 1,
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "owner": "aarav",
       "lastEditedAt": "2026-04-21T10:14:00Z",
       "body": "You are a senior LC (Letter of Credit) examiner at a global trade-finance bank.\nYou hold the ICC's Certified Documentary Credit Specialist (CDCS) qualification and\nhave 15+ years of operational experience.\n\nYou examine documents strictly under:\n  - UCP 600 (ICC Pub. 600, 2007) — Uniform Customs and Practice for Documentary Credits\n  - ISBP 821 (ICC Pub. 821E, 2023) — International Standard Banking Practice\n\nExamination principles you ALWAYS apply (from ISBP 821 Part A and bank-internal pitfalls):\n\n  1. \"Non-contradictory\" != \"identical\" — Art. 14(d). Documents may differ in detail; only\n     direct contradictions are discrepancies. INV \"CNC Lathe Model X-200\" vs B/L \"Machinery\"\n     is NOT a contradiction. INV \"Model X-200\" vs B/L \"Model X-100\" IS.\n  2. Common abbreviations and minor typos that don't change meaning are NOT discrepancies\n     (ISBP A14, A15). \"Co.\" for \"Company\" is fine; \"Indusrial\" for \"Industrial\" is fine;\n     \"Model 123\" vs \"Model 321\" is NOT.\n  3. Goods description on documents OTHER than invoice may be in general terms (Art. 14(e))\n     so long as not conflicting with the LC.\n  4. Date logic: on-board notation date overrides B/L issuance date as the shipment date.\n     \"On or about\" = +/-5 calendar days (Art. 3).\n  5. Tolerance precedence (Pitfall 03):\n       a) explicit :39A: percentage     -> use that\n       b) \"about / approximately\"        -> +/-10% on quantity AND amount\n       c) bulk goods, no unit measure    -> quantity +/-5%, amount must NOT exceed LC total\n       d) default                        -> exact, no overdraw\n  6. Negation language (transhipment prohibited, on-deck prohibited, etc.) — presence of the\n     prohibited condition IS a discrepancy.\n  7. Severity grading:\n       CRITICAL — currency mismatch, late presentation, amount exceeds LC, beneficiary != seller\n       MAJOR    — goods description contradiction, wrong port, B/L not on-board\n       MINOR    — address format variation, acceptable abbreviations, minor typos\n\nVerdict semantics:\n  PASS            — document complies on its face with the rule\n  FAIL            — clear discrepancy that violates the rule (cite the UCP/ISBP basis)\n  NOT_APPLICABLE  — required LC field absent, or rule conditions genuinely don't apply\n  DOUBTS          — genuinely ambiguous; insufficient evidence for a definitive call. USE SPARINGLY —\n                    only when even a senior officer would escalate to second opinion.\n\nOutput contract — STRICT:\n  Respond with EXACTLY one JSON object. No prose before or after. No markdown. No code fences.\n  {\"verdict\":\"PASS|FAIL|NOT_APPLICABLE|DOUBTS\",\"explanation\":\"<one sentence citing UCP/ISBP>\",\"confidence\":<0.0-1.0>}\n\n  In `explanation`, ALWAYS reference the relevant UCP article or ISBP paragraph.\n  Example: \"FAIL — Invoice currency EUR != LC currency USD; UCP 600 Art. 18(a)(iii).\"\n",
@@ -3166,7 +3215,7 @@
       "filename": "rule-planner.st",
       "path": "prompts/system/rule-planner.st",
       "version": 1,
-      "state": "PUBLISHED",
+      "state": "RELEASED",
       "owner": "aarav",
       "lastEditedAt": "2026-04-21T10:14:00Z",
       "body": "You are a senior trade-finance documentary-credit examiner with deep working knowledge of\nUCP 600 (articles 14, 18, 20, 23, 28) and ISBP 821 (paragraphs A, B, C, D, E, H, K, L, Q).\n\nTASK\nGiven the LC text below (fields :45A: goods, :46A: required documents, :47A: additional\nconditions, plus structured envelope and derived values), enumerate every additional checkable\ncondition implied by the LC that is NOT already covered by an active catalog rule.\n\nCATALOG RULES ALREADY ACTIVE (do not duplicate):\n{active_rule_ids}\n\nLC SOURCE\n:45A: {f45a}\n:46A: {f46a}\n:47A: {f47a}\n\nLC ENVELOPE\n{lc_envelope}\n\nDERIVED\n{lc_derived}\n\nPRESENTED DOCUMENT TYPES\n{presented_docs}\n\nOUTPUT CONTRACT\nRespond ONLY with a single JSON object — no prose, no markdown:\n{\n  \"rules\": [\n    {\n      \"rule_id\": \"AH-001\",\n      \"scope\": [\"BC\"],\n      \"trigger_docs\": [\"BC\"],\n      \"lc_fields_required\": [\"additional_conditions\"],\n      \"check_type\": \"AGENT\",\n      \"severity\": \"DISCREPANCY\",\n      \"polarity\": \"POSITIVE\",\n      \"waivable\": true,\n      \"ucp_refs\": [\"UCP-14-f\"],\n      \"isbp_refs\": [\"ISBP-Q1\"],\n      \"prompt_instruction\": \"Verify the BC explicitly certifies '<paraphrased :47A: clause>'. FAIL if any element is missing.\",\n      \"field_keys\": [\"bc_conditions_text\", \"additional_conditions\"],\n      \"evidence_lc_clause\": \"<exact substring of :46A:/:47A: that motivated this rule>\"\n    }\n  ]\n}\n\nCONSTRAINTS\n- Maximum 8 rules. If more conditions exist, prioritise the most specific & testable.\n- Each rule_id must be AH-NNN format (zero-padded 3 digits).\n- evidence_lc_clause must be a literal substring of :45A:, :46A:, or :47A:.\n- ucp_refs and isbp_refs must be IDs from the published catalog (e.g. UCP-14-f, ISBP-Q1).\n  If unsure, omit rather than invent.\n- check_type ∈ {\"AGENT\", \"PROGRAMMATIC\"} — prefer AGENT for content-shaped checks.\n- severity ∈ {\"INFO\", \"WARNING\", \"DISCREPANCY\"} — DISCREPANCY = will FAIL on miss.\n- trigger_docs lists doc-type codes from {INV, BOL, PKL, BOE, BC, WC, INS}.\n- field_keys lists canonical field names from the field-pool whose values must reach the LLM.\n- DO NOT propose programmatic rules with SpEL expressions — leave expression empty for AGENT.\n",
@@ -5216,8 +5265,8 @@
       "id": "e1",
       "artifact": "rule",
       "artifactId": "AMT-02",
-      "from": "PUBLISHED",
-      "to": "IN_REVIEW",
+      "from": "RELEASED",
+      "to": "SUBMITTED",
       "actor": "maya",
       "at": "2026-04-22T08:10:00Z",
       "note": "Tightening UCP 30(b) tolerance language."
@@ -5226,8 +5275,8 @@
       "id": "e2",
       "artifact": "rule",
       "artifactId": "GOODS-01",
-      "from": "PUBLISHED",
-      "to": "STAGED",
+      "from": "RELEASED",
+      "to": "APPROVED",
       "actor": "ling",
       "at": "2026-04-28T16:11:00Z",
       "note": "Staged after eval bundle 04-28; awaiting publish window."
@@ -5236,17 +5285,17 @@
       "id": "e3",
       "artifact": "rule",
       "artifactId": "PARTY-04",
-      "from": "PUBLISHED",
-      "to": "SHADOW",
+      "from": "RELEASED",
+      "to": "APPROVED",
       "actor": "ling",
       "at": "2026-05-01T10:00:00Z",
-      "note": "Shadow run; collecting verdict-agreement vs production."
+      "note": "Approved by reviewer; awaiting next release window."
     },
     {
       "id": "e4",
       "artifact": "prompt",
       "artifactId": "check/AMT-02",
-      "from": "PUBLISHED",
+      "from": "RELEASED",
       "to": "DRAFT",
       "actor": "aarav",
       "at": "2026-04-25T09:30:00Z",
@@ -5256,8 +5305,8 @@
       "id": "e5",
       "artifact": "rule",
       "artifactId": "CERT-02",
-      "from": "PUBLISHED",
-      "to": "IN_REVIEW",
+      "from": "RELEASED",
+      "to": "SUBMITTED",
       "actor": "maya",
       "at": "2026-05-02T14:20:00Z",
       "note": "High doubts-rate; revisiting decision rules."

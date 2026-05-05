@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useStore } from '../store';
 import { StateBadge } from '../components/StateBadge';
+import { SortableTH, useSort } from '../components/SortableTH';
 
 const KINDS = [
   { id: 'check', label: 'Check', desc: 'Per-rule LLM examination prompts' },
@@ -17,6 +18,16 @@ export function PromptsPage() {
 
   const filtered = prompts.filter((p) => p.kind === kind);
   const findRule = (pid) => rules.find((r) => r.boundPromptId === pid);
+
+  const STATE_RANK = { DRAFT: 0, SUBMITTED: 1, APPROVED: 2, RELEASED: 3 };
+  const { sort, setSort, apply } = useSort({ key: 'path', dir: 'asc' });
+  const sorted = apply(filtered, {
+    path:         (p) => p.path,
+    boundRuleId:  (p) => p.boundRuleId || 'zzz',
+    state:        (p) => STATE_RANK[p.state] ?? 9,
+    lines:        (p) => (p.body || '').split('\n').length,
+    lastEditedAt: (p) => p.lastEditedAt,
+  });
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -59,16 +70,16 @@ export function PromptsPage() {
         <table className="w-full text-xs">
           <thead className="bg-slate2 text-[10px] uppercase tracking-wider text-muted">
             <tr>
-              <th className="text-left px-3 py-2 font-medium">File</th>
-              <th className="text-left px-3 py-2 font-medium w-32">Bound rule</th>
-              <th className="text-left px-3 py-2 font-medium w-24">State</th>
-              <th className="text-left px-3 py-2 font-medium w-16">Lines</th>
-              <th className="text-left px-3 py-2 font-medium w-32">Last edited</th>
+              <SortableTH sortKey="path"         sort={sort} setSort={setSort}>File</SortableTH>
+              <SortableTH sortKey="boundRuleId"  sort={sort} setSort={setSort} className="w-32">Bound rule</SortableTH>
+              <SortableTH sortKey="state"        sort={sort} setSort={setSort} className="w-24">State</SortableTH>
+              <SortableTH sortKey="lines"        sort={sort} setSort={setSort} className="w-16">Lines</SortableTH>
+              <SortableTH sortKey="lastEditedAt" sort={sort} setSort={setSort} className="w-32">Last edited</SortableTH>
               <th className="w-8" />
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
-            {filtered.map((p) => {
+            {sorted.map((p) => {
               const r = findRule(p.id);
               return (
                 <tr

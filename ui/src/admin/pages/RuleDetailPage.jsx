@@ -1,378 +1,620 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useStore, transitionRule, updateRuleField } from '../store';
 import { useRole } from '../RoleContext';
-import { StateBadge, SeverityBadge, TierBadge } from '../components/StateBadge';
-import { HighlightedViewer, PROSE_LEGEND } from '../components/HighlightedEditor';
-import { ResolvedPreview } from '../components/ResolvedPreview';
-import { EvalSection } from '../components/EvalSection';
-import { HealthChips } from '../components/HealthChips';
+import { StateBadge } from '../components/StateBadge';
+
+const CATEGORIES   = ['DATE', 'DOCSET', 'AMT', 'PARTY', 'GOODS', 'TRANS', 'INS', 'CERT', 'EXAM'];
+const TIERS        = ['PROGRAMMATIC', 'AGENT', 'AGENT_TOOL', 'AGENTIC'];
+const SEVERITIES   = ['CRITICAL', 'MAJOR', 'MINOR'];
+const POLARITIES   = ['POSITIVE', 'NEGATIVE'];
+const DOCTYPES     = ['LC', 'INV', 'BOL', 'PKL', 'BOE', 'BC', 'WC', 'INS'];
+
+// Reasoning is N/A for deterministic SpEL; defaulted on for full tool-loop AGENTIC,
+// off for single-call AGENT and one-round AGENT_TOOL.
+const REASONING_DEFAULT = { AGENT: false, AGENT_TOOL: false, AGENTIC: true };
+const reasoningEnabled = (rule) =>
+  rule.reasoning !== undefined ? !!rule.reasoning : !!REASONING_DEFAULT[rule.check_type];
 
 export function RuleDetailPage() {
   const { ruleId } = useParams();
-  const rule = useStore((s) => s.rules.find((r) => r.rule_id === ruleId));
-  const refs = useStore((s) => s.refs);
-  const events = useStore((s) => s.lifecycleEvents.filter((e) => e.artifact === 'rule' && e.artifactId === ruleId));
-  const prompt = useStore((s) => s.prompts.find((p) => p.id === rule?.boundPromptId));
-  const users = useStore((s) => s.users);
+  const rule       = useStore((s) => s.rules.find((r) => r.rule_id === ruleId));
+  const refs       = useStore((s) => s.refs);
+  const fields     = useStore((s) => s.fields);
+  const allPrompts = useStore((s) => s.prompts.filter((p) => p.kind === 'check'));
+  const prompt     = useStore((s) => s.prompts.find((p) => p.id === rule?.boundPromptId));
+  const events     = useStore((s) => s.lifecycleEvents.filter((e) => e.artifact === 'rule' && e.artifactId === ruleId));
+  const users      = useStore((s) => s.users);
   const { role, can } = useRole();
-  const [tab, setTab] = useState('definition');
+  const [showHist, setShowHist] = useState(false);
 
   if (!rule) return <div className="p-6 text-sm">Rule not found.</div>;
 
-  const cite = (id) => {
-    const all = [...refs.ucp600, ...refs.isbp821];
-    return all.find((x) => x.id === id);
-  };
+  const editable = can('rule.definition');
   const userById = (id) => users.find((u) => u.id === id);
+  const set = (k, v) => updateRuleField(rule.rule_id, k, v, role.id);
 
-  const editable = can('rule.definition') && rule.state !== 'PUBLISHED' && rule.state !== 'STAGED';
-  const canReview = can('rule.review.approve');
+  const next = { DRAFT: 'SUBMITTED', SUBMITTED: 'APPROVED', APPROVED: 'RELEASED' }[rule.state];
+  const nextLabel = { SUBMITTED: 'Submit', APPROVED: 'Approve', RELEASED: 'Release' }[next];
 
-  const next = {
-    DRAFT: 'IN_REVIEW',
-    IN_REVIEW: 'STAGED',
-    STAGED: 'PUBLISHED',
-  }[rule.state];
-  const nextLabel = {
-    IN_REVIEW: 'Submit for review',
-    STAGED: 'Approve & stage',
-    PUBLISHED: 'Publish',
-  }[next];
-  const nextAllowed =
-    (next === 'IN_REVIEW' && can('rule.definition')) ||
-    (next === 'STAGED' && canReview) ||
-    (next === 'PUBLISHED' && can('lifecycle.publish'));
+  const showReasoning = rule.check_type !== 'PROGRAMMATIC';
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <Link to="/admin/rules" className="text-xs text-muted hover:text-navy-1">← Rules</Link>
-
-      {/* Header */}
-      <div className="mt-2 flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <span className="font-mono text-sm">{rule.rule_id}</span>
-            {rule.category && (
-              <span className="text-[10px] uppercase tracking-wider bg-slate2 border border-line text-muted px-1.5 py-0.5 rounded font-mono">
-                {rule.category}
-              </span>
-            )}
-            <StateBadge state={rule.state} />
-            <TierBadge type={rule.check_type} />
-            <SeverityBadge severity={rule.severity} />
-            <HealthChips signals={rule.health_signals} layout="dots" />
-            <span className="text-[10px] text-muted">v{rule.publishedVersion} published · v{rule.workingVersion} working</span>
-          </div>
-          <h1 className="text-2xl font-serif" style={{ fontFamily: 'ui-serif, Georgia, serif' }}>{rule.name}</h1>
-        </div>
-        <div className="flex gap-2 shrink-0">
+    <div className="px-6 py-5 max-w-[1280px] mx-auto">
+      {/* ── BREADCRUMB / STATE / ACTIONS ─────────────────────────────────── */}
+      <div className="flex items-center gap-2 text-xs">
+        <Link to="/admin/rules" className="text-muted hover:text-navy-1">← Rules</Link>
+        <span className="text-muted">/</span>
+        <span className="font-mono text-navy-1/80">{rule.rule_id}</span>
+        <span className="ml-auto flex items-center gap-3">
+          <StateBadge state={rule.state} />
+          <span className="text-[10px] text-muted font-mono">v{rule.publishedVersion} · v{rule.workingVersion}</span>
+          <button onClick={() => setShowHist((v) => !v)}
+                  className="text-[11px] text-muted hover:text-teal-1">
+            history ({events.length}) {showHist ? '▴' : '▾'}
+          </button>
           {next && (
             <button
-              disabled={!nextAllowed}
               onClick={() => transitionRule(rule.rule_id, next, role.id, `${role.role} action`)}
-              className={`text-xs px-3 py-1.5 rounded transition ${
-                nextAllowed
-                  ? 'bg-teal-1 text-white hover:bg-teal-2 shadow-sm'
-                  : 'bg-slate-100 text-muted cursor-not-allowed border border-line'
-              }`}
-              title={!nextAllowed ? `Requires a different role (current: ${role.role})` : ''}
+              className="text-xs px-3 py-1.5 bg-teal-1 text-white rounded hover:bg-teal-2 shadow-sm"
             >
               {nextLabel}
             </button>
           )}
-          {rule.state === 'DRAFT' && (
-            <button
-              onClick={() => transitionRule(rule.rule_id, 'PUBLISHED', role.id, 'Reverted')}
-              className="text-xs px-3 py-1.5 border border-line rounded hover:bg-slate2"
-              title="Discard draft"
-            >
-              Discard
-            </button>
-          )}
-        </div>
+        </span>
       </div>
 
-      {/* Provenance strip */}
-      <div className="mt-4 bg-paper border border-line rounded p-3">
-        <div className="text-[10px] uppercase tracking-wider text-muted mb-2">Provenance</div>
-        <div className="flex items-center gap-3 overflow-x-auto">
-          {events.length === 0 && <span className="text-xs text-muted">No history</span>}
-          {events.slice().reverse().map((e, i) => (
-            <React.Fragment key={e.id}>
-              {i > 0 && <span className="text-muted text-xs">·</span>}
-              <div className="flex flex-col items-center text-center min-w-[100px]">
-                <StateBadge state={e.to} />
-                <span className="text-[10px] text-muted mt-1">{new Date(e.at).toLocaleDateString()}</span>
-                <span className="text-[10px] font-medium">{userById(e.actor)?.name?.split(' ')[0] || e.actor}</span>
-              </div>
-            </React.Fragment>
+      {showHist && (
+        <div className="mt-2 bg-paper border border-line rounded px-3 py-2 text-[11px]">
+          {events.length === 0 && <span className="text-muted">No history</span>}
+          {events.map((e) => (
+            <div key={e.id} className="flex gap-2 items-center py-0.5">
+              <span className="font-mono text-muted w-32">{new Date(e.at).toLocaleString()}</span>
+              {e.from && <StateBadge state={e.from} />}
+              <span className="text-muted">→</span>
+              <StateBadge state={e.to} />
+              <span className="text-muted">@{userById(e.actor)?.name?.split(' ')[0] || e.actor}</span>
+              <span className="text-muted truncate">{e.note}</span>
+            </div>
           ))}
         </div>
-      </div>
+      )}
 
-      {/* Tabs */}
-      <div className="mt-6 border-b border-line flex gap-4 text-xs">
-        {['definition', 'citations', 'prompt', 'eval', 'health'].map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`pb-2 border-b-2 -mb-px transition ${
-              tab === t ? 'border-teal-1 text-teal-1 font-medium' : 'border-transparent text-muted hover:text-navy-1'
-            }`}
-          >
-            {t === 'definition' && 'Definition'}
-            {t === 'citations' && `Citations (${(rule.ucp_refs?.length || 0) + (rule.isbp_refs?.length || 0)})`}
-            {t === 'prompt' && (rule.boundPromptId ? 'Bound prompt' : 'No prompt (SpEL)')}
-            {t === 'eval' && `Eval (${rule.eval_cases?.length || 0})`}
-            {t === 'health' && 'Health'}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'definition' && (
-        <div className="grid grid-cols-3 gap-6 mt-4">
-          <div className="col-span-2 space-y-3">
-            <Field label="Display name" value={rule.name} editable={editable}
-                   onSave={(v) => updateRuleField(rule.rule_id, 'name', v, role.id)} />
-            <Field label="Canonical field" value={rule.canonical_field} mono />
-            <Field label="Severity" value={rule.severity} editable={editable} options={['CRITICAL', 'MAJOR', 'MINOR']}
-                   onSave={(v) => updateRuleField(rule.rule_id, 'severity', v, role.id)} />
-            <Field label="Polarity" value={rule.polarity} editable={editable} options={['POSITIVE', 'NEGATIVE']}
-                   onSave={(v) => updateRuleField(rule.rule_id, 'polarity', v, role.id)} />
-            <Field label="Waivable" value={String(rule.waivable)} editable={editable} options={['true', 'false']}
-                   onSave={(v) => updateRuleField(rule.rule_id, 'waivable', v === 'true', role.id)} />
-            <Field label="Applies to" value={(rule.applies_to || []).join(', ')} mono />
-            <Field label="Trigger docs" value={(rule.trigger_docs || []).join(', ') || '—'} mono />
-            <Field label="LC fields required" value={(rule.lc_fields_required || []).join(', ') || '—'} mono />
-            <Field label="UCP excerpt (LLM context)"
-                   value={rule.ucp_excerpt} multiline editable={editable}
-                   onSave={(v) => updateRuleField(rule.rule_id, 'ucp_excerpt', v, role.id)} />
+      {/* ── HERO: ID + NAME + SPEC LIST ─────────────────────────────────── */}
+      <div className="mt-4 bg-paper border border-line rounded-lg shadow-sm">
+        <div className="px-6 pt-5 pb-4 border-b border-line/70">
+          <div className="flex items-baseline gap-3">
+            <span className="font-mono text-base text-teal-1 tracking-tight">{rule.rule_id}</span>
+            <span className="text-[10px] uppercase tracking-[0.18em] text-muted">rule definition</span>
           </div>
-          <aside className="col-span-1">
-            <div className="bg-paper border border-line rounded p-3">
-              <div className="text-[10px] uppercase tracking-wider text-muted mb-2">Token contract</div>
-              <p className="text-[11px] text-muted leading-relaxed mb-2">
-                What the bound prompt may inject as <code className="font-mono">{`{{...}}`}</code> tokens.
-                The runtime validates the prompt against this list.
-              </p>
-              <div className="text-[10px] uppercase tracking-wider text-muted mb-1">Allowed fields</div>
-              <div className="flex flex-wrap gap-1 mb-2">
-                {(rule.field_keys || []).length === 0 && <span className="text-[10px] text-muted italic">none declared</span>}
-                {(rule.field_keys || []).map((k) => (
-                  <span key={k} className="text-[10px] font-mono bg-teal-1/10 text-teal-1 border border-teal-1/30 px-1.5 py-0.5 rounded">{k}</span>
-                ))}
-              </div>
-              <div className="text-[10px] uppercase tracking-wider text-muted mb-1">Allowed citations</div>
-              <div className="flex flex-wrap gap-1">
-                {(rule.ucp_refs || []).map((id) => (
-                  <span key={id} className="text-[10px] font-mono bg-blue-50 text-blue-800 border border-blue-200 px-1.5 py-0.5 rounded">{id}</span>
-                ))}
-                {(rule.isbp_refs || []).map((id) => (
-                  <span key={id} className="text-[10px] font-mono bg-purple-50 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded">{id}</span>
-                ))}
-              </div>
-            </div>
-
-            <div className="bg-paper border border-line rounded p-3 mt-3">
-              <div className="text-[10px] uppercase tracking-wider text-muted mb-2">Ownership</div>
-              <p className="text-xs leading-relaxed">
-                Compliance Lead owns the <strong>meaning</strong>, <strong>severity</strong>,
-                and <strong>citations</strong>. Engineering owns the prompt body that
-                consumes these fields at runtime.
-              </p>
-              {!editable && (
-                <p className="text-[10px] text-status-gold mt-2">
-                  ✎ Edits forking from a published rule auto-create a new draft.
-                </p>
-              )}
-            </div>
-            <div className="bg-paper border border-line rounded p-3 mt-3">
-              <div className="text-[10px] uppercase tracking-wider text-muted mb-2">Last edited</div>
-              <div className="text-xs">{userById(rule.lastEditedBy)?.name || rule.lastEditedBy}</div>
-              <div className="text-[10px] text-muted">{new Date(rule.lastEditedAt).toLocaleString()}</div>
-            </div>
-          </aside>
-        </div>
-      )}
-
-      {tab === 'citations' && (
-        <div className="mt-4 space-y-3">
-          {[...(rule.ucp_refs || []).map((id) => ({ id, kind: 'UCP' })),
-            ...(rule.isbp_refs || []).map((id) => ({ id, kind: 'ISBP' }))].map(({ id, kind }) => {
-              const ref = cite(id);
-              if (!ref) return null;
-              return (
-                <div key={id} className="bg-paper border border-line rounded p-4">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
-                      kind === 'UCP' ? 'bg-status-blueSoft text-status-blue' : 'bg-purple-50 text-purple-700'
-                    }`}>{ref.id}</span>
-                    <span className="text-xs font-medium">{ref.heading}</span>
-                  </div>
-                  <p className="text-xs text-navy-1 leading-relaxed font-serif" style={{ fontFamily: 'ui-serif, Georgia, serif' }}>
-                    "{ref.text}"
-                  </p>
-                </div>
-              );
-          })}
-        </div>
-      )}
-
-      {tab === 'eval' && (
-        <div className="mt-4">
-          <EvalSection rule={rule} />
-        </div>
-      )}
-
-      {tab === 'health' && (
-        <div className="mt-4 grid grid-cols-3 gap-4">
-          <div className="col-span-2 bg-paper border border-line rounded p-4">
-            <div className="text-[10px] uppercase tracking-wider text-muted mb-3">Production telemetry (last 30 days)</div>
-            <HealthChips signals={rule.health_signals} layout="inline" />
-            <p className="text-[11px] text-muted mt-3 leading-relaxed">
-              Eval = agreement on golden case set ·
-              Override = officer reverted verdict ·
-              Doubts = LLM returned DOUBTS ·
-              p95 = 95th-percentile latency ·
-              Cost = average per check (LLM-tier only).
-            </p>
-            <div className="text-[10px] uppercase tracking-wider text-muted mt-4 mb-2">Action thresholds</div>
-            <ul className="text-[11px] text-muted space-y-0.5">
-              <li>Override rate &gt; 15% → flag for review (rule may be misaligned with examiner judgement)</li>
-              <li>Doubts rate &gt; 25% → prompt under-specified; tighten decision rules</li>
-              <li>Eval pass rate &lt; 95% → block re-publish until prompt is fixed or eval set re-curated</li>
-            </ul>
+          <div className="mt-1.5">
+            <NameInput value={rule.name} onSave={(v) => set('name', v)} disabled={!editable} />
           </div>
-          <aside className="col-span-1 bg-paper border border-line rounded p-3">
-            <div className="text-[10px] uppercase tracking-wider text-muted mb-2">Policy overlays</div>
-            {Object.keys(rule.policy_overlays || {}).length === 0 ? (
-              <p className="text-[11px] text-muted">No jurisdictional overlays. Base policy applies in all markets.</p>
-            ) : (
-              <ul className="space-y-2">
-                {Object.entries(rule.policy_overlays).map(([k, v]) => (
-                  <li key={k} className="text-[11px]">
-                    <span className="font-mono text-[10px] bg-slate2 border border-line px-1 rounded">{k}</span>
-                    <p className="text-muted mt-0.5">{v.note || JSON.stringify(v)}</p>
-                  </li>
-                ))}
-              </ul>
+        </div>
+        <div className="px-6 py-4 grid grid-cols-2 gap-x-12">
+          <dl className="space-y-0">
+            <Spec label="category">
+              <SpecSelect value={rule.category}   options={CATEGORIES} onChange={(v) => set('category', v)}   editable={editable} />
+            </Spec>
+            <Spec label="tier">
+              <SpecSelect value={rule.check_type} options={TIERS}      onChange={(v) => set('check_type', v)} editable={editable} />
+            </Spec>
+            <Spec label="severity">
+              <SpecSelect value={rule.severity}   options={SEVERITIES} onChange={(v) => set('severity', v)}   editable={editable} />
+            </Spec>
+            <Spec label="polarity">
+              <SpecSelect value={rule.polarity}   options={POLARITIES} onChange={(v) => set('polarity', v)}   editable={editable} />
+            </Spec>
+          </dl>
+          <dl className="space-y-0">
+            <Spec label="waivable">
+              <SpecBool value={!!rule.waivable} onChange={(v) => set('waivable', v)} editable={editable} />
+            </Spec>
+            {showReasoning && (
+              <Spec label="reasoning" hint="extended thinking on LLM call">
+                <SpecBool value={reasoningEnabled(rule)} onChange={(v) => set('reasoning', v)} editable={editable} />
+              </Spec>
             )}
-            <p className="text-[10px] text-muted mt-3 leading-relaxed">
-              Resolver picks overlay based on issuing-bank country at runtime; falls back to base policy when no overlay matches.
-            </p>
-          </aside>
+            <Spec label="enabled">
+              <SpecBool value={rule.enabled !== false} onChange={(v) => set('enabled', v)} editable={editable} />
+            </Spec>
+            <Spec label="last edit" muted>
+              <span className="text-[11px] text-muted">
+                {new Date(rule.lastEditedAt).toLocaleDateString()} · @{userById(rule.lastEditedBy)?.name?.split(' ')[0] || rule.lastEditedBy}
+              </span>
+            </Spec>
+          </dl>
         </div>
-      )}
+      </div>
 
-      {tab === 'prompt' && (
-        <div className="mt-4">
-          {!rule.boundPromptId && (
-            <div className="bg-paper border border-line rounded p-6 text-center text-sm text-muted">
-              This rule is evaluated by a SpEL expression — no LLM prompt is bound.
-              <pre className="mt-3 text-[11px] font-mono bg-slate2 p-3 rounded text-left overflow-x-auto">{rule.expression}</pre>
-            </div>
-          )}
-          {rule.boundPromptId && prompt && (
-            <div className="grid grid-cols-3 gap-4">
-              <div className="col-span-2 bg-paper border border-line rounded">
-                <div className="flex items-center justify-between border-b border-line px-3 py-1.5 gap-3">
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[10px] uppercase tracking-wider text-muted">Prompt body</span>
-                    <span className="font-mono text-[10px] text-muted">
-                      {prompt.tokenizedBody ? prompt.tokenizedPath : prompt.path}
-                    </span>
-                    <StateBadge state={prompt.state} />
-                    {prompt.tokenizedBody && (
-                      <span className="text-[9px] uppercase tracking-wider text-teal-1 bg-teal-1/10 border border-teal-1/30 rounded px-1.5 py-0.5">
-                        Tokenized
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 flex-1 overflow-x-auto justify-end">
-                    {PROSE_LEGEND.map((l) => (
-                      <span key={l.kind} className={`text-[10px] font-mono px-1 rounded border ${l.cls}`}>
-                        {l.label}
-                      </span>
-                    ))}
-                  </div>
-                  <Link to={`/admin/prompts/${encodeURIComponent(prompt.id)}`}
-                        className="text-[11px] text-teal-1 hover:underline shrink-0">Open in editor →</Link>
-                </div>
-                <HighlightedViewer value={prompt.tokenizedBody || prompt.body} rows={18} />
-                {prompt.tokenizedBody && (
-                  <ResolvedPreview template={prompt.tokenizedBody} rule={rule} />
-                )}
-              </div>
-              <aside className="bg-paper border border-line rounded p-3">
-                <div className="text-[10px] uppercase tracking-wider text-muted mb-2">Cross-lane gate</div>
-                <p className="text-xs leading-relaxed">
-                  Bound prompt is currently <StateBadge state={prompt.state} />.
-                  {prompt.state !== 'PUBLISHED' && (
-                    <span className="text-status-red"> Rule cannot be published until prompt is published.</span>
-                  )}
-                </p>
-                <div className="text-[10px] uppercase tracking-wider text-muted mt-3 mb-1">Field keys consumed</div>
-                <div className="flex flex-wrap gap-1">
-                  {(rule.field_keys || []).map((k) => (
-                    <span key={k} className="text-[10px] font-mono bg-slate2 px-1.5 py-0.5 rounded border border-line">{k}</span>
-                  ))}
-                </div>
-                <div className="text-[10px] uppercase tracking-wider text-muted mt-3 mb-1">Read-only here</div>
-                <p className="text-[10px] text-muted leading-relaxed">
-                  Compliance reviews — never edits. Prompt body is owned by the
-                  Prompt Engineer. Use "Open in editor" to switch lanes.
-                </p>
-              </aside>
-            </div>
-          )}
+      {/* ── DEFINITION ──────────────────────────────────────────────────── */}
+      <Section caption="Definition" className="mt-5">
+        <div className="grid grid-cols-12 divide-x divide-line/70">
+          <DefField className="col-span-3" label="applies_to">
+            <ChipSet values={rule.applies_to || []} options={DOCTYPES}
+                     onChange={(v) => set('applies_to', v)} kind="doc" disabled={!editable} />
+          </DefField>
+          <DefField className="col-span-4" label="lc_fields_required">
+            <ChipSet values={rule.lc_fields_required || []}
+                     options={fields.filter((f) => (f.applies_to || []).includes('LC')).map((f) => f.key)}
+                     onChange={(v) => set('lc_fields_required', v)}
+                     kind="lc" disabled={!editable} />
+          </DefField>
+          <DefField className="col-span-5" label="field_keys">
+            <ChipSet values={rule.field_keys || []}
+                     options={fields.map((f) => f.key)}
+                     onChange={(v) => set('field_keys', v)}
+                     kind="lc" disabled={!editable} />
+          </DefField>
         </div>
-      )}
+      </Section>
+
+      {/* ── IMPLEMENTATION + CITATIONS ──────────────────────────────────── */}
+      <div className="mt-5 grid grid-cols-12 gap-5 items-start">
+        <div className="col-span-7">
+          <Section caption="Implementation"
+                   side={rule.check_type === 'PROGRAMMATIC' ? 'SpEL' : 'Prompt template'}>
+            <ImplementationCard
+              rule={rule}
+              prompt={prompt}
+              allPrompts={allPrompts}
+              editable={editable}
+              onBind={(promptId) => set('boundPromptId', promptId || null)}
+              onSaveExpression={(v) => set('expression', v)}
+            />
+          </Section>
+        </div>
+        <div className="col-span-5">
+          <Section caption="Citations"
+                   side={`${(rule.ucp_refs?.length || 0)} UCP · ${(rule.isbp_refs?.length || 0)} ISBP`}>
+            <CitationsCard
+              rule={rule}
+              refs={refs}
+              editable={editable}
+              onAdd={(kind, id) => {
+                const key = kind === 'UCP' ? 'ucp_refs' : 'isbp_refs';
+                const arr = rule[key] || [];
+                if (!arr.includes(id)) set(key, [...arr, id]);
+              }}
+              onRemove={(kind, id) => {
+                const key = kind === 'UCP' ? 'ucp_refs' : 'isbp_refs';
+                set(key, (rule[key] || []).filter((x) => x !== id));
+              }}
+            />
+          </Section>
+        </div>
+      </div>
     </div>
   );
 }
 
-function Field({ label, value, editable, multiline, mono, options, onSave }) {
-  const [v, setV] = useState(value);
-  const [editing, setEditing] = useState(false);
-
-  if (!editable || !editing) {
-    return (
-      <div>
-        <div className="text-[10px] uppercase tracking-wider text-muted mb-0.5 flex items-center gap-2">
-          {label}
-          {editable && (
-            <button onClick={() => setEditing(true)} className="text-teal-1 normal-case tracking-normal text-[10px]">edit</button>
-          )}
-        </div>
-        <div className={`text-xs ${mono ? 'font-mono' : ''} ${multiline ? 'whitespace-pre-wrap' : ''}`}>
-          {value || <span className="text-muted">—</span>}
-        </div>
+function Section({ caption, side, className = '', children }) {
+  return (
+    <div className={className}>
+      <div className="flex items-baseline justify-between mb-1.5 px-0.5">
+        <span className="text-[10px] uppercase tracking-[0.18em] text-muted">{caption}</span>
+        {side && <span className="text-[10px] text-muted/80">{side}</span>}
       </div>
-    );
-  }
+      <div className="bg-paper border border-line rounded-lg shadow-sm">{children}</div>
+    </div>
+  );
+}
+
+function DefField({ label, children, className = '' }) {
+  return (
+    <div className={`${className} px-4 py-3`}>
+      <div className="text-[10px] uppercase tracking-[0.16em] text-muted/80 mb-1.5">{label}</div>
+      {children}
+    </div>
+  );
+}
+
+function NameInput({ value, onSave, disabled }) {
+  const [v, setV] = useState(value ?? '');
+  React.useEffect(() => setV(value ?? ''), [value]);
+  return (
+    <input
+      value={v}
+      disabled={disabled}
+      onChange={(e) => setV(e.target.value)}
+      onBlur={() => v !== value && onSave(v)}
+      onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+      className="w-full text-xl text-navy-1 font-serif bg-transparent border-0 border-b border-transparent hover:border-line focus:border-teal-1 focus:outline-none px-0 py-0.5"
+      style={{ fontFamily: 'ui-serif, Georgia, serif' }}
+    />
+  );
+}
+
+function Spec({ label, hint, muted, children }) {
+  return (
+    <div className="grid grid-cols-[96px_1fr] gap-4 items-baseline py-1.5 border-b border-dotted border-line/50 last:border-b-0">
+      <dt className={`text-[10px] uppercase tracking-[0.16em] ${muted ? 'text-muted/60' : 'text-muted'}`}>
+        {label}
+      </dt>
+      <dd className="flex items-baseline gap-2">
+        {children}
+        {hint && <span className="text-[10px] text-muted/70">{hint}</span>}
+      </dd>
+    </div>
+  );
+}
+
+function SpecSelect({ value, options, onChange, editable }) {
+  return (
+    <select
+      value={value || ''}
+      disabled={!editable}
+      onChange={(e) => onChange(e.target.value)}
+      className="font-mono text-[12px] text-navy-1 bg-transparent border-0 hover:text-teal-1 focus:text-teal-1 focus:outline-none cursor-pointer disabled:cursor-default disabled:hover:text-navy-1 -ml-0.5 pr-2"
+    >
+      {options.map((o) => <option key={o}>{o}</option>)}
+    </select>
+  );
+}
+
+function SpecBool({ value, onChange, editable }) {
+  return (
+    <select
+      value={value ? 'yes' : 'no'}
+      disabled={!editable}
+      onChange={(e) => onChange(e.target.value === 'yes')}
+      className={`font-mono text-[12px] bg-transparent border-0 hover:text-teal-1 focus:text-teal-1 focus:outline-none cursor-pointer disabled:cursor-default -ml-0.5 pr-2 ${value ? 'text-navy-1' : 'text-muted'}`}
+    >
+      <option value="yes">yes</option>
+      <option value="no">no</option>
+    </select>
+  );
+}
+
+// ─── PRIMITIVES ──────────────────────────────────────────────────────────
+
+function ChipSet({ values, options, onChange, kind = 'lc', disabled, small, onChipClick }) {
+  const [adding, setAdding] = useState(false);
+  const [q, setQ] = useState('');
+  const remaining = (options || []).filter((o) => !values.includes(o));
+  const matches = q ? remaining.filter((o) => o.toLowerCase().includes(q.toLowerCase())) : remaining;
+  const cls = {
+    lc:   'bg-teal-1/10 text-teal-1 border-teal-1/30',
+    doc:  'bg-purple-50 text-purple-700 border-purple-200',
+    ref:  'bg-blue-50 text-blue-700 border-blue-200',
+  }[kind];
+  const sz = small ? 'text-[9px]' : 'text-[10px]';
 
   return (
-    <div>
-      <div className="text-[10px] uppercase tracking-wider text-muted mb-0.5">{label}</div>
-      {options ? (
-        <select value={v} onChange={(e) => setV(e.target.value)}
-                className="text-xs border border-line rounded px-2 py-1 w-full">
-          {options.map((o) => <option key={o}>{o}</option>)}
-        </select>
-      ) : multiline ? (
-        <textarea value={v} onChange={(e) => setV(e.target.value)} rows={4}
-                  className="text-xs border border-line rounded px-2 py-1 w-full font-serif" />
-      ) : (
-        <input value={v} onChange={(e) => setV(e.target.value)}
-               className="text-xs border border-line rounded px-2 py-1 w-full" />
+    <div className="flex flex-wrap items-center gap-1">
+      {values.map((v) => (
+        <span key={v} className={`group inline-flex items-center gap-0.5 ${sz} font-mono px-1.5 py-0.5 rounded border ${cls}`}>
+          <button type="button" disabled={!onChipClick} onClick={() => onChipClick?.(v)}
+                  className={onChipClick ? 'hover:underline' : 'cursor-default'}>{v}</button>
+          {!disabled && (
+            <button type="button" onClick={() => onChange(values.filter((x) => x !== v))}
+                    className="opacity-40 hover:opacity-100 hover:text-status-red ml-0.5">×</button>
+          )}
+        </span>
+      ))}
+      {!disabled && !adding && (
+        <button onClick={() => setAdding(true)} className={`${sz} font-mono px-1.5 py-0.5 rounded border border-dashed border-line text-muted hover:border-teal-1 hover:text-teal-1`}>
+          +
+        </button>
       )}
-      <div className="flex gap-1 mt-1">
-        <button onClick={() => { onSave(v); setEditing(false); }}
-                className="text-[10px] px-2 py-0.5 bg-teal-1 hover:bg-teal-2 text-white rounded">Save</button>
-        <button onClick={() => { setV(value); setEditing(false); }}
-                className="text-[10px] px-2 py-0.5 border border-line rounded">Cancel</button>
+      {adding && (
+        <span className="inline-flex items-center gap-1">
+          <input
+            autoFocus value={q} onChange={(e) => setQ(e.target.value)}
+            onBlur={() => setTimeout(() => setAdding(false), 150)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && q) { onChange([...values, q]); setQ(''); }
+              if (e.key === 'Escape') setAdding(false);
+            }}
+            placeholder="type or pick…"
+            className={`${sz} font-mono border border-line rounded px-1 py-0.5 w-32 focus:outline-none focus:border-teal-1`}
+          />
+          {matches.length > 0 && (
+            <span className="relative">
+              <span className="absolute left-0 top-5 z-10 bg-paper border border-line rounded shadow max-h-44 overflow-auto w-44">
+                {matches.slice(0, 12).map((o) => (
+                  <button key={o} onMouseDown={() => { onChange([...values, o]); setQ(''); setAdding(false); }}
+                          className={`block w-full text-left ${sz} font-mono px-2 py-0.5 hover:bg-teal-1/10`}>
+                    {o}
+                  </button>
+                ))}
+              </span>
+            </span>
+          )}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ─── IMPLEMENTATION + CITATIONS (reference cards, not editors) ──────────
+
+function ImplementationCard({ rule, prompt, allPrompts, editable, onBind, onSaveExpression }) {
+  const usesPrompt = rule.check_type !== 'PROGRAMMATIC';
+  const [picking, setPicking] = useState(false);
+  const [editingExpr, setEditingExpr] = useState(false);
+  const [exprDraft, setExprDraft] = useState(rule.expression || '');
+  React.useEffect(() => setExprDraft(rule.expression || ''), [rule.expression]);
+
+  return (
+    <div className="bg-paper border border-line rounded">
+      <div className="px-3 py-1.5 border-b border-line flex items-center gap-2">
+        <span className="text-[10px] uppercase tracking-wider text-muted">Implementation</span>
+        <span className="text-[10px] font-mono text-muted">
+          {usesPrompt ? 'prompt template (referenced)' : 'SpEL expression (inline)'}
+        </span>
+      </div>
+
+      {/* AGENT-family: reference to a prompt template */}
+      {usesPrompt && (
+        <div className="p-3">
+          {prompt ? (
+            <div className="flex items-center gap-2">
+              <Link to={`/admin/prompts/${encodeURIComponent(prompt.id)}`}
+                    className="font-mono text-[12px] text-teal-1 hover:underline truncate">
+                {prompt.tokenizedPath || prompt.path}
+              </Link>
+              <StateBadge state={prompt.state} />
+              <span className="text-[10px] text-muted">v{prompt.version}</span>
+              <span className="ml-auto flex gap-2">
+                <Link to={`/admin/prompts/${encodeURIComponent(prompt.id)}`}
+                      className="text-[11px] text-teal-1 hover:underline">Open editor →</Link>
+                {editable && (
+                  <button onClick={() => setPicking((v) => !v)}
+                          className="text-[11px] text-muted hover:text-navy-1">change</button>
+                )}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-[11px] text-status-gold">
+              <span>No prompt bound.</span>
+              {editable && (
+                <button onClick={() => setPicking(true)} className="text-teal-1 hover:underline">bind a prompt</button>
+              )}
+            </div>
+          )}
+
+          {picking && (
+            <PromptPicker
+              currentId={prompt?.id}
+              prompts={allPrompts}
+              onPick={(id) => { onBind(id); setPicking(false); }}
+              onCancel={() => setPicking(false)}
+            />
+          )}
+        </div>
+      )}
+
+      {/* PROGRAMMATIC: SpEL expression inline (it IS the implementation, no external file) */}
+      {!usesPrompt && (
+        <div className="p-3">
+          {!editingExpr ? (
+            <pre className="text-[11px] font-mono bg-slate2/50 border border-line/60 rounded p-2.5 whitespace-pre-wrap leading-relaxed">
+              {rule.expression?.trim() || <span className="text-muted italic">no expression</span>}
+            </pre>
+          ) : (
+            <textarea
+              value={exprDraft} rows={6} spellCheck={false}
+              onChange={(e) => setExprDraft(e.target.value)}
+              className="w-full text-[11px] font-mono border border-line rounded p-2 bg-slate2/40 focus:outline-none focus:border-teal-1"
+            />
+          )}
+          {editable && (
+            <div className="flex gap-2 mt-2">
+              {!editingExpr && (
+                <button onClick={() => setEditingExpr(true)} className="text-[11px] text-teal-1 hover:underline">edit SpEL</button>
+              )}
+              {editingExpr && (
+                <>
+                  <button
+                    onClick={() => { onSaveExpression(exprDraft); setEditingExpr(false); }}
+                    className="text-[11px] px-2 py-0.5 bg-teal-1 text-white rounded">Save</button>
+                  <button
+                    onClick={() => { setExprDraft(rule.expression || ''); setEditingExpr(false); }}
+                    className="text-[11px] px-2 py-0.5 border border-line rounded">Cancel</button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PromptPicker({ currentId, prompts, onPick, onCancel }) {
+  const [q, setQ] = useState('');
+  const matches = prompts.filter((p) =>
+    !q || `${p.path} ${p.id} ${p.boundRuleId || ''}`.toLowerCase().includes(q.toLowerCase())
+  );
+  return (
+    <div className="mt-2 border border-line rounded bg-slate2/40">
+      <div className="px-2 py-1.5 border-b border-line flex items-center gap-2">
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)}
+               placeholder="search prompt template…"
+               className="flex-1 text-[11px] font-mono border border-line rounded px-1.5 py-0.5 bg-paper focus:outline-none focus:border-teal-1" />
+        <button onClick={onCancel} className="text-[11px] text-muted">cancel</button>
+        {currentId && (
+          <button onClick={() => onPick(null)} className="text-[11px] text-status-red hover:underline">unbind</button>
+        )}
+      </div>
+      <div className="max-h-56 overflow-auto">
+        {matches.map((p) => (
+          <button key={p.id} onClick={() => onPick(p.id)}
+                  className={`w-full text-left px-2 py-1 hover:bg-teal-1/10 border-b border-line/40 last:border-b-0 flex items-center gap-2 ${p.id === currentId ? 'bg-teal-1/5' : ''}`}>
+            <span className="font-mono text-[10px] text-teal-1 truncate flex-1">{p.path}</span>
+            <StateBadge state={p.state} />
+            {p.boundRuleId && p.boundRuleId !== '' && (
+              <span className="text-[9px] font-mono text-muted">bound: {p.boundRuleId}</span>
+            )}
+          </button>
+        ))}
+        {matches.length === 0 && <div className="px-2 py-2 text-[11px] text-muted italic">no match</div>}
       </div>
     </div>
   );
 }
+
+function CitationsCard({ rule, refs, editable, onAdd, onRemove }) {
+  const [adding, setAdding] = useState(false);
+  const all = [...refs.ucp600, ...refs.isbp821];
+  const cite = (id) => all.find((x) => x.id === id);
+
+  return (
+    <div className="bg-paper border border-line rounded">
+      <div className="px-3 py-1.5 border-b border-line flex items-center gap-2">
+        <span className="text-[10px] uppercase tracking-wider text-muted">Citations</span>
+        <span className="text-[10px] text-muted">
+          {(rule.ucp_refs?.length || 0)} UCP · {(rule.isbp_refs?.length || 0)} ISBP
+        </span>
+        {editable && !adding && (
+          <button onClick={() => setAdding(true)}
+                  className="ml-auto text-[11px] text-teal-1 hover:underline">+ add</button>
+        )}
+      </div>
+
+      {adding && (
+        <CitationAdderInline
+          rule={rule}
+          refs={refs}
+          onAdd={(kind, id) => { onAdd(kind, id); }}
+          onClose={() => setAdding(false)}
+        />
+      )}
+
+      <div className="p-3 flex flex-wrap gap-1.5">
+        {(rule.ucp_refs || []).length === 0 && (rule.isbp_refs || []).length === 0 && (
+          <span className="text-[11px] text-muted italic">No citations declared.</span>
+        )}
+        {(rule.ucp_refs || []).map((id) => (
+          <CitationLink key={id} kind="UCP" id={id} article={cite(id)}
+                        editable={editable} onRemove={() => onRemove('UCP', id)} />
+        ))}
+        {(rule.isbp_refs || []).map((id) => (
+          <CitationLink key={id} kind="ISBP" id={id} article={cite(id)}
+                        editable={editable} onRemove={() => onRemove('ISBP', id)} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CitationLink({ kind, id, article, editable, onRemove }) {
+  const tone = kind === 'UCP'
+    ? 'text-status-blue bg-status-blueSoft border-status-blue/40 hover:bg-status-blue hover:text-white'
+    : 'text-purple-700 bg-purple-50 border-purple-200 hover:bg-purple-700 hover:text-white';
+  const heading = article?.heading;
+  return (
+    <RefHover kind={kind} id={id} article={article}>
+      <span className="inline-flex items-stretch border border-line rounded overflow-hidden bg-paper text-[11px]">
+        <Link to={`/admin/refs?id=${id}`}
+              className={`font-mono px-1.5 py-0.5 transition ${tone}`}>
+          {id}
+        </Link>
+        {heading && (
+          <Link to={`/admin/refs?id=${id}`}
+                className="px-2 py-0.5 truncate max-w-[260px] hover:bg-slate2 text-navy-1/85 border-l border-line">
+            {heading}
+          </Link>
+        )}
+        {editable && (
+          <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove(); }}
+                  className="px-1.5 text-muted hover:text-status-red border-l border-line"
+                  title="remove citation">×</button>
+        )}
+      </span>
+    </RefHover>
+  );
+}
+
+// Hover popover — quick article description without leaving the page.
+// pointer-events-none on the popover so cursor can't drift onto it; the trigger
+// span still receives mouseleave correctly. Closes when mouse leaves trigger.
+function RefHover({ kind, id, article, children }) {
+  const [open, setOpen] = useState(false);
+  const enterT = useRef(null);
+  const leaveT = useRef(null);
+  const onEnter = () => {
+    clearTimeout(leaveT.current);
+    enterT.current = setTimeout(() => setOpen(true), 180);
+  };
+  const onLeave = () => {
+    clearTimeout(enterT.current);
+    leaveT.current = setTimeout(() => setOpen(false), 80);
+  };
+  const accent = kind === 'UCP' ? 'text-status-blue' : 'text-purple-700';
+
+  return (
+    <span className="relative inline-flex" onMouseEnter={onEnter} onMouseLeave={onLeave}>
+      {children}
+      {open && (
+        <span
+          role="tooltip"
+          className="absolute z-40 bottom-full left-0 mb-2 w-[320px] pointer-events-none"
+        >
+          <span className="block bg-paper border border-line rounded-lg shadow-[0_8px_24px_-8px_rgba(15,23,42,0.18)] p-3">
+            <span className="flex items-baseline gap-2 mb-1.5">
+              <span className={`font-mono text-[10px] ${accent}`}>{id}</span>
+              {article?.heading && (
+                <span className="text-[11px] font-medium text-navy-1 truncate">{article.heading}</span>
+              )}
+              <span className="ml-auto text-[9px] uppercase tracking-[0.18em] text-muted/70">
+                {kind === 'UCP' ? 'UCP 600' : 'ISBP 821'}
+              </span>
+            </span>
+            {article?.text ? (
+              <span className="block text-[11px] leading-relaxed text-navy-1/85 italic font-serif"
+                    style={{ fontFamily: 'ui-serif, Georgia, serif' }}>
+                "{article.text}"
+              </span>
+            ) : (
+              <span className="block text-[11px] text-muted italic">
+                Not found in golden source.
+              </span>
+            )}
+            <span className="block mt-2 text-[10px] text-muted/80">
+              click chip → open in golden-source browser
+            </span>
+          </span>
+        </span>
+      )}
+    </span>
+  );
+}
+
+function CitationAdderInline({ rule, refs, onAdd, onClose }) {
+  const [kind, setKind] = useState('UCP');
+  const [q, setQ] = useState('');
+  const list = (kind === 'UCP' ? refs.ucp600 : refs.isbp821) || [];
+  const have = new Set([...(rule.ucp_refs || []), ...(rule.isbp_refs || [])]);
+  const matches = list.filter((r) => !have.has(r.id) &&
+    (`${r.id} ${r.heading || ''} ${r.text || ''}`.toLowerCase().includes(q.toLowerCase())));
+
+  return (
+    <div className="border-b border-line bg-slate2/40 px-3 py-2">
+      <div className="flex items-center gap-2 mb-1.5">
+        <select value={kind} onChange={(e) => setKind(e.target.value)}
+                className="text-[10px] font-mono border border-line rounded px-1 py-0.5">
+          <option>UCP</option><option>ISBP</option>
+        </select>
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)}
+               onKeyDown={(e) => e.key === 'Escape' && onClose()}
+               placeholder={`search ${kind} 600 / ISBP 821 — id, heading, text…`}
+               className="flex-1 text-[11px] font-mono border border-line rounded px-1.5 py-0.5 bg-paper focus:outline-none focus:border-teal-1" />
+        <button onClick={onClose} className="text-[10px] text-muted">close</button>
+      </div>
+      <div className="max-h-48 overflow-auto bg-paper border border-line rounded">
+        {matches.slice(0, 30).map((r) => (
+          <button key={r.id} onClick={() => onAdd(kind, r.id)}
+                  className="block w-full text-left px-2 py-1 hover:bg-teal-1/10 border-b border-line/40 last:border-b-0">
+            <span className="font-mono text-[10px] text-teal-1">{r.id}</span>
+            <span className="text-[11px] ml-1.5">{r.heading}</span>
+            {r.text && <div className="text-[10px] text-muted truncate">{r.text}</div>}
+          </button>
+        ))}
+        {matches.length === 0 && <div className="px-2 py-2 text-[11px] text-muted italic">no match</div>}
+      </div>
+    </div>
+  );
+}
+

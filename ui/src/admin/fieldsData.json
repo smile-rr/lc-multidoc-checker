@@ -1,0 +1,613 @@
+{
+  "_comment": "Self-contained seed for the Fields governance tab. Synthetic data; not coupled to runtime field-pool.yaml. Each entry mirrors the shape a real field-pool record would carry: identity, semantic meaning, type, scope (which docs it appears in), parser binding (SWIFT tags for LC fields), and reverse usage (which rules and prompts reference it).",
+  "fields": [
+    {
+      "key": "credit_amount",
+      "name_en": "Credit amount",
+      "type": "AMOUNT",
+      "applies_to": ["LC"],
+      "source_tags": ["32B"],
+      "reconcile_canonical": true,
+      "owner": "ling",
+      "last_edited_at": "2026-04-12T09:24:00Z",
+      "description": "The principal amount of the credit, denominated in the credit currency. Subject to UCP 30 tolerance.",
+      "used_by_rules": [
+        {"rule_id": "AMT-02", "tier": "AGENT_TOOL"},
+        {"rule_id": "AMT-04", "tier": "AGENT_TOOL"}
+      ],
+      "used_by_prompts": [
+        {"id": "check/AMT-02", "path": "prompts/check/AMT-02.tokenized.st"}
+      ]
+    },
+    {
+      "key": "credit_currency",
+      "name_en": "Credit currency",
+      "type": "STRING",
+      "applies_to": ["LC"],
+      "source_tags": ["32B"],
+      "reconcile_canonical": true,
+      "owner": "ling",
+      "last_edited_at": "2026-04-12T09:24:00Z",
+      "description": "ISO-4217 currency code declared on the credit. Drives invoice / draft / insurance currency consistency rules.",
+      "used_by_rules": [
+        {"rule_id": "AMT-01", "tier": "PROGRAMMATIC"},
+        {"rule_id": "AMT-02", "tier": "AGENT_TOOL"},
+        {"rule_id": "INS-01", "tier": "PROGRAMMATIC"}
+      ],
+      "used_by_prompts": [
+        {"id": "check/AMT-02", "path": "prompts/check/AMT-02.tokenized.st"}
+      ]
+    },
+    {
+      "key": "expiry_date",
+      "name_en": "Credit expiry date",
+      "type": "DATE",
+      "applies_to": ["LC"],
+      "source_tags": ["31D"],
+      "reconcile_canonical": true,
+      "owner": "ling",
+      "last_edited_at": "2026-03-30T11:02:00Z",
+      "description": "Last date on which a complying presentation may be made under the credit. Bank closure carries through to next banking day per UCP 29(a).",
+      "used_by_rules": [
+        {"rule_id": "DATE-02", "tier": "AGENT_TOOL"},
+        {"rule_id": "DATE-04", "tier": "PROGRAMMATIC"}
+      ],
+      "used_by_prompts": [
+        {"id": "check/DATE-02", "path": "prompts/check/DATE-02.tokenized.st"}
+      ]
+    },
+    {
+      "key": "expiry_place",
+      "name_en": "Place of expiry",
+      "type": "STRING",
+      "applies_to": ["LC"],
+      "source_tags": ["31D"],
+      "reconcile_canonical": false,
+      "owner": "ling",
+      "last_edited_at": "2026-03-30T11:02:00Z",
+      "description": "City / country in which presentation must be made before the credit expires.",
+      "used_by_rules": [],
+      "used_by_prompts": []
+    },
+    {
+      "key": "issue_date",
+      "name_en": "LC issuance date",
+      "type": "DATE",
+      "applies_to": ["LC"],
+      "source_tags": ["31C"],
+      "reconcile_canonical": true,
+      "owner": "ling",
+      "last_edited_at": "2026-03-30T11:02:00Z",
+      "description": "Date the issuing bank issued the credit. Used as the lower bound for drawing-date validity (UCP 6(d)).",
+      "used_by_rules": [
+        {"rule_id": "DATE-04", "tier": "PROGRAMMATIC"}
+      ],
+      "used_by_prompts": []
+    },
+    {
+      "key": "latest_shipment_date",
+      "name_en": "Latest shipment date",
+      "type": "DATE",
+      "applies_to": ["LC"],
+      "source_tags": ["44C"],
+      "reconcile_canonical": true,
+      "owner": "ling",
+      "last_edited_at": "2026-04-04T08:11:00Z",
+      "description": "Latest permitted on-board / dispatch date for the goods. Compared to BL on-board notation (UCP 14(c)).",
+      "used_by_rules": [
+        {"rule_id": "DATE-03", "tier": "PROGRAMMATIC"}
+      ],
+      "used_by_prompts": []
+    },
+    {
+      "key": "presentation_period",
+      "name_en": "Presentation period (days)",
+      "type": "NUMBER",
+      "applies_to": ["LC"],
+      "source_tags": ["48"],
+      "reconcile_canonical": false,
+      "owner": "ling",
+      "last_edited_at": "2026-04-04T08:11:00Z",
+      "description": "Days after shipment within which presentation must be made. Defaults to 21 if not stated (UCP 14(c)).",
+      "used_by_rules": [
+        {"rule_id": "DATE-02", "tier": "AGENT_TOOL"}
+      ],
+      "used_by_prompts": [
+        {"id": "check/DATE-02", "path": "prompts/check/DATE-02.tokenized.st"}
+      ]
+    },
+    {
+      "key": "beneficiary_name",
+      "name_en": "Beneficiary name",
+      "type": "STRING",
+      "applies_to": ["LC", "INV", "BOL", "PKL", "BC", "WC"],
+      "source_tags": ["59"],
+      "reconcile_canonical": true,
+      "owner": "ling",
+      "last_edited_at": "2026-04-22T13:00:00Z",
+      "description": "Party in whose favour the credit is issued. Cross-doc consistency tolerated for trivial variants (ISBP A14, A15).",
+      "used_by_rules": [
+        {"rule_id": "PARTY-01", "tier": "PROGRAMMATIC"},
+        {"rule_id": "PARTY-04", "tier": "AGENTIC"}
+      ],
+      "used_by_prompts": [
+        {"id": "check/PARTY-04", "path": "prompts/check/PARTY-04.tokenized.st"}
+      ]
+    },
+    {
+      "key": "applicant_name",
+      "name_en": "Applicant name",
+      "type": "STRING",
+      "applies_to": ["LC", "INV"],
+      "source_tags": ["50"],
+      "reconcile_canonical": true,
+      "owner": "ling",
+      "last_edited_at": "2026-04-22T13:00:00Z",
+      "description": "Party at whose request the credit is issued. Invoice should be made out to the applicant unless LC says otherwise.",
+      "used_by_rules": [
+        {"rule_id": "PARTY-02", "tier": "AGENT"}
+      ],
+      "used_by_prompts": [
+        {"id": "check/PARTY-02", "path": "prompts/check/PARTY-02.tokenized.st"}
+      ]
+    },
+    {
+      "key": "drawee_name",
+      "name_en": "Drawee bank",
+      "type": "STRING",
+      "applies_to": ["LC", "BOE"],
+      "source_tags": ["42A"],
+      "reconcile_canonical": true,
+      "owner": "ling",
+      "last_edited_at": "2026-03-15T16:40:00Z",
+      "description": "Bank on which the draft is to be drawn. Per UCP 6(c), must not be the applicant.",
+      "used_by_rules": [
+        {"rule_id": "PARTY-03", "tier": "PROGRAMMATIC"}
+      ],
+      "used_by_prompts": []
+    },
+    {
+      "key": "documents_required",
+      "name_en": "Documents required (:46A:)",
+      "type": "TEXT",
+      "applies_to": ["LC"],
+      "source_tags": ["46A"],
+      "reconcile_canonical": false,
+      "owner": "ling",
+      "last_edited_at": "2026-04-30T10:18:00Z",
+      "description": "Free-text catalogue of documents the beneficiary must present. Drives the docset completeness check.",
+      "used_by_rules": [
+        {"rule_id": "DOCSET-01", "tier": "AGENT"},
+        {"rule_id": "CERT-02", "tier": "AGENT"}
+      ],
+      "used_by_prompts": [
+        {"id": "check/DOCSET-01", "path": "prompts/check/DOCSET-01.tokenized.st"},
+        {"id": "check/CERT-02",   "path": "prompts/check/CERT-02.tokenized.st"}
+      ]
+    },
+    {
+      "key": "additional_conditions",
+      "name_en": "Additional conditions (:47A:)",
+      "type": "TEXT",
+      "applies_to": ["LC"],
+      "source_tags": ["47A"],
+      "reconcile_canonical": false,
+      "owner": "ling",
+      "last_edited_at": "2026-04-30T10:18:00Z",
+      "description": "Free-text rider attaching extra conditions to the credit. Often references certificates that don't exist as separate doc types.",
+      "used_by_rules": [
+        {"rule_id": "CERT-02", "tier": "AGENT"}
+      ],
+      "used_by_prompts": [
+        {"id": "check/CERT-02", "path": "prompts/check/CERT-02.tokenized.st"}
+      ]
+    },
+    {
+      "key": "goods_description",
+      "name_en": "Goods description (:45A:)",
+      "type": "TEXT",
+      "applies_to": ["LC"],
+      "source_tags": ["45A"],
+      "reconcile_canonical": false,
+      "owner": "ling",
+      "last_edited_at": "2026-05-01T09:00:00Z",
+      "description": "Free-text description of the goods. Invoice must correspond verbatim (UCP 18(c)); other docs may use general terms.",
+      "used_by_rules": [
+        {"rule_id": "GOODS-01", "tier": "AGENTIC"},
+        {"rule_id": "GOODS-02", "tier": "AGENT"}
+      ],
+      "used_by_prompts": [
+        {"id": "check/GOODS-01", "path": "prompts/check/GOODS-01.tokenized.st"},
+        {"id": "check/GOODS-02", "path": "prompts/check/GOODS-02.tokenized.st"}
+      ]
+    },
+    {
+      "key": "port_of_loading",
+      "name_en": "Port of loading",
+      "type": "STRING",
+      "applies_to": ["LC", "BOL"],
+      "source_tags": ["44E"],
+      "reconcile_canonical": true,
+      "owner": "ling",
+      "last_edited_at": "2026-03-15T16:40:00Z",
+      "description": "Named port at which goods are loaded on board. BL must show this exact port (or an LC-permitted alternative).",
+      "used_by_rules": [
+        {"rule_id": "TRANS-04", "tier": "PROGRAMMATIC"}
+      ],
+      "used_by_prompts": []
+    },
+    {
+      "key": "port_of_discharge",
+      "name_en": "Port of discharge",
+      "type": "STRING",
+      "applies_to": ["LC", "BOL"],
+      "source_tags": ["44F"],
+      "reconcile_canonical": true,
+      "owner": "ling",
+      "last_edited_at": "2026-03-15T16:40:00Z",
+      "description": "Named port at which goods are discharged.",
+      "used_by_rules": [
+        {"rule_id": "TRANS-04", "tier": "PROGRAMMATIC"}
+      ],
+      "used_by_prompts": []
+    },
+    {
+      "key": "transhipment_allowed",
+      "name_en": "Transhipment allowed",
+      "type": "ENUM",
+      "applies_to": ["LC"],
+      "source_tags": ["43T"],
+      "reconcile_canonical": false,
+      "owner": "ling",
+      "last_edited_at": "2026-03-15T16:40:00Z",
+      "description": "ALLOWED / NOT ALLOWED. UCP 20(c)(ii) waiver for FCL containerised shipments still applies even when prohibited.",
+      "used_by_rules": [
+        {"rule_id": "TRANS-05", "tier": "AGENT"}
+      ],
+      "used_by_prompts": [
+        {"id": "check/TRANS-05", "path": "prompts/check/TRANS-05.tokenized.st"}
+      ]
+    },
+    {
+      "key": "invoice_total",
+      "name_en": "Invoice total",
+      "type": "AMOUNT",
+      "applies_to": ["INV"],
+      "source_tags": [],
+      "reconcile_canonical": true,
+      "owner": "ling",
+      "last_edited_at": "2026-04-12T09:24:00Z",
+      "description": "Sum of invoice line items in the invoice currency. Compared against credit amount with UCP 30 tolerance.",
+      "used_by_rules": [
+        {"rule_id": "AMT-02", "tier": "AGENT_TOOL"},
+        {"rule_id": "AMT-03", "tier": "PROGRAMMATIC"},
+        {"rule_id": "INS-02", "tier": "AGENT_TOOL"}
+      ],
+      "used_by_prompts": [
+        {"id": "check/AMT-02", "path": "prompts/check/AMT-02.tokenized.st"}
+      ]
+    },
+    {
+      "key": "invoice_currency",
+      "name_en": "Invoice currency",
+      "type": "STRING",
+      "applies_to": ["INV"],
+      "source_tags": [],
+      "reconcile_canonical": true,
+      "owner": "ling",
+      "last_edited_at": "2026-04-12T09:24:00Z",
+      "description": "ISO-4217 code on the invoice. Symbol-vs-code equivalence is acceptable per ISBP C8.",
+      "used_by_rules": [
+        {"rule_id": "AMT-01", "tier": "PROGRAMMATIC"}
+      ],
+      "used_by_prompts": []
+    },
+    {
+      "key": "invoice_issuer",
+      "name_en": "Invoice issuer",
+      "type": "STRING",
+      "applies_to": ["INV"],
+      "source_tags": [],
+      "reconcile_canonical": true,
+      "owner": "ling",
+      "last_edited_at": "2026-04-22T13:00:00Z",
+      "description": "Party that issued the invoice. Must equal the LC beneficiary unless LC explicitly permits otherwise (UCP 18(a)(i)).",
+      "used_by_rules": [
+        {"rule_id": "PARTY-01", "tier": "PROGRAMMATIC"}
+      ],
+      "used_by_prompts": []
+    },
+    {
+      "key": "invoice_date",
+      "name_en": "Invoice date",
+      "type": "DATE",
+      "applies_to": ["INV"],
+      "source_tags": [],
+      "reconcile_canonical": false,
+      "owner": "ling",
+      "last_edited_at": "2026-03-30T11:02:00Z",
+      "description": "Date of issue on the invoice. Must not post-date presentation (UCP 14(i)).",
+      "used_by_rules": [
+        {"rule_id": "DATE-01", "tier": "PROGRAMMATIC"}
+      ],
+      "used_by_prompts": []
+    },
+    {
+      "key": "incoterms",
+      "name_en": "Incoterms",
+      "type": "STRING",
+      "applies_to": ["INV"],
+      "source_tags": [],
+      "reconcile_canonical": false,
+      "owner": "ling",
+      "last_edited_at": "2026-05-01T09:00:00Z",
+      "description": "Trade term (e.g. FOB Shanghai, CIF Singapore). Must match the freight notation on the BL.",
+      "used_by_rules": [
+        {"rule_id": "GOODS-05", "tier": "PROGRAMMATIC"}
+      ],
+      "used_by_prompts": []
+    },
+    {
+      "key": "bl_date",
+      "name_en": "BL issuance date",
+      "type": "DATE",
+      "applies_to": ["BOL"],
+      "source_tags": [],
+      "reconcile_canonical": true,
+      "owner": "ling",
+      "last_edited_at": "2026-03-30T11:02:00Z",
+      "description": "Date the bill of lading was issued. May or may not equal the on-board date — see ISBP D20.",
+      "used_by_rules": [
+        {"rule_id": "DATE-01", "tier": "PROGRAMMATIC"},
+        {"rule_id": "DATE-02", "tier": "AGENT_TOOL"}
+      ],
+      "used_by_prompts": []
+    },
+    {
+      "key": "shipment_date",
+      "name_en": "On-board / shipment date",
+      "type": "DATE",
+      "applies_to": ["BOL"],
+      "source_tags": [],
+      "reconcile_canonical": true,
+      "owner": "ling",
+      "last_edited_at": "2026-04-04T08:11:00Z",
+      "description": "Date goods were placed on board. Drives the 21-day presentation clock and the latest-shipment-date check.",
+      "used_by_rules": [
+        {"rule_id": "DATE-02", "tier": "AGENT_TOOL"},
+        {"rule_id": "DATE-03", "tier": "PROGRAMMATIC"},
+        {"rule_id": "INS-03", "tier": "PROGRAMMATIC"}
+      ],
+      "used_by_prompts": [
+        {"id": "check/DATE-02", "path": "prompts/check/DATE-02.tokenized.st"}
+      ]
+    },
+    {
+      "key": "onboard_notation",
+      "name_en": "On-board notation",
+      "type": "ENUM",
+      "applies_to": ["BOL"],
+      "source_tags": [],
+      "reconcile_canonical": false,
+      "owner": "ling",
+      "last_edited_at": "2026-03-30T11:02:00Z",
+      "description": "Pre-printed or stamped indication that goods are on board. Required by UCP 20(a)(ii).",
+      "used_by_rules": [
+        {"rule_id": "TRANS-01", "tier": "PROGRAMMATIC"}
+      ],
+      "used_by_prompts": []
+    },
+    {
+      "key": "freight_notation",
+      "name_en": "Freight notation",
+      "type": "STRING",
+      "applies_to": ["BOL"],
+      "source_tags": [],
+      "reconcile_canonical": false,
+      "owner": "ling",
+      "last_edited_at": "2026-05-01T09:00:00Z",
+      "description": "FREIGHT PREPAID / FREIGHT COLLECT marking. Must be consistent with the invoice incoterms.",
+      "used_by_rules": [
+        {"rule_id": "GOODS-05", "tier": "PROGRAMMATIC"}
+      ],
+      "used_by_prompts": []
+    },
+    {
+      "key": "clean_indicator",
+      "name_en": "Clean BL indicator",
+      "type": "BOOL",
+      "applies_to": ["BOL"],
+      "source_tags": [],
+      "reconcile_canonical": false,
+      "owner": "ling",
+      "last_edited_at": "2026-04-25T09:00:00Z",
+      "description": "True if the BL bears no clauses declaring defective state of goods or packaging (UCP 27).",
+      "used_by_rules": [
+        {"rule_id": "TRANS-03", "tier": "AGENT"}
+      ],
+      "used_by_prompts": [
+        {"id": "check/TRANS-03", "path": "prompts/check/TRANS-03.tokenized.st"}
+      ]
+    },
+    {
+      "key": "shipping_marks",
+      "name_en": "Shipping marks",
+      "type": "STRING",
+      "applies_to": ["BOL", "PKL"],
+      "source_tags": [],
+      "reconcile_canonical": false,
+      "owner": "ling",
+      "last_edited_at": "2026-04-18T11:30:00Z",
+      "description": "Marks identifying packages. PKL marks must not contradict BL marks (ISBP M2).",
+      "used_by_rules": [
+        {"rule_id": "GOODS-04", "tier": "PROGRAMMATIC"}
+      ],
+      "used_by_prompts": []
+    },
+    {
+      "key": "total_packages",
+      "name_en": "Total packages",
+      "type": "NUMBER",
+      "applies_to": ["INV", "PKL"],
+      "source_tags": [],
+      "reconcile_canonical": true,
+      "owner": "ling",
+      "last_edited_at": "2026-04-18T11:30:00Z",
+      "description": "Number of packages declared on the packing list and (sometimes) the invoice. Must reconcile.",
+      "used_by_rules": [
+        {"rule_id": "GOODS-03", "tier": "PROGRAMMATIC"}
+      ],
+      "used_by_prompts": []
+    },
+    {
+      "key": "total_weight",
+      "name_en": "Total weight",
+      "type": "AMOUNT",
+      "applies_to": ["PKL"],
+      "source_tags": [],
+      "reconcile_canonical": false,
+      "owner": "ling",
+      "last_edited_at": "2026-04-18T11:30:00Z",
+      "description": "Gross / net weight in kg. Tolerance per UCP 30(b) when only weight-based.",
+      "used_by_rules": [
+        {"rule_id": "GOODS-03", "tier": "PROGRAMMATIC"}
+      ],
+      "used_by_prompts": []
+    },
+    {
+      "key": "draft_amount",
+      "name_en": "Draft amount",
+      "type": "AMOUNT",
+      "applies_to": ["BOE"],
+      "source_tags": [],
+      "reconcile_canonical": true,
+      "owner": "ling",
+      "last_edited_at": "2026-04-12T09:24:00Z",
+      "description": "Amount drawn on the bill of exchange. Must equal invoice amount (ISBP B3).",
+      "used_by_rules": [
+        {"rule_id": "AMT-03", "tier": "PROGRAMMATIC"}
+      ],
+      "used_by_prompts": []
+    },
+    {
+      "key": "draft_drawee",
+      "name_en": "Draft drawee",
+      "type": "STRING",
+      "applies_to": ["BOE"],
+      "source_tags": [],
+      "reconcile_canonical": true,
+      "owner": "ling",
+      "last_edited_at": "2026-03-15T16:40:00Z",
+      "description": "Party on whom the draft is drawn. Must match LC drawee_name.",
+      "used_by_rules": [
+        {"rule_id": "PARTY-03", "tier": "PROGRAMMATIC"}
+      ],
+      "used_by_prompts": []
+    },
+    {
+      "key": "boe_date",
+      "name_en": "Bill of exchange date",
+      "type": "DATE",
+      "applies_to": ["BOE"],
+      "source_tags": [],
+      "reconcile_canonical": false,
+      "owner": "ling",
+      "last_edited_at": "2026-03-30T11:02:00Z",
+      "description": "Date of issue on the draft. Must fall within LC validity (UCP 6(d)).",
+      "used_by_rules": [
+        {"rule_id": "DATE-04", "tier": "PROGRAMMATIC"}
+      ],
+      "used_by_prompts": []
+    },
+    {
+      "key": "bc_signature_present",
+      "name_en": "BC signature present",
+      "type": "BOOL",
+      "applies_to": ["BC"],
+      "source_tags": [],
+      "reconcile_canonical": false,
+      "owner": "ling",
+      "last_edited_at": "2026-04-25T09:00:00Z",
+      "description": "True if the beneficiary certificate carries a signature or chop. Required when LC stipulates 'signed by'.",
+      "used_by_rules": [
+        {"rule_id": "CERT-01", "tier": "PROGRAMMATIC"}
+      ],
+      "used_by_prompts": []
+    },
+    {
+      "key": "wc_period",
+      "name_en": "Warranty period",
+      "type": "STRING",
+      "applies_to": ["WC"],
+      "source_tags": [],
+      "reconcile_canonical": false,
+      "owner": "ling",
+      "last_edited_at": "2026-04-30T10:18:00Z",
+      "description": "Stated warranty term on the warranty certificate (e.g., '12 months from B/L date').",
+      "used_by_rules": [
+        {"rule_id": "CERT-03", "tier": "AGENT"}
+      ],
+      "used_by_prompts": [
+        {"id": "check/CERT-03", "path": "prompts/check/CERT-03.tokenized.st"}
+      ]
+    },
+    {
+      "key": "insurance_amount",
+      "name_en": "Insurance amount",
+      "type": "AMOUNT",
+      "applies_to": ["INS"],
+      "source_tags": [],
+      "reconcile_canonical": true,
+      "owner": "ling",
+      "last_edited_at": "2026-04-12T09:24:00Z",
+      "description": "Insured value. Must be ≥ 110% of CIF/CIP invoice value per UCP 28(f)(ii).",
+      "used_by_rules": [
+        {"rule_id": "INS-02", "tier": "AGENT_TOOL"}
+      ],
+      "used_by_prompts": []
+    },
+    {
+      "key": "insurance_currency",
+      "name_en": "Insurance currency",
+      "type": "STRING",
+      "applies_to": ["INS"],
+      "source_tags": [],
+      "reconcile_canonical": true,
+      "owner": "ling",
+      "last_edited_at": "2026-04-12T09:24:00Z",
+      "description": "Currency of the insurance policy. Must equal LC credit_currency (UCP 28(f)(i)).",
+      "used_by_rules": [
+        {"rule_id": "INS-01", "tier": "PROGRAMMATIC"}
+      ],
+      "used_by_prompts": []
+    },
+    {
+      "key": "insurance_date",
+      "name_en": "Insurance date",
+      "type": "DATE",
+      "applies_to": ["INS"],
+      "source_tags": [],
+      "reconcile_canonical": false,
+      "owner": "ling",
+      "last_edited_at": "2026-04-04T08:11:00Z",
+      "description": "Effective date of the insurance. Must not post-date the on-board date (UCP 28(e)).",
+      "used_by_rules": [
+        {"rule_id": "INS-03", "tier": "PROGRAMMATIC"}
+      ],
+      "used_by_prompts": []
+    },
+    {
+      "key": "policy_number",
+      "name_en": "Insurance policy number",
+      "type": "STRING",
+      "applies_to": ["INS"],
+      "source_tags": [],
+      "reconcile_canonical": false,
+      "owner": "ling",
+      "last_edited_at": "2026-02-10T08:00:00Z",
+      "description": "Identifier on the insurance document. Defined for completeness; no rule references it yet.",
+      "used_by_rules": [],
+      "used_by_prompts": []
+    }
+  ]
+}

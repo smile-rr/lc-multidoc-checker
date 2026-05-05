@@ -91,8 +91,10 @@ public class RuleCatalogRegistry {
     }
 
     /**
-     * Apply tier defaults for {@code thinkingEnabled} / {@code maxIterations} when
-     * the catalog entry omits them. Catalog values always win.
+     * Apply tier defaults for {@code thinkingEnabled} only. {@code maxIterations}
+     * is left null when the catalog entry omits it; AgentRuleExecutor resolves
+     * the effective cap against {@code app.llm.max-iterations} at call time so
+     * the project-level budget governs by default.
      */
     private static Rule applyTierDefaults(Rule r) {
         Boolean thinking = r.thinkingEnabled();
@@ -100,7 +102,6 @@ public class RuleCatalogRegistry {
         switch (r.checkType()) {
             case "AGENTIC" -> {
                 if (thinking == null) thinking = Boolean.TRUE;
-                if (maxIter == null) maxIter = 4;
             }
             case "AGENT", "AGENT_TOOL" -> {
                 if (thinking == null) thinking = Boolean.FALSE;

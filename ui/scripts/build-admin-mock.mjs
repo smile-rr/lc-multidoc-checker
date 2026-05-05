@@ -108,6 +108,7 @@ const rules = (catalogV3.rules || []).map((r, idx) => {
     rule_id: r.rule_id,
     name: r.name,
     category: r.category,
+    enabled: r.enabled !== false,
     version: r.version || 1,
     severity: r.severity,
     polarity: r.polarity,
@@ -275,4 +276,8 @@ const out = {
 writeFileSync(OUT, JSON.stringify(out, null, 2));
 console.log(`Wrote ${OUT}`);
 console.log(`  catalog=${out.catalogVersion}`);
-console.log(`  rules=${rules.length} prompts=${prompts.length} (${unauthoredCount} unauthored) ucp=${out.refs.ucp600.length} isbp=${out.refs.isbp821.length} fields=${fields.length} eval_cases=${rules.reduce((n, r) => n + (r.eval_cases?.length || 0), 0)}`);
+const enabledCount = rules.filter((r) => r.enabled).length;
+console.log(`  rules=${rules.length} (${enabledCount} enabled · ${rules.length - enabledCount} disabled)`);
+console.log(`  prompts=${prompts.length} (${unauthoredCount} unauthored)`);
+console.log(`  ucp=${out.refs.ucp600.length} isbp=${out.refs.isbp821.length} fields=${fields.length}`);
+console.log(`  eval_cases=${rules.reduce((n, r) => n + (r.eval_cases?.length || 0), 0)}`);

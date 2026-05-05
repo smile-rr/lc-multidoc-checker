@@ -5,11 +5,10 @@ import { useRole } from '../RoleContext';
 import { StateBadge, TierBadge } from '../components/StateBadge';
 
 const COLS = [
-  { id: 'DRAFT',     title: 'Draft',     who: 'Compliance · Eng',   desc: 'Authoring; not seen by runtime.' },
-  { id: 'IN_REVIEW', title: 'In Review', who: 'Reviewer · Prompt',  desc: 'Peer review; needs approval.' },
-  { id: 'SHADOW',    title: 'Shadow',    who: 'Dev / QA',           desc: 'Runs alongside prod; verdict-agreement collected.' },
-  { id: 'STAGED',    title: 'Staged',    who: 'Dev / QA',           desc: 'Eval + shadow passed; awaiting publish window.' },
-  { id: 'PUBLISHED', title: 'Published', who: 'Runtime',            desc: 'Loaded by the service on next reload.' },
+  { id: 'DRAFT',     title: 'Draft',     who: 'Compliance · Eng',  desc: 'Authoring; not seen by runtime.' },
+  { id: 'SUBMITTED', title: 'Submitted', who: 'Reviewer · Prompt', desc: 'Sent for review; awaiting decision.' },
+  { id: 'APPROVED',  title: 'Approved',  who: 'Dev / QA',          desc: 'Reviewer signed off; awaiting release window.' },
+  { id: 'RELEASED',  title: 'Released',  who: 'Runtime',           desc: 'Loaded by the service on next reload.' },
 ];
 
 export function LifecyclePage() {
@@ -39,11 +38,11 @@ export function LifecyclePage() {
         <div>
           <div className="text-[10px] uppercase tracking-[0.2em] text-muted">Release lifecycle</div>
           <h1 className="text-xl font-serif" style={{ fontFamily: 'ui-serif, Georgia, serif' }}>
-            DRAFT · REVIEW · STAGED · PUBLISHED
+            DRAFT · SUBMITTED · APPROVED · RELEASED
           </h1>
           <p className="text-xs text-muted mt-1 max-w-2xl">
             Rules and prompts version independently but share one release pipeline. A rule
-            cannot reach <em>Published</em> while its bound prompt is still in draft.
+            cannot reach <em>Released</em> while its bound prompt is still in draft.
           </p>
         </div>
         <div className="flex gap-1">
@@ -59,7 +58,7 @@ export function LifecyclePage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-4 gap-3">
         {COLS.map((col) => {
           const colItems = items.filter((x) => x.state === col.id);
           return (

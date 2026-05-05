@@ -13,6 +13,8 @@ import com.lc.v2.checker.infra.rules.RuleTriggerEvaluator;
 import com.lc.v2.checker.infra.rules.RuleTriggerEvaluator.TriggerDecision;
 import com.lc.v2.checker.pipeline.Stage;
 import com.lc.v2.checker.pipeline.StageContext;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationRegistry;
 import io.micrometer.tracing.Span;
 import io.micrometer.tracing.Tracer;
 import java.util.ArrayList;
@@ -46,6 +48,7 @@ public class ExamineStage implements Stage {
     private final RuleTriggerEvaluator triggerEvaluator;
     private final com.lc.v2.checker.stage.parse.Mt700Parser mt700Parser;
     private final Tracer tracer;
+    private final ObservationRegistry observationRegistry;
 
     private final Map<String, List<String>> traces = new LinkedHashMap<>();
     private final Map<String, Long> ruleStartMs = new LinkedHashMap<>();
@@ -57,7 +60,8 @@ public class ExamineStage implements Stage {
                         ObjectMapper objectMapper,
                         RuleTriggerEvaluator triggerEvaluator,
                         com.lc.v2.checker.stage.parse.Mt700Parser mt700Parser,
-                        Tracer tracer) {
+                        Tracer tracer,
+                        ObservationRegistry observationRegistry) {
         this.catalog = catalog;
         this.spelEvaluator = spelEvaluator;
         this.agentExecutor = agentExecutor;
@@ -66,6 +70,7 @@ public class ExamineStage implements Stage {
         this.triggerEvaluator = triggerEvaluator;
         this.mt700Parser = mt700Parser;
         this.tracer = tracer;
+        this.observationRegistry = observationRegistry;
     }
 
     @Override
@@ -149,12 +154,19 @@ public class ExamineStage implements Stage {
         // set by PipelineService.runStageAsync.
         long fireRules = classified.stream()
                 .filter(c -> c.outcome() == RuleTriggerEvaluator.Outcome.FIRE).count();
-        Span examineSpan = tracer.nextSpan().name("examine").start();
-        try (Tracer.SpanInScope ws = tracer.withSpan(examineSpan)) {
-            examineSpan.tag("session.id", ctx.sessionId);
-            examineSpan.tag("langfuse.session.id", ctx.sessionId);
-            examineSpan.tag("langfuse.trace.name", TraceNames.forSession(ctx.sessionId));
-            examineSpan.tag("rules.fire", String.valueOf(fireRules));
+        // Observation-based scope so child rule.* observations (and their
+        // gen_ai.* grandchildren from Spring AI) nest correctly in Langfuse.
+        Observation examineObs = Observation.createNotStarted("examine", observationRegistry)
+                .lowCardinalityKeyValue("rules.fire", String.valueOf(fireRules))
+                .start();
+        try (Observation.Scope scope = examineObs.openScope()) {
+            Span s = tracer.currentSpan();
+            if (s != null) {
+                s.tag("session.id", ctx.sessionId);
+                s.tag("langfuse.session.id", ctx.sessionId);
+                s.tag("langfuse.trace.name", TraceNames.forSession(ctx.sessionId));
+                s.tag("rules.fire", String.valueOf(fireRules));
+            }
             // Catalog-order execution — NA emitted in place, no block hopping.
             for (Classified c : classified) {
                 if (c.outcome() == RuleTriggerEvaluator.Outcome.FIRE) {
@@ -164,10 +176,10 @@ public class ExamineStage implements Stage {
                 }
             }
         } catch (Throwable t) {
-            examineSpan.tag("error", String.valueOf(t.getMessage()));
+            examineObs.error(t);
             throw t;
         } finally {
-            examineSpan.end();
+            examineObs.stop();
         }
         // Out-of-scope rows surface as synthetic NA rows for the worklist's
         // Out-of-Scope section.

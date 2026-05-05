@@ -7,6 +7,7 @@ const tabs = [
   { to: '/admin', label: 'Overview', end: true },
   { to: '/admin/rules', label: 'Rules' },
   { to: '/admin/prompts', label: 'Prompts' },
+  { to: '/admin/fields', label: 'Fields' },
   { to: '/admin/refs', label: 'UCP / ISBP' },
   { to: '/admin/lifecycle', label: 'Release' },
 ];

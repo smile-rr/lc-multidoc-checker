@@ -6,6 +6,7 @@ import { EvidencePanel } from './EvidencePanel';
 import { OverrideForm } from './OverrideForm';
 import { CitationChip } from './CitationChip';
 import { RuleDocViewerModal } from './RuleDocViewerModal';
+import { MultiDocExplanation } from './MultiDocExplanation';
 
 const VERDICT_PILL = {
   PASS:           { fg: '#1a7a43', bg: '#ecfdf5', l: 'PASS',     glyph: '✓' },
@@ -147,7 +148,7 @@ export function RuleDrawer({ rule, width = 540, session, onClose, onOverride, on
         {/* 1. ISSUE — what's wrong and why (top of drawer, leading content) */}
         {!isNa && (
           <Section eyebrow="ISSUE" tone={effective === 'FAIL' ? 'red' : effective === 'DOUBTS' ? 'gold' : effective === 'PASS' ? 'green' : 'neutral'}>
-            <p className="text-[12px] leading-relaxed text-navy-1">{issueText}</p>
+            <MultiDocExplanation text={issueText} className="text-navy-1" />
             {rule.confidence != null && rule.checkType !== 'PROGRAMMATIC' && (
               <div className="mt-2 text-[10px] font-mono text-muted">
                 agent confidence · {(rule.confidence * 100).toFixed(0)}%
@@ -406,7 +407,7 @@ function ConditionResultsList({ results }) {
                 {r.condition_text || r.conditionText}
               </div>
             )}
-            {r.explanation && <div className="text-navy-1">{r.explanation}</div>}
+            {r.explanation && <MultiDocExplanation text={r.explanation} className="text-navy-1 mt-0.5" />}
           </li>
         );
       })}

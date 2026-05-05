@@ -49,6 +49,7 @@ rules:
 # =============================================================================
 
   - rule_id: DATE-01
+    enabled: false
     name: No document dated after presentation date
     category: DATE
     version: 1
@@ -98,6 +99,7 @@ rules:
       - { id: D02-04, scenario: "Multiple BLs — earliest on-board governs",                            expected: PASS,   citations: [UCP-14-c] }
 
   - rule_id: DATE-03
+    enabled: false
     name: No shipment after latest shipment date
     category: DATE
     version: 1
@@ -122,6 +124,7 @@ rules:
       - { id: D03-02, scenario: "On-board 2026-05-01, latest 2026-04-30",                expected: FAIL, citations: [UCP-14-c] }
 
   - rule_id: DATE-04
+    enabled: false
     name: Drawing date within LC validity
     category: DATE
     version: 1
@@ -168,11 +171,14 @@ rules:
     health_signals: { eval_pass_rate: 0.92, override_rate: 0.06, doubts_rate: 0.08, p95_latency_ms: 1400, cost_usd_per_check: 0.0028 }
     policy_overlays: {}
     eval_cases:
-      - { id: DS01-01, scenario: "LC requires 4 docs, all 4 present",                expected: PASS, citations: [UCP-14-a] }
-      - { id: DS01-02, scenario: "LC requires inspection cert; not in presentation", expected: FAIL, citations: [UCP-14-a] }
-      - { id: DS01-03, scenario: "LC requires 'cert of origin'; presented FORM-A",   expected: PASS, citations: [UCP-14-a, UCP-14-f] }
+      - { id: DS01-01, scenario: "LC requires 4 docs, all 4 present and clearly labelled",                                       expected: PASS,   citations: [UCP-14-a] }
+      - { id: DS01-02, scenario: "LC requires inspection certificate; absent from presentation",                                  expected: FAIL,   citations: [UCP-14-a] }
+      - { id: DS01-03, scenario: "LC requires 'Certificate of Origin'; presentation has 'FORM-A' (commonly accepted equivalent)", expected: DOUBTS, citations: [UCP-14-a, UCP-14-f] }
+      - { id: DS01-04, scenario: "LC requires beneficiary cert AND inspection report; only beneficiary cert present",             expected: FAIL,   citations: [UCP-14-a] }
+      - { id: DS01-05, scenario: "LC :47A: mentions 'shipping advice' once; nothing matching that label presented",               expected: DOUBTS, citations: [UCP-14-a] }
 
   - rule_id: DOCSET-02
+    enabled: false
     name: Number of originals/copies as required by LC and UCP 17
     category: DOCSET
     version: 1
@@ -196,6 +202,7 @@ rules:
       - { id: DS02-02, scenario: "LC asks 3/3 invoice; presentation has 1 original",   expected: FAIL, citations: [UCP-17] }
 
   - rule_id: DOCSET-03
+    enabled: false
     name: Full set of B/L originals presented
     category: DOCSET
     version: 1
@@ -298,6 +305,7 @@ rules:
       - { id: A03-02, scenario: "Draft 250000.00, invoice 248750.00",  expected: FAIL, citations: [ISBP-B3] }
 
   - rule_id: AMT-04
+    enabled: false
     name: Quantity tolerance UCP 30(b) applied where applicable
     category: AMT
     version: 1
@@ -350,6 +358,7 @@ rules:
       - { id: P01-03, scenario: "Invoice issuer 'XYZ Corp' (different entity)",            expected: FAIL, citations: [UCP-18-a-1] }
 
   - rule_id: PARTY-02
+    enabled: false
     name: Invoice made out to applicant
     category: PARTY
     version: 1
@@ -372,6 +381,7 @@ rules:
       - { id: P02-02, scenario: "Applicant 'XYZ Inc.'; invoice billed to 'ABC Ltd.'", expected: FAIL, citations: [UCP-18-a-2] }
 
   - rule_id: PARTY-03
+    enabled: false
     name: Draft drawn on the drawee named in the credit
     category: PARTY
     version: 1
@@ -449,6 +459,7 @@ rules:
       - { id: G01-04, scenario: "LC 'Model 123'; invoice 'Model 321' (digit transposition)",        expected: FAIL, citations: [ISBP-A15] }
 
   - rule_id: GOODS-02
+    enabled: false
     name: Other docs goods description in general terms, not conflicting
     category: GOODS
     version: 1
@@ -471,6 +482,7 @@ rules:
       - { id: G02-02, scenario: "LC 'CNC Lathe X-200'; B/L 'Hand Tools'",            expected: FAIL, citations: [UCP-14-e] }
 
   - rule_id: GOODS-03
+    enabled: false
     name: Quantity / packages consistent between invoice and packing list
     category: GOODS
     version: 1
@@ -495,6 +507,7 @@ rules:
       - { id: G03-02, scenario: "Invoice 100 sets; PKL 99 sets",                          expected: FAIL, citations: [UCP-14-d] }
 
   - rule_id: GOODS-04
+    enabled: false
     name: Shipping marks consistent between packing list and B/L
     category: GOODS
     version: 1
@@ -519,6 +532,7 @@ rules:
       - { id: G04-02, scenario: "PKL 'CASE 1-100'; BOL 'CASE 1-99'",             expected: FAIL, citations: [ISBP-M2] }
 
   - rule_id: GOODS-05
+    enabled: false
     name: Invoice Incoterms consistent with B/L freight notation
     category: GOODS
     version: 1
@@ -572,6 +586,7 @@ rules:
       - { id: T01-03, scenario: "Received-for-shipment BOL, no notation",                      expected: FAIL, citations: [UCP-20-a-2] }
 
   - rule_id: TRANS-02
+    enabled: false
     name: B/L signed properly per UCP 20(a)(i)
     category: TRANS
     version: 1
@@ -619,6 +634,7 @@ rules:
       - { id: T03-04, scenario: "BOL annotated 'minor scratches noted on packaging'",       expected: DOUBTS, citations: [UCP-27] }
 
   - rule_id: TRANS-04
+    enabled: false
     name: B/L ports of loading and discharge match LC
     category: TRANS
     version: 1
@@ -643,6 +659,7 @@ rules:
       - { id: T04-02, scenario: "LC says POD 'Singapore'; BOL says 'Hong Kong'",  expected: FAIL, citations: [UCP-20-a-3] }
 
   - rule_id: TRANS-05
+    enabled: false
     name: Transhipment per LC instructions
     category: TRANS
     version: 1
@@ -670,6 +687,7 @@ rules:
 # =============================================================================
 
   - rule_id: INS-01
+    enabled: false
     name: Insurance currency equals LC currency
     category: INS
     version: 1
@@ -694,6 +712,7 @@ rules:
       - { id: I01-02, scenario: "LC USD; insurance JPY",   expected: FAIL, citations: [UCP-28-f-1] }
 
   - rule_id: INS-02
+    enabled: false
     name: Insurance amount at least 110% of CIF/CIP value
     category: INS
     version: 1
@@ -717,6 +736,7 @@ rules:
       - { id: I02-03, scenario: "Invoice FOB (no CIF); LC silent on minimum",   expected: DOUBTS, citations: [UCP-28-f-2] }
 
   - rule_id: INS-03
+    enabled: false
     name: Insurance dated not later than shipment date
     category: INS
     version: 1
@@ -745,6 +765,7 @@ rules:
 # =============================================================================
 
   - rule_id: CERT-01
+    enabled: false
     name: Beneficiary certificate signed when LC requires signature
     category: CERT
     version: 1
@@ -771,6 +792,7 @@ rules:
       - { id: C01-03, scenario: "LC requires signed BC; BC has neither",                  expected: FAIL, citations: [ISBP-Q3] }
 
   - rule_id: CERT-02
+    enabled: false
     name: "Beneficiary certificate satisfies all :46A: / :47A: conditions"
     category: CERT
     version: 1
@@ -794,6 +816,7 @@ rules:
       - { id: C02-03, scenario: "LC requires BC by chamber of commerce; BC issued by beneficiary",            expected: FAIL, citations: [ISBP-Q2] }
 
   - rule_id: CERT-03
+    enabled: false
     name: "Warranty certificate satisfies :46A: conditions"
     category: CERT
     version: 1
@@ -820,6 +843,7 @@ rules:
 # =============================================================================
 
   - rule_id: EXAM-01
+    enabled: false
     name: No conflicting data across all stipulated documents
     category: EXAM
     version: 1
@@ -843,6 +867,7 @@ rules:
       - { id: E01-03, scenario: "Invoice and PKL show 100 sets; BOL shipping marks 'CASE 1-99'",        expected: FAIL, citations: [UCP-14-d] }
 
   - rule_id: EXAM-02
+    enabled: false
     name: Corrections and alterations authenticated where required
     category: EXAM
     version: 1

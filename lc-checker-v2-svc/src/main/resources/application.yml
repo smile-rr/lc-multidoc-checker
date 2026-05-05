@@ -29,6 +29,13 @@ spring:
           additional-model-request-fields:
             enable_thinking: false
 
+# --- Agentic loop hard cap ----------------------------------------------------
+# One iteration = one chat completion + (optionally) one tool-execution round.
+# Rule-level Rule.maxIterations overrides this when set in catalog.yml.
+app:
+  llm:
+    max-iterations: ${LLM_MAX_ITERATIONS:3}
+
   servlet:
     multipart:
       max-file-size: 20MB

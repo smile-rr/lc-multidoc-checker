@@ -34,7 +34,7 @@ export function PromptDetailPage() {
   const userById = (uid) => users.find((u) => u.id === uid);
   const editable = can('prompt.body') || can('system.prompt');
   const tokenCount = (body.match(/\{\{[^}]+\}\}/g) || []).length;
-  const next = { DRAFT: 'IN_REVIEW', IN_REVIEW: 'STAGED', STAGED: 'PUBLISHED' }[prompt.state];
+  const next = { DRAFT: 'SUBMITTED', SUBMITTED: 'APPROVED', APPROVED: 'RELEASED' }[prompt.state];
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -67,7 +67,7 @@ export function PromptDetailPage() {
               onClick={() => transitionPrompt(prompt.id, next, role.id, `${role.role} action`)}
               className="text-xs px-3 py-1.5 bg-teal-1 text-white rounded hover:bg-teal-2 shadow-sm transition"
             >
-              {next === 'IN_REVIEW' ? 'Submit for review' : next === 'STAGED' ? 'Approve & stage' : 'Publish'}
+              {next === 'SUBMITTED' ? 'Submit' : next === 'APPROVED' ? 'Approve' : 'Release'}
             </button>
           )}
         </div>

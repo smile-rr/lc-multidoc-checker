@@ -6,10 +6,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lc.v2.checker.domain.common.ArticleRef;
 import com.lc.v2.checker.domain.result.CheckResult;
 import com.lc.v2.checker.domain.rule.Rule;
+import com.lc.v2.checker.infra.config.LlmBudgetProperties;
 import com.lc.v2.checker.infra.observability.TraceNames;
 import com.lc.v2.checker.infra.refs.ArticleRefRegistry;
 import com.lc.v2.checker.pipeline.StageContext;
 import com.lc.v2.checker.stage.examine.tools.ExamineToolRegistry;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationRegistry;
 import io.micrometer.tracing.Span;
 import io.micrometer.tracing.Tracer;
 import java.io.IOException;
@@ -24,7 +27,19 @@ import java.util.concurrent.ConcurrentMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
+import org.springframework.ai.model.tool.ToolCallingManager;
+import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
@@ -35,15 +50,24 @@ import org.springframework.stereotype.Component;
  *
  * <table>
  *   <tr><th>checkType</th><th>Path</th></tr>
- *   <tr><td>AGENT</td>      <td>callPlain — single ChatClient call, no tools</td></tr>
- *   <tr><td>AGENT_TOOL</td> <td>callWithTools, max 1 round</td></tr>
- *   <tr><td>AGENTIC</td>    <td>callWithTools, up to rule.maxIterations rounds</td></tr>
+ *   <tr><td>AGENT</td>      <td>{@link #callPlain} — single ChatClient call, no tools</td></tr>
+ *   <tr><td>AGENT_TOOL</td> <td>{@link #callWithTools}, hard cap 1 LLM call</td></tr>
+ *   <tr><td>AGENTIC</td>    <td>{@link #callWithTools}, hard cap = effectiveCap</td></tr>
  * </table>
  *
- * Spring AI 1.1's auto tool-execution loop drives the round-tripping.
- * {@link ExamineToolRegistry#beginCapture()} primes a thread-local list that
- * each {@code @Tool} method appends to; the captured timeline is attached to
- * the resulting {@link CheckResult}.
+ * <h3>Hard budget — fail-stop</h3>
+ * Spring AI 1.1's {@code internalToolExecutionEnabled} loop has no built-in
+ * iteration cap. We disable it and drive the loop manually with a strict
+ * counter so a runaway model cannot burn money. {@code effectiveCap} =
+ * {@code Rule.maxIterations} when set; otherwise {@code app.llm.max-iterations}
+ * (default 3). One iteration = one chat completion (= ≤ 1 round of tool calls).
+ *
+ * <h3>Span nesting</h3>
+ * Every rule invocation runs inside a {@link Observation} scope so Spring AI's
+ * {@code gen_ai.client.operation} child observations attach as spans under
+ * {@code rule.<id>} (which itself nests under the {@code examine} stage span).
+ * Tags are still set via {@link Tracer#currentSpan()} since the
+ * Observation→Span bridge is active inside the scope.
  */
 @Component
 public class AgentRuleExecutor {
@@ -51,51 +75,61 @@ public class AgentRuleExecutor {
     private static final Logger log = LoggerFactory.getLogger(AgentRuleExecutor.class);
 
     private final ChatClient.Builder chatClientBuilder;
+    private final ChatModel chatModel;
+    private final ToolCallingManager toolCallingManager;
     private final ArticleRefRegistry refs;
     private final ResourceLoader resourceLoader;
     private final ExamineToolRegistry toolRegistry;
+    private final List<ToolCallback> toolCallbacks;
+    private final ObservationRegistry observationRegistry;
     private final Tracer tracer;
+    private final LlmBudgetProperties budget;
     private final String systemPrompt;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private final ConcurrentMap<String, String> rulePromptCache = new ConcurrentHashMap<>();
 
     public AgentRuleExecutor(ChatClient.Builder chatClientBuilder,
+                              ChatModel chatModel,
+                              ToolCallingManager toolCallingManager,
                               ArticleRefRegistry refs,
                               ResourceLoader resourceLoader,
                               ExamineToolRegistry toolRegistry,
-                              Tracer tracer) throws IOException {
+                              ObservationRegistry observationRegistry,
+                              Tracer tracer,
+                              LlmBudgetProperties budget) throws IOException {
         this.chatClientBuilder = chatClientBuilder;
+        this.chatModel = chatModel;
+        this.toolCallingManager = toolCallingManager;
         this.refs = refs;
         this.resourceLoader = resourceLoader;
         this.toolRegistry = toolRegistry;
+        this.toolCallbacks = List.of(MethodToolCallbackProvider.builder()
+                .toolObjects(toolRegistry).build().getToolCallbacks());
+        this.observationRegistry = observationRegistry;
         this.tracer = tracer;
+        this.budget = budget;
         try (InputStream in = new ClassPathResource("prompts/system/check-system.st").getInputStream()) {
             this.systemPrompt = new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }
     }
 
     public CheckResult execute(Rule rule, StageContext ctx) {
-        // Wrap every agent call in a rule-named span so Langfuse groups its
-        // Spring-AI gen_ai.* child(ren) under the rule_id. The gen_ai.system
-        // tag here ensures the LlmOnlySpanFilter keeps the span on export.
-        Span span = tracer.nextSpan().name("rule." + rule.ruleId()).start();
-        try (Tracer.SpanInScope ws = tracer.withSpan(span)) {
-            span.tag("gen_ai.system", "qwen-bailian");
-            span.tag("gen_ai.operation.name", "chat");
-            span.tag("rule_id", rule.ruleId());
-            span.tag("rule_check_type", rule.checkType() == null ? "" : rule.checkType());
-            if (rule.name() != null) span.tag("rule_name", rule.name());
-            if (ctx != null && ctx.sessionId != null) {
-                span.tag("session.id", ctx.sessionId);
-                span.tag("langfuse.session.id", ctx.sessionId);
-                span.tag("langfuse.trace.name", TraceNames.forSession(ctx.sessionId));
-            }
+        // Observation-based parent scope — Spring AI emits gen_ai.client.operation
+        // observations that nest under this one in Langfuse. tracer.currentSpan()
+        // inside the scope returns the bridged span for tag-based metadata.
+        Observation obs = Observation.createNotStarted("rule." + rule.ruleId(), observationRegistry)
+                .lowCardinalityKeyValue("rule_id", rule.ruleId())
+                .lowCardinalityKeyValue("rule_check_type",
+                        rule.checkType() == null ? "" : rule.checkType())
+                .start();
+        try (Observation.Scope scope = obs.openScope()) {
+            tagSpan(rule, ctx);
+            int cap = effectiveCap(rule);
             return switch (rule.checkType()) {
                 case "AGENT" -> callPlain(rule, ctx);
-                case "AGENT_TOOL" -> callWithTools(rule, ctx, 1);
-                case "AGENTIC" -> callWithTools(rule, ctx,
-                        rule.maxIterations() == null ? 4 : rule.maxIterations());
+                case "AGENT_TOOL" -> callWithTools(rule, ctx, Math.min(cap, 1));
+                case "AGENTIC" -> callWithTools(rule, ctx, cap);
                 default -> {
                     log.warn("[{}] AgentRuleExecutor invoked for unsupported checkType={} rule={}",
                             ctx.sessionId, rule.checkType(), rule.ruleId());
@@ -103,10 +137,35 @@ public class AgentRuleExecutor {
                 }
             };
         } catch (Throwable t) {
-            span.tag("error", String.valueOf(t.getMessage()));
+            obs.error(t);
             throw t;
         } finally {
-            span.end();
+            obs.stop();
+        }
+    }
+
+    /**
+     * Resolve the effective per-rule cap: {@code Rule.maxIterations} wins if
+     * set, otherwise the project-level {@code app.llm.max-iterations}.
+     */
+    private int effectiveCap(Rule rule) {
+        Integer ruleCap = rule.maxIterations();
+        int cap = (ruleCap != null && ruleCap > 0) ? ruleCap : budget.getMaxIterations();
+        return Math.max(1, cap);
+    }
+
+    private void tagSpan(Rule rule, StageContext ctx) {
+        Span s = tracer.currentSpan();
+        if (s == null) return;
+        s.tag("gen_ai.system", "qwen-bailian");
+        s.tag("gen_ai.operation.name", "chat");
+        s.tag("rule_id", rule.ruleId());
+        s.tag("rule_check_type", rule.checkType() == null ? "" : rule.checkType());
+        if (rule.name() != null) s.tag("rule_name", rule.name());
+        if (ctx != null && ctx.sessionId != null) {
+            s.tag("session.id", ctx.sessionId);
+            s.tag("langfuse.session.id", ctx.sessionId);
+            s.tag("langfuse.trace.name", TraceNames.forSession(ctx.sessionId));
         }
     }
 
@@ -115,7 +174,7 @@ public class AgentRuleExecutor {
         tagInput(userPrompt);
         try {
             String response = chatClientBuilder.build().prompt()
-                    .options(buildOptions(rule, null))
+                    .options(OpenAiChatOptions.builder().build())
                     .system(systemPrompt)
                     .user(userPrompt)
                     .call()
@@ -130,36 +189,66 @@ public class AgentRuleExecutor {
         }
     }
 
+    /**
+     * Manual agentic loop with a hard iteration cap.
+     *
+     * <p>{@code internalToolExecutionEnabled=false} forces {@link ChatModel} to
+     * return after one completion when tool calls are pending; we then invoke
+     * {@link ToolCallingManager#executeToolCalls} ourselves and feed the
+     * extended conversation history back. The counter increments per chat
+     * completion; once it reaches {@code maxIterations}, no further chat call
+     * is issued and the rule surfaces NEEDS_REVIEW with the captured trace.
+     */
     private CheckResult callWithTools(Rule rule, StageContext ctx, int maxIterations) {
         String userPrompt = buildPrompt(rule, ctx, true);
-        // Pass the session ID through the user prompt so the model can include it
-        // in tool-call arguments (the registry takes sessionId as a parameter).
         userPrompt = "Session ID for tool calls: " + ctx.sessionId + "\n\n" + userPrompt;
         tagInput(userPrompt);
 
+        ToolCallingChatOptions options = ToolCallingChatOptions.builder()
+                .toolCallbacks(toolCallbacks)
+                .internalToolExecutionEnabled(false)
+                .build();
+
+        List<Message> messages = new ArrayList<>();
+        messages.add(new SystemMessage(systemPrompt));
+        messages.add(new UserMessage(userPrompt));
+
         List<Map<String, Object>> toolCalls = toolRegistry.beginCapture();
         try {
-            String response = chatClientBuilder.build().prompt()
-                    .options(buildOptions(rule, maxIterations))
-                    .system(systemPrompt)
-                    .tools(toolRegistry)
-                    .user(userPrompt)
-                    .call()
-                    .content();
-            tagOutput(response);
-            // AGENTIC convergence cap: if the model emitted no terminal JSON and we
-            // hit the iteration ceiling, surface NEEDS_REVIEW with the trace.
-            CheckResult parsed = parseResponse(rule.ruleId(), rule.checkType(), response,
-                    new ArrayList<>(toolCalls));
-            if (parsed.verdict() == CheckResult.Verdict.FAILED
-                    && "AGENTIC".equals(rule.checkType())
-                    && toolCalls.size() >= maxIterations) {
-                return new CheckResult(rule.ruleId(), CheckResult.Verdict.NEEDS_REVIEW,
-                        "max_iterations (" + maxIterations + ") reached without terminal verdict",
-                        null, 0.0, rule.checkType(),
-                        new ArrayList<>(toolCalls), null);
+            int iterations = 0;
+            String lastAssistantText = null;
+            while (iterations < maxIterations) {
+                iterations++;
+                Prompt prompt = new Prompt(messages, options);
+                ChatResponse response = chatModel.call(prompt);
+                AssistantMessage assistant = response.getResult().getOutput();
+                lastAssistantText = assistant.getText();
+
+                boolean wantsTools = assistant.hasToolCalls();
+                if (!wantsTools) {
+                    tagOutput(lastAssistantText);
+                    return parseResponse(rule.ruleId(), rule.checkType(),
+                            lastAssistantText, new ArrayList<>(toolCalls));
+                }
+
+                if (iterations >= maxIterations) {
+                    // Budget exhausted before model produced terminal output.
+                    String msg = "max_iterations (" + maxIterations + ") reached without"
+                            + " terminal verdict; tool_rounds=" + toolCalls.size();
+                    log.warn("[{}] rule={} {}", ctx.sessionId, rule.ruleId(), msg);
+                    tagOutput("[BUDGET_EXHAUSTED] " + msg);
+                    return new CheckResult(rule.ruleId(), CheckResult.Verdict.NEEDS_REVIEW,
+                            msg, null, 0.0, rule.checkType(),
+                            new ArrayList<>(toolCalls), null);
+                }
+
+                ToolExecutionResult toolResult = toolCallingManager.executeToolCalls(prompt, response);
+                messages = new ArrayList<>(toolResult.conversationHistory());
             }
-            return parsed;
+            // Defensive — loop should have returned already.
+            return new CheckResult(rule.ruleId(), CheckResult.Verdict.NEEDS_REVIEW,
+                    "loop exited unexpectedly at iter=" + iterations,
+                    null, 0.0, rule.checkType(), new ArrayList<>(toolCalls), null);
         } catch (Exception e) {
             log.error("[{}] Agentic LLM call failed rule={}: {}",
                     ctx.sessionId, rule.ruleId(), e.getMessage());
@@ -170,23 +259,6 @@ public class AgentRuleExecutor {
         } finally {
             toolRegistry.endCapture();
         }
-    }
-
-    /**
-     * Build per-call ChatOptions. The global {@code enable_thinking: false} gate from
-     * application.yml is the authoritative default; per-rule {@code thinking_enabled}
-     * is captured here for downstream wiring but the OpenAiChatOptions surface in
-     * Spring AI 1.1 does not expose vendor-specific extras directly on the per-call
-     * builder, so the override is logged for now and applied via the application-level
-     * config. Other knobs (temperature etc.) can be added here as the catalog grows.
-     */
-    private OpenAiChatOptions buildOptions(Rule rule, Integer maxIterations) {
-        if (rule.thinkingEnabled() != null
-                && Boolean.TRUE.equals(rule.thinkingEnabled())) {
-            log.debug("rule={} requests enable_thinking=true; relying on application-level "
-                    + "config (global gate stays in effect)", rule.ruleId());
-        }
-        return OpenAiChatOptions.builder().build();
     }
 
     private String userPromptFor(Rule rule) {
@@ -275,7 +347,6 @@ public class AgentRuleExecutor {
         return s.length() <= TRACE_VALUE_MAX ? s : s.substring(0, TRACE_VALUE_MAX) + "…";
     }
 
-    /** Tags input on the current rule.* span so the prompt is visible in Langfuse. */
     private void tagInput(String prompt) {
         Span s = tracer.currentSpan();
         if (s == null || prompt == null) return;
@@ -283,7 +354,6 @@ public class AgentRuleExecutor {
         s.tag("gen_ai.prompt", trimForTrace(prompt));
     }
 
-    /** Tags model output on the current rule.* span. Token usage is carried by Spring AI's child gen_ai span. */
     private void tagOutput(String response) {
         Span s = tracer.currentSpan();
         if (s == null || response == null) return;

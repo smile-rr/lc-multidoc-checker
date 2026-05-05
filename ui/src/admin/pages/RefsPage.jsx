@@ -1,13 +1,24 @@
-import React, { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useStore } from '../store';
 
 export function RefsPage() {
   const refs = useStore((s) => s.refs);
   const rules = useStore((s) => s.rules);
-  const [src, setSrc] = useState('UCP600');
+  const [params] = useSearchParams();
+  const initialId = params.get('id');
+  const [src, setSrc] = useState(initialId?.startsWith('ISBP') ? 'ISBP821' : 'UCP600');
   const [q, setQ] = useState('');
-  const [activeId, setActiveId] = useState(null);
+  const [activeId, setActiveId] = useState(initialId || null);
+
+  useEffect(() => {
+    if (!activeId) return;
+    const t = setTimeout(() => {
+      const el = document.getElementById(`ref-${activeId}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 50);
+    return () => clearTimeout(t);
+  }, [activeId]);
 
   const list = src === 'UCP600' ? refs.ucp600 : refs.isbp821;
   const filtered = useMemo(
@@ -65,9 +76,10 @@ export function RefsPage() {
           {filtered.map((r) => (
             <button
               key={r.id}
+              id={`ref-${r.id}`}
               onClick={() => setActiveId(r.id)}
-              className={`w-full text-left px-4 py-3 hover:bg-slate2/50 ${
-                activeId === r.id ? 'bg-slate2' : ''
+              className={`w-full text-left px-4 py-3 hover:bg-slate2/50 transition ${
+                activeId === r.id ? 'bg-teal-1/10 ring-1 ring-teal-1/30' : ''
               }`}
             >
               <div className="flex items-center gap-2 mb-0.5">

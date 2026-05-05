@@ -51,7 +51,7 @@ export function DashboardPage() {
         <Stat label="UCP 600 articles" value={refs.ucp600.length} sub="Read-only golden source" />
         <Stat label="ISBP 821 paragraphs" value={refs.isbp821.length} sub="Read-only golden source" />
         <Stat label="Active drafts" value={(rs.DRAFT || 0) + (ps.DRAFT || 0)} sub="Cross both lanes" />
-        <Stat label="Awaiting review" value={(rs.IN_REVIEW || 0) + (ps.IN_REVIEW || 0)} />
+        <Stat label="Awaiting review" value={(rs.SUBMITTED || 0) + (ps.SUBMITTED || 0)} />
       </section>
 
       <section>
@@ -102,7 +102,7 @@ function Lane({ color, title, who, owns, states, link, linkLabel }) {
       </div>
       <p className="text-xs text-muted leading-relaxed mb-3">{owns}</p>
       <div className="flex gap-1 flex-wrap">
-        {['DRAFT', 'IN_REVIEW', 'STAGED', 'PUBLISHED'].map((s) => (
+        {['DRAFT', 'SUBMITTED', 'APPROVED', 'RELEASED'].map((s) => (
           <span key={s} className="flex items-center gap-1 text-[10px]">
             <StateBadge state={s} />
             <span className="font-mono">{states[s] || 0}</span>

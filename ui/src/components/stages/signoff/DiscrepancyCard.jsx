@@ -2,6 +2,7 @@ import React from 'react';
 import { docTypeMeta } from '../../../constants/docTypes';
 import { SeverityChip } from '../../shared/SeverityChip';
 import { DispositionPill } from '../../shared/DispositionPill';
+import { MultiDocExplanation } from '../examine/MultiDocExplanation';
 
 const DISP_OPTIONS = [
   ['WAIVER', 'Approach applicant for waiver'],
@@ -37,7 +38,7 @@ export function DiscrepancyCard({ rule, disposition, onSet, onClear, readOnly })
           </div>
           <div className="text-[12px]">{rule.label}</div>
           {rule.explanation && (
-            <div className="text-[11px] mt-1 text-muted">{rule.explanation}</div>
+            <div className="text-[11px] mt-1 text-muted"><MultiDocExplanation text={rule.explanation} /></div>
           )}
           {rule.evidence && (rule.evidence.lc != null || rule.evidence.doc != null) && (
             <div className="grid grid-cols-2 gap-2 mt-2 text-[10px] font-mono">
