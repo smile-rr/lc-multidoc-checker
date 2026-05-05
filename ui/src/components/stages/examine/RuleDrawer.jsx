@@ -116,7 +116,7 @@ export function RuleDrawer({ rule, width = 540, session, onClose, onOverride, on
               <span>📄</span>
               <span>LC</span>
             </button>
-            {(rule.scope || []).filter(s => s !== 'LC').slice(0, 4).map(s => (
+            {(rule.scope || []).filter(s => s !== 'LC').map(s => (
               <button
                 key={s}
                 onClick={() => setDocViewer({ docType: s })}

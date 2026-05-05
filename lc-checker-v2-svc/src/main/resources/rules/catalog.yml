@@ -597,6 +597,7 @@ rules:
     severity: CRITICAL
     polarity: NEGATIVE
     waivable: false
+    max_iterations: 2
     ucp_refs: [UCP-18-b, UCP-30-a, UCP-30-b, UCP-30-c]
     isbp_refs: [ISBP-C9, ISBP-C10]
     ucp_excerpt: |
@@ -633,6 +634,7 @@ rules:
     severity: CRITICAL
     polarity: POSITIVE
     waivable: false
+    max_iterations: 2
     ucp_refs: [UCP-14-c]
     isbp_refs: []
     ucp_excerpt: |
@@ -723,3 +725,53 @@ rules:
     field_keys: [beneficiary_name]
     enabled: true
 
+
+  # ---------------------------------------------------------------------------
+  # COND-03 · :47A: additional conditions satisfied across presentation — AGENTIC
+  # ---------------------------------------------------------------------------
+  # Decomposes :47A: into atomic clauses, classifies the target doc(s) for each,
+  # and probes those docs via tools. Complements COND-01/COND-02 (which only
+  # cover BC/WC) and DOC-04 (too generic to enumerate :47A: clauses).
+  - rule_id: COND-03
+    name: ":47A: additional conditions satisfied across presented documents"
+    version: 1
+    canonical_field: additional_conditions
+    applies_to: [LC, INV, BOL, PKL, BOE, BC, WC]
+    scope: [INV, BOL, PKL, BOE, BC, WC]
+    trigger_docs: []
+    triggers:
+      all_of:
+        - lc_field_present: [additional_conditions]
+        - any_of:
+            - docs_present: [INV]
+            - docs_present: [BOL]
+            - docs_present: [PKL]
+            - docs_present: [BOE]
+            - docs_present: [BC]
+            - docs_present: [WC]
+    lc_fields_required: [additional_conditions]
+    check_type: AGENTIC
+    severity: MAJOR
+    polarity: POSITIVE
+    waivable: true
+    thinking_enabled: true
+    max_iterations: 6
+    ucp_refs: [UCP-14-a, UCP-14-d, UCP-14-f, UCP-14-h]
+    isbp_refs: [ISBP-A1, ISBP-Q1, ISBP-Q5]
+    ucp_excerpt: |
+      UCP 600 Art. 14(a): Documents must be examined on their face to determine whether they appear to constitute
+        a complying presentation.
+      UCP 600 Art. 14(d): Data in a document, when read in context with the credit, the document itself and
+        international standard banking practice, need not be identical to, but must not conflict with, data in
+        that document, any other stipulated document or the credit.
+      UCP 600 Art. 14(f): If a credit requires presentation of a document other than a transport document,
+        insurance document or commercial invoice, without stipulating by whom the document is to be issued or
+        its data content, banks will accept the document as presented if its content appears to fulfil the
+        function of the required document.
+      UCP 600 Art. 14(h): If a credit contains a condition without stipulating the document to indicate compliance
+        with the condition, banks will deem such condition as not stated and will disregard it.
+      ISBP 821 A1: Examination of documents requires careful reading of the credit and the documents presented.
+      ISBP 821 Q1: Every condition stated in the credit must be addressed in the relevant document.
+      ISBP 821 Q5: Data must not conflict with other stipulated documents or the credit.
+    field_keys: [additional_conditions, documents_required]
+    enabled: true

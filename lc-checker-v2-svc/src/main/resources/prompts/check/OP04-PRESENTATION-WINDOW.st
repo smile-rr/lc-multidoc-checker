@@ -37,6 +37,15 @@ In `explanation`, give the calculated values:
   "BOL: anchor=<date>, today=<date>, days=<n>, expiry=<date>, allowed=<n>;
    verdict_basis=<UCP 14(c) — within|exceeds>"
 
+TOOL USAGE
+----------
+Most field values are already injected above under "LC fields" / "Document
+fields". Use tools only for missing values or for date arithmetic
+(datesDifference). When you do call tools, issue ALL needed calls in a
+SINGLE assistant turn — the runtime runs them in parallel. You have a
+hard budget of 2 LLM turns: turn-1 either answers directly OR emits all
+tool calls, turn-2 reads results and emits the terminal JSON.
+
 OUTPUT
 ------
 Respond with exactly one JSON object per the system-prompt contract:

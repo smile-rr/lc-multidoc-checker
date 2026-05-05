@@ -51,7 +51,7 @@ import org.springframework.stereotype.Component;
  * <table>
  *   <tr><th>checkType</th><th>Path</th></tr>
  *   <tr><td>AGENT</td>      <td>{@link #callPlain} — single ChatClient call, no tools</td></tr>
- *   <tr><td>AGENT_TOOL</td> <td>{@link #callWithTools}, hard cap 1 LLM call</td></tr>
+ *   <tr><td>AGENT_TOOL</td> <td>{@link #callWithTools}, hard cap 2 LLM calls (one batched tool round + terminal answer)</td></tr>
  *   <tr><td>AGENTIC</td>    <td>{@link #callWithTools}, hard cap = effectiveCap</td></tr>
  * </table>
  *
@@ -128,7 +128,7 @@ public class AgentRuleExecutor {
             int cap = effectiveCap(rule);
             return switch (rule.checkType()) {
                 case "AGENT" -> callPlain(rule, ctx);
-                case "AGENT_TOOL" -> callWithTools(rule, ctx, Math.min(cap, 1));
+                case "AGENT_TOOL" -> callWithTools(rule, ctx, Math.min(cap, 2));
                 case "AGENTIC" -> callWithTools(rule, ctx, cap);
                 default -> {
                     log.warn("[{}] AgentRuleExecutor invoked for unsupported checkType={} rule={}",

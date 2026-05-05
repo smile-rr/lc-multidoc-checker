@@ -44,6 +44,15 @@ DOUBTS         — extracted amounts are blank or unparseable; an officer must
                  read the source.
 NOT_APPLICABLE — credit_amount or credit_currency missing from the LC.
 
+TOOL USAGE
+----------
+Most field values you need are already injected above under "LC fields" /
+"Document fields". Use tools only for values that are missing there. When
+you do call tools, issue ALL needed calls in a SINGLE assistant turn (the
+runtime executes them in parallel) — do not chain calls one-by-one. You
+have a hard budget of 2 LLM turns: turn-1 either answers directly OR emits
+all tool calls, turn-2 reads results and emits the terminal JSON.
+
 OUTPUT
 ------
 Respond with exactly one JSON object per the system-prompt contract:
