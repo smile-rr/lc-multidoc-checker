@@ -19,9 +19,9 @@ export function WorklistTable({ groupedActive, groupedNa, groupedOutOfScope,
             <SortHeader label="#"        col="seq"      sort={sort} setSort={setSort} width={40} />
             <SortHeader label="Article"  col="article"  sort={sort} setSort={setSort} />
             <SortHeader label="Status"   col="status"   sort={sort} setSort={setSort} width={92} />
-            <SortHeader label="Type"     col="tier"     sort={sort} setSort={setSort} width={72} />
             <SortHeader label="Rule"     col="rule"     sort={sort} setSort={setSort} />
             <SortHeader label="Scope"    col="scope"    sort={sort} setSort={setSort} />
+            <SortHeader label="Type"     col="tier"     sort={sort} setSort={setSort} width={84} />
             <SortHeader label="Severity" col="severity" sort={sort} setSort={setSort} />
             <SortHeader label="Took"     col="duration" sort={sort} setSort={setSort} width={56} />
           </tr>

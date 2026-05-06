@@ -33,6 +33,15 @@ const TIER_LABEL = {
   AGENTIC:      'AGENTIC',
 };
 
+// Tier chip palette — deterministic→agentic on a cool→warm gradient so the
+// officer can spot LLM-driven rows at a glance without reading the label.
+const TIER_TONE = {
+  PROGRAMMATIC: { fg: '#1e4e8c', bg: '#e0ecff', dot: '#3b6fb5' }, // blue
+  AGENT:        { fg: '#5b21b6', bg: '#ede9fe', dot: '#7c3aed' }, // violet
+  AGENT_TOOL:   { fg: '#3730a3', bg: '#e0e7ff', dot: '#4f46e5' }, // indigo
+  AGENTIC:      { fg: '#9a3412', bg: '#ffedd5', dot: '#ea580c' }, // amber
+};
+
 export function WorklistRow({ rule, selected, onClick }) {
   const effective = rule.effectiveVerdict || rule.verdict;
   const isPending = effective === 'PENDING';
@@ -81,11 +90,6 @@ export function WorklistRow({ rule, selected, onClick }) {
         </span>
       </td>
 
-      {/* Type (execution tier) */}
-      <td className="px-2 py-2 text-[10px] text-muted font-mono whitespace-nowrap" style={{ width: 72 }} title={rule.checkType ? `Execution tier: ${rule.checkType}` : undefined}>
-        {(rule.checkType && TIER_LABEL[rule.checkType]) || ''}
-      </td>
-
       {/* Rule (id + label + inline attention chips) */}
       <td className="px-2 py-2 text-[12px]">
         <div className="flex items-center gap-1.5 flex-wrap">
@@ -109,6 +113,23 @@ export function WorklistRow({ rule, selected, onClick }) {
             </span>
           );
         })}
+      </td>
+
+      {/* Type (execution tier) — chip differentiates PROG vs LLM-driven tiers */}
+      <td className="px-2 py-2 whitespace-nowrap" style={{ width: 84 }}>
+        {rule.checkType && TIER_LABEL[rule.checkType] && (() => {
+          const t = TIER_TONE[rule.checkType] || TIER_TONE.AGENT;
+          return (
+            <span
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-mono text-[9.5px] font-semibold tracking-wider"
+              style={{ color: t.fg, background: t.bg }}
+              title={`Execution tier: ${rule.checkType}`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: t.dot }} />
+              {TIER_LABEL[rule.checkType]}
+            </span>
+          );
+        })()}
       </td>
 
       {/* Severity */}
