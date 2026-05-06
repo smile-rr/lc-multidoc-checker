@@ -79,7 +79,7 @@ Legacy system remains primary in Phase 1 so the team can  validate AI output aga
 
 ## Opinion:
 
-### Todo
+### Will do
 
 - **Cache Vision & LLM calls** by content hash + model/prompt version; invalidate when officer corrects a field
 - **Accumulate document parsing corrections** as few-shot examples to keep improving VLM prompts
