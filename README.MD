@@ -79,13 +79,13 @@ Legacy system remains primary in Phase 1 so the team can  validate AI output aga
 
 ## Opinion
 
-### Will do
+### Improvement cycle
 
-- **Cache Vision & LLM calls** by content hash + model/prompt version; invalidate when officer corrects a field
 - **Accumulate document parsing corrections** as few-shot examples to keep improving VLM prompts
 - **Accumulate rule decision corrections per rule** as few-shot examples to keep improving rule prompts
-- **Build a Case Knowledge Base from closed cases** — mine patterns into new Agent rules, and let officers search precedents via RAG when making judgment calls
 
-### Won't Do
+### About RAG
+
+- **Build a Case Knowledge Base from closed cases** — mine patterns into new Agent rules, and let officers search precedents via RAG when making judgment calls
 
 - RAG on UCP 600 / ISBP 821 — **the ruleset fits in context per rule**,  so there's no retrieval problem to solve; **RAG** only **adds the risk of silently missing a clause**, which is unacceptable in compliance**
