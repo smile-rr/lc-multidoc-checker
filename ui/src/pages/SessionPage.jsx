@@ -132,20 +132,24 @@ export function SessionPage() {
 
   // Initialize active stage on first load.
   //
-  // Important: dev mode makes every tab CLICKABLE (`reachable`), but the
-  // pipeline itself is still officer-paced — Continue must be clicked stage by
-  // stage. So the landing tab follows the strict gate flow, not `reachable`.
-  // Otherwise dev mode lands the officer on Signoff right after upload, which
-  // breaks the natural intake→parse→… review flow.
+  // Land on the stage that the officer must currently review — i.e. the
+  // just-completed stage waiting for Continue, not the next one. Backend
+  // semantics: when a stage finishes it sets awaiting_officer=true and
+  // next_stage=<the one to run next>. So the predecessor of next_stage is
+  // what the officer should be looking at. Without this, intake auto-confirms
+  // happy-path docs, the intake gate flips true on first render, and the
+  // officer gets dumped onto Parse without ever seeing the Intake tab.
   const landingTarget = useMemo(() => {
     if (signoffData?.signed) return 'signoff';
-    let t = 'intake';
-    if (intakeGate) t = 'parse';
-    if (intakeGate && parseGate) t = 'reconcile';
-    if (intakeGate && parseGate && reconcileGate) t = 'examine';
-    if (intakeGate && parseGate && reconcileGate && examineGate) t = 'signoff';
-    return t;
-  }, [intakeGate, parseGate, reconcileGate, examineGate, signoffData?.signed]);
+    if (session?.awaiting_officer && session?.next_stage) {
+      const nextIdx = STAGE_ORDER.indexOf(String(session.next_stage).toLowerCase());
+      if (nextIdx > 0) return STAGE_ORDER[nextIdx - 1];
+      return STAGE_ORDER[0];
+    }
+    const s = String(session?.status || '').toLowerCase();
+    if (STAGE_ORDER.includes(s)) return s;
+    return 'intake';
+  }, [session?.awaiting_officer, session?.next_stage, session?.status, signoffData?.signed]);
 
   // Defer initial landing until BOTH session and signoff have resolved.
   // Without waiting on signoffData, a fresh page-load on a signed session

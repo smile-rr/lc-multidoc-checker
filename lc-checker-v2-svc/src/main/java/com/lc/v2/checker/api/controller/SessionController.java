@@ -79,6 +79,15 @@ public class SessionController {
                 }
             }
 
+            boolean hasLcText = lcText != null && !lcText.isBlank();
+            if (!hasLcText && !documents.containsKey(DocType.LC)) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "error", "missing_mt700",
+                        "message", "MT700 LC text is required. Upload a .txt/.fin/.swift file"
+                                + " whose name contains 'mt700' or whose content begins with"
+                                + " :27: / :20: / :40A:."));
+            }
+
             String sessionId = pipelineService.createSession(lcText, documents);
             log.info("Created session: {} with {} docs", sessionId, documents.size());
 
