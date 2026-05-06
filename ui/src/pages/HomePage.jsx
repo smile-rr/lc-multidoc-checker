@@ -27,12 +27,24 @@ export function HomePage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [presets, setPresets] = useState([]);
+  const [presetsStatus, setPresetsStatus] = useState('loading'); // loading | ok | empty | error
+  const [presetsError, setPresetsError] = useState(null);
   const [presetLoadingId, setPresetLoadingId] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef();
 
   useEffect(() => {
-    getPresets().then(r => setPresets(r.presets ?? [])).catch(() => setPresets([]));
+    getPresets()
+      .then(r => {
+        const list = r.presets ?? [];
+        setPresets(list);
+        setPresetsStatus(list.length ? 'ok' : 'empty');
+      })
+      .catch(e => {
+        setPresets([]);
+        setPresetsError(e.message || String(e));
+        setPresetsStatus('error');
+      });
   }, []);
 
   const classifyFile = (file) => {
@@ -118,9 +130,31 @@ export function HomePage() {
           </p>
         </div>
 
-        {presets.length > 0 && (
-          <div>
-            <EyebrowLabel className="block mb-2">Quick-start preset</EyebrowLabel>
+        <div>
+          <EyebrowLabel className="block mb-2">Quick-start preset</EyebrowLabel>
+          {presetsStatus === 'loading' && (
+            <div className="text-[11px] text-muted font-mono flex items-center gap-2">
+              <Spinner size="sm" /> loading presets…
+            </div>
+          )}
+          {presetsStatus === 'error' && (
+            <div className="bg-status-redSoft border border-[#fca5a5] rounded p-3 text-[12px] text-status-red">
+              <div className="font-semibold">Couldn't load preset bundles</div>
+              <div className="mt-1 font-mono text-[10px] break-words">{presetsError}</div>
+              <div className="mt-1 text-[10px] opacity-80">
+                Backend likely can't see <code>presets.dir</code>. Check svc logs for <code>[Presets] dir not found</code>.
+              </div>
+            </div>
+          )}
+          {presetsStatus === 'empty' && (
+            <div className="bg-status-goldSoft border border-[#fcd34d] rounded p-3 text-[12px] text-status-gold">
+              <div className="font-semibold">No preset bundles found</div>
+              <div className="mt-1 text-[10px] opacity-80">
+                Backend returned an empty list. Verify the test/cases directory is mounted and <code>PRESETS_DIR</code> points at it.
+              </div>
+            </div>
+          )}
+          {presetsStatus === 'ok' && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {presets.map(p => (
                 <PresetCard
@@ -131,8 +165,8 @@ export function HomePage() {
                 />
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Drop zone — hero when empty, slim re-add bar when files present */}
         <div

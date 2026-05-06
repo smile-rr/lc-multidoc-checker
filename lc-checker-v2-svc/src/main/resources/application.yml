@@ -155,7 +155,7 @@ dev-mode: true
 # --- Preset bundles ---------------------------------------------------------
 # Filesystem dir scanned for test-case bundles served via GET /api/v2/presets.
 presets:
-  dir: ../test/cases
+  dir: ${PRESETS_DIR:../test/cases}
   max-count: 3
 
 # --- Actuator + Prometheus + Tracing → Langfuse -----------------------------

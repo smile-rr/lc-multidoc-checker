@@ -4,6 +4,7 @@ import { SessionStatusProvider } from './context/SessionStatusContext';
 import { DevModeProvider } from './context/DevModeContext';
 import { TopNav } from './components/shell/TopNav';
 import { DevModeBanner } from './components/shell/DevModeBanner';
+import { ApiErrorToast } from './components/shell/ApiErrorToast';
 import { HomePage } from './pages/HomePage';
 import { SessionPage } from './pages/SessionPage';
 import { AdminApp } from './admin/AdminApp';
@@ -20,6 +21,7 @@ export function App() {
         <div className="h-dvh flex flex-col overflow-hidden">
           <TopNav />
           <DevModeBanner />
+          <ApiErrorToast />
           <main className="flex-1 min-h-0 overflow-hidden">
             <Routes>
               <Route path="/" element={<HomePage />} />
