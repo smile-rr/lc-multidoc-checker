@@ -29,7 +29,7 @@ services:
     environment:
       - PRESETS_DIR=/opt/test-cases
     volumes:
-      - ../test/cases:/opt/test-cases:ro
+      - ./test/cases:/opt/test-cases:ro
     restart: unless-stopped
     networks:
       - lc-checker-v2-net
