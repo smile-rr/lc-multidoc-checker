@@ -65,6 +65,22 @@ export function SessionPage() {
   }, [stagesStartedCount, stagesCompleted.size, sessionCompleted, officerActions.length,
       signedOff, cancelled, stagesRerun, refresh]);
 
+  // Per-doc parse completion: refresh session as soon as each doc's consensus
+  // event arrives, so DocRail tile badges flip to EXTRACTED/FAILED immediately
+  // instead of waiting for the whole stage to finish. Backend writes
+  // documents.parse_status before emitting the consensus event.
+  const docConsensusCount = useMemo(
+    () => events.filter(e =>
+      e?.type === 'ExtractionProgress'
+      && e?.data?.slot === 'consensus'
+      && /^(HIGH|MED|LOW|failed_all_slots|failed:)/.test(String(e?.data?.status || ''))
+    ).length,
+    [events]
+  );
+  useEffect(() => {
+    if (docConsensusCount > 0) refresh();
+  }, [docConsensusCount, refresh]);
+
   // ── Gates ──────────────────────────────────────────────────────────────
   const docs = session?.documents ?? [];
   const lcPresent = docs.some(d => d.doc_type === 'LC');
