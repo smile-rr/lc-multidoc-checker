@@ -245,7 +245,7 @@ function SpecSelect({ value, options, onChange, editable }) {
       value={value || ''}
       disabled={!editable}
       onChange={(e) => onChange(e.target.value)}
-      className="font-mono text-[12px] text-navy-1 bg-transparent border-0 hover:text-teal-1 focus:text-teal-1 focus:outline-none cursor-pointer disabled:cursor-default disabled:hover:text-navy-1 -ml-0.5 pr-2"
+      className="font-mono text-[12px] text-navy-1 bg-transparent border-0 hover:text-teal-1 focus:text-teal-1 focus:outline-none cursor-pointer disabled:cursor-default disabled:hover:text-navy-1 -ml-0.5 pr-2 min-w-[8rem]"
     >
       {options.map((o) => <option key={o}>{o}</option>)}
     </select>
@@ -258,7 +258,7 @@ function SpecBool({ value, onChange, editable }) {
       value={value ? 'yes' : 'no'}
       disabled={!editable}
       onChange={(e) => onChange(e.target.value === 'yes')}
-      className={`font-mono text-[12px] bg-transparent border-0 hover:text-teal-1 focus:text-teal-1 focus:outline-none cursor-pointer disabled:cursor-default -ml-0.5 pr-2 ${value ? 'text-navy-1' : 'text-muted'}`}
+      className={`font-mono text-[12px] bg-transparent border-0 hover:text-teal-1 focus:text-teal-1 focus:outline-none cursor-pointer disabled:cursor-default -ml-0.5 pr-2 min-w-[8rem] ${value ? 'text-navy-1' : 'text-muted'}`}
     >
       <option value="yes">yes</option>
       <option value="no">no</option>
