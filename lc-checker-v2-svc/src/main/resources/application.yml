@@ -25,8 +25,9 @@ spring:
       chat:
         completions-path: /chat/completions
         options:
-          model: qwen3.5-plus-2026-02-15
+          model: qwen3.6-flash-2026-04-16
           temperature: 0.0
+          max-tokens: 800
           additional-model-request-fields:
             enable_thinking: false
 
@@ -78,20 +79,20 @@ vision-llm:
     enabled:          true
     base-url:         https://dashscope.aliyuncs.com/compatible-mode/v1
     api-key:          ${VISION_1_API_KEY:}
-    model:            qwen3.6-35b-a3b
-    render-dpi:       200
-    max-pages:        10
+    model:            qwen3.5-flash-2026-02-23
+    render-dpi:       150
+    max-pages:        5
     max-long-edge-px: 2048
-    timeout-seconds:  120
+    timeout-seconds:  60
   slot-2:
     enabled:          true
     base-url:         https://dashscope.aliyuncs.com/compatible-mode/v1
     api-key:          ${VISION_2_API_KEY:}
-    model:            qwen3.5-flash
-    render-dpi:       200
-    max-pages:        10
+    model:            qwen3.6-35b-a3b
+    render-dpi:       150
+    max-pages:        5
     max-long-edge-px: 2048
-    timeout-seconds:  120
+    timeout-seconds:  60
   slot-3:
     enabled:          false
     base-url:         https://dashscope.aliyuncs.com/compatible-mode/v1
