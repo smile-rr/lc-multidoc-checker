@@ -61,6 +61,14 @@ The system deployment architecture and the runtime flow across its components.
 
 ## Implementation Strategy
 
+### AI system as a plugin:
+
+The AI workbench integration in the existing process —  same officer roles, same sign-off authority, same audit format.  
+
+Legacy system remains primary in Phase 1 so the team can  validate AI output against known ground truth before  gradually shifting load across.
+
+### AI driven system:
+
 | Phase       | Timeline | AI-Driven System                                             | Legacy System               |
 | ----------- | -------- | ------------------------------------------------------------ | --------------------------- |
 | **Phase 1** | 6 months | • 100% parse verification  <br />• 100% rule result verification   <br />• 100% human sign-off | Parallel<br />*(Primary)*   |
@@ -69,12 +77,15 @@ The system deployment architecture and the runtime flow across its components.
 
 
 
-## Todo and Won't do
+## Opinion:
 
 ### Todo
-- **Vision & LLM call cache layer**:   (key: SHA256(content) + model_version + prompt_version; officer correction invalidates downstream cache)
-- **Accumulate document parsing corrections** (tagged by type) :  feeds VLM prompt few-shot examples and future fine-tuning
-- **Accumulate rule decision corrections**:  (a) few-shot prompt library per rule_id (b) Case Precedent RAG for officers to query historical precedents
+
+- **Cache Vision & LLM calls** by content hash + model/prompt version; invalidate when officer corrects a field
+- **Accumulate document parsing corrections** as few-shot examples to keep improving VLM prompts
+- **Accumulate rule decision corrections per rule** as few-shot examples to keep improving rule prompts
+- **Build a Case Knowledge Base from closed cases** — mine patterns into new Agent rules, and let officers search precedents via RAG when making judgment calls
 
 ### Won't Do
-- **RAG on UCP 600 / ISBP 821** : RAG adds recall uncertainty, silently missed clauses are unacceptable in compliance
+
+- RAG on UCP 600 / ISBP 821 — **the ruleset fits in context per rule**,  so there's no retrieval problem to solve; **RAG** only **adds the risk of silently missing a clause**, which is unacceptable in compliance**
