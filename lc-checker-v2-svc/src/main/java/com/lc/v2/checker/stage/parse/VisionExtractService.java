@@ -200,7 +200,10 @@ public class VisionExtractService {
                 return parseResponse(responseJson);
             } catch (Exception e) {
                 span.tag("error", String.valueOf(e.getMessage()));
-                log.error("[VisionExtract] slot={} error: {}", sourceName, e.getMessage());
+                Throwable root = e;
+                while (root.getCause() != null && root.getCause() != root) root = root.getCause();
+                log.error("[VisionExtract] slot={} error: {} (root={}: {})",
+                        sourceName, e.getMessage(), root.getClass().getName(), root.getMessage(), e);
                 return null;
             } finally {
                 span.end();

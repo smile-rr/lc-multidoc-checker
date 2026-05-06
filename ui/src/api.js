@@ -208,13 +208,6 @@ export async function getAudit(sessionId) {
   return res.json();
 }
 
-// ── Article refs (UCP/ISBP tooltips) ──────────────────────────────────────
-export async function getArticleRef(id) {
-  const res = await fetch(`${BASE}/refs/${id}`);
-  if (!res.ok) throw await apiError(res);
-  return res.json();
-}
-
 // ── Presets (test/cases bundles) ──────────────────────────────────────────
 export async function getPresets() {
   const res = await fetch(`${BASE}/presets`);
@@ -227,6 +220,13 @@ export async function getPresetFile(presetId, filename) {
   const res = await fetch(`${BASE}/presets/${encodeURIComponent(presetId)}/files/${encodeURIComponent(filename)}`);
   if (!res.ok) throw await apiError(res);
   return res.blob();
+}
+
+// ── Article refs (UCP/ISBP tooltips) ──────────────────────────────────────
+export async function getArticleRef(id) {
+  const res = await fetch(`${BASE}/refs/${id}`);
+  if (!res.ok) throw await apiError(res);
+  return res.json();
 }
 
 // ── Session events (history) ─────────────────────────────────────────────────

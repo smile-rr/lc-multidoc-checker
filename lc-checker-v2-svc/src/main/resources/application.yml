@@ -79,20 +79,20 @@ vision-llm:
     enabled:          true
     base-url:         https://dashscope.aliyuncs.com/compatible-mode/v1
     api-key:          ${VISION_1_API_KEY:}
-    model:            qwen3.5-flash-2026-02-23
-    render-dpi:       150
-    max-pages:        5
+    model:            qwen3.6-35b-a3b
+    render-dpi:       200
+    max-pages:        10
     max-long-edge-px: 2048
-    timeout-seconds:  60
+    timeout-seconds:  120
   slot-2:
     enabled:          true
     base-url:         https://dashscope.aliyuncs.com/compatible-mode/v1
     api-key:          ${VISION_2_API_KEY:}
-    model:            qwen3.6-35b-a3b
-    render-dpi:       150
-    max-pages:        5
+    model:            qwen3.5-flash
+    render-dpi:       200
+    max-pages:        10
     max-long-edge-px: 2048
-    timeout-seconds:  60
+    timeout-seconds:  120
   slot-3:
     enabled:          false
     base-url:         https://dashscope.aliyuncs.com/compatible-mode/v1
@@ -153,7 +153,8 @@ session:
 dev-mode: true
 
 # --- Preset bundles ---------------------------------------------------------
-# Filesystem dir scanned for test-case bundles served via GET /api/v2/presets.
+# Filesystem dir scanned for test-case bundle subdirectories. Default resolves
+# from svc CWD: gradle bootRun → lc-checker-v2-svc/  →  ../test/cases.
 presets:
   dir: ${PRESETS_DIR:../test/cases}
   max-count: 3
