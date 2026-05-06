@@ -86,14 +86,19 @@ public class AgentRuleExecutor {
     private final ObservationRegistry observationRegistry;
     private final Tracer tracer;
     private final LlmBudgetProperties budget;
+    /** Base prompt — used as-is for AGENT (no tools, single call). */
     private final String systemPrompt;
+    /** Base + AGENT_TOOL addendum (single-round compute tools). */
+    private final String systemPromptTools;
+    /** Base + AGENTIC addendum (multi-turn iteration budget). */
+    private final String systemPromptAgentic;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /** Names of tools considered "compute" (math/derivation, not data fetch).
      *  Anything outside this set is a data-fetch tool — fields are already
      *  inlined in the prompt for AGENT_TOOL rules, so those tools are hidden. */
     private static final java.util.Set<String> COMPUTE_TOOL_NAMES =
-            java.util.Set.of("calculateDateDiff");
+            java.util.Set.of("calculateDateDiff", "verifyArithmetic");
 
     private final ConcurrentMap<String, String> rulePromptCache = new ConcurrentHashMap<>();
 
@@ -123,12 +128,42 @@ public class AgentRuleExecutor {
         this.observationRegistry = observationRegistry;
         this.tracer = tracer;
         this.budget = budget;
-        Resource sysPromptRes = resourceLoader.getResource(budget.getCheckSystemPrompt());
-        try (InputStream in = sysPromptRes.getInputStream()) {
-            this.systemPrompt = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        this.systemPrompt = readResource(budget.getCheckSystemPrompt());
+        String toolsAdd = readResourceOrEmpty(budget.getCheckSystemPromptTools());
+        String agenticAdd = readResourceOrEmpty(budget.getCheckSystemPromptAgentic());
+        this.systemPromptTools = toolsAdd.isEmpty() ? systemPrompt : systemPrompt + "\n" + toolsAdd;
+        this.systemPromptAgentic = agenticAdd.isEmpty() ? systemPrompt : systemPrompt + "\n" + agenticAdd;
+        log.info("Loaded rule-check system prompts: base={} chars, +tools={} chars, +agentic={} chars",
+                systemPrompt.length(), systemPromptTools.length(), systemPromptAgentic.length());
+    }
+
+    private String readResource(String location) throws IOException {
+        try (InputStream in = resourceLoader.getResource(location).getInputStream()) {
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }
-        log.info("Loaded rule-check system prompt from {} ({} chars)",
-                budget.getCheckSystemPrompt(), systemPrompt.length());
+    }
+
+    private String readResourceOrEmpty(String location) {
+        if (location == null || location.isBlank()) return "";
+        Resource r = resourceLoader.getResource(location);
+        if (!r.exists()) {
+            log.warn("System prompt addendum {} not found — skipping", location);
+            return "";
+        }
+        try (InputStream in = r.getInputStream()) {
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            log.warn("Failed to read system prompt addendum {}: {}", location, e.getMessage());
+            return "";
+        }
+    }
+
+    private String systemPromptFor(Rule rule) {
+        return switch (rule.checkType()) {
+            case "AGENT_TOOL" -> systemPromptTools;
+            case "AGENTIC"    -> systemPromptAgentic;
+            default           -> systemPrompt;
+        };
     }
 
     public CheckResult execute(Rule rule, StageContext ctx) {
@@ -197,7 +232,7 @@ public class AgentRuleExecutor {
         try {
             String response = chatClientBuilder.build().prompt()
                     .options(OpenAiChatOptions.builder().build())
-                    .system(systemPrompt)
+                    .system(systemPromptFor(rule))
                     .user(userPrompt)
                     .call()
                     .content();
@@ -242,7 +277,7 @@ public class AgentRuleExecutor {
         OpenAiChatOptions options = optBuilder.build();
 
         List<Message> messages = new ArrayList<>();
-        messages.add(new SystemMessage(systemPrompt));
+        messages.add(new SystemMessage(systemPromptFor(rule)));
         messages.add(new UserMessage(userPrompt));
 
         List<Map<String, Object>> toolCalls = toolRegistry.beginCapture();

@@ -72,7 +72,10 @@ public class PipelineControlController {
             boolean started = pipelineService.rerunFromStage(sessionId, stage, officerId);
             if (!started) {
                 return ResponseEntity.status(409).body(Map.of(
-                        "error", "Re-run unavailable (session context expired). Start a new session."));
+                        "error", "Re-run unavailable: the requested stage needs raw PDF bytes that "
+                                + "are not persisted in the data lake (Intake / Parse only). "
+                                + "Start a new session to rerun from there. Reconcile / Examine / "
+                                + "Sign-off rerun is supported even after a service restart."));
             }
             return ResponseEntity.ok(Map.of("ok", true, "fromStage", stage));
         } catch (IllegalStateException e) {

@@ -1,7 +1,11 @@
 package com.lc.v2.checker.pipeline;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lc.v2.checker.domain.common.DocType;
+import com.lc.v2.checker.domain.common.FieldEnvelope;
+import com.lc.v2.checker.domain.document.DocumentExtract;
+import com.lc.v2.checker.domain.lc.LcParseResult;
 import com.lc.v2.checker.infra.fields.DocTypeRegistry;
 import com.lc.v2.checker.infra.observability.TraceNames;
 import com.lc.v2.checker.infra.persistence.SessionStore;
@@ -10,6 +14,7 @@ import com.lc.v2.checker.infra.stream.PipelineEventChannel;
 import io.micrometer.tracing.Span;
 import io.micrometer.tracing.Tracer;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
@@ -265,7 +270,19 @@ public class PipelineService {
             throw new IllegalStateException("Session is signed (frozen) — re-run not allowed");
         }
         StageContext ctx = contextCache.get(sessionId);
-        if (ctx == null) return false;
+        if (ctx == null) {
+            // Cache miss — typical after a JVM restart or sign-off eviction.
+            // Rehydrate from DB so post-Parse stages (reconcile / examine /
+            // signoff) can rerun without forcing the officer to re-upload.
+            // Intake / Parse rerun still requires a fresh session because the
+            // raw PDF bytes are not persisted in the data lake.
+            ctx = rehydrateContext(sessionId);
+            if (ctx == null || !canRehydrateForStage(ctx, fromStage)) return false;
+            contextCache.put(sessionId, ctx);
+            ensureSessionSpan(sessionId);
+            log.info("[{}] rehydrated StageContext from DB for rerun from stage={}",
+                    sessionId, fromStage);
+        }
 
         int idx = pipeline.indexOf(fromStage);
         if (idx < 0) throw new IllegalArgumentException("Unknown stage: " + fromStage);
@@ -283,6 +300,108 @@ public class PipelineService {
         sessionStore.clearAwaitingOfficer(sessionId, fromStage);
         self.runStageAsync(sessionId, ctx, idx);
         return true;
+    }
+
+    /**
+     * Rebuild a {@link StageContext} from persisted state. Used when the
+     * in-memory cache has been evicted (JVM restart, sign-off cleanup) and
+     * the officer wants to rerun a post-Parse stage. Raw PDF bytes are NOT
+     * persisted, so this rehydrated context cannot drive Intake or Parse.
+     */
+    private StageContext rehydrateContext(String sessionId) {
+        StageContext ctx = new StageContext(sessionId, eventBus);
+        for (Map<String, Object> d : sessionStore.getDocuments(sessionId)) {
+            String typeStr = (String) d.get("doc_type");
+            if (typeStr == null) continue;
+            DocType dt;
+            try {
+                dt = DocType.valueOf(typeStr);
+            } catch (IllegalArgumentException ignore) {
+                continue;
+            }
+            Object idObj = d.get("id");
+            if (idObj != null) ctx.docIds.put(dt, idObj.toString());
+            Object name = d.get("original_filename");
+            if (name != null) ctx.uploadedDocNames.put(dt, name.toString());
+            if (Boolean.TRUE.equals(d.get("confirmed_by_officer"))) {
+                ctx.confirmedDocTypes.add(dt);
+            }
+        }
+        Map<String, Object> lcRow = sessionStore.getLcParse(sessionId);
+        if (lcRow != null) {
+            try {
+                Map<String, Object> fields = readJsonMap((String) lcRow.get("fields"));
+                Map<String, String> rawFields = readJsonStringMap((String) lcRow.get("raw_fields"));
+                String raw = (String) lcRow.get("raw_mt700");
+                FieldEnvelope env = FieldEnvelope.builder().putAll(fields).build();
+                ctx.lcText = raw;
+                ctx.lc = new LcParseResult(env, raw, rawFields, List.of(), List.of(), null);
+            } catch (Exception e) {
+                log.warn("[{}] LC rehydration failed: {}", sessionId, e.getMessage());
+            }
+        }
+        for (Map.Entry<DocType, String> entry : ctx.docIds.entrySet()) {
+            Map<String, Object> consRow = sessionStore.getDocConsensus(entry.getValue());
+            if (consRow == null) continue;
+            try {
+                Map<String, Object> fields = readJsonMap((String) consRow.get("fields"));
+                FieldEnvelope env = FieldEnvelope.builder().putAll(fields).build();
+                DocumentExtract.ExtractionConfidence conf = DocumentExtract.ExtractionConfidence.MED;
+                Object oc = consRow.get("overall_confidence");
+                if (oc instanceof Number n) {
+                    double v = n.doubleValue();
+                    conf = v >= 0.9 ? DocumentExtract.ExtractionConfidence.HIGH
+                         : v >= 0.7 ? DocumentExtract.ExtractionConfidence.MED
+                         : DocumentExtract.ExtractionConfidence.LOW;
+                }
+                DocumentExtract de = new DocumentExtract(
+                        entry.getKey(), env, Map.of(), conf, List.of(),
+                        ctx.uploadedDocNames.get(entry.getKey()), null, 0);
+                ctx.extracts.put(entry.getKey(), de);
+            } catch (Exception e) {
+                log.warn("[{}] consensus rehydration failed for {}: {}",
+                        sessionId, entry.getKey(), e.getMessage());
+            }
+        }
+        return ctx;
+    }
+
+    private boolean canRehydrateForStage(StageContext ctx, String fromStage) {
+        if (ctx == null) return false;
+        String s = fromStage == null ? "" : fromStage.toLowerCase();
+        return switch (s) {
+            case "reconcile", "examine", "signoff" -> ctx.lc != null && !ctx.extracts.isEmpty();
+            default -> false; // intake/parse need raw PDF bytes
+        };
+    }
+
+    private Map<String, Object> readJsonMap(String json) throws Exception {
+        if (json == null || json.isBlank()) return Map.of();
+        return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {});
+    }
+
+    private Map<String, String> readJsonStringMap(String json) throws Exception {
+        if (json == null || json.isBlank()) return Map.of();
+        return objectMapper.readValue(json, new TypeReference<Map<String, String>>() {});
+    }
+
+    private void ensureSessionSpan(String sessionId) {
+        sessionSpans.computeIfAbsent(sessionId, sid -> {
+            String traceName = TraceNames.forSession(sid);
+            Tracer.SpanInScope cleared = tracer.withSpan(null);
+            try {
+                return tracer.spanBuilder()
+                        .setNoParent()
+                        .name(traceName)
+                        .tag("session.id", sid)
+                        .tag("langfuse.session.id", sid)
+                        .tag("langfuse.trace.name", traceName)
+                        .tag("rehydrated", "true")
+                        .start();
+            } finally {
+                if (cleared != null) cleared.close();
+            }
+        });
     }
 
     private void resetContextForStage(StageContext ctx, String fromStage) {

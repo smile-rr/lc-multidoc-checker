@@ -65,10 +65,15 @@ spring:
 app:
   llm:
     max-iterations: 3
-    # Shared system prompt for all AGENT/AGENT_TOOL/AGENTIC rule checks.
-    # Spring Resource location — swap to file:/etc/lc-checker/check-system.st
-    # to override at deploy time without rebuilding the jar.
-    check-system-prompt: classpath:prompts/system/check-system.st
+    # System prompts used by the Examine stage. Base = persona + UCP/ISBP
+    # principles + verdict semantics + JSON output contract (sent to all
+    # rule tiers). The two addenda are concatenated ONLY for the matching
+    # tier — AGENT (no tools) gets base alone, AGENT_TOOL gets base+tools,
+    # AGENTIC gets base+agentic. Swap to file:/etc/... to override without
+    # rebuilding the jar; set an addendum to empty to disable it.
+    check-system-prompt:         classpath:prompts/system/check-system-base.st
+    check-system-prompt-tools:   classpath:prompts/system/check-system-tools.st
+    check-system-prompt-agentic: classpath:prompts/system/check-system-agentic.st
 
 server:
   port: 9082
