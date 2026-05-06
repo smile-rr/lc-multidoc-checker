@@ -81,11 +81,22 @@ export function HomePage() {
   const removeFile = (idx) => setFiles(prev => prev.filter((_, i) => i !== idx));
   const clearAll = () => setFiles([]);
 
+  // Preset click stages files into the same drop-zone list as a manual upload —
+  // officer reviews the file list and clicks "Upload →" to start the run. The
+  // preset path and the manual path then share one and only one create-session
+  // entry point.
   const loadPreset = async (preset) => {
     setPresetLoadingId(preset.id);
     setError(null);
     try {
-      const wanted = preset.files.filter(f => f.type === 'pdf' || f.type === 'mt700');
+      const wanted = preset.files.filter(f =>
+        f.type === 'pdf' || f.type === 'mt700-pass' || (
+          f.type === 'mt700' && !preset.files.some(g => g.type === 'mt700-pass')
+        ) || (
+          f.type === 'mt700-fail'
+            && !preset.files.some(g => g.type === 'mt700-pass' || g.type === 'mt700')
+        )
+      );
       const fetched = await Promise.all(wanted.map(async (f) => {
         const blob = await getPresetFile(preset.id, f.name);
         return new File([blob], f.name, {
@@ -273,7 +284,7 @@ function TypeBadge({ type }) {
 
 function PresetCard({ preset, loading, onLoad }) {
   const pdfCount = preset.files.filter(f => f.type === 'pdf').length;
-  const hasMt700 = preset.files.some(f => f.type === 'mt700');
+  const hasMt700 = preset.files.some(f => f.type && f.type.startsWith('mt700'));
 
   return (
     <button
@@ -282,8 +293,8 @@ function PresetCard({ preset, loading, onLoad }) {
       className="border border-line rounded-[10px] bg-white p-3 text-left w-full hover:border-[#a1a1a6] hover:bg-slate2 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
     >
       <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="text-[12px] font-semibold tracking-tight">{preset.label}</div>
+        <div className="min-w-0">
+          <div className="text-[12px] font-semibold tracking-tight truncate">{preset.label}</div>
           <div className="text-[10px] text-muted font-mono mt-0.5">
             {pdfCount} PDFs{hasMt700 ? ' · MT700' : ''}
           </div>

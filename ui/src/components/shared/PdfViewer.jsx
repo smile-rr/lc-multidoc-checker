@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
-import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { docTypeMeta } from '../../constants/docTypes';
 
-// Self-hosted worker (bundled by Vite) — no third-party CDN dependency,
-// served under our long-cache /assets/ rule.
-pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
+// Worker served from unpkg CDN (matches v1). Avoids bundling pdf.worker.min.mjs
+// into our dist, which means no nginx .mjs MIME rule is needed and no Traefik
+// middleware can gate the worker by path.
+pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 const BASE_WIDTH = 560;
 const ZOOM_MIN = 0.5;
