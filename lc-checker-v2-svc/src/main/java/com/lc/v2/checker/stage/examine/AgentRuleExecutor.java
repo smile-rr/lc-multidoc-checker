@@ -49,7 +49,7 @@ import org.springframework.stereotype.Component;
  * <table>
  *   <tr><th>checkType</th><th>Path</th></tr>
  *   <tr><td>AGENT</td>      <td>{@link #callPlain} — single ChatClient call, no tools</td></tr>
- *   <tr><td>AGENT_TOOL</td> <td>{@link #callWithTools}, hard cap 2 LLM calls (one batched tool round + terminal answer)</td></tr>
+ *   <tr><td>AGENT_TOOL</td> <td>{@link #callWithTools}, hard cap 3 LLM calls (one batched tool round + a retry/terminal buffer)</td></tr>
  *   <tr><td>AGENTIC</td>    <td>{@link #callWithTools}, hard cap = effectiveCap</td></tr>
  * </table>
  *
@@ -180,9 +180,9 @@ public class AgentRuleExecutor {
             int cap = effectiveCap(rule);
             return switch (rule.checkType()) {
                 case "AGENT" -> callPlain(rule, ctx);
-                // AGENT_TOOL: compute-only tools, hard cap 2 turns. Data-fetch tools
+                // AGENT_TOOL: compute-only tools, hard cap 3 turns (1 tool round + retry/terminal buffer). Data-fetch tools
                 // are intentionally hidden — fields are already inlined in the prompt.
-                case "AGENT_TOOL" -> callWithTools(rule, ctx, Math.min(cap, 2), toolCallbacksCompute);
+                case "AGENT_TOOL" -> callWithTools(rule, ctx, Math.min(cap, 3), toolCallbacksCompute);
                 // AGENTIC: full tool set, per-rule cap. Data-fetch tools are exposed
                 // because rules at this tier (e.g. COND-03) may need to discover
                 // which docs are present before deciding what to look at.
@@ -406,7 +406,8 @@ public class AgentRuleExecutor {
                 // system prompt; user prompt only names the available tools and budget.
                 sb.append("Tools available: calculateDateDiff(fromIso, toIso) for exact day counts; ")
                   .append("verifyArithmetic(quantity, unit_price, total_amount, epsilon) for ")
-                  .append("invoice header arithmetic. Turn budget for this rule: 2. ");
+                  .append("invoice header arithmetic. Turn budget for this rule: ")
+                  .append(maxIterations).append(". ");
             }
             sb.append("When ready, reply with terminal JSON: "
                     + "{\"verdict\":\"PASS|FAIL|NOT_APPLICABLE|DOUBTS\","

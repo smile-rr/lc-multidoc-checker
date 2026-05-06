@@ -46,7 +46,7 @@ own jointly to keep the platform extensible.
 | :---------------- | :------------------------------------------------------- | :------------ | :-------- |
 | **Programmatic**  | SpEL expression checks. **No LLM.**                      | n/a           | 0         |
 | **Agent**         | Single LLM call. Prompt includes fields and rules.       | false         | 1 call    |
-| **Agent + Tools** | LLM call with calculation tools (math, dates, currency). | false         | ≤2 calls  |
+| **Agent + Tools** | LLM call with calculation tools (math, dates, currency). | false         | ≤3 calls  |
 | **Agentic**       | ReAct loop: reason → act → repeat. Has iteration limit.  | **true**      | ≤6 calls  |
 
 

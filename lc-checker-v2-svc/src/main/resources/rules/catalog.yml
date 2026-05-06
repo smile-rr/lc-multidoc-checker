@@ -6,7 +6,7 @@
 # Execution tiers (check_type):
 #   PROGRAMMATIC — SpEL expression on #lc / #docs / #presentationDate
 #   AGENT        — single ChatClient call, structured JSON
-#   AGENT_TOOL   — ChatClient + ExamineToolRegistry, single round
+#   AGENT_TOOL   — ChatClient + ExamineToolRegistry, one tool round + retry/terminal buffer (cap 3)
 #   AGENTIC      — Tool-calling reasoning loop (≤ max_iterations)
 #
 # Tier defaults (applied by RuleCatalogRegistry if a rule omits them):
@@ -32,7 +32,7 @@
 #   prompt_instruction   Per-rule LLM instruction; loaded from prompts/check/<rule_id>.st on miss
 #   field_keys           Fields injected into LLM prompt context
 #   thinking_enabled     Per-rule override of enable_thinking
-#   max_iterations       AGENTIC convergence cap
+#   max_iterations       AGENT_TOOL/AGENTIC convergence cap (chat completions, incl. terminal)
 
 rules:
 
@@ -628,7 +628,7 @@ rules:
     severity: CRITICAL
     polarity: NEGATIVE
     waivable: false
-    max_iterations: 2
+    max_iterations: 3
     ucp_refs: [UCP-18-b, UCP-30-a, UCP-30-b, UCP-30-c]
     isbp_refs: [ISBP-C9, ISBP-C10]
     ucp_excerpt: |
@@ -666,7 +666,7 @@ rules:
     severity: MAJOR
     polarity: POSITIVE
     waivable: false
-    max_iterations: 2
+    max_iterations: 3
     ucp_refs: [UCP-18-b]
     isbp_refs: []
     ucp_excerpt: |
@@ -695,7 +695,7 @@ rules:
     severity: CRITICAL
     polarity: POSITIVE
     waivable: false
-    max_iterations: 2
+    max_iterations: 3
     ucp_refs: [UCP-14-c]
     isbp_refs: []
     ucp_excerpt: |
