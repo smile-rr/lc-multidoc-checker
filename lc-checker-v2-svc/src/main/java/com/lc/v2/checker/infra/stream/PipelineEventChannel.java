@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -44,18 +45,48 @@ public class PipelineEventChannel {
         return channels.computeIfAbsent(sessionId, id -> new SessionChannel(id, RING_BUFFER_SIZE));
     }
 
-    /** Register a new SSE subscriber; replays buffered events immediately. */
+    /** Register a new SSE subscriber; replays buffered events immediately.
+     *  Timeout is set to {@link Long#MAX_VALUE} — the heartbeat keeps the
+     *  connection alive indefinitely, and the EventSource on the client side
+     *  closes the stream when the user navigates away. A short timeout caused
+     *  long-running stages (60s+ vision LLM extraction) to disconnect the UI
+     *  silently behind tunnels. */
     public SseEmitter subscribe(String sessionId) {
-        SseEmitter emitter = new SseEmitter(300_000L); // 5 min timeout
+        SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
         SessionChannel ch = channel(sessionId);
 
         emitter.onCompletion(() -> ch.removeEmitter(emitter));
         emitter.onTimeout(() -> ch.removeEmitter(emitter));
         emitter.onError(e -> ch.removeEmitter(emitter));
 
+        // Initial padding flush — many proxies buffer until ~2KB or a flush
+        // boundary. A leading comment + 2KB of NUL-comment padding forces
+        // intermediate proxies to commit the response headers and start
+        // streaming, so the first real event isn't held back for ~30s.
+        try {
+            emitter.send(SseEmitter.event().comment("ok"));
+            emitter.send(SseEmitter.event().comment(" ".repeat(2048)));
+        } catch (IOException e) {
+            ch.removeEmitter(emitter);
+            return emitter;
+        }
+
         ch.addEmitter(emitter);
         ch.replayHistory(emitter, objectMapper);
         return emitter;
+    }
+
+    /**
+     * Heartbeat — every 15s, send an SSE comment line to every live emitter.
+     * Comments are ignored by EventSource but keep proxies (Cloudflare 100s,
+     * many corporate proxies 30s) from dropping idle connections during long
+     * silent gaps (e.g. while the vision LLM is generating).
+     */
+    @Scheduled(fixedDelay = 15_000L, initialDelay = 15_000L)
+    public void heartbeat() {
+        for (SessionChannel ch : channels.values()) {
+            ch.heartbeat();
+        }
     }
 
     @Async
@@ -136,6 +167,19 @@ public class PipelineEventChannel {
             } catch (IOException e) {
                 return false;
             }
+        }
+
+        void heartbeat() {
+            if (emitters.isEmpty()) return;
+            List<SseEmitter> dead = new java.util.ArrayList<>();
+            for (SseEmitter emitter : emitters) {
+                try {
+                    emitter.send(SseEmitter.event().comment("hb"));
+                } catch (Exception e) {
+                    dead.add(emitter);
+                }
+            }
+            emitters.removeAll(dead);
         }
 
         void closeAll() {

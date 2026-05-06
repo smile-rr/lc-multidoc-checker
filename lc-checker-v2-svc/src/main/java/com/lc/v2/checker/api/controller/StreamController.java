@@ -2,6 +2,7 @@ package com.lc.v2.checker.api.controller;
 
 import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.infra.stream.PipelineEventChannel;
+import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.MediaType;
@@ -29,7 +30,14 @@ public class StreamController {
     }
 
     @GetMapping(value = "/{sessionId}/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter stream(@PathVariable String sessionId) {
+    public SseEmitter stream(@PathVariable String sessionId, HttpServletResponse response) {
+        // Disable nginx / Cloudflare / corporate-proxy buffering — without
+        // these headers the SSE stream is held by the intermediary until the
+        // backend closes the connection, so the UI never sees Parse progress
+        // events through a public URL until the whole stage finishes.
+        response.setHeader("X-Accel-Buffering", "no");
+        response.setHeader("Cache-Control", "no-cache, no-transform");
+        response.setHeader("Connection", "keep-alive");
         return eventChannel.subscribe(sessionId);
     }
 

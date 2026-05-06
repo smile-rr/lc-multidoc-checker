@@ -28,16 +28,33 @@ export function useSse(sessionId) {
   const [ruleProgress, setRuleProgress] = useState(null);
   const [stagesRerun, setStagesRerun] = useState(0);
   const [error, setError] = useState(null);
+  const [connected, setConnected] = useState(false);
   const esRef = useRef(null);
+  const reconnectTimerRef = useRef(null);
+  const seenSeqRef = useRef(-1);
 
   useEffect(() => {
     if (!sessionId) return;
-    const es = openStream(sessionId);
-    esRef.current = es;
+    let cancelled = false;
 
-    es.onmessage = (e) => {
+    const connect = () => {
+      if (cancelled) return;
+      const es = openStream(sessionId);
+      esRef.current = es;
+
+      es.onopen = () => {
+        setConnected(true);
+        setError(null);
+      };
+
+      es.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);
+        // Drop duplicates from replay-after-reconnect; rely on monotonic seq.
+        if (typeof msg.seq === 'number') {
+          if (msg.seq <= seenSeqRef.current) return;
+          seenSeqRef.current = msg.seq;
+        }
         setEvents(prev => [...prev, msg]);
 
         switch (msg.type) {
@@ -126,18 +143,36 @@ export function useSse(sessionId) {
       } catch (_) {}
     };
 
-    es.onerror = () => {
-      setError('Stream disconnected');
-      es.close();
+      es.onerror = () => {
+        // Reverse proxies / public-URL tunnels routinely drop idle SSE.
+        // Close the half-open connection and reconnect after a short delay
+        // — server replays the ring buffer on subscribe and seenSeqRef
+        // de-dupes any events we already processed.
+        setConnected(false);
+        setError('Stream disconnected — reconnecting…');
+        try { es.close(); } catch (_) {}
+        if (cancelled) return;
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = setTimeout(connect, 2000);
+      };
     };
 
-    return () => es.close();
+    connect();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(reconnectTimerRef.current);
+      const es = esRef.current;
+      if (es) {
+        try { es.close(); } catch (_) {}
+      }
+    };
   }, [sessionId]);
 
   return {
     events, stagesCompleted, ruleResults, sessionCompleted,
     officerActions, signedOff, cancelled, currentActivity, ruleProgress, stagesRerun,
-    error,
+    connected, error,
   };
 }
 

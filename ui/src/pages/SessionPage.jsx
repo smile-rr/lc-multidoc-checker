@@ -161,24 +161,54 @@ export function SessionPage() {
   }, [activeStage, session, signoffData, landingTarget]);
 
   // goNext: officer trigger to advance the pipeline by one stage.
-  // Calls POST /sessions/{id}/stages/{nextStage}/run on the backend, then navigates.
-  // Backend validates against session.next_stage; UI just navigates if completed already.
+  //
+  // Race window we have to handle: the user can click Continue while the
+  // current stage is still finishing async on the backend (intake→parse is
+  // the most common — vision LLM hasn't started, but the LC parsed quickly
+  // so the gate looks open). In that window `session.awaiting_officer` is
+  // still false, `session.next_stage` is still null. The previous version
+  // silently skipped the runStage call here and just navigated, which left
+  // the user on a panel for a stage that was never triggered. Going back
+  // and clicking Continue worked because by then the backend had caught up.
+  //
+  // Now: poll session state up to ~5s waiting for the backend to enter
+  // awaiting_officer{next_stage=next}, then trigger. Surface failure to the
+  // user instead of silently navigating into a dead panel.
   const goNext = async () => {
     const i = STAGE_ORDER.indexOf(activeStage);
     if (i >= STAGE_ORDER.length - 1) return;
     const next = STAGE_ORDER[i + 1];
-    // Trigger backend run only if session is awaiting that stage.
-    if (session?.awaiting_officer && session?.next_stage?.toLowerCase() === next) {
-      try {
-        await runStage(id, next, OFFICER_ID);
-        // Pull the fresh session state so child panels (ExaminePanel etc.)
-        // see status='EXAMINE' immediately and start polling/streaming —
-        // otherwise we land on the next tab with stale 'AWAITING_OFFICER'.
-        await refresh();
-      }
-      catch (e) { console.error('runStage failed', e); /* navigate anyway */ }
+
+    // If next stage already ran (back-nav case), just navigate.
+    if (stagesCompleted?.has?.(next)) { setActiveStage(next); return; }
+
+    let s = session;
+    const isReady = (x) =>
+        x?.awaiting_officer && x?.next_stage?.toLowerCase() === next;
+    for (let attempt = 0; attempt < 12 && !isReady(s); attempt++) {
+      await new Promise(r => setTimeout(r, 500));
+      s = await refresh();
     }
-    setActiveStage(next);
+
+    if (!isReady(s)) {
+      console.warn('goNext: backend not awaiting', next, 'after 6s', s);
+      alert(
+          `Cannot advance to ${next}: the previous stage is still running or ` +
+          `has not yet emitted its completion event. Wait a moment and try again.`);
+      return;
+    }
+
+    try {
+      await runStage(id, next, OFFICER_ID);
+      // Pull the fresh session state so child panels (ExaminePanel etc.)
+      // see status='EXAMINE' immediately and start polling/streaming —
+      // otherwise we land on the next tab with stale 'AWAITING_OFFICER'.
+      await refresh();
+      setActiveStage(next);
+    } catch (e) {
+      console.error('runStage failed', e);
+      alert(`Failed to start ${next}: ${e.message ?? e}`);
+    }
   };
   const goBack = () => {
     const i = STAGE_ORDER.indexOf(activeStage);
