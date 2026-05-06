@@ -42,12 +42,12 @@ own jointly to keep the platform extensible.
 
 ## Rule Types
 
-| **Type**          | **Description**                                              | **Reasoning** | Iteration    |
-| :---------------- | :----------------------------------------------------------- | :------------ | :----------- |
-| **Programmatic**  | SpEL expression checks. **No LLM.**                          | n/a           | 0 LLM calls  |
-| **Agent**         | Single LLM call. Prompt includes fields and rules. Returns structured JSON. | false         | 1 LLM call   |
-| **Agent + Tools** | LLM call with calculation tools (math, dates, currency).     | false         | ≤2 LLM calls |
-| **Agentic**       | ReAct loop: reason → act → repeat. Has iteration limit.      | **true**      | ≤6 LLM calls |
+| **Type**          | **Description**                                          | **Reasoning** | Iteration |
+| :---------------- | :------------------------------------------------------- | :------------ | :-------- |
+| **Programmatic**  | SpEL expression checks. **No LLM.**                      | n/a           | 0         |
+| **Agent**         | Single LLM call. Prompt includes fields and rules.       | false         | 1 call    |
+| **Agent + Tools** | LLM call with calculation tools (math, dates, currency). | false         | ≤2 calls  |
+| **Agentic**       | ReAct loop: reason → act → repeat. Has iteration limit.  | **true**      | ≤6 calls  |
 
 
 
@@ -61,8 +61,8 @@ The system deployment architecture and the runtime flow across its components.
 
 ## Implementation Strategy
 
-| Phase                                        | Timeline | AI-Driven System                                             | Legacy System          |
-| -------------------------------------------- | -------- | ------------------------------------------------------------ | ---------------------- |
-| **Phase 1**  <br />*Observation Mode*        | 6 months | • 100% parse verification  <br />• 100% rule result verification   <br />• 100% human sign-off | Parallel *(Primary)*   |
-| **Phase 2**   <br />*System-Assisted Review* | 3 months | • System randomly selects 50% for parse verification   <br />• System randomly selects 50% for rule result verification   <br />• 100% human sign-off | Parallel *(Secondary)* |
-| **Phase 3**   <br />*AI-Led Review*          | Ongoing  | • System randomly selects 30% for parse verification   <br />• System randomly selects 30% for rule result verification   <br />• 100% human sign-off | Sunset                 |
+| Phase       | Timeline | AI-Driven System                                             | Legacy System          |
+| ----------- | -------- | ------------------------------------------------------------ | ---------------------- |
+| **Phase 1** | 6 months | • 100% parse verification  <br />• 100% rule result verification   <br />• 100% human sign-off | Parallel *(Primary)*   |
+| **Phase 2** | 3 months | • System randomly selects 50% for parse verification   <br />• System randomly selects 50% for rule result verification   <br />• 100% human sign-off | Parallel *(Secondary)* |
+| **Phase 3** | Ongoing  | • System randomly selects 30% for parse verification   <br />• System randomly selects 30% for rule result verification   <br />• 100% human sign-off | Sunset                 |
