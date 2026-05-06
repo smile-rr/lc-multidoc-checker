@@ -130,12 +130,28 @@ function deriveStageInfo(events, stage) {
     let last = null;
     let totalDocs = new Set();
     let completeDocs = new Set();
+    // Seed: LC is always part of the parse universe (parsed in Intake) so the
+    // meter starts at 1/N the moment the officer reaches Parse, and the
+    // denominator covers LC + every uploaded vision doc.
+    totalDocs.add('LC');
+    completeDocs.add('LC');
     for (let i = events.length - 1; i >= 0; i--) {
       const e = events[i];
       if (e.type !== 'ExtractionProgress') continue;
       const d = e.data || {};
-      if (d.docType) totalDocs.add(d.docType);
-      if (d.status === 'complete' && d.docType) completeDocs.add(d.docType);
+      if (d.docType && d.docType !== 'UNKNOWN') totalDocs.add(d.docType);
+      // A doc is "done" when:
+      //   - its mt700_parser intake event fires "complete #LC..." (LC), or
+      //   - any vision slot returns "complete", or
+      //   - its consensus event arrives with HIGH/MED/LOW (success) or
+      //     failed_all_slots / failed:<msg> (terminal failure).
+      const status = String(d.status || '');
+      const docDone = status === 'complete'
+        || status.startsWith('complete ')
+        || /^(HIGH|MED|LOW)$/.test(status)
+        || status === 'failed_all_slots'
+        || status.startsWith('failed:');
+      if (docDone && d.docType && d.docType !== 'UNKNOWN') completeDocs.add(d.docType);
       // "current task" display: only consider events that fall inside the Parse
       // stage window. If parseStart is -1, Parse hasn't started yet → no sub.
       if (!last && parseStart >= 0 && i >= parseStart) last = e;
