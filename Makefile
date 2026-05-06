@@ -36,7 +36,7 @@
 
 SHELL    := /bin/bash
 ENV_FILE := .env
-COMPOSE  := docker compose -f infra/docker-compose.yml
+COMPOSE  := docker compose --project-directory . -f infra/docker-compose.yml
 
 SVC_DIR  := lc-checker-v2-svc
 UI_DIR   := ui
@@ -113,12 +113,12 @@ all-down:  ## stop both dev servers
 # ---------------------------------------------------------------------------
 # dep-* — Docker production deploy (via infra/docker-compose.yml)
 # ---------------------------------------------------------------------------
-dep-svc:  ## build + deploy lc-checker-v2-svc container (port 9082)
+dep-svc: pull  ## git pull + build + deploy lc-checker-v2-svc container (port 9082)
 	$(COMPOSE) build lc-checker-v2-svc
 	$(COMPOSE) up -d lc-checker-v2-svc
 	@echo "✓ dep-svc → http://127.0.0.1:$(SVC_PORT)"
 
-dep-ui:  ## build + deploy lc-checker-v2-ui container (port 9080)
+dep-ui: pull  ## git pull + build + deploy lc-checker-v2-ui container (port 9080)
 	$(COMPOSE) build ui-v2
 	$(COMPOSE) up -d ui-v2
 	@echo "✓ dep-ui → http://127.0.0.1:9080"
@@ -159,7 +159,7 @@ health:  ## hit /actuator/health on the running svc
 	  || echo "UNREACHABLE"
 
 pull:  ## git pull --ff-only origin main
-	@git -C .. pull --ff-only origin main
+	@git pull --ff-only origin main
 
 langfuse-auth:  ## derive LANGFUSE_AUTH_BASIC from .env keys and write it back
 	@pk=$$(grep '^LANGFUSE_PUBLIC_KEY=' $(ENV_FILE) | cut -d= -f2); \

@@ -21,13 +21,13 @@ services:
 
   lc-checker-v2-svc:
     build:
-      context: ../lc-checker-v2-svc
+      context: lc-checker-v2-svc
     image: lc-checker-v2-svc:v2
     container_name: lc-checker-v2-svc
     # No host port: only reachable from ui-v2 container via lc-checker-v2-net
     env_file: .env.ubuntu
     volumes:
-      - ../test/cases:/opt/test-cases:ro
+      - ./test/cases:/opt/test-cases:ro
     restart: unless-stopped
     networks:
       - lc-checker-v2-net
@@ -35,7 +35,7 @@ services:
 
   ui-v2:
     build:
-      context: ../ui
+      context: ui
     image: lc-checker-v2-ui:v2
     container_name: lc-checker-v2-ui
     depends_on:
