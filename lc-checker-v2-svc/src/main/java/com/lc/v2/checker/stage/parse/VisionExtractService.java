@@ -10,7 +10,8 @@ import com.lc.v2.checker.infra.config.ExtractorSlotConfig;
 import com.lc.v2.checker.infra.config.ExtractorSlotConfig.SlotEntry;
 import com.lc.v2.checker.infra.config.ExtractorSlotProperties;
 import com.lc.v2.checker.infra.fields.DocTypeRegistry;
-import com.lc.v2.checker.infra.observability.TraceNames;
+import com.lc.v2.checker.infra.observability.TracedCall;
+import com.lc.v2.checker.infra.observability.TracingAsync;
 import com.lc.v2.checker.pipeline.PipelineEventBus;
 import io.micrometer.tracing.Span;
 import io.micrometer.tracing.Tracer;
@@ -32,6 +33,8 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -57,13 +60,18 @@ public class VisionExtractService {
     private final DocTypeRegistry docTypeRegistry;
     private final ObjectMapper objectMapper;
     private final Tracer tracer;
+    private final TracingAsync tracingAsync;
+
+    /** Self-injection so the @TracedCall aspect actually fires on runSlot. */
+    @Lazy @Autowired private VisionExtractService self;
 
     public VisionExtractService(ExtractorSlotConfig slotConfig, DocTypeRegistry docTypeRegistry,
-                                 Tracer tracer) {
+                                 Tracer tracer, TracingAsync tracingAsync) {
         this.slotConfig = slotConfig;
         this.docTypeRegistry = docTypeRegistry;
         this.objectMapper = new ObjectMapper();
         this.tracer = tracer;
+        this.tracingAsync = tracingAsync;
     }
 
     /**
@@ -105,17 +113,16 @@ public class VisionExtractService {
         emit(sessionId, eventBus, docType.name(), "render", "rendered_" + base64Pages.size() + "_pages");
 
         // Run all enabled slots in parallel; slot source name = <model>_<N>.
-        // Capture the current trace span (the "parse" stage span set by
-        // ParseStage) so the async slot threads can re-attach it as parent
-        // for the child vision.generate span.
-        Span parentSpan = tracer.currentSpan();
+        // TracingAsync re-attaches the current span (the "parse" stage span)
+        // on each worker thread so the @TracedCall("vision.generate") aspect
+        // on runSlot opens its child span under the right parent.
         Map<String, CompletableFuture<FieldEnvelope>> futures = new LinkedHashMap<>();
         for (SlotEntry slot : slots) {
             String sourceName = slot.sourceName();
             emit(sessionId, eventBus, docType.name(), sourceName, "calling_" + slot.props().getModel());
-            futures.put(sourceName, CompletableFuture.supplyAsync(
-                    () -> runSlot(sourceName, slot.props(), base64Pages, promptText, docType,
-                            sessionId, eventBus, parentSpan, filename)));
+            futures.put(sourceName, tracingAsync.supplyAsync(
+                    () -> self.runSlot(sourceName, slot.props(), base64Pages, promptText, docType,
+                            sessionId, eventBus, filename)));
         }
 
         // Collect results; per-slot timeout from config
@@ -165,51 +172,46 @@ public class VisionExtractService {
         return s.length() <= 80 ? s : s.substring(0, 80) + "…";
     }
 
-    private FieldEnvelope runSlot(String sourceName, ExtractorSlotProperties slot,
-                                   List<String> base64Pages, String promptText, DocType docType,
-                                   String sessionId, PipelineEventBus eventBus, Span parentSpan,
-                                   String docName) {
-        // Re-attach the parse-stage span on this async thread so the
-        // vision.generate child below inherits it as parent. Then start the
-        // gen_ai-shaped span Langfuse renders as a generation.
-        Tracer.SpanInScope parentScope = parentSpan != null ? tracer.withSpan(parentSpan) : null;
-        try {
-            // Span name carries the doc type so it shows in the Langfuse
-            // generation list as e.g. "vision.generate INV".
-            Span span = tracer.nextSpan().name("vision.generate " + docType.name()).start();
-            try (Tracer.SpanInScope ws = tracer.withSpan(span)) {
-                span.tag("gen_ai.system", providerOf(slot.getBaseUrl()));
-                span.tag("gen_ai.operation.name", "chat");
-                span.tag("gen_ai.request.model", String.valueOf(slot.getModel()));
-                span.tag("doc_type", docType.name());
-                span.tag("doc_name", docName == null ? "" : docName);
-                span.tag("slot", sourceName);
-                if (sessionId != null) {
-                    span.tag("session.id", sessionId);
-                    span.tag("langfuse.session.id", sessionId);
-                    span.tag("langfuse.trace.name", TraceNames.forSession(sessionId));
-                }
-                span.tag("input.pages", String.valueOf(base64Pages.size()));
-                // Prompt text only (image bytes excluded — too large for traces).
-                span.tag("input.value", trimForTrace(promptText));
-                span.tag("gen_ai.prompt", trimForTrace(promptText));
-                log.debug("[VisionExtract] slot={} docType={}", sourceName, docType);
-                String responseJson = callVlm(slot, base64Pages, promptText);
-                emit(sessionId, eventBus, docType.name(), sourceName, "parsing_response");
-                tagUsageAndOutput(span, responseJson);
-                return parseResponse(responseJson);
-            } catch (Exception e) {
-                span.tag("error", String.valueOf(e.getMessage()));
-                Throwable root = e;
-                while (root.getCause() != null && root.getCause() != root) root = root.getCause();
-                log.error("[VisionExtract] slot={} error: {} (root={}: {})",
-                        sourceName, e.getMessage(), root.getClass().getName(), root.getMessage(), e);
-                return null;
-            } finally {
-                span.end();
+    @TracedCall(value = "vision.generate", tags = {"gen_ai.operation.name=chat"})
+    public FieldEnvelope runSlot(String sourceName, ExtractorSlotProperties slot,
+                           List<String> base64Pages, String promptText, DocType docType,
+                           String sessionId, PipelineEventBus eventBus, String docName) {
+        // The @TracedCall aspect has opened the span and attached it as the
+        // current scope. Set dynamic tags via tracer.currentSpan() — values
+        // depending on per-slot args / response can't live on the annotation.
+        Span span = tracer.currentSpan();
+        if (span != null) {
+            span.tag("gen_ai.system", providerOf(slot.getBaseUrl()));
+            span.tag("gen_ai.request.model", String.valueOf(slot.getModel()));
+            span.tag("doc_type", docType.name());
+            span.tag("doc_name", docName == null ? "" : docName);
+            span.tag("slot", sourceName);
+            if (sessionId != null) {
+                span.tag("session.id", sessionId);
+                span.tag("langfuse.session.id", sessionId);
+                span.tag("langfuse.trace.name",
+                        com.lc.v2.checker.infra.observability.TraceNames.forSession(sessionId));
             }
-        } finally {
-            if (parentScope != null) parentScope.close();
+            span.tag("input.pages", String.valueOf(base64Pages.size()));
+            // Prompt text only (image bytes excluded — too large for traces).
+            span.tag("input.value", trimForTrace(promptText));
+            span.tag("gen_ai.prompt", trimForTrace(promptText));
+        }
+        log.debug("[VisionExtract] slot={} docType={}", sourceName, docType);
+        try {
+            String responseJson = callVlm(slot, base64Pages, promptText);
+            emit(sessionId, eventBus, docType.name(), sourceName, "parsing_response");
+            if (span != null) tagUsageAndOutput(span, responseJson);
+            return parseResponse(responseJson);
+        } catch (Exception e) {
+            // Aspect tags `error` from the thrown message; we just log + swallow
+            // so the slot fails soft (consensus survives missing slots).
+            Throwable root = e;
+            while (root.getCause() != null && root.getCause() != root) root = root.getCause();
+            log.error("[VisionExtract] slot={} error: {} (root={}: {})",
+                    sourceName, e.getMessage(), root.getClass().getName(), root.getMessage(), e);
+            if (span != null) span.tag("error", String.valueOf(e.getMessage()));
+            return null;
         }
     }
 

@@ -6,15 +6,13 @@ import com.lc.v2.checker.domain.lc.LcConsistencyWarning;
 import com.lc.v2.checker.domain.result.CheckResult;
 import com.lc.v2.checker.domain.rule.ExamineContext;
 import com.lc.v2.checker.domain.rule.Rule;
-import com.lc.v2.checker.infra.observability.TraceNames;
+import com.lc.v2.checker.infra.observability.PipelineStage;
 import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.infra.rules.RuleCatalogRegistry;
 import com.lc.v2.checker.infra.rules.RuleTriggerEvaluator;
 import com.lc.v2.checker.infra.rules.RuleTriggerEvaluator.TriggerDecision;
 import com.lc.v2.checker.pipeline.Stage;
 import com.lc.v2.checker.pipeline.StageContext;
-import io.micrometer.observation.Observation;
-import io.micrometer.observation.ObservationRegistry;
 import io.micrometer.tracing.Span;
 import io.micrometer.tracing.Tracer;
 import java.util.ArrayList;
@@ -48,7 +46,6 @@ public class ExamineStage implements Stage {
     private final RuleTriggerEvaluator triggerEvaluator;
     private final com.lc.v2.checker.stage.parse.Mt700Parser mt700Parser;
     private final Tracer tracer;
-    private final ObservationRegistry observationRegistry;
 
     private final Map<String, List<String>> traces = new LinkedHashMap<>();
     private final Map<String, Long> ruleStartMs = new LinkedHashMap<>();
@@ -60,8 +57,7 @@ public class ExamineStage implements Stage {
                         ObjectMapper objectMapper,
                         RuleTriggerEvaluator triggerEvaluator,
                         com.lc.v2.checker.stage.parse.Mt700Parser mt700Parser,
-                        Tracer tracer,
-                        ObservationRegistry observationRegistry) {
+                        Tracer tracer) {
         this.catalog = catalog;
         this.spelEvaluator = spelEvaluator;
         this.agentExecutor = agentExecutor;
@@ -70,13 +66,13 @@ public class ExamineStage implements Stage {
         this.triggerEvaluator = triggerEvaluator;
         this.mt700Parser = mt700Parser;
         this.tracer = tracer;
-        this.observationRegistry = observationRegistry;
     }
 
     @Override
     public String name() { return "examine"; }
 
     @Override
+    @PipelineStage
     public void execute(StageContext ctx) {
         long start = System.currentTimeMillis();
         ctx.eventBus.stageStarted(ctx.sessionId, "examine");
@@ -148,38 +144,23 @@ public class ExamineStage implements Stage {
         // Pre-insert PENDING rows so the worklist materialises immediately.
         for (Classified c : classified) upsertPendingRow(ctx, c.rule());
 
-        // Stage span groups every AGENT/AGENT_TOOL/AGENTIC ChatClient call
-        // (Spring AI auto-emits gen_ai.* observations) under a single
-        // "examine" node in Langfuse. Inherits session root via the scope
-        // set by PipelineService.runStageAsync.
+        // The @PipelineStage aspect opened the "examine" span and attached
+        // session tags; child rule.* observations from AgentRuleExecutor
+        // (and their gen_ai.* grandchildren from Spring AI) nest correctly
+        // because tracer.withSpan is the active scope. We only add a dynamic
+        // tag for the fire-rule count.
         long fireRules = classified.stream()
                 .filter(c -> c.outcome() == RuleTriggerEvaluator.Outcome.FIRE).count();
-        // Observation-based scope so child rule.* observations (and their
-        // gen_ai.* grandchildren from Spring AI) nest correctly in Langfuse.
-        Observation examineObs = Observation.createNotStarted("examine", observationRegistry)
-                .lowCardinalityKeyValue("rules.fire", String.valueOf(fireRules))
-                .start();
-        try (Observation.Scope scope = examineObs.openScope()) {
-            Span s = tracer.currentSpan();
-            if (s != null) {
-                s.tag("session.id", ctx.sessionId);
-                s.tag("langfuse.session.id", ctx.sessionId);
-                s.tag("langfuse.trace.name", TraceNames.forSession(ctx.sessionId));
-                s.tag("rules.fire", String.valueOf(fireRules));
+        Span stageSpan = tracer.currentSpan();
+        if (stageSpan != null) stageSpan.tag("rules.fire", String.valueOf(fireRules));
+
+        // Catalog-order execution — NA emitted in place, no block hopping.
+        for (Classified c : classified) {
+            if (c.outcome() == RuleTriggerEvaluator.Outcome.FIRE) {
+                runRule(ctx, c.rule(), ++idx[0], total);
+            } else {
+                emitNa(ctx, c.rad(), ++idx[0], total);
             }
-            // Catalog-order execution — NA emitted in place, no block hopping.
-            for (Classified c : classified) {
-                if (c.outcome() == RuleTriggerEvaluator.Outcome.FIRE) {
-                    runRule(ctx, c.rule(), ++idx[0], total);
-                } else {
-                    emitNa(ctx, c.rad(), ++idx[0], total);
-                }
-            }
-        } catch (Throwable t) {
-            examineObs.error(t);
-            throw t;
-        } finally {
-            examineObs.stop();
         }
         // Out-of-scope rows surface as synthetic NA rows for the worklist's
         // Out-of-Scope section.

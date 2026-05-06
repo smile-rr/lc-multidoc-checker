@@ -4,12 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lc.v2.checker.domain.common.DocType;
 import com.lc.v2.checker.domain.common.FieldEnvelope;
 import com.lc.v2.checker.domain.document.DocumentExtract;
-import com.lc.v2.checker.infra.observability.TraceNames;
+import com.lc.v2.checker.infra.observability.PipelineStage;
 import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.pipeline.Stage;
 import com.lc.v2.checker.pipeline.StageContext;
-import io.micrometer.tracing.Span;
-import io.micrometer.tracing.Tracer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -36,20 +34,19 @@ public class ParseStage implements Stage {
     private final VisionExtractService visionExtractService;
     private final SessionStore sessionStore;
     private final ObjectMapper objectMapper;
-    private final Tracer tracer;
 
     public ParseStage(VisionExtractService visionExtractService,
-                      SessionStore sessionStore, ObjectMapper objectMapper, Tracer tracer) {
+                      SessionStore sessionStore, ObjectMapper objectMapper) {
         this.visionExtractService = visionExtractService;
         this.sessionStore = sessionStore;
         this.objectMapper = objectMapper;
-        this.tracer = tracer;
     }
 
     @Override
     public String name() { return "parse"; }
 
     @Override
+    @PipelineStage
     public void execute(StageContext ctx) {
         log.info("[{}] ParseStage starting (vision only — LC already parsed in Intake)", ctx.sessionId);
         ctx.eventBus.stageStarted(ctx.sessionId, "parse");
@@ -63,22 +60,7 @@ public class ParseStage implements Stage {
         toExtract.sort(java.util.Comparator.comparingInt(DocType::ordinal));
 
         if (!toExtract.isEmpty()) {
-            // Stage span groups every vision.generate child under a single
-            // "parse" node in Langfuse. Inherits the session root via the
-            // current scope set by PipelineService.runStageAsync.
-            Span span = tracer.nextSpan().name("parse").start();
-            try (Tracer.SpanInScope ws = tracer.withSpan(span)) {
-                span.tag("session.id", ctx.sessionId);
-                span.tag("langfuse.session.id", ctx.sessionId);
-                span.tag("langfuse.trace.name", TraceNames.forSession(ctx.sessionId));
-                span.tag("doc_count", String.valueOf(toExtract.size()));
-                extractAllDocTypes(ctx, toExtract);
-            } catch (Throwable t) {
-                span.tag("error", String.valueOf(t.getMessage()));
-                throw t;
-            } finally {
-                span.end();
-            }
+            extractAllDocTypes(ctx, toExtract);
         }
 
         ctx.eventBus.stageCompleted(ctx.sessionId, "parse",
