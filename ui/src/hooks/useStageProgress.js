@@ -110,28 +110,48 @@ function deriveStageInfo(events, stage) {
   }
 
   if (stage === 'parse') {
-    // Find latest ExtractionProgress; capture its docType/slot/status.
+    // Two passes over the events:
+    //   1. Walk forward to find the boundary index of StageStarted{stageName:'parse'}.
+    //      Events before this boundary belong to Intake (e.g. its mt700_parser
+    //      ExtractionProgress) and must NOT drive the "current task" sub display
+    //      — otherwise a stale Intake event leaks into the Parse meter.
+    //   2. Count totalDocs/completeDocs from ALL ExtractionProgress events so
+    //      the denominator reflects every uploaded doc (including the LC, which
+    //      Intake already finished). Intake's per-doc events seed the totals so
+    //      progress reads e.g. 1/7 immediately when Parse opens, then advances
+    //      as vision extracts complete.
+    let parseStart = -1;
+    for (let i = 0; i < events.length; i++) {
+      if (events[i].type === 'StageStarted' && events[i].data?.stageName === 'parse') {
+        parseStart = i;
+        break;
+      }
+    }
     let last = null;
     let totalDocs = new Set();
     let completeDocs = new Set();
     for (let i = events.length - 1; i >= 0; i--) {
       const e = events[i];
       if (e.type !== 'ExtractionProgress') continue;
-      if (!last) last = e;
       const d = e.data || {};
       if (d.docType) totalDocs.add(d.docType);
       if (d.status === 'complete' && d.docType) completeDocs.add(d.docType);
+      // "current task" display: only consider events that fall inside the Parse
+      // stage window. If parseStart is -1, Parse hasn't started yet → no sub.
+      if (!last && parseStart >= 0 && i >= parseStart) last = e;
     }
-    if (last) {
-      const d = last.data || {};
+    if (totalDocs.size > 0 || last) {
+      const d = (last && last.data) || {};
       const status = String(d.status || '');
       const terminal = status === 'complete' || status.startsWith('failed');
-      lastTs = parseTs(last.ts);
+      lastTs = last ? parseTs(last.ts) : null;
       info = {
         kind: 'extract',
         label: 'Parse',
-        sub: `${d.docType ?? ''} ${d.slot ?? ''} · ${status}`.trim(),
-        idx: completeDocs.size || undefined,
+        sub: last
+          ? `${d.docType ?? ''} ${d.slot ?? ''} · ${status}`.trim()
+          : 'awaiting trigger',
+        idx: completeDocs.size || 0,
         total: totalDocs.size || undefined,
         terminal,
         lastTs,

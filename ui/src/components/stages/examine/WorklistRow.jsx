@@ -1,7 +1,13 @@
 import React, { useEffect, useRef } from 'react';
 import { docTypeMeta } from '../../../constants/docTypes';
-import { SeverityChip } from '../../shared/SeverityChip';
 import { AttentionChip } from '../../shared/AttentionChip';
+
+const SEV_TONE = {
+  CRITICAL:    'text-status-red font-semibold',
+  MAJOR:       'text-navy-1',
+  MINOR:       'text-muted',
+  OBSERVATION: 'text-muted',
+};
 
 function fmtDuration(ms) {
   if (ms == null) return '';
@@ -11,20 +17,20 @@ function fmtDuration(ms) {
 }
 
 const STATUS_META = {
-  PASS:           { fg: '#1a7a43', bg: '#ecfdf5', bar: '#1a7a43', icon: '●', label: 'PASS',  rowTint: '' },
-  FAIL:           { fg: '#cc0011', bg: '#fee2e2', bar: '#cc0011', icon: '▲', label: 'FAIL',  rowTint: 'bg-red-50/40' },
-  DOUBTS:         { fg: '#8a5700', bg: '#fef9c3', bar: '#d97706', icon: '◐', label: 'DOUBT', rowTint: '' },
-  NEEDS_REVIEW:   { fg: '#8a5700', bg: '#fef9c3', bar: '#d97706', icon: '◐', label: 'REVIEW',rowTint: '' },
-  NOT_APPLICABLE: { fg: '#6e6e73', bg: '#f4f4f5', bar: '#a1a1aa', icon: '○', label: 'N/A',   rowTint: '' },
-  FAILED:         { fg: '#b54708', bg: '#ffedd5', bar: '#b54708', icon: '✕', label: 'ERROR', rowTint: 'bg-orange-50/50' },
-  PENDING:        { fg: '#a1a1a6', bg: '#f4f4f5', bar: '#d4d4d8', icon: '⟳', label: '…',     rowTint: '' },
+  PASS:           { fg: '#1a7a43', bg: '#ecfdf5', bar: '#1a7a43', icon: '●', label: 'PASS' },
+  FAIL:           { fg: '#cc0011', bg: '#fee2e2', bar: '#cc0011', icon: '▲', label: 'FAIL' },
+  DOUBTS:         { fg: '#8a5700', bg: '#fef9c3', bar: '#d97706', icon: '◐', label: 'DOUBT' },
+  NEEDS_REVIEW:   { fg: '#8a5700', bg: '#fef9c3', bar: '#d97706', icon: '◐', label: 'REVIEW' },
+  NOT_APPLICABLE: { fg: '#6e6e73', bg: '#f4f4f5', bar: '#a1a1aa', icon: '○', label: 'N/A' },
+  FAILED:         { fg: '#b54708', bg: '#ffedd5', bar: '#b54708', icon: '✕', label: 'ERROR' },
+  PENDING:        { fg: '#a1a1a6', bg: '#f4f4f5', bar: '#d4d4d8', icon: '⟳', label: '…' },
 };
 
-const TIER_META = {
-  PROGRAMMATIC: { label: 'PROG',    fg: '#0f5c3e', bg: '#d1fae5' },
-  AGENT:        { label: 'AGENT',   fg: '#1e40af', bg: '#dbeafe' },
-  AGENT_TOOL:   { label: 'AGENT+T', fg: '#6b21a8', bg: '#ede9fe' },
-  AGENTIC:      { label: 'AGENTIC', fg: '#9a3412', bg: '#ffedd5' },
+const TIER_LABEL = {
+  PROGRAMMATIC: 'PROG',
+  AGENT:        'AGENT',
+  AGENT_TOOL:   'AGENT+T',
+  AGENTIC:      'AGENTIC',
 };
 
 export function WorklistRow({ rule, selected, onClick }) {
@@ -47,9 +53,13 @@ export function WorklistRow({ rule, selected, onClick }) {
       ref={rowRef}
       onClick={onClick}
       className={`border-b border-line/50 cursor-pointer transition-colors
-        ${selected ? 'bg-status-greenSoft' : meta.rowTint || 'hover:bg-slate2'}
+        ${selected ? 'bg-status-blueSoft' : 'hover:bg-slate2'}
         ${isPending ? 'text-muted' : ''}`}
-      style={{ boxShadow: `inset 4px 0 0 0 ${meta.bar}` }}
+      style={{
+        boxShadow: selected
+          ? `inset 4px 0 0 0 #0066cc, inset 0 0 0 1px #0066cc55`
+          : `inset 4px 0 0 0 ${meta.bar}`,
+      }}
     >
       {/* # */}
       <td className="pl-3 pr-2 py-2 text-[10px] text-[#a1a1a6] font-mono tabular-nums" style={{ width: 40 }}>
@@ -71,19 +81,15 @@ export function WorklistRow({ rule, selected, onClick }) {
         </span>
       </td>
 
-      {/* Rule (id + tier + label + inline attention chips) */}
+      {/* Type (execution tier) */}
+      <td className="px-2 py-2 text-[10px] text-muted font-mono whitespace-nowrap" style={{ width: 72 }} title={rule.checkType ? `Execution tier: ${rule.checkType}` : undefined}>
+        {(rule.checkType && TIER_LABEL[rule.checkType]) || ''}
+      </td>
+
+      {/* Rule (id + label + inline attention chips) */}
       <td className="px-2 py-2 text-[12px]">
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-[10px] text-[#a1a1a6] font-mono">{rule.ruleId}</span>
-          {rule.checkType && TIER_META[rule.checkType] && (
-            <span
-              className="px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold inline-flex items-center"
-              style={{ color: TIER_META[rule.checkType].fg, background: TIER_META[rule.checkType].bg }}
-              title={`Execution tier: ${rule.checkType}`}
-            >
-              {TIER_META[rule.checkType].label}
-            </span>
-          )}
           <span className="text-navy-1 leading-snug">{rule.label}</span>
           {attention.map(t => <AttentionChip key={t} tag={t} />)}
         </div>
@@ -106,11 +112,8 @@ export function WorklistRow({ rule, selected, onClick }) {
       </td>
 
       {/* Severity */}
-      <td className="px-2 py-2"><SeverityChip severity={rule.severity} /></td>
-
-      {/* Source — just the model/source label, duration moved to row tail */}
-      <td className="px-2 py-2 text-[10px] text-muted font-mono whitespace-nowrap" title={rule.source}>
-        {rule.source || '—'}
+      <td className={`px-2 py-2 text-[10px] font-mono tracking-wider whitespace-nowrap ${SEV_TONE[rule.severity] || 'text-muted'}`}>
+        {rule.severity && rule.severity !== '—' ? rule.severity : ''}
       </td>
 
       {/* Took (duration, far right, small + muted) */}

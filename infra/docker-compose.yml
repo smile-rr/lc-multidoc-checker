@@ -25,7 +25,7 @@ services:
     image: lc-checker-v2-svc:v2
     container_name: lc-checker-v2-svc
     # No host port: only reachable from ui-v2 container via lc-checker-v2-net
-    env_file: ../.env.ubuntu
+    env_file: .env.ubuntu
     volumes:
       - ../test/cases:/opt/test-cases:ro
     restart: unless-stopped

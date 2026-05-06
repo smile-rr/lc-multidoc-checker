@@ -34,7 +34,6 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.openai.OpenAiChatOptions;
@@ -80,12 +79,22 @@ public class AgentRuleExecutor {
     private final ArticleRefRegistry refs;
     private final ResourceLoader resourceLoader;
     private final ExamineToolRegistry toolRegistry;
-    private final List<ToolCallback> toolCallbacks;
+    /** All tools — exposed to AGENTIC rules. */
+    private final List<ToolCallback> toolCallbacksAll;
+    /** Compute-only tools (no data-fetch) — exposed to AGENT_TOOL rules so the
+     *  2-turn budget is not burned on field lookups already inlined in the prompt. */
+    private final List<ToolCallback> toolCallbacksCompute;
     private final ObservationRegistry observationRegistry;
     private final Tracer tracer;
     private final LlmBudgetProperties budget;
     private final String systemPrompt;
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /** Names of tools considered "compute" (math/derivation, not data fetch).
+     *  Anything outside this set is a data-fetch tool — fields are already
+     *  inlined in the prompt for AGENT_TOOL rules, so those tools are hidden. */
+    private static final java.util.Set<String> COMPUTE_TOOL_NAMES =
+            java.util.Set.of("calculateDateDiff");
 
     private final ConcurrentMap<String, String> rulePromptCache = new ConcurrentHashMap<>();
 
@@ -104,8 +113,14 @@ public class AgentRuleExecutor {
         this.refs = refs;
         this.resourceLoader = resourceLoader;
         this.toolRegistry = toolRegistry;
-        this.toolCallbacks = List.of(MethodToolCallbackProvider.builder()
-                .toolObjects(toolRegistry).build().getToolCallbacks());
+        ToolCallback[] all = MethodToolCallbackProvider.builder()
+                .toolObjects(toolRegistry).build().getToolCallbacks();
+        this.toolCallbacksAll = List.of(all);
+        List<ToolCallback> compute = new ArrayList<>();
+        for (ToolCallback cb : all) {
+            if (COMPUTE_TOOL_NAMES.contains(cb.getToolDefinition().name())) compute.add(cb);
+        }
+        this.toolCallbacksCompute = List.copyOf(compute);
         this.observationRegistry = observationRegistry;
         this.tracer = tracer;
         this.budget = budget;
@@ -128,8 +143,13 @@ public class AgentRuleExecutor {
             int cap = effectiveCap(rule);
             return switch (rule.checkType()) {
                 case "AGENT" -> callPlain(rule, ctx);
-                case "AGENT_TOOL" -> callWithTools(rule, ctx, Math.min(cap, 2));
-                case "AGENTIC" -> callWithTools(rule, ctx, cap);
+                // AGENT_TOOL: compute-only tools, hard cap 2 turns. Data-fetch tools
+                // are intentionally hidden — fields are already inlined in the prompt.
+                case "AGENT_TOOL" -> callWithTools(rule, ctx, Math.min(cap, 2), toolCallbacksCompute);
+                // AGENTIC: full tool set, per-rule cap. Data-fetch tools are exposed
+                // because rules at this tier (e.g. COND-03) may need to discover
+                // which docs are present before deciding what to look at.
+                case "AGENTIC" -> callWithTools(rule, ctx, cap, toolCallbacksAll);
                 default -> {
                     log.warn("[{}] AgentRuleExecutor invoked for unsupported checkType={} rule={}",
                             ctx.sessionId, rule.checkType(), rule.ruleId());
@@ -170,7 +190,7 @@ public class AgentRuleExecutor {
     }
 
     private CheckResult callPlain(Rule rule, StageContext ctx) {
-        String userPrompt = buildPrompt(rule, ctx, false);
+        String userPrompt = buildPrompt(rule, ctx, false, 1);
         tagInput(userPrompt);
         try {
             String response = chatClientBuilder.build().prompt()
@@ -199,15 +219,25 @@ public class AgentRuleExecutor {
      * completion; once it reaches {@code maxIterations}, no further chat call
      * is issued and the rule surfaces NEEDS_REVIEW with the captured trace.
      */
-    private CheckResult callWithTools(Rule rule, StageContext ctx, int maxIterations) {
-        String userPrompt = buildPrompt(rule, ctx, true);
+    private CheckResult callWithTools(Rule rule, StageContext ctx, int maxIterations,
+                                       List<ToolCallback> tools) {
+        String userPrompt = buildPrompt(rule, ctx, true, maxIterations);
         userPrompt = "Session ID for tool calls: " + ctx.sessionId + "\n\n" + userPrompt;
         tagInput(userPrompt);
 
-        ToolCallingChatOptions options = ToolCallingChatOptions.builder()
-                .toolCallbacks(toolCallbacks)
-                .internalToolExecutionEnabled(false)
-                .build();
+        // Per-rule thinking override: when rule.thinkingEnabled() is TRUE we
+        // promote enable_thinking to true at top level of the request body.
+        // Spring AI 1.1 maps OpenAiChatOptions.extraBody onto the JSON top
+        // level for OpenAI-compatible providers (same plumbing as the YAML
+        // additional-model-request-fields setting). Null/false → leave the
+        // global enable_thinking:false default in place.
+        OpenAiChatOptions.Builder optBuilder = OpenAiChatOptions.builder()
+                .toolCallbacks(tools)
+                .internalToolExecutionEnabled(false);
+        if (Boolean.TRUE.equals(rule.thinkingEnabled())) {
+            optBuilder.extraBody(java.util.Map.of("enable_thinking", true));
+        }
+        OpenAiChatOptions options = optBuilder.build();
 
         List<Message> messages = new ArrayList<>();
         messages.add(new SystemMessage(systemPrompt));
@@ -277,7 +307,7 @@ public class AgentRuleExecutor {
         });
     }
 
-    private String buildPrompt(Rule rule, StageContext ctx, boolean toolHint) {
+    private String buildPrompt(Rule rule, StageContext ctx, boolean toolHint, int maxIterations) {
         StringBuilder sb = new StringBuilder();
         sb.append("Rule: ").append(rule.ruleId());
         if (rule.name() != null) sb.append(" — ").append(rule.name());
@@ -325,10 +355,27 @@ public class AgentRuleExecutor {
         sb.append("\nCompliance check instruction:\n").append(userPromptFor(rule));
 
         if (toolHint) {
-            sb.append("\n\nYou have read-only tools available (getLcField, getDocField, "
-                    + "getDocInventory, calculateDateDiff, listPresentedDocs). "
-                    + "Call them when you need a specific field value or a date difference; "
-                    + "do not guess. When ready, reply with terminal JSON: "
+            boolean agentic = "AGENTIC".equals(rule.checkType());
+            sb.append("\n\n");
+            if (agentic) {
+                // AGENTIC: full tool set, multi-turn allowed up to maxIterations.
+                // Tell the model the budget so it self-paces toward a verdict.
+                sb.append("You have read-only tools available (getLcField, getDocField, "
+                        + "getDocInventory, calculateDateDiff, listPresentedDocs). ")
+                  .append("Iteration budget: at most ").append(maxIterations)
+                  .append(" LLM turns to reach a verdict (each turn may include one round of tool calls). ")
+                  .append("Plan your tool use accordingly; if you cannot conclude in time, ")
+                  .append("return verdict NEEDS_REVIEW with your best evidence rather than guessing. ");
+            } else {
+                // AGENT_TOOL: compute-only tools. Most data is already inlined above —
+                // do not call tools to fetch field values; only call them for math
+                // (e.g. date arithmetic) you cannot do reliably yourself.
+                sb.append("You have ONE compute tool available: calculateDateDiff(fromIso, toIso). ")
+                  .append("All field values you need are already inlined above — do NOT call tools to fetch them. ")
+                  .append("Use the tool only when you need an exact day count between two ISO dates. ")
+                  .append("Hard budget: 2 LLM turns. Answer in 1 turn when no math is needed. ");
+            }
+            sb.append("When ready, reply with terminal JSON: "
                     + "{\"verdict\":\"PASS|FAIL|NOT_APPLICABLE|DOUBTS\","
                     + "\"confidence\":0.0-1.0,\"explanation\":\"…\","
                     + "\"condition_results\":[{\"condition_id\":\"…\","

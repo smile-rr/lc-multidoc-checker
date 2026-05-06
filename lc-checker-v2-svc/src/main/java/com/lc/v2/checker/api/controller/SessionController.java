@@ -64,7 +64,18 @@ public class SessionController {
                     byte[] bytes = file.getBytes();
                     DocType docType = classify(filename, bytes);
                     log.info("Received file: {} → {}", filename, docType);
-                    documents.put(docType, Map.entry(filename != null ? filename : "unknown.bin", bytes));
+                    String safeName = filename != null ? filename : "unknown.bin";
+                    if (docType != DocType.UNKNOWN && documents.containsKey(docType)) {
+                        String existing = documents.get(docType).getKey();
+                        return ResponseEntity.badRequest().body(Map.of(
+                                "error", "duplicate_doc_type",
+                                "docType", docType.name(),
+                                "files", List.of(existing, safeName),
+                                "message", "Two files classified as " + docType.name()
+                                        + ": '" + existing + "' and '" + safeName
+                                        + "'. Please pick one."));
+                    }
+                    documents.put(docType, Map.entry(safeName, bytes));
                 }
             }
 

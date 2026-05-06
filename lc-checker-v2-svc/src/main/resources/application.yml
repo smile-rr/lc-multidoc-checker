@@ -1,7 +1,8 @@
 # lc-checker-v2-api — runtime configuration
 #
-# Environment overrides via .env file or Docker env_file.
-# Port 9082 (svc). UI served separately at port 9080.
+# Operational config is hardcoded here. Only secrets/keys come from env (.env
+# locally, infra/.env.ubuntu in Docker). To change a knob: edit this file in
+# one place, rebuild, redeploy. No need to also touch .env files.
 
 spring:
   config:
@@ -10,7 +11,7 @@ spring:
   application:
     name: lc-checker-v2-api
   profiles:
-    active: ${SPRING_PROFILES_ACTIVE:default}
+    active: default
   autoconfigure:
     exclude:
       - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
@@ -19,12 +20,12 @@ spring:
 
   ai:
     openai:
-      api-key: ${LLM_API_KEY:dev-placeholder}
-      base-url: ${LLM_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+      api-key: ${LLM_API_KEY:}
+      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
       chat:
         completions-path: /chat/completions
         options:
-          model: ${LLM_MODEL:qwen3.6-flash}
+          model: qwen3.5-plus-2026-02-15
           temperature: 0.0
           additional-model-request-fields:
             enable_thinking: false
@@ -40,9 +41,9 @@ spring:
       schema-locations: classpath:db/schema.sql
 
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/lc_checker
-    username: ${DB_USER:lcuser}
-    password: ${DB_PASSWORD:lcpass123}
+    url: jdbc:postgresql://192.168.31.214:5436/lc_checker
+    username: lcuser
+    password: ${DB_PASSWORD:}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
@@ -62,69 +63,69 @@ spring:
 # Rule-level Rule.maxIterations overrides this when set in catalog.yml.
 app:
   llm:
-    max-iterations: ${LLM_MAX_ITERATIONS:3}
+    max-iterations: 3
 
 server:
-  port: ${SERVER_PORT:9082}
+  port: 9082
 
 # --- Vision LLM slots 1–4 (uniform config) ------------------------------------
-# Default: slot-1 only — qwen3.6-flash @ Bailian for fast single-model extraction.
-# Slots fire sequentially per doc (in upload order); consensus = majority vote.
-# Provider switch is config-only (URL + key). No local/cloud naming distinction.
-# Source label in DB/UI: <model>_<N>  (e.g. qwen3.6-flash_1)
+# Default: slots 1+2 enabled — both Bailian Qwen3 models for consensus voting.
+# Slots fire sequentially per doc (in upload order); within each doc, enabled
+# slots run in parallel; consensus = majority vote; slot-1 wins on tie.
+# Provider switch is config-only (URL + key). Source label in DB/UI: <model>_<N>.
 vision-llm:
   slot-1:
-    enabled:          ${VISION_1_ENABLED:true}
-    base-url:         ${VISION_1_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+    enabled:          true
+    base-url:         https://dashscope.aliyuncs.com/compatible-mode/v1
     api-key:          ${VISION_1_API_KEY:}
-    model:            ${VISION_1_MODEL:qwen3.6-flash}
-    render-dpi:       ${VISION_1_RENDER_DPI:200}
-    max-pages:        ${VISION_1_MAX_PAGES:10}
-    max-long-edge-px: ${VISION_1_MAX_LONG_EDGE_PX:2048}
-    timeout-seconds:  ${VISION_1_TIMEOUT_SECONDS:120}
+    model:            qwen3.6-35b-a3b
+    render-dpi:       200
+    max-pages:        10
+    max-long-edge-px: 2048
+    timeout-seconds:  120
   slot-2:
-    enabled:          ${VISION_2_ENABLED:false}
-    base-url:         ${VISION_2_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+    enabled:          true
+    base-url:         https://dashscope.aliyuncs.com/compatible-mode/v1
     api-key:          ${VISION_2_API_KEY:}
-    model:            ${VISION_2_MODEL:qwen3.6-plus-2026-04-02}
-    render-dpi:       ${VISION_2_RENDER_DPI:200}
-    max-pages:        ${VISION_2_MAX_PAGES:10}
-    max-long-edge-px: ${VISION_2_MAX_LONG_EDGE_PX:2048}
-    timeout-seconds:  ${VISION_2_TIMEOUT_SECONDS:120}
+    model:            qwen3.5-flash
+    render-dpi:       200
+    max-pages:        10
+    max-long-edge-px: 2048
+    timeout-seconds:  120
   slot-3:
-    enabled:          ${VISION_3_ENABLED:false}
-    base-url:         ${VISION_3_BASE_URL:http://localhost:11434/v1}
+    enabled:          false
+    base-url:         https://dashscope.aliyuncs.com/compatible-mode/v1
     api-key:          ${VISION_3_API_KEY:}
-    model:            ${VISION_3_MODEL:qwen3-vl:4b-instruct}
-    render-dpi:       ${VISION_3_RENDER_DPI:200}
-    max-pages:        ${VISION_3_MAX_PAGES:10}
-    max-long-edge-px: ${VISION_3_MAX_LONG_EDGE_PX:2048}
-    timeout-seconds:  ${VISION_3_TIMEOUT_SECONDS:120}
+    model:            qwen3.6-plus-2026-04-02
+    render-dpi:       200
+    max-pages:        10
+    max-long-edge-px: 2048
+    timeout-seconds:  120
   slot-4:
-    enabled:          ${VISION_4_ENABLED:false}
-    base-url:         ${VISION_4_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+    enabled:          false
+    base-url:         https://dashscope.aliyuncs.com/compatible-mode/v1
     api-key:          ${VISION_4_API_KEY:}
-    model:            ${VISION_4_MODEL:qwen3.6-27b}
-    render-dpi:       ${VISION_4_RENDER_DPI:200}
-    max-pages:        ${VISION_4_MAX_PAGES:10}
-    max-long-edge-px: ${VISION_4_MAX_LONG_EDGE_PX:2048}
-    timeout-seconds:  ${VISION_4_TIMEOUT_SECONDS:120}
+    model:            qwen3.6-27b
+    render-dpi:       200
+    max-pages:        10
+    max-long-edge-px: 2048
+    timeout-seconds:  120
 
 extractor:
-  confidence-threshold: ${EXTRACTOR_CONFIDENCE_THRESHOLD:0.80}
+  confidence-threshold: 0.80
 
 # --- File storage (MinIO — shared with v1, separate bucket/prefix) -----------
 storage:
   minio:
-    enabled:    ${MINIO_ENABLED:true}
-    endpoint:   ${MINIO_ENDPOINT:http://192.168.31.214:9000}
-    bucket:     ${MINIO_BUCKET:lc-pdfs}
-    region:     ${MINIO_REGION:us-east-1}
-    access-key: ${MINIO_ACCESS_KEY:minioadmin}
-    secret-key: ${MINIO_SECRET_KEY:minioadmin}
-    path-style: ${MINIO_PATH_STYLE:true}
+    enabled:    true
+    endpoint:   http://192.168.31.214:9000
+    bucket:     lc-pdfs-v2
+    region:     us-east-1
+    access-key: ${MINIO_ACCESS_KEY:}
+    secret-key: ${MINIO_SECRET_KEY:}
+    path-style: true
     path-prefix: v2/
-    request-timeout-seconds: ${MINIO_REQUEST_TIMEOUT_SECONDS:30}
+    request-timeout-seconds: 30
 
 # --- Rule catalog and field pool --------------------------------------------
 rules:
@@ -137,8 +138,8 @@ fields:
 
 # --- Pipeline queue ---------------------------------------------------------
 pipeline:
-  concurrency: ${PIPELINE_CONCURRENCY:1}
-  poll-delay-ms: ${PIPELINE_POLL_DELAY_MS:2000}
+  concurrency: 1
+  poll-delay-ms: 2000
 
 # --- Session settings -------------------------------------------------------
 session:
@@ -147,15 +148,14 @@ session:
 
 # --- Dev mode ---------------------------------------------------------------
 # When dev-mode=true: UI shows "Confirm All" and "Pass All" buttons in Examine.
-# Never enable in production.
-dev-mode: ${DEV_MODE:true}
+# Flip to false for production demos.
+dev-mode: true
 
 # --- Preset bundles ---------------------------------------------------------
 # Filesystem dir scanned for test-case bundles served via GET /api/v2/presets.
-# Default works when the service is launched from lc-checker-v2-svc/ (e.g. via Makefile).
 presets:
-  dir: ${PRESETS_DIR:../test/cases}
-  max-count: ${PRESETS_MAX_COUNT:3}
+  dir: ../test/cases
+  max-count: 3
 
 # --- Actuator + Prometheus + Tracing → Langfuse -----------------------------
 management:
@@ -170,20 +170,20 @@ management:
     tags:
       application: ${spring.application.name}
   tracing:
-    enabled: ${TRACING_ENABLED:true}
+    enabled: true
     sampling:
-      probability: ${TRACING_SAMPLING:1.0}
+      probability: 1.0
   otlp:
     tracing:
-      endpoint: ${LANGFUSE_OTEL_ENDPOINT:${LANGFUSE_HOST:http://192.168.31.214:3300}/api/public/otel/v1/traces}
+      endpoint: http://192.168.31.214:3300/api/public/otel/v1/traces
       headers:
         Authorization: Basic ${LANGFUSE_AUTH_BASIC:}
       compression: gzip
       timeout: 10s
 
 spring.ai.chat.observations:
-  include-prompt: ${AI_OBS_INCLUDE_PROMPT:true}
-  include-completion: ${AI_OBS_INCLUDE_COMPLETION:true}
+  include-prompt: true
+  include-completion: true
 
 springdoc:
   api-docs:

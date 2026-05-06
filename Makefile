@@ -148,8 +148,7 @@ status:  ## show port-listen status for svc + ui
 	   if lsof -i tcp:$$port -sTCP:LISTEN >/dev/null 2>&1; then state="✓ up"; else state="·"; fi; \
 	   printf '  %-12s %-20s %-8s %s\n' "$$name" "127.0.0.1:$$port" "$$state" "$$url"; \
 	 done
-	@db_host=$$(grep '^DB_HOST=' $(ENV_FILE) 2>/dev/null | cut -d= -f2 || echo localhost); \
-	 db_port=$$(grep '^DB_PORT=' $(ENV_FILE) 2>/dev/null | cut -d= -f2 || echo 5432); \
+	@db_host=192.168.31.214; db_port=5436; \
 	 if command -v nc >/dev/null 2>&1 && nc -z -w 2 "$$db_host" "$$db_port" 2>/dev/null; then db_state="✓ up"; else db_state="·"; fi; \
 	 printf '  %-12s %-20s %-8s %s\n' "postgres" "$$db_host:$$db_port" "$$db_state" "postgres://$$db_host:$$db_port"
 

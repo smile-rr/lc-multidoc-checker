@@ -91,11 +91,11 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
       switch (sort.col) {
         case 'seq':      return r.seqNum ?? 9999;
         case 'status':   return STATUS_RANK[r.effectiveVerdict || r.verdict] ?? 9;
+        case 'tier':     return r.checkType || '';
         case 'article':  return r.article || '';
         case 'scope':    return (r.scope || [])[0] || '';
         case 'rule':     return r.label || r.ruleId;
         case 'severity': return SEV_RANK[r.severity] ?? 0;
-        case 'source':   return r.source || '';
         case 'duration': return r.durationMs ?? -1;
         default: return 0;
       }
@@ -286,7 +286,22 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
   };
 
   const examineDone = stagesCompleted?.has('examine');
-  const canContinue = devMode || examineDone;
+
+  // Sign-off gate — every system-flagged rule (raw verdict FAIL or DOUBTS) must
+  // have an officer override recorded before Continue enables. PASS / N/A /
+  // out-of-scope / FAILED (system error) do not block. DEV MODE bypasses.
+  const unaddressed = useMemo(
+    () => rules.filter(r =>
+      !isOutOfScope(r) &&
+      (r.verdict === 'FAIL' || r.verdict === 'DOUBTS') &&
+      !r.override
+    ),
+    [rules]
+  );
+  const gateBlockers = unaddressed.length > 0
+    ? [`${unaddressed.length} rule${unaddressed.length === 1 ? '' : 's'} need officer override (FAIL / DOUBTS)`]
+    : [];
+  const canContinue = devMode || (examineDone && unaddressed.length === 0);
 
   // Two-state toolbar meta — mirrors Parse stage's "extracting M/N" → "M/N reviewed" pattern.
   // While running: per-phase progress meter consuming SSE events.
@@ -332,6 +347,16 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
         <span className="text-status-green">· all clear</span>
       )}
       {verdictTally.na > 0 && <span className="text-muted">· {verdictTally.na} n/a</span>}
+      {examineDone && unaddressed.length > 0 && !devMode && (
+        <span className="ml-2 px-1.5 py-0.5 rounded bg-status-goldSoft text-status-gold font-semibold tracking-wider">
+          ⚐ {unaddressed.length} need officer override
+        </span>
+      )}
+      {devMode && unaddressed.length > 0 && (
+        <span className="ml-2 px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-semibold tracking-wider">
+          DEV · gate bypassed ({unaddressed.length} unaddressed)
+        </span>
+      )}
     </span>
   );
 
@@ -358,6 +383,7 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
               onBack={onBack}
               onContinue={onContinue}
               canContinue={canContinue}
+              blockers={gateBlockers}
             />
           </>
         }
