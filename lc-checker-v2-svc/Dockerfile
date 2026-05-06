@@ -11,14 +11,12 @@
 FROM gradle:8.10.2-jdk21 AS build
 WORKDIR /workspace
 
-COPY --chown=gradle:gradle settings.gradle.kts build.gradle.kts ./
+COPY --chown=gradle:gradle settings.gradle.kts build.gradle.kts gradle.properties* ./
 COPY --chown=gradle:gradle gradle ./gradle
-COPY --chown=gradle:gradle gradle/wrapper/gradle-wrapper.properties gradle.properties* ./
-
-RUN gradle --no-daemon --quiet dependencies || true
-
 COPY --chown=gradle:gradle src ./src
-RUN gradle --no-daemon clean bootJar -x test \
+
+RUN --mount=type=cache,target=/home/gradle/.gradle,uid=1000,gid=1000 \
+    gradle --no-daemon clean bootJar -x test \
     && ls -lh build/libs/
 
 ############
