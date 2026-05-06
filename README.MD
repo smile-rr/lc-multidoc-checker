@@ -73,7 +73,7 @@ Legacy system remains primary in Phase 1 so the team can  validate AI output aga
 | ----------- | -------- | ------------------------------------------------------------ | --------------------------- |
 | **Phase 1** | 6 months | • 100% parse verification  <br />• 100% rule result verification   <br />• 100% human sign-off | Parallel<br />*(Primary)*   |
 | **Phase 2** | 3 months | • System randomly selects 50% for parse verification   <br />• System randomly selects 50% for rule result verification   <br />• 100% human sign-off | Parallel<br />*(Secondary)* |
-| **Phase 3** | Ongoing  | • System randomly selects 30% for parse verification   <br />• System randomly selects 30% for rule result verification   <br />• 100% human sign-off | Sunset                      |
+| **Phase 3** | Live     | • System randomly selects 30% for parse verification   <br />• System randomly selects 30% for rule result verification   <br />• 100% human sign-off | Sunset                      |
 
 
 
