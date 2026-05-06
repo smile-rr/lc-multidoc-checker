@@ -3,6 +3,8 @@ package com.lc.v2.checker.stage.examine.tools;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lc.v2.checker.infra.persistence.SessionStore;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
@@ -191,6 +193,50 @@ public class ExamineToolRegistry {
         }
         record("listPresentedDocs", Map.of("sessionId", sessionId), types);
         return types;
+    }
+
+    @Tool(description = """
+            Verify that quantity × unit_price equals total_amount within a small
+            rounding tolerance (default epsilon 0.01). Returns {match, computed,
+            diff}. Use for AMT-03 invoice header arithmetic under UCP 600 Art.
+            18(b). Pass header values you actually read from the invoice; if any
+            input is null, the tool returns match=false with an error message —
+            in that case the rule should return DOUBTS, not FAIL.""")
+    public Map<String, Object> verifyArithmetic(
+            @ToolParam(description = "Quantity from the invoice (decimal)") BigDecimal quantity,
+            @ToolParam(description = "Unit price from the invoice (decimal, in invoice currency)") BigDecimal unitPrice,
+            @ToolParam(description = "Total amount from the invoice (decimal, in invoice currency)") BigDecimal totalAmount,
+            @ToolParam(description = "Rounding tolerance (e.g. 0.01); omit for default", required = false)
+            BigDecimal epsilon) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (quantity == null || unitPrice == null || totalAmount == null) {
+            out.put("match", false);
+            out.put("computed", null);
+            out.put("diff", null);
+            out.put("error", "missing input: one of quantity / unit_price / total_amount is null");
+            record("verifyArithmetic",
+                    Map.of("quantity", String.valueOf(quantity),
+                            "unit_price", String.valueOf(unitPrice),
+                            "total_amount", String.valueOf(totalAmount)),
+                    out);
+            return out;
+        }
+        BigDecimal eps = epsilon == null ? new BigDecimal("0.01") : epsilon.abs();
+        BigDecimal computed = quantity.multiply(unitPrice)
+                .setScale(8, RoundingMode.HALF_UP).stripTrailingZeros();
+        BigDecimal diff = computed.subtract(totalAmount).abs();
+        boolean match = diff.compareTo(eps) <= 0;
+        out.put("match", match);
+        out.put("computed", computed.toPlainString());
+        out.put("diff", diff.toPlainString());
+        out.put("epsilon", eps.toPlainString());
+        record("verifyArithmetic",
+                Map.of("quantity", quantity.toPlainString(),
+                        "unit_price", unitPrice.toPlainString(),
+                        "total_amount", totalAmount.toPlainString(),
+                        "epsilon", eps.toPlainString()),
+                out);
+        return out;
     }
 
     private String findDocId(String sessionId, String docType) {

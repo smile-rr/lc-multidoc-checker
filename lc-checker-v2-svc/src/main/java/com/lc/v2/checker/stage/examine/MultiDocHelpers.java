@@ -99,7 +99,6 @@ public final class MultiDocHelpers {
         if (docs == null || docs.isEmpty()) {
             return result("NOT_APPLICABLE", "No documents to compare", 1.0);
         }
-        boolean anyChecked = false;
         boolean failed = false;
         StringJoiner notes = new StringJoiner("; ");
         for (String docType : DATED_DOC_TYPES) {
@@ -108,13 +107,17 @@ public final class MultiDocHelpers {
             List<String> chain = DATE_FIELD_FALLBACKS.getOrDefault(docType, List.of("document_date"));
             Object dateObj = firstNonBlank(doc, chain.toArray(new String[0]));
             if (dateObj == null) {
-                notes.add(docType + ": no date field extracted");
+                // A presented doc must bear an examinable date — UCP 14(i) cannot
+                // be applied without one. Treat as FAIL (per officer policy) so
+                // the discrepancy surfaces instead of hiding behind an extraction
+                // gap.
+                failed = true;
+                notes.add(docType + ": no date field extracted (cannot verify UCP 14(i))");
                 continue;
             }
             String dateStr = dateObj.toString().trim();
             try {
                 LocalDate d = LocalDate.parse(dateStr);
-                anyChecked = true;
                 if (d.isAfter(presentationDate)) {
                     failed = true;
                     notes.add(docType + ": " + d + " > presentation " + presentationDate + " (UCP 14(i))");
@@ -122,11 +125,9 @@ public final class MultiDocHelpers {
                     notes.add(docType + ": " + d + " ≤ presentation " + presentationDate);
                 }
             } catch (DateTimeParseException e) {
+                failed = true;
                 notes.add(docType + ": unparseable date '" + dateStr + "'");
             }
-        }
-        if (!anyChecked) {
-            return result("NOT_APPLICABLE", "No parseable document dates (" + notes + ")", 1.0);
         }
         return result(failed ? "FAIL" : "PASS", notes.toString(), 1.0);
     }

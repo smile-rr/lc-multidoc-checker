@@ -39,7 +39,6 @@ import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Component;
@@ -124,9 +123,12 @@ public class AgentRuleExecutor {
         this.observationRegistry = observationRegistry;
         this.tracer = tracer;
         this.budget = budget;
-        try (InputStream in = new ClassPathResource("prompts/system/check-system.st").getInputStream()) {
+        Resource sysPromptRes = resourceLoader.getResource(budget.getCheckSystemPrompt());
+        try (InputStream in = sysPromptRes.getInputStream()) {
             this.systemPrompt = new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }
+        log.info("Loaded rule-check system prompt from {} ({} chars)",
+                budget.getCheckSystemPrompt(), systemPrompt.length());
     }
 
     public CheckResult execute(Rule rule, StageContext ctx) {
@@ -358,22 +360,18 @@ public class AgentRuleExecutor {
             boolean agentic = "AGENTIC".equals(rule.checkType());
             sb.append("\n\n");
             if (agentic) {
-                // AGENTIC: full tool set, multi-turn allowed up to maxIterations.
-                // Tell the model the budget so it self-paces toward a verdict.
-                sb.append("You have read-only tools available (getLcField, getDocField, "
-                        + "getDocInventory, calculateDateDiff, listPresentedDocs). ")
-                  .append("Iteration budget: at most ").append(maxIterations)
-                  .append(" LLM turns to reach a verdict (each turn may include one round of tool calls). ")
-                  .append("Plan your tool use accordingly; if you cannot conclude in time, ")
-                  .append("return verdict NEEDS_REVIEW with your best evidence rather than guessing. ");
+                // AGENTIC: full read-only tool set; iteration policy lives in the
+                // system prompt (prompts/system/check-system.st). Inject only the
+                // per-rule turn budget; the system prompt explains how to spend it.
+                sb.append("Tools available: getLcField, getDocField, getDocInventory, ")
+                  .append("calculateDateDiff, listPresentedDocs. ")
+                  .append("Turn budget for this rule: ").append(maxIterations).append(". ");
             } else {
-                // AGENT_TOOL: compute-only tools. Most data is already inlined above —
-                // do not call tools to fetch field values; only call them for math
-                // (e.g. date arithmetic) you cannot do reliably yourself.
-                sb.append("You have ONE compute tool available: calculateDateDiff(fromIso, toIso). ")
-                  .append("All field values you need are already inlined above — do NOT call tools to fetch them. ")
-                  .append("Use the tool only when you need an exact day count between two ISO dates. ")
-                  .append("Hard budget: 2 LLM turns. Answer in 1 turn when no math is needed. ");
+                // AGENT_TOOL: compute-only tools. Iteration policy lives in the
+                // system prompt; user prompt only names the available tools and budget.
+                sb.append("Tools available: calculateDateDiff(fromIso, toIso) for exact day counts; ")
+                  .append("verifyArithmetic(quantity, unit_price, total_amount, epsilon) for ")
+                  .append("invoice header arithmetic. Turn budget for this rule: 2. ");
             }
             sb.append("When ready, reply with terminal JSON: "
                     + "{\"verdict\":\"PASS|FAIL|NOT_APPLICABLE|DOUBTS\","

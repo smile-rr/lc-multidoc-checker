@@ -65,6 +65,10 @@ spring:
 app:
   llm:
     max-iterations: 3
+    # Shared system prompt for all AGENT/AGENT_TOOL/AGENTIC rule checks.
+    # Spring Resource location — swap to file:/etc/lc-checker/check-system.st
+    # to override at deploy time without rebuilding the jar.
+    check-system-prompt: classpath:prompts/system/check-system.st
 
 server:
   port: 9082

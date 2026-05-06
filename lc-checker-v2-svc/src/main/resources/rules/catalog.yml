@@ -174,6 +174,7 @@ rules:
   # ---------------------------------------------------------------------------
   # DOC-03 · Beneficiary cert signed when LC requires — PROGRAMMATIC
   # ---------------------------------------------------------------------------
+  # DISABLED — gate misfires "FAIL" when LC has no signature requirement (should be PASS/NA)
   - rule_id: DOC-03
     name: Beneficiary certificate signed when LC requires signature
     version: 1
@@ -201,7 +202,7 @@ rules:
     expression: |
       T(com.lc.v2.checker.stage.examine.MultiDocHelpers).bcSignaturePresentIfRequired(
         #docs['BC'], #lc)
-    enabled: true
+    enabled: false
 
 
   # ---------------------------------------------------------------------------
@@ -235,7 +236,7 @@ rules:
     expression: |
       T(com.lc.v2.checker.stage.examine.MultiDocHelpers).quantitiesConsistent(
         #docs['INV'], #docs['PKL'])
-    enabled: true
+    enabled: false  # DISABLED — extraction-dependent; surfaces parse gaps as FAIL
 
 
   # ---------------------------------------------------------------------------
@@ -266,7 +267,7 @@ rules:
     expression: |
       T(com.lc.v2.checker.stage.examine.MultiDocHelpers).marksConsistent(
         #docs['PKL']?.get('shipping_marks'), #docs['BOL']?.get('shipping_marks'))
-    enabled: true
+    enabled: false  # DISABLED — extraction-dependent; PKL/BOL marks rarely both present
 
 
   # ---------------------------------------------------------------------------
@@ -298,7 +299,7 @@ rules:
     expression: |
       T(com.lc.v2.checker.stage.examine.MultiDocHelpers).namesEqual(
         #docs['INV']?.get('invoice_issuer'), #lc['beneficiary_name'])
-    enabled: true
+    enabled: false  # DISABLED — invoice_issuer rarely extracted; PARTY-02 (AGENTIC) covers cross-doc beneficiary
 
 
   # ---------------------------------------------------------------------------
@@ -329,7 +330,7 @@ rules:
     expression: |
       T(com.lc.v2.checker.stage.examine.MultiDocHelpers).namesEqual(
         #docs['BOE']?.get('drawee_name'), #lc['drawee_name'])
-    enabled: true
+    enabled: false  # DISABLED — gate-trace surfaces "FAIL" when drawee_name absent in MT700; should be NA
 
 
   # ---------------------------------------------------------------------------
@@ -428,7 +429,7 @@ rules:
     expression: |
       T(com.lc.v2.checker.stage.examine.MultiDocHelpers).incotermsFreightConsistent(
         #docs['INV']?.get('incoterms'), #docs['BOL']?.get('freight_notation'))
-    enabled: true
+    enabled: false  # DISABLED — freight_notation rarely extracted from BOL
 
 
   # ============================================================================
@@ -502,7 +503,37 @@ rules:
       ISBP 821 Q2: A certificate must be issued by the entity stated in the credit.
       ISBP 821 Q5: Data must not conflict with other stipulated documents or the credit.
     field_keys: [documents_required, additional_conditions, wc_conditions_text, wc_scope, wc_period]
+    enabled: false  # DISABLED — COND-01 (BC) already demonstrates the AGENT cert-compliance pattern
+
+  # ---------------------------------------------------------------------------
+  # DOC-05 · Invoice quotes LC number when :46A: requires it — AGENT
+  # (ported from v1 ISBP-C1; v1 prompt cleaned up for v2's inlined-context flow)
+  # ---------------------------------------------------------------------------
+  - rule_id: DOC-05
+    name: "Invoice quotes the LC number when :46A: requires it"
+    version: 1
+    canonical_field: lc_number_reference
+    applies_to: [LC, INV]
+    scope: [INV]
+    trigger_docs: [INV]
+    triggers:
+      all_of:
+        - docs_present: [INV]
+        - lc_field_present: [lc_number]
+    lc_fields_required: [lc_number]
+    check_type: AGENT
+    severity: MAJOR
+    polarity: POSITIVE
+    waivable: false
+    ucp_refs: [UCP-18-a-1]
+    isbp_refs: [ISBP-C1]
+    ucp_excerpt: |
+      UCP 600 Art. 18(a)(i): A commercial invoice must appear to have been issued by the beneficiary.
+      ISBP 821 C1: If the LC requires the invoice to bear the credit number, failure to state it is a
+        discrepancy; if not required, the invoice may optionally state the LC number.
+    field_keys: [lc_number, documents_required, additional_conditions, invoice_lc_reference]
     enabled: true
+
 
   # ---------------------------------------------------------------------------
   # DOC-02 · B/L is clean (no defect/damage clauses) — AGENT
@@ -570,7 +601,7 @@ rules:
       ISBP 821 A1: Examination of documents under a documentary credit requires a careful reading of the credit
         and the documents presented. Documents are to be examined in their entirety.
     field_keys: []
-    enabled: true
+    enabled: false  # DISABLED — empty field_keys gives the LLM no doc context, returns "data missing"
 
 
   # ============================================================================
@@ -617,6 +648,36 @@ rules:
 
 
   # ---------------------------------------------------------------------------
+  # AMT-03 · Invoice header arithmetic (qty × unit_price ≈ total) — AGENT_TOOL
+  # (ported from v1 UCP-18b-math; uses verify_arithmetic compute tool)
+  # ---------------------------------------------------------------------------
+  - rule_id: AMT-03
+    name: Invoice header arithmetic (qty × unit price reconciles to total)
+    version: 1
+    canonical_field: amount_math
+    applies_to: [INV]
+    scope: [INV]
+    trigger_docs: [INV]
+    triggers:
+      all_of:
+        - docs_present: [INV]
+    lc_fields_required: []
+    check_type: AGENT_TOOL
+    severity: MAJOR
+    polarity: POSITIVE
+    waivable: false
+    max_iterations: 2
+    ucp_refs: [UCP-18-b]
+    isbp_refs: []
+    ucp_excerpt: |
+      UCP 600 Art. 18(b): The amount of a commercial invoice must not exceed the amount permitted
+        by the credit. Internal invoice arithmetic must reconcile so the documentary face value is
+        unambiguous (qty × unit price ≈ total, within rounding tolerance).
+    field_keys: [quantity, unit_price, invoice_total, credit_amount]
+    enabled: true
+
+
+  # ---------------------------------------------------------------------------
   # DATE-02 · Presentation within window of B/L on-board date — AGENT_TOOL
   # ---------------------------------------------------------------------------
   - rule_id: DATE-02
@@ -642,7 +703,7 @@ rules:
         19, 20, 21, 22, 23, 24 or 25 must be made by or on behalf of the beneficiary not later than 21 calendar
         days after the date of shipment, but in any event not later than the expiry date of the credit.
     field_keys: [shipment_date, bl_date, expiry_date, presentation_days]
-    enabled: true
+    enabled: false  # DISABLED — returns DOUBTS with empty explanation; tool reliability low
 
 
   # ============================================================================
@@ -670,7 +731,7 @@ rules:
     polarity: POSITIVE
     waivable: true
     thinking_enabled: true
-    max_iterations: 4
+    max_iterations: 6
     ucp_refs: [UCP-18-c, UCP-14-e]
     isbp_refs: [ISBP-C3]
     ucp_excerpt: |
@@ -708,7 +769,7 @@ rules:
     polarity: POSITIVE
     waivable: false
     thinking_enabled: true
-    max_iterations: 4
+    max_iterations: 6
     ucp_refs: [UCP-14-d, UCP-14-a]
     isbp_refs: [ISBP-A23, ISBP-A14, ISBP-A15]
     ucp_excerpt: |
@@ -774,4 +835,4 @@ rules:
       ISBP 821 Q1: Every condition stated in the credit must be addressed in the relevant document.
       ISBP 821 Q5: Data must not conflict with other stipulated documents or the credit.
     field_keys: [additional_conditions, documents_required]
-    enabled: true
+    enabled: false  # DISABLED — degenerates to "all docs are in English"; not a meaningful conditions check
