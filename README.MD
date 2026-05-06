@@ -77,7 +77,7 @@ Legacy system remains primary in Phase 1 so the team can  validate AI output aga
 
 
 
-## Opinion:
+## Opinion
 
 ### Will do
 
