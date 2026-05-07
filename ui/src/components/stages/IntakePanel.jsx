@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { StageProgressMeter } from '../shared/StageProgressMeter';
 import { useStageProgress } from '../../hooks/useStageProgress';
 import { useDevMode } from '../../context/DevModeContext';
+import { useConfirm } from '../../hooks/useConfirm';
 import { useDocActions } from '../../hooks/useDocActions';
 import { useLcRequiredDocs } from '../../hooks/useLcRequiredDocs';
 import { ConfirmedTile } from './intake/ConfirmedTile';
@@ -24,6 +26,8 @@ import { DevShortcutButton } from '../ui/Button';
  */
 export function IntakePanel({ session, stagesCompleted, events, refresh, onContinue }) {
   const { enabled: devMode } = useDevMode();
+  const navigate = useNavigate();
+  const { confirm: confirmDialog, Dialog: ConfirmDialogPortal } = useConfirm();
   const sessionId = session?.id;
   const docs = session?.documents ?? [];
   const { setType, confirm } = useDocActions(sessionId);
@@ -62,6 +66,19 @@ export function IntakePanel({ session, stagesCompleted, events, refresh, onConti
   const handleConfirm = async (docId) => {
     await confirm(docId, OFFICER_ID);
     await refresh?.();
+  };
+  const handleReupload = async () => {
+    const ok = await confirmDialog({
+      title: 'Re-upload with new files?',
+      message:
+        'This session will be discarded from your current view. Files you uploaded ' +
+        'cannot be edited in place — pick a fresh set on the upload page.\n\n' +
+        'The session itself stays in History and can be reopened.',
+      confirmLabel: 'Discard & re-upload',
+      cancelLabel: 'Stay here',
+      tone: 'danger',
+    });
+    if (ok) navigate('/');
   };
   const handleConfirmAll = async () => {
     for (const d of reviewNeeded) {
@@ -159,15 +176,29 @@ export function IntakePanel({ session, stagesCompleted, events, refresh, onConti
 
           {!canContinue && !devMode && blockers.length > 0 && (
             <div className="bg-status-goldSoft border border-status-gold/40 rounded-[10px] px-4 py-3 text-[12px] text-status-gold">
-              <div className="font-semibold mb-1">Before continuing</div>
-              <ul className="list-disc pl-5 space-y-0.5">
-                {blockers.map((b, i) => <li key={i}>{b}</li>)}
-              </ul>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-semibold mb-1">Before continuing</div>
+                  <ul className="list-disc pl-5 space-y-0.5">
+                    {blockers.map((b, i) => <li key={i}>{b}</li>)}
+                  </ul>
+                </div>
+                {intakeDone && (
+                  <button
+                    onClick={handleReupload}
+                    className="shrink-0 text-[11px] font-medium px-2.5 py-1 rounded border border-status-gold/60 text-status-gold hover:bg-status-gold hover:text-white transition-colors whitespace-nowrap"
+                    title="Discard this session and re-upload with new files"
+                  >
+                    ↻ Re-upload with new files
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
         </PageContainer>
       </StageBody>
+      {ConfirmDialogPortal}
     </StagePage>
   );
 }
