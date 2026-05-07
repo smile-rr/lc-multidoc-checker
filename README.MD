@@ -51,7 +51,7 @@ own jointly to keep the platform extensible.
 
 **Cost Estimation** — Benchmarked against GPT-4o ($2.50/M input, $10.00/M output). 
 
-6 docs × 2 vision slots + 20 rules ≈ 112K tokens → **~$0.37 per presentation**.
+6 docs × 2 vision slots + 20 rules ≈ 112K tokens → **~$0.37 per session**.
 
 
 
