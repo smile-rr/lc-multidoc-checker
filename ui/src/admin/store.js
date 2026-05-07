@@ -62,6 +62,35 @@ export const updatePromptBody = (promptId, body, actor) => {
   emit();
 };
 
+const ruleSkeleton = (rule_id, name, overrides = {}) => ({
+  rule_id, name,
+  category: 'EXAM', enabled: false, version: 1,
+  severity: 'MAJOR', polarity: 'POSITIVE', waivable: true,
+  applies_to: [], triggers: { any_of: [] }, lc_fields_required: [], field_keys: [],
+  ucp_refs: [], isbp_refs: [],
+  check_type: 'AGENT', prompt_path: null, expression: null,
+  output_schema: '{"verdict":"PASS|FAIL|DOUBTS","explanation":"<one sentence>"}',
+  health_signals: { eval_pass_rate: null, override_rate: null, doubts_rate: null, p95_latency_ms: null, cost_usd_per_check: null },
+  policy_overlays: {}, eval_cases: [],
+  state: 'DRAFT', publishedVersion: null, workingVersion: 1,
+  draftAuthor: null, boundPromptId: null, boundPromptState: null,
+  lastEditedAt: new Date().toISOString(), lastEditedBy: null,
+  ...overrides,
+});
+
+export const createRule = (rule, actor) => {
+  if (state.rules.find((x) => x.rule_id === rule.rule_id)) return false;
+  const r = ruleSkeleton(rule.rule_id, rule.name, { ...rule, draftAuthor: actor, lastEditedBy: actor });
+  state.rules.unshift(r);
+  state.lifecycleEvents.unshift({
+    id: 'e' + Date.now(), artifact: 'rule', artifactId: r.rule_id,
+    from: null, to: 'DRAFT', actor, at: new Date().toISOString(),
+    note: 'Drafted via Governance Assistant.',
+  });
+  emit();
+  return true;
+};
+
 export const updateRuleField = (ruleId, field, value, actor) => {
   const r = state.rules.find((x) => x.rule_id === ruleId);
   if (!r) return;

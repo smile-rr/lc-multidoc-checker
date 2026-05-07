@@ -116,12 +116,68 @@ all-down:  ## stop both dev servers
 dep-svc: pull  ## git pull + build + deploy lc-checker-v2-svc container (port 9082)
 	$(COMPOSE) build lc-checker-v2-svc
 	$(COMPOSE) up -d lc-checker-v2-svc
-	@echo "✓ dep-svc → http://127.0.0.1:$(SVC_PORT)"
+	@$(MAKE) --no-print-directory dep-svc-wait
+
+dep-svc-wait:  ## tail svc logs until Spring is up or container fails (used by dep-svc)
+	@echo "→ waiting for Spring to finish booting (timeout 120s)…"
+	@set -e; \
+	deadline=$$(( $$(date +%s) + 120 )); \
+	while :; do \
+	  state=$$(docker inspect -f '{{.State.Status}}' lc-checker-v2-svc 2>/dev/null || echo "missing"); \
+	  if [ "$$state" = "exited" ] || [ "$$state" = "dead" ] || [ "$$state" = "missing" ]; then \
+	    echo "✗ container $$state — last 200 log lines:"; \
+	    docker logs --tail=200 lc-checker-v2-svc 2>&1 || true; \
+	    exit 1; \
+	  fi; \
+	  if docker logs --tail=400 lc-checker-v2-svc 2>&1 | grep -qE 'Started LcCheckerV2Application'; then \
+	    echo "✓ Spring up — dep-svc → http://127.0.0.1:$(SVC_PORT)"; \
+	    exit 0; \
+	  fi; \
+	  if docker logs --tail=400 lc-checker-v2-svc 2>&1 | grep -qE 'APPLICATION FAILED TO START|UnsatisfiedDependencyException|Connection refused|Cannot create PoolableConnectionFactory|FATAL: '; then \
+	    echo "✗ Spring boot failed — last 200 log lines:"; \
+	    docker logs --tail=200 lc-checker-v2-svc 2>&1 || true; \
+	    exit 1; \
+	  fi; \
+	  if [ $$(date +%s) -ge $$deadline ]; then \
+	    echo "✗ timeout waiting for Spring — last 200 log lines:"; \
+	    docker logs --tail=200 lc-checker-v2-svc 2>&1 || true; \
+	    exit 1; \
+	  fi; \
+	  sleep 2; \
+	done
 
 dep-ui: pull  ## git pull + build + deploy lc-checker-v2-ui container (port 9080)
 	$(COMPOSE) build ui-v2
 	$(COMPOSE) up -d ui-v2
-	@echo "✓ dep-ui → http://127.0.0.1:9080"
+	@$(MAKE) --no-print-directory dep-ui-wait
+
+dep-ui-wait:  ## poll :9080 until nginx serves a response or container fails (used by dep-ui)
+	@echo "→ waiting for ui-v2 to start serving on :9080 (timeout 60s)…"
+	@set -e; \
+	deadline=$$(( $$(date +%s) + 60 )); \
+	while :; do \
+	  state=$$(docker inspect -f '{{.State.Status}}' lc-checker-v2-ui 2>/dev/null || echo "missing"); \
+	  if [ "$$state" = "exited" ] || [ "$$state" = "dead" ] || [ "$$state" = "missing" ]; then \
+	    echo "✗ container $$state — last 100 log lines:"; \
+	    docker logs --tail=100 lc-checker-v2-ui 2>&1 || true; \
+	    exit 1; \
+	  fi; \
+	  if curl -fsS -o /dev/null -m 2 http://127.0.0.1:9080/ 2>/dev/null; then \
+	    echo "✓ ui-v2 up — dep-ui → http://127.0.0.1:9080"; \
+	    exit 0; \
+	  fi; \
+	  if docker logs --tail=200 lc-checker-v2-ui 2>&1 | grep -qE 'emerg|\[error\] .*could not bind|nginx: \[emerg\]'; then \
+	    echo "✗ nginx config/bind error — last 100 log lines:"; \
+	    docker logs --tail=100 lc-checker-v2-ui 2>&1 || true; \
+	    exit 1; \
+	  fi; \
+	  if [ $$(date +%s) -ge $$deadline ]; then \
+	    echo "✗ timeout waiting for ui-v2 — last 100 log lines:"; \
+	    docker logs --tail=100 lc-checker-v2-ui 2>&1 || true; \
+	    exit 1; \
+	  fi; \
+	  sleep 2; \
+	done
 
 dep-all: dep-svc dep-ui  ## build + deploy both containers
 
@@ -179,5 +235,5 @@ langfuse-auth:  ## derive LANGFUSE_AUTH_BASIC from .env keys and write it back
         svc svc-down \
         ui ui-down _ui-install \
         all all-down \
-        dep-svc dep-ui dep-all dep-svc-down dep-ui-down \
+        dep-svc dep-svc-wait dep-ui dep-ui-wait dep-all dep-svc-down dep-ui-down \
         status health pull langfuse-auth

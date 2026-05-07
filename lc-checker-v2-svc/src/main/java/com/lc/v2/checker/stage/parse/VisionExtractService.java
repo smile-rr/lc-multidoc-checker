@@ -6,6 +6,8 @@ import com.lc.v2.checker.domain.common.DocType;
 import com.lc.v2.checker.domain.common.FieldEnvelope;
 import com.lc.v2.checker.domain.document.DocumentExtract;
 import com.lc.v2.checker.domain.document.OffSchemaItem;
+import com.lc.v2.checker.infra.cache.CacheKey;
+import com.lc.v2.checker.infra.cache.VisionExtractCache;
 import com.lc.v2.checker.infra.config.ExtractorSlotConfig;
 import com.lc.v2.checker.infra.config.ExtractorSlotConfig.SlotEntry;
 import com.lc.v2.checker.infra.config.ExtractorSlotProperties;
@@ -34,6 +36,7 @@ import org.apache.pdfbox.rendering.PDFRenderer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.MediaType;
@@ -61,17 +64,26 @@ public class VisionExtractService {
     private final ObjectMapper objectMapper;
     private final Tracer tracer;
     private final TracingAsync tracingAsync;
+    private final VisionExtractCache cache;
+
+    @Value("${vision.cache.enabled:true}")
+    private boolean cacheEnabled;
+
+    @Value("${vision.cache.request-shape-version:1}")
+    private int requestShapeVersion;
 
     /** Self-injection so the @TracedCall aspect actually fires on runSlot. */
     @Lazy @Autowired private VisionExtractService self;
 
     public VisionExtractService(ExtractorSlotConfig slotConfig, DocTypeRegistry docTypeRegistry,
-                                 Tracer tracer, TracingAsync tracingAsync) {
+                                 Tracer tracer, TracingAsync tracingAsync,
+                                 VisionExtractCache cache) {
         this.slotConfig = slotConfig;
         this.docTypeRegistry = docTypeRegistry;
         this.objectMapper = new ObjectMapper();
         this.tracer = tracer;
         this.tracingAsync = tracingAsync;
+        this.cache = cache;
     }
 
     /**
@@ -102,15 +114,43 @@ public class VisionExtractService {
             return DocumentExtract.empty(docType, filename);
         }
 
-        emit(sessionId, eventBus, docType.name(), "render", "rendering_pdf");
-        ExtractorSlotProperties renderSlot = slots.get(0).props();
-        List<String> base64Pages = renderPdfToBase64(pdfBytes, renderSlot.getRenderDpi(), renderSlot.getMaxPages());
-        if (base64Pages.isEmpty()) {
-            log.warn("[VisionExtract] PDF rendering produced no pages for {}", filename);
-            emit(sessionId, eventBus, docType.name(), "render", "render_failed");
-            return DocumentExtract.empty(docType, filename);
+        String pdfSha256 = CacheKey.sha256Hex(pdfBytes);
+        String promptSha256 = CacheKey.sha256Hex(promptText);
+
+        // Precompute per-slot cache key + lookup. If all slots hit, skip PDF render entirely.
+        Map<String, String> slotKey = new LinkedHashMap<>();
+        Map<String, VisionExtractCache.Hit> slotHit = new LinkedHashMap<>();
+        for (SlotEntry slot : slots) {
+            ExtractorSlotProperties p = slot.props();
+            String key = CacheKey.compose(pdfSha256, promptSha256, p.getModel(), p.getBaseUrl(),
+                    p.getRenderDpi(), p.getMaxPages(), p.getMaxLongEdgePx(), requestShapeVersion);
+            slotKey.put(slot.sourceName(), key);
+            if (cacheEnabled) {
+                VisionExtractCache.Hit hit = cache.lookup(key);
+                if (hit != null) slotHit.put(slot.sourceName(), hit);
+            }
         }
-        emit(sessionId, eventBus, docType.name(), "render", "rendered_" + base64Pages.size() + "_pages");
+        boolean allHit = !slotHit.isEmpty() && slotHit.size() == slots.size();
+
+        ExtractorSlotProperties renderSlot = slots.get(0).props();
+        List<String> base64Pages;
+        int renderedPages;
+        if (allHit) {
+            log.info("[VisionExtract] all {} slot(s) cache-hit for {}; skipping render+HTTP",
+                    slots.size(), filename);
+            base64Pages = List.of();
+            renderedPages = 0;
+        } else {
+            emit(sessionId, eventBus, docType.name(), "render", "rendering_pdf");
+            base64Pages = renderPdfToBase64(pdfBytes, renderSlot.getRenderDpi(), renderSlot.getMaxPages());
+            if (base64Pages.isEmpty()) {
+                log.warn("[VisionExtract] PDF rendering produced no pages for {}", filename);
+                emit(sessionId, eventBus, docType.name(), "render", "render_failed");
+                return DocumentExtract.empty(docType, filename);
+            }
+            emit(sessionId, eventBus, docType.name(), "render", "rendered_" + base64Pages.size() + "_pages");
+            renderedPages = base64Pages.size();
+        }
 
         // Run all enabled slots in parallel; slot source name = <model>_<N>.
         // TracingAsync re-attaches the current span (the "parse" stage span)
@@ -119,10 +159,19 @@ public class VisionExtractService {
         Map<String, CompletableFuture<FieldEnvelope>> futures = new LinkedHashMap<>();
         for (SlotEntry slot : slots) {
             String sourceName = slot.sourceName();
+            String key = slotKey.get(sourceName);
+            VisionExtractCache.Hit hit = slotHit.get(sourceName);
+            if (hit != null) {
+                emit(sessionId, eventBus, docType.name(), sourceName, "cache_hit");
+                FieldEnvelope cached = parseResponse(hit.rawResponse());
+                cache.incrementHit(key);
+                futures.put(sourceName, CompletableFuture.completedFuture(cached));
+                continue;
+            }
             emit(sessionId, eventBus, docType.name(), sourceName, "calling_" + slot.props().getModel());
             futures.put(sourceName, tracingAsync.supplyAsync(
                     () -> self.runSlot(sourceName, slot.props(), base64Pages, promptText, docType,
-                            sessionId, eventBus, filename)));
+                            sessionId, eventBus, filename, pdfSha256, promptSha256, key)));
         }
 
         // Collect results; per-slot timeout from config
@@ -154,7 +203,7 @@ public class VisionExtractService {
         DocumentExtract.ExtractionConfidence confidence = computeConfidence(bySlot);
         List<OffSchemaItem> offSchema = extractOffSchemaItems(bySlot.get(primarySourceName));
 
-        return new DocumentExtract(docType, consensus, bySlot, confidence, offSchema, filename, null, base64Pages.size());
+        return new DocumentExtract(docType, consensus, bySlot, confidence, offSchema, filename, null, renderedPages);
     }
 
     /** Backwards-compatible overload (no progress emission). */
@@ -175,7 +224,8 @@ public class VisionExtractService {
     @TracedCall(value = "vision.generate", tags = {"gen_ai.operation.name=chat"})
     public FieldEnvelope runSlot(String sourceName, ExtractorSlotProperties slot,
                            List<String> base64Pages, String promptText, DocType docType,
-                           String sessionId, PipelineEventBus eventBus, String docName) {
+                           String sessionId, PipelineEventBus eventBus, String docName,
+                           String pdfSha256, String promptSha256, String cacheKey) {
         // The @TracedCall aspect has opened the span and attached it as the
         // current scope. Set dynamic tags via tracer.currentSpan() — values
         // depending on per-slot args / response can't live on the annotation.
@@ -202,7 +252,11 @@ public class VisionExtractService {
             String responseJson = callVlm(slot, base64Pages, promptText);
             emit(sessionId, eventBus, docType.name(), sourceName, "parsing_response");
             if (span != null) tagUsageAndOutput(span, responseJson);
-            return parseResponse(responseJson);
+            FieldEnvelope env = parseResponse(responseJson);
+            if (cacheEnabled && cacheKey != null && !env.fields().isEmpty()) {
+                storeInCache(cacheKey, pdfSha256, promptSha256, slot, responseJson, env);
+            }
+            return env;
         } catch (Exception e) {
             // Aspect tags `error` from the thrown message; we just log + swallow
             // so the slot fails soft (consensus survives missing slots).
@@ -298,6 +352,8 @@ public class VisionExtractService {
         if (isQwenFamily(slot.getModel())) {
             body.put("response_format", Map.of("type", "json_object"));
             body.put("enable_thinking", false);
+            // Determinism: same inputs ⇒ same output, so the cache layer is safe.
+            body.put("temperature", 0);
         }
 
         return client.post()
@@ -310,6 +366,35 @@ public class VisionExtractService {
 
     private static boolean isQwenFamily(String model) {
         return model != null && model.toLowerCase().startsWith("qwen");
+    }
+
+    private void storeInCache(String cacheKey, String pdfSha256, String promptSha256,
+                              ExtractorSlotProperties slot, String responseJson, FieldEnvelope env) {
+        try {
+            Map<String, Object> envMap = new LinkedHashMap<>();
+            envMap.put("fields", env.fields());
+            envMap.put("extras", env.extras());
+            String parsedEnvelopeJson = objectMapper.writeValueAsString(envMap);
+            Object offSchemaRaw = env.extras().get("off_schema_items_raw");
+            String offSchemaJson = offSchemaRaw == null ? null : offSchemaRaw.toString();
+
+            Integer pt = null, ct = null, tt = null;
+            try {
+                JsonNode usage = objectMapper.readTree(responseJson).path("usage");
+                if (usage.isObject()) {
+                    if (usage.has("prompt_tokens")) pt = usage.path("prompt_tokens").asInt();
+                    if (usage.has("completion_tokens")) ct = usage.path("completion_tokens").asInt();
+                    if (usage.has("total_tokens")) tt = usage.path("total_tokens").asInt();
+                }
+            } catch (Exception ignore) {}
+
+            cache.put(cacheKey, pdfSha256, promptSha256, slot.getModel(), slot.getBaseUrl(),
+                    slot.getRenderDpi(), slot.getMaxPages(), slot.getMaxLongEdgePx(),
+                    requestShapeVersion, responseJson, parsedEnvelopeJson, offSchemaJson,
+                    pt, ct, tt);
+        } catch (Exception e) {
+            log.warn("[VisionExtract] cache put failed: {}", e.getMessage());
+        }
     }
 
     private FieldEnvelope parseResponse(String responseJson) {

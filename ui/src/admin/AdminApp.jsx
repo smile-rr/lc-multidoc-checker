@@ -11,10 +11,13 @@ import { FieldsPage } from './pages/FieldsPage';
 import { FieldDetailPage } from './pages/FieldDetailPage';
 import { RefsPage } from './pages/RefsPage';
 import { LifecyclePage } from './pages/LifecyclePage';
+import { AssistantProvider } from './assistant/AssistantContext';
+import { AssistantDrawer } from './assistant/AssistantDrawer';
 
 export function AdminApp() {
   return (
     <RoleProvider>
+      <AssistantProvider>
       <Routes>
         <Route element={<AdminShell />}>
           <Route index element={<DashboardPage />} />
@@ -28,6 +31,8 @@ export function AdminApp() {
           <Route path="lifecycle" element={<LifecyclePage />} />
         </Route>
       </Routes>
+      <AssistantDrawer />
+      </AssistantProvider>
     </RoleProvider>
   );
 }

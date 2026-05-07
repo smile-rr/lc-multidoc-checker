@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { RoleSwitcher } from './components/RoleSwitcher';
 import { useRole } from './RoleContext';
+import { AssistantToggle } from './assistant/AssistantToggle';
 
 const tabs = [
   { to: '/admin', label: 'Overview', end: true },
@@ -28,6 +29,7 @@ export function AdminShell() {
               Acting as <span className="font-medium text-navy-1">{role.role}</span>
             </span>
             <RoleSwitcher />
+            <AssistantToggle />
           </div>
         </div>
         <nav className="flex items-center gap-7 mt-3 -mb-px">

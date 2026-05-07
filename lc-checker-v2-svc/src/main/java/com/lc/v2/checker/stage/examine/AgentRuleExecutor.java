@@ -451,9 +451,6 @@ public class AgentRuleExecutor {
                                        List<Map<String, Object>> toolCalls) {
         try {
             String cleaned = response == null ? "" : response.trim();
-            if (cleaned.startsWith("```")) {
-                cleaned = cleaned.replaceAll("(?s)^```[a-z]*\\n?", "").replaceAll("\\n?```$", "").trim();
-            }
             JsonNode node = objectMapper.readTree(cleaned);
             String verdictStr = node.path("verdict").asText("DOUBTS").toUpperCase().trim();
             String explanation = node.path("explanation").asText(null);

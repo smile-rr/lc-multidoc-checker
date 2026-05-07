@@ -1,0 +1,112 @@
+{
+  "windowDays": 30,
+  "sessions": [
+    { "id": "214", "lc_number": "LC2604/0019", "compliant": false, "ruleResults": [
+      { "rule_id": "DATE-01", "verdict": "PASS", "overridden": false },
+      { "rule_id": "DATE-02", "verdict": "FAIL", "overridden": true, "override_reason": "shipment date typo per ISBP A19" },
+      { "rule_id": "GOODS-01", "verdict": "FAIL", "overridden": true, "override_reason": "wording variation immaterial" },
+      { "rule_id": "DOCSET-01", "verdict": "PASS", "overridden": false }
+    ], "fieldCorrections": [
+      { "field_key": "shipment_date", "doc": "BOL", "kind": "model_wrong" },
+      { "field_key": "buyer_name", "doc": "INV", "kind": "typo" }
+    ]},
+    { "id": "215", "lc_number": "LC2604/0020", "compliant": true, "ruleResults": [
+      { "rule_id": "DATE-01", "verdict": "PASS", "overridden": false },
+      { "rule_id": "AMT-01", "verdict": "PASS", "overridden": false },
+      { "rule_id": "GOODS-01", "verdict": "PASS", "overridden": false }
+    ], "fieldCorrections": []},
+    { "id": "216", "lc_number": "LC2604/0021", "compliant": false, "ruleResults": [
+      { "rule_id": "GOODS-01", "verdict": "FAIL", "overridden": true, "override_reason": "synonym accepted" },
+      { "rule_id": "AMT-01", "verdict": "FAIL", "overridden": false },
+      { "rule_id": "TRANS-01", "verdict": "PASS", "overridden": false }
+    ], "fieldCorrections": [
+      { "field_key": "goods_description", "doc": "INV", "kind": "model_wrong" }
+    ]},
+    { "id": "217", "lc_number": "LC2604/0022", "compliant": true, "ruleResults": [
+      { "rule_id": "DATE-01", "verdict": "PASS", "overridden": false },
+      { "rule_id": "GOODS-01", "verdict": "PASS", "overridden": false }
+    ], "fieldCorrections": []},
+    { "id": "218", "lc_number": "LC2604/0023", "compliant": false, "ruleResults": [
+      { "rule_id": "GOODS-01", "verdict": "FAIL", "overridden": true, "override_reason": "ISBP C3 corresponds-to" },
+      { "rule_id": "DATE-02", "verdict": "PASS", "overridden": false }
+    ], "fieldCorrections": [
+      { "field_key": "buyer_name", "doc": "INV", "kind": "typo" }
+    ]},
+    { "id": "219", "lc_number": "LC2604/0024", "compliant": true, "ruleResults": [
+      { "rule_id": "AMT-01", "verdict": "PASS", "overridden": false },
+      { "rule_id": "DOCSET-01", "verdict": "PASS", "overridden": false }
+    ], "fieldCorrections": []},
+    { "id": "220", "lc_number": "LC2604/0025", "compliant": false, "ruleResults": [
+      { "rule_id": "GOODS-01", "verdict": "FAIL", "overridden": true, "override_reason": "spelling variant" },
+      { "rule_id": "TRANS-01", "verdict": "FAIL", "overridden": false }
+    ], "fieldCorrections": [
+      { "field_key": "goods_description", "doc": "INV", "kind": "model_wrong" },
+      { "field_key": "shipment_date", "doc": "BOL", "kind": "model_wrong" }
+    ]},
+    { "id": "221", "lc_number": "LC2604/0026", "compliant": false, "ruleResults": [
+      { "rule_id": "DATE-02", "verdict": "FAIL", "overridden": true, "override_reason": "typo in shipment date per ISBP A19" },
+      { "rule_id": "GOODS-01", "verdict": "DOUBTS", "overridden": true }
+    ], "fieldCorrections": [
+      { "field_key": "buyer_name", "doc": "INV", "kind": "typo" }
+    ]},
+    { "id": "222", "lc_number": "LC2604/0027", "compliant": true, "ruleResults": [
+      { "rule_id": "DATE-01", "verdict": "PASS", "overridden": false }
+    ], "fieldCorrections": []},
+    { "id": "223", "lc_number": "LC2604/0028", "compliant": false, "ruleResults": [
+      { "rule_id": "GOODS-01", "verdict": "FAIL", "overridden": true, "override_reason": "wording variation immaterial" },
+      { "rule_id": "AMT-01", "verdict": "PASS", "overridden": false }
+    ], "fieldCorrections": [
+      { "field_key": "goods_description", "doc": "INV", "kind": "model_wrong" }
+    ]},
+    { "id": "224", "lc_number": "LC2604/0029", "compliant": true, "ruleResults": [
+      { "rule_id": "DATE-01", "verdict": "PASS", "overridden": false },
+      { "rule_id": "DOCSET-01", "verdict": "PASS", "overridden": false }
+    ], "fieldCorrections": []},
+    { "id": "225", "lc_number": "LC2604/0030", "compliant": false, "ruleResults": [
+      { "rule_id": "GOODS-01", "verdict": "FAIL", "overridden": true, "override_reason": "ISBP C3" },
+      { "rule_id": "PARTY-01", "verdict": "FAIL", "overridden": true, "override_reason": "minor typo" }
+    ], "fieldCorrections": [
+      { "field_key": "buyer_name", "doc": "INV", "kind": "typo" },
+      { "field_key": "goods_description", "doc": "INV", "kind": "model_wrong" }
+    ]},
+    { "id": "226", "lc_number": "LC2604/0031", "compliant": true, "ruleResults": [
+      { "rule_id": "AMT-01", "verdict": "PASS", "overridden": false }
+    ], "fieldCorrections": []},
+    { "id": "227", "lc_number": "LC2604/0032", "compliant": false, "ruleResults": [
+      { "rule_id": "TRANS-01", "verdict": "FAIL", "overridden": false },
+      { "rule_id": "DATE-02", "verdict": "PASS", "overridden": false }
+    ], "fieldCorrections": [
+      { "field_key": "shipment_date", "doc": "BOL", "kind": "model_wrong" }
+    ]},
+    { "id": "228", "lc_number": "LC2604/0033", "compliant": true, "ruleResults": [
+      { "rule_id": "DOCSET-01", "verdict": "PASS", "overridden": false },
+      { "rule_id": "GOODS-01", "verdict": "PASS", "overridden": false }
+    ], "fieldCorrections": []},
+    { "id": "229", "lc_number": "LC2604/0034", "compliant": false, "ruleResults": [
+      { "rule_id": "GOODS-01", "verdict": "FAIL", "overridden": true, "override_reason": "typo per ISBP A19" },
+      { "rule_id": "DATE-02", "verdict": "FAIL", "overridden": true, "override_reason": "ISBP A19" }
+    ], "fieldCorrections": [
+      { "field_key": "buyer_name", "doc": "INV", "kind": "typo" },
+      { "field_key": "goods_description", "doc": "INV", "kind": "model_wrong" }
+    ]},
+    { "id": "230", "lc_number": "LC2604/0035", "compliant": true, "ruleResults": [
+      { "rule_id": "DATE-01", "verdict": "PASS", "overridden": false }
+    ], "fieldCorrections": []},
+    { "id": "231", "lc_number": "LC2604/0036", "compliant": false, "ruleResults": [
+      { "rule_id": "AMT-01", "verdict": "FAIL", "overridden": false },
+      { "rule_id": "GOODS-01", "verdict": "DOUBTS", "overridden": true }
+    ], "fieldCorrections": [
+      { "field_key": "goods_description", "doc": "INV", "kind": "model_wrong" }
+    ]},
+    { "id": "232", "lc_number": "LC2604/0037", "compliant": true, "ruleResults": [
+      { "rule_id": "DATE-01", "verdict": "PASS", "overridden": false },
+      { "rule_id": "AMT-01", "verdict": "PASS", "overridden": false }
+    ], "fieldCorrections": []},
+    { "id": "233", "lc_number": "LC2604/0038", "compliant": false, "ruleResults": [
+      { "rule_id": "GOODS-01", "verdict": "FAIL", "overridden": true, "override_reason": "synonym OK" },
+      { "rule_id": "TRANS-01", "verdict": "PASS", "overridden": false }
+    ], "fieldCorrections": [
+      { "field_key": "buyer_name", "doc": "INV", "kind": "typo" }
+    ]}
+  ]
+}
