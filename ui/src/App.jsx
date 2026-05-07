@@ -2,6 +2,7 @@ import React from 'react';
 import { Routes, Route, useParams } from 'react-router-dom';
 import { SessionStatusProvider } from './context/SessionStatusContext';
 import { DevModeProvider } from './context/DevModeContext';
+import { UploadDraftProvider } from './context/UploadDraftContext';
 import { TopNav } from './components/shell/TopNav';
 import { DevModeBanner } from './components/shell/DevModeBanner';
 import { ApiErrorToast } from './components/shell/ApiErrorToast';
@@ -17,6 +18,7 @@ function KeyedSessionPage() {
 export function App() {
   return (
     <DevModeProvider>
+      <UploadDraftProvider>
       <SessionStatusProvider>
         <div className="h-dvh flex flex-col overflow-hidden">
           <TopNav />
@@ -31,6 +33,7 @@ export function App() {
           </main>
         </div>
       </SessionStatusProvider>
+      </UploadDraftProvider>
     </DevModeProvider>
   );
 }

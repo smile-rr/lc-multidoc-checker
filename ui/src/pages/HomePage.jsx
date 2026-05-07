@@ -9,6 +9,7 @@ import { Card } from '../components/ui/Card';
 import { EmptyState } from '../components/ui/EmptyState';
 import { EyebrowLabel } from '../components/ui/EyebrowLabel';
 import { PrimaryButton, GhostButton } from '../components/ui/Button';
+import { useUploadDraft } from '../context/UploadDraftContext';
 
 /**
  * Stage 0 — landing page. Single job: start a check.
@@ -32,6 +33,11 @@ export function HomePage() {
   const [presetLoadingId, setPresetLoadingId] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef();
+  const { registerDraft } = useUploadDraft();
+
+  useEffect(() => {
+    return registerDraft(files.length > 0, () => setFiles([]));
+  }, [files.length, registerDraft]);
 
   useEffect(() => {
     getPresets()

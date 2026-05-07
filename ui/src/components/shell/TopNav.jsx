@@ -1,48 +1,72 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useDevMode } from '../../context/DevModeContext';
+import { useUploadDraft } from '../../context/UploadDraftContext';
 import { useConfirm } from '../../hooks/useConfirm';
 import { HistoryDropdown } from './HistoryDropdown';
 
 /**
  * Global top nav. Owns: brand, DEV pill, History, New Check, Governance.
- * Session-state display (id, status, event count, cancel) lives in SessionStatusBar.
  *
- * "New Check" + brand link mimic v1: solid teal when on `/`, ghost otherwise,
- * and gate navigation behind a confirm modal when an officer is currently
- * viewing a session — leaving discards the visual context (the session itself
- * stays in history and can be reopened).
+ * "New Check" rules:
+ *   - Same outlined-teal style on every route — primary nav action,
+ *     not a state-dependent pill.
+ *   - On a session route → confirm leave (visual context dropped, session
+ *     stays in History).
+ *   - On the upload route with a staged draft (files dropped but not
+ *     submitted) → confirm discard, then clear the draft.
+ *   - On the upload route with no draft → no-op (user is already there).
+ *
+ * Brand link follows the same gating so the two paths to "go home" agree.
  */
 export function TopNav() {
   const { enabled: devOn, toggle: toggleDev } = useDevMode();
+  const { hasDraft, clearDraft } = useUploadDraft();
   const loc = useLocation();
   const nav = useNavigate();
   const { confirm, Dialog } = useConfirm();
   const onSession = loc.pathname.startsWith('/session/');
+  const onHome = loc.pathname === '/';
 
-  async function leaveSession(e) {
-    if (!onSession) return;
-    e.preventDefault();
-    const ok = await confirm({
-      title: 'Leave the current session?',
-      message:
-        'You are viewing a compliance check session. Returning to the upload page will hide it from view.\n\n' +
-        'The session itself stays in history — you can reopen it from History at any time.',
-      confirmLabel: 'Leave session',
-      cancelLabel: 'Stay here',
-    });
-    if (ok) nav('/');
+  async function startNewCheck(e) {
+    e?.preventDefault();
+    if (onSession) {
+      const ok = await confirm({
+        title: 'Leave the current session?',
+        message:
+          'You are viewing a compliance check session. Returning to the upload page will hide it from view.\n\n' +
+          'The session itself stays in history — you can reopen it from History at any time.',
+        confirmLabel: 'Leave session',
+        cancelLabel: 'Stay here',
+      });
+      if (ok) nav('/');
+      return;
+    }
+    if (onHome && hasDraft) {
+      const ok = await confirm({
+        title: 'Start a new check?',
+        message:
+          'You have files staged on the upload page that haven\'t been submitted yet.\n\n' +
+          'Starting a new check will discard the current selection.',
+        confirmLabel: 'Discard & start new',
+        cancelLabel: 'Keep current files',
+        tone: 'danger',
+      });
+      if (ok) clearDraft();
+      return;
+    }
+    if (!onHome) nav('/');
   }
 
   return (
     <header className="bg-navy-1 border-b border-[#2c2c2e] px-6 h-10 flex items-center gap-5 shrink-0">
-      <Link
-        to="/"
-        onClick={leaveSession}
+      <a
+        href="/"
+        onClick={startNewCheck}
         className="font-bold text-white text-sm tracking-wide hover:text-white/80"
       >
         LC Checker <span className="text-teal-1">v2</span>
-      </Link>
+      </a>
 
       <nav className="ml-auto flex items-center gap-2">
         <button
@@ -56,17 +80,12 @@ export function TopNav() {
           {devOn ? '⚡ DEV ON' : 'DEV'}
         </button>
         <HistoryDropdown />
-        <Link
-          to="/"
-          onClick={leaveSession}
-          className={`text-xs px-2.5 py-1 rounded transition-colors ${
-            !onSession
-              ? 'bg-teal-1 text-white hover:bg-teal-2'
-              : 'text-white/50 hover:text-white hover:bg-[#2c2c2e]'
-          }`}
+        <button
+          onClick={startNewCheck}
+          className="text-xs px-2.5 py-1 rounded border border-teal-1 text-teal-1 bg-transparent hover:bg-teal-1 hover:text-white transition-colors"
         >
           New Check
-        </Link>
+        </button>
         <Link to="/admin" className="text-white/50 hover:text-white text-xs px-2.5 py-1 rounded hover:bg-[#2c2c2e] transition-colors">
           Governance
         </Link>
