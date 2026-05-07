@@ -26,7 +26,8 @@ Allowed "kind" values:
 - "free-text"   — DEFAULT for any printed text block not captured by a schema field (letterhead,
                   addressee blocks, contact details, footer text, registration numbers, anything
                   else printed). Preserve line breaks with \n.
-- "handwritten" — handwritten annotation
+- "handwritten" — handwritten annotation. See "Handwritten content rule" below; add
+                  "signature": true if it is a signature.
 - "stamp"       — ink stamp / seal
 - "watermark"   — watermark text
 - "correction"  — struck-through or corrected text; also include "original": "<old text>",
@@ -35,6 +36,18 @@ Allowed "kind" values:
 Coverage self-check (mandatory): re-scan the page; if any printed/written region is not in a schema
 field (including bc_conditions_text) or off_schema item, add it as "free-text" before returning.
 When in doubt, INCLUDE it.
+
+Handwritten content rule (applies to BOTH schema fields and off_schema_items):
+- Always transcribe handwritten text verbatim — copy the actual visible characters (letters, digits,
+  words, dates, marks) into "value". NEVER substitute a generic placeholder like "[Signature]",
+  "[Handwritten]", "[Initials]", "[illegible]", or a description of what the writing is.
+- If only partly legible, transcribe what you can read and append " (partly illegible)". Only if
+  NOTHING is readable, use value="(illegible handwriting)".
+- If a SCHEMA FIELD value is handwritten (e.g. handwritten bc_date or beneficiary_name), still put
+  the transcribed text in that schema field — do not move it to off_schema_items just because it
+  is handwritten.
+- In off_schema_items, use kind="handwritten" for any handwriting not already captured by a schema
+  field. Add "signature": true on the item when the handwriting is a signature; omit the flag otherwise.
 
 IMPORTANT:
 - bc_conditions_text: extract VERBATIM — this is critical for rule BC-001 which checks that all :46A: conditions are covered
