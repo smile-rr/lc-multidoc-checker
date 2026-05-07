@@ -43,8 +43,7 @@ Allowed "kind" values:
 - "free-text"   — DEFAULT for any printed text block not captured by a schema field (carrier
                   clauses, conditions of carriage, freight notations, footer text, headers,
                   reference codes, anything else printed). Preserve line breaks with \n.
-- "handwritten" — handwritten annotation (field_hint = related field, if any).
-                  See "Handwritten content rule" below; add "signature": true if it is a signature.
+- "handwritten" — handwritten annotation (field_hint = related field, if any)
 - "stamp"       — ink stamp / seal (value = stamp text or short description, e.g. "CLEAN ON BOARD")
 - "watermark"   — watermark text (ORIGINAL, COPY, etc.)
 - "correction"  — struck-through or corrected text; also include "original": "<old text>",
@@ -53,18 +52,6 @@ Allowed "kind" values:
 Coverage self-check (mandatory): mentally re-scan the page top-to-bottom. For every printed/written
 region, confirm it landed in EITHER a schema field OR an off_schema_items entry. If anything is
 unaccounted for, add it as "free-text" before returning. When in doubt, INCLUDE it.
-
-Handwritten content rule (applies to BOTH schema fields and off_schema_items):
-- Always transcribe handwritten text verbatim — copy the actual visible characters (letters, digits,
-  words, dates, marks) into "value". NEVER substitute a generic placeholder like "[Signature]",
-  "[Handwritten]", "[Initials]", "[illegible]", or a description of what the writing is.
-- If only partly legible, transcribe what you can read and append " (partly illegible)". Only if
-  NOTHING is readable, use value="(illegible handwriting)".
-- If a SCHEMA FIELD value is handwritten (e.g. handwritten on-board notation date or carrier name),
-  still put the transcribed text in that schema field — do not move it to off_schema_items just
-  because it is handwritten.
-- In off_schema_items, use kind="handwritten" for any handwriting not already captured by a schema
-  field. Add "signature": true on the item when the handwriting is a signature; omit the flag otherwise.
 
 IMPORTANT:
 - For clean_indicator: any clause declaring defective goods/packaging = false. "Said to contain" and "shipper's count" do NOT make B/L unclean per UCP 27.

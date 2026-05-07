@@ -42,8 +42,7 @@ Allowed "kind" values:
                   (clauses, declarations, payment/bank/SWIFT details, footer text, headers,
                   reference codes, disclaimers, anything else printed). Use one item per logical
                   block; preserve line breaks inside "value" with \n.
-- "handwritten" — handwritten annotation (field_hint = which field it relates to, if any).
-                  See "Handwritten content rule" below; add "signature": true if it is a signature.
+- "handwritten" — handwritten annotation (field_hint = which field it relates to, if any)
 - "stamp"       — ink stamp / seal (value = stamp text or short description)
 - "watermark"   — watermark text (ORIGINAL, COPY, SPECIMEN, DUPLICATE, etc.)
 - "correction"  — struck-through or corrected text. Also include "original": "<old text>",
@@ -54,18 +53,6 @@ Mentally re-scan the page top-to-bottom. For every printed/written region, confi
 EITHER a schema field OR an off_schema_items entry. If anything is unaccounted for — even a single
 sentence, a stamp legend, a footer line — add it as a "free-text" item. When in doubt, INCLUDE it.
 Over-inclusion is acceptable; silent omission is not.
-
-Handwritten content rule (applies to BOTH schema fields and off_schema_items):
-- Always transcribe handwritten text verbatim — copy the actual visible characters (letters, digits,
-  words, dates, marks) into "value". NEVER substitute a generic placeholder like "[Signature]",
-  "[Handwritten]", "[Initials]", "[illegible]", or a description of what the writing is.
-- If only partly legible, transcribe what you can read and append " (partly illegible)". Only if
-  NOTHING is readable, use value="(illegible handwriting)".
-- If a SCHEMA FIELD value is handwritten (e.g. handwritten invoice_date or beneficiary_name),
-  still put the transcribed text in that schema field — do not move it to off_schema_items just
-  because it is handwritten.
-- In off_schema_items, use kind="handwritten" for any handwriting not already captured by a schema
-  field. Add "signature": true on the item when the handwriting is a signature; omit the flag otherwise.
 
 IMPORTANT:
 - Extract EXACTLY what is printed — do not paraphrase, summarise, translate, or infer
