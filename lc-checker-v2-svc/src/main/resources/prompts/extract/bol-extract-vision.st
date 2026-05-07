@@ -28,11 +28,33 @@ Required fields to extract:
 - stamp_present: true if carrier stamp visible, false otherwise (boolean)
 - watermark_type: ORIGINAL, COPY, or null
 
-off_schema_items: array — same format as other doc types:
-{"kind": "handwritten"|"stamp"|"watermark"|"correction", "value": "...", "field_hint": "...", "page": 1, "confidence": 0.0-1.0}
-For corrections: also include "original": "old text", "authenticated": true/false
+off_schema_items: array — EXHAUSTIVE capture of every visible content block NOT already stored in the
+structured fields above. The audit trail must be complete: any printed, stamped, handwritten, or
+watermarked text on the page that did not go into a schema field MUST appear here. Do not summarise
+or skip text because it looks like boilerplate. Carrier clauses, conditions of carriage, freight
+clauses, container/seal numbers, B/L type stamps ("CLEAN ON BOARD"), endorsements, shipper notations,
+notify-party blocks, footer text, page numbers, reference codes — all count.
+
+Each item: {"kind": "...", "value": "<verbatim text — copy character-for-character>",
+            "field_hint": "<canonical field name if related, else null>",
+            "page": <int>, "confidence": 0.0-1.0}
+
+Allowed "kind" values:
+- "free-text"   — DEFAULT for any printed text block not captured by a schema field (carrier
+                  clauses, conditions of carriage, freight notations, footer text, headers,
+                  reference codes, anything else printed). Preserve line breaks with \n.
+- "handwritten" — handwritten annotation (field_hint = related field, if any)
+- "stamp"       — ink stamp / seal (value = stamp text or short description, e.g. "CLEAN ON BOARD")
+- "watermark"   — watermark text (ORIGINAL, COPY, etc.)
+- "correction"  — struck-through or corrected text; also include "original": "<old text>",
+                  "authenticated": true/false
+
+Coverage self-check (mandatory): mentally re-scan the page top-to-bottom. For every printed/written
+region, confirm it landed in EITHER a schema field OR an off_schema_items entry. If anything is
+unaccounted for, add it as "free-text" before returning. When in doubt, INCLUDE it.
 
 IMPORTANT:
 - For clean_indicator: any clause declaring defective goods/packaging = false. "Said to contain" and "shipper's count" do NOT make B/L unclean per UCP 27.
 - shipment_date: use the on-board notation date, NOT the B/L issue date, unless pre-printed shipped-on-board
+- off_schema_items must NEVER be empty unless the page is genuinely blank apart from schema fields
 - Do NOT wrap output in markdown code blocks

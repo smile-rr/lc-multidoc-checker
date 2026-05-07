@@ -25,17 +25,38 @@ Required fields to extract:
 - stamp_present: true if a company stamp/seal is visible, false otherwise (boolean)
 - watermark_type: ORIGINAL, COPY, SPECIMEN, DUPLICATE, or null
 
-off_schema_items: array of physically notable items found on the document not captured in fields above.
-Each item: {"kind": "handwritten"|"stamp"|"watermark"|"correction", "value": "...", "field_hint": "...", "page": 1, "confidence": 0.0-1.0}
-- "handwritten": any handwritten annotation (field_hint = which field it relates to)
-- "stamp": ink stamps/seals (value = stamp text or description)
-- "watermark": watermark text (ORIGINAL, COPY, etc.)
-- "correction": any struck-through or corrected text (include "original" and "authenticated" fields)
+off_schema_items: array — EXHAUSTIVE capture of every visible content block on the document that is NOT
+already stored in the structured fields above. The audit trail must be complete: if any printed,
+stamped, handwritten, or watermarked text on the page was not placed into a schema field, it MUST
+appear here as an off_schema item. Do not summarise, paraphrase, or skip text because it "looks like
+boilerplate". Bank details, payment/remittance instructions, SWIFT codes, account numbers, terms &
+conditions, declarations, footer notes, marketing text, page headers/footers, reference codes,
+disclaimers, contact info, web/email addresses, and any other printed remark all count.
 
-For corrections also include: "original": "old text", "authenticated": true/false
+Each item: {"kind": "...", "value": "<verbatim text — copy character-for-character>",
+            "field_hint": "<canonical field name if the text relates to one, else null>",
+            "page": <int>, "confidence": 0.0-1.0}
+
+Allowed "kind" values:
+- "free-text"   — DEFAULT for any printed text block not captured by a schema field above
+                  (clauses, declarations, payment/bank/SWIFT details, footer text, headers,
+                  reference codes, disclaimers, anything else printed). Use one item per logical
+                  block; preserve line breaks inside "value" with \n.
+- "handwritten" — handwritten annotation (field_hint = which field it relates to, if any)
+- "stamp"       — ink stamp / seal (value = stamp text or short description)
+- "watermark"   — watermark text (ORIGINAL, COPY, SPECIMEN, DUPLICATE, etc.)
+- "correction"  — struck-through or corrected text. Also include "original": "<old text>",
+                  "authenticated": true/false
+
+Coverage self-check (mandatory before returning JSON):
+Mentally re-scan the page top-to-bottom. For every printed/written region, confirm it landed in
+EITHER a schema field OR an off_schema_items entry. If anything is unaccounted for — even a single
+sentence, a stamp legend, a footer line — add it as a "free-text" item. When in doubt, INCLUDE it.
+Over-inclusion is acceptable; silent omission is not.
 
 IMPORTANT:
-- Extract EXACTLY what is printed — do not paraphrase or infer
-- If a field is not present on the document, use null
+- Extract EXACTLY what is printed — do not paraphrase, summarise, translate, or infer
+- If a schema field is not present on the document, use null (do not invent it)
 - invoice_total must be a number (e.g. 125000.00), not a string
+- off_schema_items must NEVER be empty unless the page is genuinely blank apart from the schema fields
 - Do NOT wrap output in markdown code blocks
