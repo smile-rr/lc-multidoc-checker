@@ -2,6 +2,14 @@ import React, { useState } from 'react';
 import { docTypeMeta } from '../../../constants/docTypes';
 import { SortHeader } from './SortHeader';
 import { WorklistRow } from './WorklistRow';
+import { SubResultRow } from './SubResultRow';
+
+// Same verdict→bar palette as WorklistRow so child rows inherit the parent's
+// left rail colour (visual continuity).
+const VERDICT_BAR = {
+  PASS: '#1a7a43', FAIL: '#cc0011', DOUBTS: '#d97706', NEEDS_REVIEW: '#d97706',
+  NOT_APPLICABLE: '#a1a1aa', FAILED: '#b54708', PENDING: '#d4d4d8',
+};
 
 /**
  * Worklist table with three foldable buckets:
@@ -11,6 +19,15 @@ import { WorklistRow } from './WorklistRow';
  */
 export function WorklistTable({ groupedActive, groupedNa, groupedOutOfScope,
                                  navMode, sort, setSort, selectedId, onSelect }) {
+  const [expanded, setExpanded] = useState(() => new Set());
+  const toggleExpand = (ruleId) =>
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(ruleId)) next.delete(ruleId); else next.add(ruleId);
+      return next;
+    });
+  const isExpanded = (ruleId) => expanded.has(ruleId);
+
   return (
     <div className="flex-1 overflow-auto">
       <table className="w-full text-[11px] border-collapse">
@@ -27,13 +44,15 @@ export function WorklistTable({ groupedActive, groupedNa, groupedOutOfScope,
           </tr>
         </thead>
         <tbody>
-          <ActiveSection grouped={groupedActive} navMode={navMode} selectedId={selectedId} onSelect={onSelect} />
+          <ActiveSection grouped={groupedActive} navMode={navMode} selectedId={selectedId} onSelect={onSelect}
+                          isExpanded={isExpanded} onToggleExpand={toggleExpand} />
           <FoldableSection
             label={`Not applicable to this LC`}
             grouped={groupedNa}
             navMode={navMode}
             selectedId={selectedId}
             onSelect={onSelect}
+            isExpanded={isExpanded} onToggleExpand={toggleExpand}
             tone="muted"
           />
           <FoldableSection
@@ -42,6 +61,7 @@ export function WorklistTable({ groupedActive, groupedNa, groupedOutOfScope,
             navMode={navMode}
             selectedId={selectedId}
             onSelect={onSelect}
+            isExpanded={isExpanded} onToggleExpand={toggleExpand}
             tone="muted"
           />
         </tbody>
@@ -50,14 +70,37 @@ export function WorklistTable({ groupedActive, groupedNa, groupedOutOfScope,
   );
 }
 
-function ActiveSection({ grouped, navMode, selectedId, onSelect }) {
+function renderRuleWithChildren(rule, selectedId, onSelect, isExpanded, onToggleExpand) {
+  const expanded = isExpanded?.(rule.ruleId);
+  const verdict = rule.effectiveVerdict || rule.verdict;
+  const barColor = VERDICT_BAR[verdict] || '#d4d4d8';
+  const subs = rule.conditionResults || [];
+  return (
+    <React.Fragment key={rule.ruleId}>
+      <WorklistRow
+        rule={rule}
+        selected={rule.ruleId === selectedId}
+        onClick={() => onSelect(rule.ruleId === selectedId ? null : rule.ruleId)}
+        isExpanded={expanded}
+        onToggleExpand={onToggleExpand}
+      />
+      {expanded && subs.map((sub, i) => (
+        <SubResultRow
+          key={`${rule.ruleId}::${sub.condition_id || sub.sub_id || i}`}
+          parentRuleId={rule.ruleId}
+          sub={sub}
+          parentBarColor={barColor}
+        />
+      ))}
+    </React.Fragment>
+  );
+}
+
+function ActiveSection({ grouped, navMode, selectedId, onSelect, isExpanded, onToggleExpand }) {
   return (
     <>
       {Object.entries(grouped).map(([group, items]) => (
         <React.Fragment key={group || '__default__'}>
-          {/* Group rows scroll with the data — no nested sticky. In Default
-              navMode the group key is "" — suppress the header so the worklist
-              reads as one continuous sorted list. */}
           {group !== '' && (
             <tr className="bg-slate2 border-b border-line">
               <td colSpan={8} className="px-3 py-1.5">
@@ -70,21 +113,14 @@ function ActiveSection({ grouped, navMode, selectedId, onSelect }) {
               </td>
             </tr>
           )}
-          {items.map(rule => (
-            <WorklistRow
-              key={rule.ruleId}
-              rule={rule}
-              selected={rule.ruleId === selectedId}
-              onClick={() => onSelect(rule.ruleId === selectedId ? null : rule.ruleId)}
-            />
-          ))}
+          {items.map(rule => renderRuleWithChildren(rule, selectedId, onSelect, isExpanded, onToggleExpand))}
         </React.Fragment>
       ))}
     </>
   );
 }
 
-function FoldableSection({ label, grouped, navMode, selectedId, onSelect }) {
+function FoldableSection({ label, grouped, navMode, selectedId, onSelect, isExpanded, onToggleExpand }) {
   const [open, setOpen] = useState(true);
   const total = Object.values(grouped).reduce((acc, items) => acc + items.length, 0);
   if (total === 0) return null;
@@ -110,14 +146,7 @@ function FoldableSection({ label, grouped, navMode, selectedId, onSelect }) {
               </span>
             </td>
           </tr>
-          {items.map(rule => (
-            <WorklistRow
-              key={rule.ruleId}
-              rule={rule}
-              selected={rule.ruleId === selectedId}
-              onClick={() => onSelect(rule.ruleId === selectedId ? null : rule.ruleId)}
-            />
-          ))}
+          {items.map(rule => renderRuleWithChildren(rule, selectedId, onSelect, isExpanded, onToggleExpand))}
         </React.Fragment>
       ))}
     </>

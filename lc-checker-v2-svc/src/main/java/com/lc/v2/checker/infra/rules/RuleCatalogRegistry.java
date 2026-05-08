@@ -34,8 +34,10 @@ public class RuleCatalogRegistry {
     private static final Set<String> VALID_CHECK_TYPES =
             Set.of("PROGRAMMATIC", "AGENT", "AGENT_TOOL", "AGENTIC");
 
+    // Suffix is either two digits (e.g. DATE-01) or two digits + optional
+    // uppercase letter (e.g. COND-47A) to allow SWIFT-tag-derived ids.
     private static final Pattern ID_PATTERN =
-            Pattern.compile("^(DATE|AMT|DOCSET|GOODS|TRANS|PARTY|XD|CERT)-\\d{2}$");
+            Pattern.compile("^(DATE|AMT|DOCSET|GOODS|TRANS|PARTY|XD|CERT|COND)-\\d{2}[A-Z]?$");
 
     private final List<Rule> allRules;
     private final List<Rule> enabledRules;
@@ -102,8 +104,7 @@ public class RuleCatalogRegistry {
     private static void validate(Rule r) {
         if (r.ruleId() == null || !ID_PATTERN.matcher(r.ruleId()).matches()) {
             throw new IllegalStateException(
-                    "Rule ID '" + r.ruleId() + "' does not match pattern "
-                            + "^(CCY|AMT|DATE|PARTY|GOODS|SHIP|DOC|COND)-\\d{2}$");
+                    "Rule ID '" + r.ruleId() + "' does not match pattern " + ID_PATTERN.pattern());
         }
         if (r.checkType() == null || !VALID_CHECK_TYPES.contains(r.checkType())) {
             throw new IllegalStateException(
@@ -138,7 +139,8 @@ public class RuleCatalogRegistry {
                 r.expression(), r.promptInstruction(), r.fieldKeys(),
                 r.enabled(), r.triggers(),
                 thinking, maxIter,
-                r.ucpExcerpt());
+                r.ucpExcerpt(),
+                r.executionStrategy());
     }
 
     public List<Rule> all() { return allRules; }

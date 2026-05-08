@@ -14,12 +14,16 @@
 #   PARTY  · PARTY-01..02 identities of parties across docs and LC
 #   XD     · XD-01..02    cross-document factual consistency
 #   CERT   · CERT-01..02  beneficiary/warranty certificate content + form
+#   COND   · COND-47A     :47A: additional-conditions aggregate (one rule, N sub-results)
 #
 # Execution tiers (check_type):
 #   PROGRAMMATIC — SpEL expression on #lc / #docs / #presentationDate
 #   AGENT        — single ChatClient call, structured JSON output
 #   AGENT_TOOL   — ChatClient + compute tool (date math, calculator), 1 tool round
-#   AGENTIC      — multi-iteration tool-using loop (only :47A: COND-DYN — not in this catalog)
+#   AGENTIC      — multi-iteration tool-using loop. COND-47A uses execution_strategy
+#                  "structured_output" (default) — single AGENTIC call returns terminal
+#                  JSON with `condition_results[]` per :47A: condition. Future strategy
+#                  "sub_agent" will fan out to N parallel AGENT calls; same output shape.
 #
 # Trigger semantics (rule-set.md §1):
 #   triggers.all_of/any_of with docs_present + lc_field_present nodes.
@@ -474,6 +478,34 @@ rules:
     isbp_refs: [ISBP-Q1, ISBP-Q3]
     field_keys: [documents_required, additional_conditions, bc_conditions_text, wc_conditions_text, wc_scope, wc_period]
     enabled: true
+
+  # ---------------------------------------------------------------------------
+  # COND-47A · :47A: Additional conditions — AGENTIC (sub_results aggregate)
+  # ---------------------------------------------------------------------------
+  # One catalog rule. Internally produces N condition_results, each with its own
+  # verdict / severity / source_text / citations. Worklist row is parent;
+  # condition_results render as expandable sub-rows. Override may target the
+  # parent (cascades) or a specific child via target = "COND-47A#<condition_id>".
+  - rule_id: COND-47A
+    name: "Additional conditions (:47A:) compliance"
+    version: 1
+    canonical_field: additional_conditions
+    applies_to: [LC, INV, BOL, PKL, BOE, BC, WC]
+    scope: [INV, BOL, PKL, BOE, BC, WC]
+    triggers:
+      all_of:
+        - lc_field_present: [additional_conditions]
+    lc_fields_required: [additional_conditions]
+    check_type: AGENTIC
+    severity: MAJOR
+    polarity: POSITIVE
+    waivable: true
+    ucp_refs: [UCP-14-a, UCP-14-d]
+    isbp_refs: [ISBP-A1, ISBP-A19]
+    field_keys: [additional_conditions, documents_required]
+    enabled: true
+    max_iterations: 4
+    execution_strategy: structured_output
 
   # ---------------------------------------------------------------------------
   # CERT-02 · Certificate signature and form requirements (BC + WC) — AGENT

@@ -14,8 +14,14 @@ import java.util.List;
  * AllOf(DocsPresent(...)) from triggerDocs.
  *
  * Execution tiers (checkType): PROGRAMMATIC | AGENT | AGENT_TOOL | AGENTIC.
- *   - thinkingEnabled: per-rule override of the global enable_thinking gate; null = use tier default.
- *   - maxIterations:   AGENTIC convergence cap; null = use tier default (4).
+ *   - thinkingEnabled:    per-rule override of the global enable_thinking gate; null = use tier default.
+ *   - maxIterations:      AGENTIC convergence cap; null = use tier default (4).
+ *   - executionStrategy:  AGENTIC dispatch hint. Today: "structured_output" (single
+ *                         multi-iter LLM call, returns terminal JSON with condition_results).
+ *                         Future: "sub_agent" (outer decomposer LLM call → fanout of
+ *                         per-condition AGENT calls → aggregate). null = "structured_output".
+ *                         Reserved for forward compatibility — adding a new strategy is
+ *                         catalog-only when the strategy class lands.
  */
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -41,7 +47,8 @@ public record Rule(
         Triggers.TriggerNode triggers,
         Boolean thinkingEnabled,
         Integer maxIterations,
-        String ucpExcerpt
+        String ucpExcerpt,
+        String executionStrategy
 ) {
     public Rule {
         appliesTo = appliesTo == null ? List.of() : List.copyOf(appliesTo);

@@ -42,11 +42,13 @@ const TIER_TONE = {
   AGENTIC:      { fg: '#9a3412', bg: '#ffedd5', dot: '#ea580c' }, // amber
 };
 
-export function WorklistRow({ rule, selected, onClick }) {
+export function WorklistRow({ rule, selected, onClick, isExpanded, onToggleExpand }) {
   const effective = rule.effectiveVerdict || rule.verdict;
   const isPending = effective === 'PENDING';
   const meta = STATUS_META[effective] || STATUS_META.NOT_APPLICABLE;
   const attention = rule.attention || [];
+  const subCount = rule.conditionResults?.length ?? 0;
+  const hasChildren = subCount > 0;
 
   // Keep the active row visible during keyboard ↑/↓ navigation. nearest-block
   // scrolls only when the row would otherwise be clipped.
@@ -70,9 +72,20 @@ export function WorklistRow({ rule, selected, onClick }) {
           : `inset 4px 0 0 0 ${meta.bar}`,
       }}
     >
-      {/* # */}
+      {/* # · expand toggle when rule has nested condition_results */}
       <td className="pl-3 pr-2 py-2 text-[10px] text-[#a1a1a6] font-mono tabular-nums" style={{ width: 40 }}>
-        {rule.seqNum != null ? rule.seqNum + 1 : ''}
+        <span className="inline-flex items-center gap-1">
+          {hasChildren && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onToggleExpand?.(rule.ruleId); }}
+              className="text-navy-1 hover:text-status-blue text-[10px] leading-none"
+              title={isExpanded ? `Collapse ${subCount} sub-conditions` : `Expand ${subCount} sub-conditions`}
+            >
+              {isExpanded ? '▾' : '▸'}
+            </button>
+          )}
+          <span>{rule.seqNum != null ? rule.seqNum + 1 : ''}</span>
+        </span>
       </td>
 
       {/* Article (UCP/ISBP) */}
@@ -90,11 +103,19 @@ export function WorklistRow({ rule, selected, onClick }) {
         </span>
       </td>
 
-      {/* Rule (id + label + inline attention chips) */}
+      {/* Rule (id + label + sub-count + inline attention chips) */}
       <td className="px-2 py-2 text-[12px]">
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-[10px] text-[#a1a1a6] font-mono">{rule.ruleId}</span>
           <span className="text-navy-1 leading-snug">{rule.label}</span>
+          {hasChildren && (
+            <span
+              className="text-[9px] font-mono tracking-wider px-1 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200"
+              title={`${subCount} sub-conditions; click ▸ to expand`}
+            >
+              {subCount} sub
+            </span>
+          )}
           {attention.map(t => <AttentionChip key={t} tag={t} />)}
         </div>
       </td>

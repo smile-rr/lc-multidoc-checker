@@ -118,33 +118,17 @@ public class RuleCatalogJoiner {
             Rule rule = catalog.byId(cr.ruleId()).orElse(null);
             Map<String, Object> extras = tracesByRuleResult.getOrDefault(cr.ruleId(), Map.of());
 
-            // For dyn:* rules synthesized at runtime there's no catalog match;
-            // pull name/severity/refs/check_type from the persisted result JSON.
             String label = rule != null && rule.name() != null
-                    ? rule.name()
-                    : (extras.get("name") instanceof String s ? s
-                        : LABELS.getOrDefault(cr.ruleId(), cr.ruleId()));
+                    ? rule.name() : LABELS.getOrDefault(cr.ruleId(), cr.ruleId());
 
-            String severity = rule != null ? rule.severity()
-                    : (extras.get("severity") instanceof String s ? s : "MINOR");
+            String severity = rule != null ? rule.severity() : "MINOR";
             String checkType = cr.checkType() != null ? cr.checkType()
-                    : (rule != null ? rule.checkType()
-                        : (extras.get("check_type") instanceof String s ? s : "PROGRAMMATIC"));
+                    : (rule != null ? rule.checkType() : "PROGRAMMATIC");
             String source = sourceFromCheckType(checkType);
             String article = primaryArticle(rule);
-            @SuppressWarnings("unchecked")
-            List<String> extraScope = extras.get("scope") instanceof List<?> ls
-                    ? (List<String>) ls : null;
-            List<String> scope = rule != null ? rule.scope()
-                    : (extraScope != null ? extraScope : List.of());
-            @SuppressWarnings("unchecked")
-            List<String> ucpRefIds = rule != null ? rule.ucpRefs()
-                    : (extras.get("ucp_refs") instanceof List<?> ls ? (List<String>) ls : null);
-            @SuppressWarnings("unchecked")
-            List<String> isbpRefIds = rule != null ? rule.isbpRefs()
-                    : (extras.get("isbp_refs") instanceof List<?> ls ? (List<String>) ls : null);
-            List<ArticleRef> ucpFull = resolveRefs(ucpRefIds);
-            List<ArticleRef> isbpFull = resolveRefs(isbpRefIds);
+            List<String> scope = rule != null ? rule.scope() : List.of();
+            List<ArticleRef> ucpFull = resolveRefs(rule == null ? null : rule.ucpRefs());
+            List<ArticleRef> isbpFull = resolveRefs(rule == null ? null : rule.isbpRefs());
 
             // Override (if any)
             Map<String, Object> ovRow = overridesByRule.get(cr.ruleId());
@@ -260,16 +244,6 @@ public class RuleCatalogJoiner {
                     }
                     if (parsed.get("condition_results") instanceof List<?> cr && !cr.isEmpty()) {
                         extras.put("condition_results", cr);
-                    }
-                    // Surface synth metadata for dyn:* rules so join() can show a
-                    // proper name / severity / check_type / refs in the worklist.
-                    if (e.getKey().startsWith("dyn:")) {
-                        if (parsed.get("name") instanceof String s) extras.put("name", s);
-                        if (parsed.get("check_type") instanceof String s) extras.put("check_type", s);
-                        if (parsed.get("severity") instanceof String s) extras.put("severity", s);
-                        if (parsed.get("ucp_refs") instanceof List<?> ls) extras.put("ucp_refs", ls);
-                        if (parsed.get("isbp_refs") instanceof List<?> ls) extras.put("isbp_refs", ls);
-                        if (parsed.get("applies_to_docs") instanceof List<?> ls) extras.put("scope", ls);
                     }
                     if (!extras.isEmpty()) out.put(e.getKey(), extras);
                 } catch (Exception ignored) { /* best-effort */ }
