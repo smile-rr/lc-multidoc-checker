@@ -51,7 +51,10 @@ public class PipelineControlController {
             boolean started = pipelineService.runStage(sessionId, stage);
             if (!started) {
                 return ResponseEntity.status(409).body(Map.of(
-                        "error", "Session context expired. Re-running from this stage requires a fresh session."));
+                        "error", "Cannot advance to '" + stage + "': raw PDF bytes are not "
+                                + "persisted in the data lake. Intake / Parse rerun requires "
+                                + "a fresh session. Reconcile / Examine / Sign-off resume "
+                                + "automatically from DB after a service restart."));
             }
             log.info("[{}] stage={} run triggered by {}", sessionId, stage, officerId);
             return ResponseEntity.ok(Map.of("ok", true, "stage", stage));

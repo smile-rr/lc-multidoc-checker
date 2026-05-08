@@ -78,7 +78,12 @@ doc_types:
       - port_of_loading
       - port_of_discharge
       - line_items
+      - total_packages
+      - total_net_weight
+      - total_gross_weight
+      - shipping_marks
       - signed
+      - signature_party
       - stamp_present
       - watermark_type
 
@@ -110,9 +115,11 @@ doc_types:
       - shipping_marks
       - total_gross_weight
       - total_net_weight
+      - goods_description
       - incoterms
       - watermark_type
       - signed
+      - signature_party
       - stamp_present
 
   PKL:
@@ -132,8 +139,10 @@ doc_types:
       - total_net_weight
       - total_gross_weight
       - quantity
+      - goods_description
       - watermark_type
       - signed
+      - signature_party
       - stamp_present
 
   BOE:
@@ -158,6 +167,7 @@ doc_types:
       - credit_currency
       - watermark_type
       - signed
+      - signature_party
       - stamp_present
 
   BC:
@@ -177,6 +187,7 @@ doc_types:
       - bc_conditions_text
       - watermark_type
       - signed
+      - signature_party
       - stamp_present
 
   WC:
@@ -197,4 +208,5 @@ doc_types:
       - wc_conditions_text
       - watermark_type
       - signed
+      - signature_party
       - stamp_present

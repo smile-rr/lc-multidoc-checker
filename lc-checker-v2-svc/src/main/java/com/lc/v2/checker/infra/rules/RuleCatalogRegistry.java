@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.lc.v2.checker.domain.rule.Rule;
+import com.lc.v2.checker.infra.refs.ArticleRefRegistry;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -34,13 +35,14 @@ public class RuleCatalogRegistry {
             Set.of("PROGRAMMATIC", "AGENT", "AGENT_TOOL", "AGENTIC");
 
     private static final Pattern ID_PATTERN =
-            Pattern.compile("^(CCY|AMT|DATE|PARTY|GOODS|SHIP|DOC|COND)-\\d{2}$");
+            Pattern.compile("^(DATE|AMT|DOCSET|GOODS|TRANS|PARTY|XD|CERT)-\\d{2}$");
 
     private final List<Rule> allRules;
     private final List<Rule> enabledRules;
 
     public RuleCatalogRegistry(
             ResourceLoader resourceLoader,
+            ArticleRefRegistry refs,
             @Value("${rules.catalog-path:classpath:/rules/catalog.yml}") String catalogPath)
             throws IOException {
         Resource resource = resourceLoader.getResource(catalogPath);
@@ -61,6 +63,7 @@ public class RuleCatalogRegistry {
         List<Rule> normalised = new ArrayList<>(parsed.rules().size());
         for (Rule r : parsed.rules()) {
             validate(r);
+            validateRefs(r, refs);
             normalised.add(applyTierDefaults(r));
         }
         this.allRules = List.copyOf(normalised);
@@ -75,6 +78,25 @@ public class RuleCatalogRegistry {
         log.info("RuleCatalogRegistry loaded {} rules ({} enabled, {} with compound triggers)",
                 allRules.size(), enabledRules.size(),
                 allRules.stream().filter(r -> r.triggers() != null).count());
+    }
+
+    /**
+     * W3 — startup validation: every UCP/ISBP id cited by a rule must exist in
+     * the corpus YAML. Fail-fast on unknown id; no silent fallback.
+     */
+    private static void validateRefs(Rule r, ArticleRefRegistry refs) {
+        for (String id : r.ucpRefs()) {
+            if (!refs.has(id)) {
+                throw new IllegalStateException("Rule " + r.ruleId()
+                        + " cites unknown UCP id '" + id + "' — not in refs/ucp600.yaml");
+            }
+        }
+        for (String id : r.isbpRefs()) {
+            if (!refs.has(id)) {
+                throw new IllegalStateException("Rule " + r.ruleId()
+                        + " cites unknown ISBP id '" + id + "' — not in refs/isbp821.yaml");
+            }
+        }
     }
 
     private static void validate(Rule r) {

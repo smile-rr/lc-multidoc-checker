@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ConfChip } from '../../shared/ConfChip';
+import { Diff, diffCount } from './Diff';
 
 /**
  * One field row. Shows label, value (consensus), confidence chip, agreement chip,
@@ -42,19 +43,25 @@ export function FieldRow({ label, fieldKey, value, conf, manual, slotValues, onC
               {slotIds.length}✓
             </span>
           )}
-          {slotsDisagree && (
-            <button
-              onClick={() => setExpanded(e => !e)}
-              className={`text-[9px] px-1.5 py-0.5 rounded border font-mono transition-colors ${
-                needsAttention
-                  ? 'border-status-gold text-status-gold hover:bg-status-goldSoft'
-                  : 'border-line text-muted hover:bg-slate2'
-              }`}
-              title={needsAttention ? 'Slots disagree — review' : 'Slots disagreed before edit — inspect'}
-            >
-              {expanded ? '−' : '+'} compare
-            </button>
-          )}
+          {slotsDisagree && (() => {
+            const totalδ = slotIds.reduce(
+              (n, s) => n + (String(slots[s]) === String(value) ? 0 : diffCount(value, slots[s])),
+              0,
+            );
+            return (
+              <button
+                onClick={() => setExpanded(e => !e)}
+                className={`text-[9px] px-1.5 py-0.5 rounded border font-mono transition-colors ${
+                  needsAttention
+                    ? 'border-status-gold text-status-gold hover:bg-status-goldSoft'
+                    : 'border-line text-muted hover:bg-slate2'
+                }`}
+                title={needsAttention ? 'Slots disagree — review' : 'Slots disagreed before edit — inspect'}
+              >
+                {expanded ? '−' : '+'} compare δ{totalδ}
+              </button>
+            );
+          })()}
           <button
             onClick={onCorrect}
             className="text-[9px] px-1 text-[#a1a1a6] hover:text-status-blue"
@@ -64,27 +71,41 @@ export function FieldRow({ label, fieldKey, value, conf, manual, slotValues, onC
           </button>
         </div>
       </div>
-      {expanded && slotsDisagree && (
-        <div className="mt-2 ml-[176px] grid gap-2" style={{ gridTemplateColumns: `repeat(${slotIds.length}, minmax(0, 1fr))` }}>
-          {slotIds.map(slot => {
-            const v = String(slots[slot] ?? '—');
-            const isConsensus = v === String(value);
-            return (
-              <div
-                key={slot}
-                className={`p-2 border rounded text-[10px] ${isConsensus ? 'border-teal-1 bg-status-greenSoft' : 'border-line'}`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-mono tracking-wider text-[9px]" style={{ color: isConsensus ? '#0a7e6a' : '#6e6e73' }}>
+      {expanded && slotsDisagree && (() => {
+        // Each row shows ONLY its own value, with tokens unique-to-this-row
+        // highlighted. Selected (= consensus winner) gets green; the others get red.
+        const winner = String(value ?? '');
+        return (
+          <div className="mt-2 ml-[176px] border border-line rounded overflow-hidden">
+            {slotIds.map((slot, i) => {
+              const v = String(slots[slot] ?? '');
+              const baseline = slotIds.length === 2
+                ? String(slots[slotIds[1 - i]] ?? '')
+                : winner;
+              const isWinner = v === winner;
+              return (
+                <div
+                  key={slot}
+                  className="grid grid-cols-[68px_1fr] items-stretch border-b border-line/30 last:border-b-0"
+                >
+                  <div className={`px-2 py-1.5 border-r border-line/30 text-[9px] font-mono tracking-wider flex items-center ${isWinner ? 'text-teal-1 font-semibold' : 'text-muted'}`}>
                     {slot}
-                  </span>
+                    {isWinner && <span className="ml-1">✓</span>}
+                  </div>
+                  <div className="px-2 py-1.5 text-[10.5px] break-words leading-relaxed">
+                    <Diff
+                      baseline={baseline}
+                      value={v}
+                      mode="own"
+                      tone={isWinner ? 'green' : 'red'}
+                    />
+                  </div>
                 </div>
-                <div className="text-[10px] font-mono break-words">{v}</div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        );
+      })()}
     </div>
   );
 }

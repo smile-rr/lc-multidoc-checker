@@ -40,7 +40,7 @@ fields:
   - { key: applicant_name,      name_en: Applicant,           name_zh: 申请人,       type: STRING,        applies_to: [LC, INV],                  source_tags: ["50", "50B", "50F"], invoice_aliases: [buyer_name, importer_name, buyer, consignee], rule_relevant: false, group: parties }
   - { key: applicant_address,   name_en: Applicant Address,   name_zh: 申请人地址,   type: STRING,        applies_to: [LC, INV],                  source_tags: ["50", "50B", "50F"], invoice_aliases: [buyer_address, consignee_address], rule_relevant: false, group: parties }
   - { key: applicant_bank_bic,  name_en: Applicant Bank,      name_zh: 申请人银行,   type: STRING,        applies_to: [LC],                       source_tags: ["51A"], rule_relevant: false, group: parties }
-  - { key: beneficiary_name,    name_en: Beneficiary,         name_zh: 受益人,       type: STRING,        applies_to: [LC, INV, BOL, BOE, BC, WC], source_tags: ["59", "59A", "59F"], invoice_aliases: [seller_name, exporter_name, vendor_name, shipper_name, exporter, drawer_name], rule_relevant: true, reconcile_canonical: true, group: parties }
+  - { key: beneficiary_name,    name_en: Beneficiary,         name_zh: 受益人,       type: STRING,        applies_to: [LC, INV, BOL, PKL, BOE, BC, WC], source_tags: ["59", "59A", "59F"], invoice_aliases: [seller_name, exporter_name, vendor_name, shipper_name, exporter, drawer_name], rule_relevant: true, reconcile_canonical: true, group: parties }
   - { key: beneficiary_address, name_en: Beneficiary Address, name_zh: 受益人地址,   type: STRING,        applies_to: [LC, INV],                  source_tags: ["59", "59A", "59F"], invoice_aliases: [seller_address, vendor_address], rule_relevant: false, group: parties }
 
   # ─── Shipment / logistics ─────────────────────────────────────────────
@@ -55,7 +55,7 @@ fields:
   - { key: presentation_days,   name_en: Presentation Days,   name_zh: 单据提示期(天), type: INTEGER,      applies_to: [LC],                       source_tags: ["48"],  rule_relevant: true,  default_value: 21, group: shipment }
 
   # ─── LC document clauses ─────────────────────────────────────────────
-  - { key: goods_description,   name_en: Goods Description,   name_zh: 货物描述,     type: MULTILINE_TEXT, applies_to: [LC, INV],                 source_tags: ["45A"], invoice_aliases: [description, goods, item_description], rule_relevant: true, reconcile_canonical: true, group: documents }
+  - { key: goods_description,   name_en: Goods Description,   name_zh: 货物描述,     type: MULTILINE_TEXT, applies_to: [LC, INV, BOL, PKL], source_tags: ["45A"], invoice_aliases: [description, goods, item_description, cargo_description, commodity], rule_relevant: true, reconcile_canonical: true, group: documents }
   - { key: incoterms,           name_en: Incoterms,           name_zh: 贸易术语,     type: ENUM,          applies_to: [LC, INV, BOL],             source_tags: ["45A"], enum_values: [CIF, CFR, FOB, EXW, FCA, CPT, CIP, DAP, DPU, DDP], invoice_aliases: [trade_terms, delivery_terms, terms], rule_relevant: true, reconcile_canonical: true, group: documents }
   - { key: documents_required,  name_en: Documents Required,  name_zh: 要求单据,     type: DOCUMENT_LIST, applies_to: [LC],                       source_tags: ["46A"], rule_relevant: true,  group: documents }
   - { key: additional_conditions, name_en: Additional Conditions, name_zh: 附加条件, type: MULTILINE_TEXT, applies_to: [LC],                      source_tags: ["47A"], rule_relevant: true,  group: documents }
@@ -107,10 +107,10 @@ fields:
   # ─── PKL — Packing List ──────────────────────────────────────────────
   - { key: pkl_number,          name_en: Packing List Number, name_zh: 装箱单号,     type: STRING,        applies_to: [PKL], invoice_aliases: [packing_list_no, pl_number], rule_relevant: false, group: header }
   - { key: pkl_date,            name_en: Packing List Date,   name_zh: 装箱单日期,   type: DATE,          applies_to: [PKL], invoice_aliases: [packing_date], rule_relevant: true, group: header }
-  - { key: shipping_marks,      name_en: Shipping Marks,      name_zh: 运输标志,     type: MULTILINE_TEXT, applies_to: [PKL, BOL], invoice_aliases: [marks, cargo_marks, shipping_mark], rule_relevant: true, group: shipment, extraction_hint: "The cargo marks and numbers as printed. Must not contradict B/L marks (PKL-004)." }
+  - { key: shipping_marks,      name_en: Shipping Marks,      name_zh: 运输标志,     type: MULTILINE_TEXT, applies_to: [INV, PKL, BOL], invoice_aliases: [marks, cargo_marks, shipping_mark], rule_relevant: true, group: shipment, extraction_hint: "The cargo marks and numbers as printed. Must not contradict B/L marks (XD-01)." }
   - { key: total_packages,      name_en: Total Packages,      name_zh: 总包装件数,   type: INTEGER,       applies_to: [PKL, BOL, INV], invoice_aliases: [total_cartons, total_cases, number_of_packages, pkg_count], rule_relevant: true, reconcile_canonical: true, group: amount }
-  - { key: total_net_weight,    name_en: Total Net Weight,    name_zh: 净重,         type: AMOUNT,        applies_to: [PKL, BOL], invoice_aliases: [net_weight, nw], rule_relevant: false, group: amount }
-  - { key: total_gross_weight,  name_en: Total Gross Weight,  name_zh: 毛重,         type: AMOUNT,        applies_to: [PKL, BOL], invoice_aliases: [gross_weight, gw], rule_relevant: false, group: amount }
+  - { key: total_net_weight,    name_en: Total Net Weight,    name_zh: 净重,         type: AMOUNT,        applies_to: [INV, PKL, BOL], invoice_aliases: [net_weight, nw], rule_relevant: true, group: amount }
+  - { key: total_gross_weight,  name_en: Total Gross Weight,  name_zh: 毛重,         type: AMOUNT,        applies_to: [INV, PKL, BOL], invoice_aliases: [gross_weight, gw], rule_relevant: true, group: amount }
 
   # ─── BOE — Bill of Exchange / Draft ──────────────────────────────────
   - { key: boe_number,          name_en: Draft Number,        name_zh: 汇票号,       type: STRING,        applies_to: [BOE], invoice_aliases: [draft_no, boe_no], rule_relevant: false, group: header }
@@ -137,7 +137,8 @@ fields:
   # ─── Universal VLM detection fields (apply to all presented docs) ─────
   # GEN-011 / BC-003 use signed; BOL-009 uses clean_indicator + off-schema corrections;
   # GEN-006 uses watermark_type to identify originals.
-  - { key: signed,              name_en: Signed,              name_zh: 已签字,       type: STRING,        applies_to: [INV, BOL, BOE, BC, WC], invoice_aliases: [signature, is_signed], rule_relevant: true, group: meta, extraction_hint: "true if a handwritten, digital, or printed NAME+TITLE signature block is visible. A stamp alone is NOT a signature." }
+  - { key: signed,              name_en: Signed,              name_zh: 已签字,       type: STRING,        applies_to: [INV, BOL, PKL, BOE, BC, WC], invoice_aliases: [signature, is_signed], rule_relevant: true, group: meta, extraction_hint: "true if a handwritten, digital, or printed NAME+TITLE signature block is visible. A stamp alone is NOT a signature." }
+  - { key: signature_party,     name_en: Signing Party,       name_zh: 签字方,       type: STRING,        applies_to: [INV, BOL, BOE, BC, WC], invoice_aliases: [signed_by, signatory, signer_title], rule_relevant: true, group: meta, extraction_hint: "Printed/typed name and/or title of the signing party (e.g. 'John Doe, Director'). null if unsigned. CERT-02 verifies the certifying party matches LC stipulation." }
   - { key: stamp_present,       name_en: Stamp Present,       name_zh: 盖章,         type: STRING,        applies_to: [INV, BOL, PKL, BOE, BC, WC], invoice_aliases: [stamp, has_stamp], rule_relevant: false, group: meta }
   - { key: watermark_type,      name_en: Watermark Type,      name_zh: 水印类型,     type: STRING,        applies_to: [INV, BOL, PKL, BOE, BC, WC], invoice_aliases: [watermark, copy_indicator], rule_relevant: true, group: meta, extraction_hint: "ORIGINAL | COPY | SPECIMEN | null — for originals count check. Extract from visible watermarks, stamps, or printed text." }
   - { key: document_date,       name_en: Document Date,       name_zh: 文件日期,     type: DATE,          applies_to: [INV, BOL, PKL, BOE, BC, WC], invoice_aliases: [doc_date], rule_relevant: true, group: header, extraction_hint: "The date printed on this document. GEN-003: no document may be dated after the presentation date." }

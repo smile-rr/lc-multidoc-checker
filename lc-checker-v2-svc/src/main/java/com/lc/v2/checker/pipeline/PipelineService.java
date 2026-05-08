@@ -126,7 +126,18 @@ public class PipelineService {
             throw new IllegalStateException("Session is signed (frozen) — cannot advance");
         }
         StageContext ctx = contextCache.get(sessionId);
-        if (ctx == null) return false;
+        if (ctx == null) {
+            // Cache miss — typical after JVM restart. Try to rehydrate from DB
+            // so the officer can resume forward progress without losing the
+            // session. Post-Parse stages have all the inputs they need in
+            // pipeline_steps; Intake/Parse still require raw PDF bytes which
+            // are not persisted (PdfBytesCache is JVM-lifetime).
+            ctx = rehydrateContext(sessionId);
+            if (ctx == null || !canRehydrateForStage(ctx, stageName)) return false;
+            contextCache.put(sessionId, ctx);
+            traceRegistry.ensure(sessionId);
+            log.info("[{}] rehydrated StageContext from DB for run stage={}", sessionId, stageName);
+        }
 
         int idx = pipeline.indexOf(stageName);
         if (idx < 0) throw new IllegalArgumentException("Unknown stage: " + stageName);

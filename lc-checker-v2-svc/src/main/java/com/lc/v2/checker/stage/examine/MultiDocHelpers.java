@@ -265,6 +265,99 @@ public final class MultiDocHelpers {
     }
 
     /**
+     * TRANS-01 — B/L bears on-board notation and date, dispatching by bl_form_type.
+     * <p>
+     * Per UCP 20(a)(ii):
+     * <ul>
+     *   <li>"received_for_shipment" form REQUIRES a separate dated on-board notation.</li>
+     *   <li>"shipped_on_board" form treats the B/L issue date as the shipment date,
+     *       unless an explicit on-board notation overrides.</li>
+     * </ul>
+     * Falls back to legacy {@link #onBoardNotationPresent} when extraction has not
+     * surfaced bl_form_type (older extractor or genuinely ambiguous form).
+     */
+    public static Map<String, Object> bolOnBoardCheck(Map<String, Object> bol) {
+        if (bol == null) return result("NOT_APPLICABLE", "BOL not presented", 1.0);
+        Object form = unwrap(bol.get("bl_form_type"));
+        Object notation = unwrap(bol.get("onboard_notation"));
+        Object onBoardDate = unwrap(bol.get("on_board_date"));
+        Object issueDate = unwrap(bol.get("bl_date"));
+        Object shipDate = unwrap(bol.get("shipment_date"));
+
+        if (form == null || form.toString().isBlank()) {
+            return onBoardNotationPresent(bol);
+        }
+        String f = form.toString().toLowerCase().trim();
+
+        if (f.contains("received_for_shipment") || f.contains("received for shipment")) {
+            boolean hasNotation = notation != null && !notation.toString().isBlank()
+                    && !"PRE-PRINTED".equalsIgnoreCase(notation.toString().trim());
+            boolean hasDate = onBoardDate != null && !onBoardDate.toString().isBlank();
+            if (hasNotation && hasDate) {
+                return result("PASS",
+                        "Received-for-shipment B/L bears separate on-board notation '" + notation
+                                + "' dated " + onBoardDate, 1.0);
+            }
+            return result("FAIL",
+                    "Received-for-shipment B/L lacks dated on-board notation (UCP 20(a)(ii)). "
+                            + "notation='" + notation + "', on_board_date='" + onBoardDate + "'", 1.0);
+        }
+
+        if (f.contains("shipped_on_board") || f.contains("shipped on board")) {
+            // Issue date is the shipment date unless an explicit on-board notation overrides.
+            if (notation != null && !notation.toString().isBlank()
+                    && !"PRE-PRINTED".equalsIgnoreCase(notation.toString().trim())
+                    && onBoardDate != null) {
+                return result("PASS",
+                        "Shipped-on-board B/L; explicit on-board notation '" + notation
+                                + "' overrides issue date with " + onBoardDate, 1.0);
+            }
+            if (issueDate != null || shipDate != null) {
+                Object effective = shipDate != null ? shipDate : issueDate;
+                return result("PASS",
+                        "Pre-printed shipped-on-board B/L; effective shipment date " + effective, 1.0);
+            }
+            return result("FAIL",
+                    "Shipped-on-board B/L lacks issue date or on-board notation (UCP 20(a)(ii))", 1.0);
+        }
+
+        // Unknown form — fall back to generic check
+        return onBoardNotationPresent(bol);
+    }
+
+    /**
+     * DATE-03 — shipment date ≤ LC :44C: latest_shipment_date.
+     * Shipment date priority: on_board_date > shipment_date > bl_date.
+     */
+    public static Map<String, Object> shipmentNotLate(
+            Map<String, Object> bol, Object lcLatestShipmentDate) {
+        if (bol == null) return result("NOT_APPLICABLE", "BOL not presented", 1.0);
+        Object lcDate = unwrap(lcLatestShipmentDate);
+        if (lcDate == null) {
+            return result("NOT_APPLICABLE", "LC :44C: latest_shipment_date not populated", 1.0);
+        }
+        Object shipped = firstNonBlank(bol, "on_board_date", "shipment_date", "bl_date");
+        if (shipped == null) {
+            return result("FAIL",
+                    "BOL lacks any shipment-related date — cannot verify against :44C: " + lcDate, 1.0);
+        }
+        try {
+            LocalDate ship = LocalDate.parse(shipped.toString().trim());
+            LocalDate latest = LocalDate.parse(lcDate.toString().trim());
+            if (ship.isAfter(latest)) {
+                return result("FAIL",
+                        "Shipment date " + ship + " > LC latest_shipment_date " + latest
+                                + " (UCP 6(d), :44C:)", 1.0);
+            }
+            return result("PASS",
+                    "Shipment date " + ship + " ≤ LC latest_shipment_date " + latest, 1.0);
+        } catch (DateTimeParseException e) {
+            return result("DOUBTS",
+                    "Could not parse dates: ship='" + shipped + "', lc='" + lcDate + "'", 0.5);
+        }
+    }
+
+    /**
      * SHIP-01 — BOL bears on-board notation (UCP 20(a)(ii) / ISBP D20).
      * PASS if the consensus extraction marks the BOL as on-board, or if
      * `onboard_notation` carries a date / non-empty value.

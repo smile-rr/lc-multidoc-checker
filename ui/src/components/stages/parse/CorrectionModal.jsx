@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Modal } from '../../shared/Modal';
+import { Diff, diffCount } from './Diff';
 
 const KIND_OPTIONS = [
   ['model', 'Model got it wrong',     'The page is clear; extractor mis-read. Sends to model-quality queue.'],
@@ -11,7 +12,7 @@ const KIND_OPTIONS = [
  * Officer correction modal — distinguishes doc-issue vs model-issue and persists
  * the corrected value via POST /sessions/{id}/documents/{docId}/fields/{key}/correction.
  */
-export function CorrectionModal({ open, onClose, label, currentValue, slotValues, onSave }) {
+export function CorrectionModal({ open, onClose, label, currentValue, slotValues, fieldType, onSave }) {
   const [issueKind, setIssueKind] = useState('model');
   const [value, setValue] = useState(currentValue ?? '');
   const [note, setNote] = useState('');
@@ -59,20 +60,35 @@ export function CorrectionModal({ open, onClose, label, currentValue, slotValues
 
         {slots.length > 1 && (
           <div>
-            <div className="text-[10px] tracking-[0.2em] uppercase text-muted mb-2 font-mono">WHAT EACH EXTRACTOR SAW</div>
-            <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${slots.length}, minmax(0, 1fr))` }}>
-              {slots.map(s => {
-                const v = String(extractValue(slotValues[s]) ?? '—');
+            <div className="border border-line rounded overflow-hidden">
+              {slots.map((s, i) => {
+                const v = String(extractValue(slotValues[s]) ?? '');
+                const baseline = slots.length === 2
+                  ? String(extractValue(slotValues[slots[1 - i]]) ?? '')
+                  : String(currentValue ?? '');
+                const isSelected = v === String(value ?? '');
                 return (
-                  <div key={s} className="border border-line rounded p-2 bg-slate2">
-                    <div className="text-[9px] tracking-wider uppercase text-muted font-mono">{s}</div>
-                    <div className="text-[11px] mt-0.5 break-words font-mono">{v}</div>
-                    <button
-                      onClick={() => setValue(v)}
-                      className="mt-1 text-[9px] text-status-blue hover:underline"
-                    >
-                      use this →
-                    </button>
+                  <div key={s} className="grid grid-cols-[80px_1fr_50px] items-stretch border-b border-line/50 last:border-b-0">
+                    <div className={`px-2.5 py-2 bg-slate2 border-r border-line/50 text-[9px] tracking-wider uppercase font-mono flex flex-col justify-center ${isSelected ? 'text-teal-1 font-semibold' : 'text-muted'}`}>
+                      {s}{isSelected && <span> ✓</span>}
+                    </div>
+                    <div className="px-2.5 py-2 text-[11px] break-words leading-relaxed">
+                      <Diff
+                        baseline={baseline}
+                        value={v}
+                        fieldType={fieldType}
+                        mode="own"
+                        tone={isSelected ? 'green' : 'red'}
+                      />
+                    </div>
+                    <div className="px-2 py-2 border-l border-line/50 flex items-center justify-center">
+                      <button
+                        onClick={() => setValue(v)}
+                        className="text-[9px] text-status-blue hover:underline"
+                      >
+                        use →
+                      </button>
+                    </div>
                   </div>
                 );
               })}

@@ -2,8 +2,10 @@ package com.lc.v2.checker.stage.parse;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lc.v2.checker.domain.common.BBox;
 import com.lc.v2.checker.domain.common.DocType;
 import com.lc.v2.checker.domain.common.FieldEnvelope;
+import com.lc.v2.checker.domain.common.FieldValue;
 import com.lc.v2.checker.domain.document.DocumentExtract;
 import com.lc.v2.checker.domain.document.OffSchemaItem;
 import com.lc.v2.checker.infra.cache.CacheKey;
@@ -404,10 +406,19 @@ public class VisionExtractService {
             if (content == null || content.isBlank()) return FieldEnvelope.empty();
             JsonNode fields = objectMapper.readTree(content);
             FieldEnvelope.Builder builder = FieldEnvelope.builder();
+            // Read raw_quotes side-channel (W2 provenance contract) — used to populate FieldValue meta.
+            JsonNode rawQuotes = fields.path("raw_quotes");
             fields.fields().forEachRemaining(e -> {
-                if (!"off_schema_items".equals(e.getKey())) {
-                    JsonNode v = e.getValue();
-                    if (!v.isNull()) builder.put(e.getKey(), v.isTextual() ? v.asText() : v.toString());
+                String key = e.getKey();
+                if ("off_schema_items".equals(key) || "raw_quotes".equals(key)) return;
+                JsonNode v = e.getValue();
+                if (v.isNull()) return;
+                Object value = v.isTextual() ? v.asText() : (v.isNumber() ? (Object) v.numberValue() : v.toString());
+                String quote = rawQuotes.has(key) ? rawQuotes.path(key).asText(null) : null;
+                if (quote != null) {
+                    builder.put(key, FieldValue.of(value, 1.0, quote));
+                } else {
+                    builder.put(key, value);
                 }
             });
             if (fields.has("off_schema_items")) {
@@ -443,7 +454,27 @@ public class VisionExtractService {
             if (winner == null && bySlot.containsKey(primarySourceName)) {
                 winner = bySlot.get(primarySourceName).get(key);
             }
-            builder.put(key, winner);
+            if (winner == null) continue;
+            // Preserve provenance: pick FieldValue meta from the slot that voted for the winner
+            // (prefer primary slot when it agrees).
+            FieldValue meta = null;
+            if (bySlot.containsKey(primarySourceName)
+                    && winner.equals(bySlot.get(primarySourceName).get(key))) {
+                meta = bySlot.get(primarySourceName).meta(key);
+            }
+            if (meta == null) {
+                for (var entry : bySlot.entrySet()) {
+                    if (winner.equals(entry.getValue().get(key))) {
+                        FieldValue m = entry.getValue().meta(key);
+                        if (m != null) { meta = m; break; }
+                    }
+                }
+            }
+            if (meta != null) {
+                builder.put(key, meta);
+            } else {
+                builder.put(key, winner);
+            }
         }
         return builder.build();
     }
@@ -462,15 +493,32 @@ public class VisionExtractService {
             JsonNode arr = objectMapper.readTree(raw.toString());
             List<OffSchemaItem> items = new ArrayList<>();
             for (JsonNode node : arr) {
+                List<String> tags = null;
+                if (node.has("tags") && node.path("tags").isArray()) {
+                    tags = new ArrayList<>();
+                    for (JsonNode t : node.path("tags")) tags.add(t.asText());
+                }
+                BBox bbox = null;
+                JsonNode bboxNode = node.path("bbox");
+                if (bboxNode.isObject() && bboxNode.has("x")) {
+                    bbox = new BBox(
+                            bboxNode.has("x") ? bboxNode.path("x").asInt() : null,
+                            bboxNode.has("y") ? bboxNode.path("y").asInt() : null,
+                            bboxNode.has("w") ? bboxNode.path("w").asInt() : null,
+                            bboxNode.has("h") ? bboxNode.path("h").asInt() : null);
+                }
                 items.add(new OffSchemaItem(
+                        node.path("raw_quote").asText(null),
+                        tags,
+                        node.has("page") ? node.path("page").asInt() : null,
+                        bbox,
+                        node.has("confidence") ? node.path("confidence").asDouble() : null,
                         node.path("kind").asText(null),
                         node.path("value").asText(null),
                         node.path("field_hint").asText(null),
                         node.path("location").asText(null),
                         node.path("original").asText(null),
-                        node.has("authenticated") ? node.path("authenticated").asBoolean() : null,
-                        node.has("page") ? node.path("page").asInt() : null,
-                        node.has("confidence") ? node.path("confidence").asDouble() : null));
+                        node.has("authenticated") ? node.path("authenticated").asBoolean() : null));
             }
             return List.copyOf(items);
         } catch (Exception e) {

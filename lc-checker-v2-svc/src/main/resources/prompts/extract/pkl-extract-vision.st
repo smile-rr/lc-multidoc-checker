@@ -12,35 +12,78 @@ Required fields to extract:
 - total_net_weight: total net weight with unit (string or null, e.g. "5000 KGS")
 - total_gross_weight: total gross weight with unit (string or null, e.g. "5200 KGS")
 - quantity: total goods quantity with unit (string or null, e.g. "500 SETS")
+- packages_per_carton: structured breakdown if present (array of {carton_no, quantity, net_wt, gross_wt} or null)
+- consolidation_type: "master_pack" if the document indicates consolidated/master packing, "per_carton" if itemized, "aggregate_only" if only totals shown, or null
+- goods_description: goods description as printed (string or null) — used by XD-02 to verify PKL description not inconsistent with INV/LC :45A:
 - signed: true if a signature is present, false otherwise (boolean)
+- signature_party: printed name and/or title of the signing party (e.g. "ACME Trading Co., Manager"); null if unsigned
 - stamp_present: true if a company stamp is visible, false otherwise (boolean)
 - watermark_type: ORIGINAL, COPY, DUPLICATE, or null
 
-off_schema_items: array — EXHAUSTIVE capture of every visible content block NOT already stored in the
-structured fields above. Any printed, stamped, handwritten, or watermarked text that did not go into
-a schema field MUST appear here. Per-carton breakdown lines, container/seal numbers, transport
-references, declarations ("we hereby certify…"), footer text, page headers, reference codes, contact
-details — all count.
+PACKING-LIST-SPECIFIC HINTS (UCP/ISBP context — extract evidence accordingly):
+- Per-carton breakdown structure matters for cross-document quantity/weight reconciliation (XD-01). If the document shows per-carton rows (e.g. "CTN 1: 50 PCS / 25 KG / 26 KG", "CTN 2: …"), extract them into "packages_per_carton" AND verify the sum matches "total_packages"/"total_net_weight"/"total_gross_weight". If sums diverge, note discrepancy in off_schema_items with tag ["sum_inconsistency"].
+- Shipping marks block: this is checked against the B/L per UCP 14(e). Extract the FULL marks block verbatim — including line breaks — into "shipping_marks". Marks often span multiple lines and may include addresses, port codes, package counts, batch numbers.
+- Consolidation: distinguish "master pack" (one outer carton containing N inner items) from "per carton" (each item is its own carton). The consolidation type affects how XD-01 reconciles INV ↔ PKL ↔ BOL counts.
+- "Said to contain" / "shipper's load and count" notations on PKL do not affect cleanliness checks (those are BOL-only) but DO affect quantity reliability. Capture verbatim with tag ["shipper_count_notation"].
+- Weight units: kg vs MT vs lbs — preserve the unit token exactly as printed; do not normalize.
 
-Each item: {"kind": "...", "value": "<verbatim text>", "field_hint": "<canonical field if related, else null>",
-            "page": <int>, "confidence": 0.0-1.0}
+PROVENANCE — raw_quotes (mandatory)
+-----------------------------------
+For every schema field you populated with a non-null value, include the verbatim
+source text in a top-level "raw_quotes" object, keyed by the same field name.
 
-Allowed "kind" values:
-- "free-text"   — DEFAULT for any printed text block not captured by a schema field (per-carton
-                  detail rows, declarations, footer text, headers, anything else printed).
-                  Preserve line breaks with \n.
-- "handwritten" — handwritten annotation
-- "stamp"       — ink stamp / seal
-- "watermark"   — watermark text
-- "correction"  — struck-through or corrected text; also include "original": "<old text>",
-                  "authenticated": true/false
+Example:
+  "total_packages": "200 CTNS",
+  "total_net_weight": "5,000 KGS",
+  "shipping_marks": "ACME / HAMBURG / 1-200 / MADE IN CHINA",
+  ...
+  "raw_quotes": {
+    "total_packages": "TOTAL: 200 CARTONS",
+    "total_net_weight": "Net Weight: 5,000 KGS",
+    "shipping_marks": "MARKS & NUMBERS:\nACME\nHAMBURG\n1-200\nMADE IN CHINA",
+    ...
+  }
 
-Coverage self-check (mandatory): re-scan the page; if any printed/written region is not in a schema
-field or off_schema item, add it as "free-text" before returning. When in doubt, INCLUDE it.
+If a field value is null, do not include a key for it in raw_quotes.
+
+OFF-SCHEMA ITEMS — exhaustive open-world capture
+------------------------------------------------
+off_schema_items: array — EXHAUSTIVE capture of every visible content block NOT
+already stored in the structured fields above. Per-carton breakdown rows (if not
+captured in packages_per_carton), container/seal numbers, transport references,
+declarations ("we hereby certify…"), footer text, page headers, reference
+codes, contact details — all count.
+
+Each item:
+  {
+    "raw_quote": "<verbatim text>",
+    "tags": ["<from tag vocabulary below>"],
+    "page": <int>,
+    "confidence": 0.0-1.0,
+    "kind": "<legacy kind>",
+    "value": "<short summary or verbatim if short>",
+    "field_hint": "<canonical field if related, else null>",
+    "location": "<optional>",
+    "original": "<correction only>",
+    "authenticated": true/false
+  }
+
+Tag vocabulary (lowercase snake_case):
+  package_marks · shipping_marks_block · per_carton_row · sum_inconsistency ·
+  shipper_count_notation · container_seal · transport_reference ·
+  declaration · certification · signature_block · stamp_seal · watermark ·
+  reference_code · header · footer · contact_info
+
+Allowed "kind" values (legacy):
+- "free-text", "handwritten", "stamp", "watermark", "correction"
+
+Coverage self-check (mandatory): re-scan the page; if any printed/written
+region is not in a schema field or off_schema item, add it as "free-text"
+before returning. When in doubt, INCLUDE it.
 
 IMPORTANT:
-- Shipping marks must be extracted verbatim — these are checked against the B/L
-- If packing list shows per-carton breakdown, consolidate to totals in the schema fields, but still
-  capture the per-carton detail rows as "free-text" off_schema_items so nothing is lost
+- Shipping marks must be extracted verbatim — these are checked against the B/L (UCP 14(e), ISBP C12)
+- If packing list shows per-carton breakdown, populate packages_per_carton AND retain the per-carton detail rows as off_schema_items entries with tag ["per_carton_row"]
+- raw_quotes must contain an entry for every non-null schema field
 - off_schema_items must NEVER be empty unless the page is genuinely blank apart from schema fields
 - Do NOT wrap output in markdown code blocks

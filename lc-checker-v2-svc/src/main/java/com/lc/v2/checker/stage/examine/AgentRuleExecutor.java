@@ -329,7 +329,7 @@ public class AgentRuleExecutor {
     }
 
     private String userPromptFor(Rule rule) {
-        return rulePromptCache.computeIfAbsent(rule.ruleId(), id -> {
+        String raw = rulePromptCache.computeIfAbsent(rule.ruleId(), id -> {
             try {
                 Resource r = resourceLoader.getResource("classpath:/prompts/check/" + id + ".st");
                 if (r.exists()) {
@@ -342,6 +342,10 @@ public class AgentRuleExecutor {
             }
             return rule.promptInstruction() != null ? rule.promptInstruction() : "";
         });
+        // W3 — single source of truth for UCP/ISBP text. The .st template (or
+        // promptInstruction inline) names refs as {{ref.<id>.text}}; we resolve
+        // them against the corpus YAML at execution time. Unknown id → fail-fast.
+        return refs.resolve(raw);
     }
 
     private String buildPrompt(Rule rule, StageContext ctx, boolean toolHint, int maxIterations) {
@@ -364,9 +368,7 @@ public class AgentRuleExecutor {
             sb.append("\n");
         }
 
-        if (rule.ucpExcerpt() != null && !rule.ucpExcerpt().isBlank()) {
-            sb.append("Rule excerpt:\n").append(rule.ucpExcerpt().trim()).append("\n\n");
-        }
+        // W3: ucpExcerpt deprecated — UCP/ISBP text resolves via ArticleRefRegistry.
 
         sb.append("LC fields:\n");
         for (String key : rule.fieldKeys()) {

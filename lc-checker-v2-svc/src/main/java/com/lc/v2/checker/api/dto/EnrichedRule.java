@@ -37,5 +37,6 @@ public record EnrichedRule(
         String completedAt,
         String canonicalField,
         List<Map<String, Object>> toolCalls,
-        List<Map<String, Object>> conditionResults
+        List<Map<String, Object>> conditionResults,
+        String model
 ) {}

@@ -254,9 +254,14 @@ export function RuleDrawer({ rule, width = 540, session, onClose, onOverride, on
                 ↻ Reset to system verdict
               </button>
             )}
-            <span className="ml-auto text-[10px] text-muted font-mono">
-              QA flag is a checkbox inside override · audit trail captures all actions
-            </span>
+            {rule.model && (
+              <span
+                className="ml-auto text-[10px] text-muted font-mono"
+                title={`LLM model · ${rule.model}`}
+              >
+                model · {rule.model}
+              </span>
+            )}
           </div>
         ) : (
           <OverrideForm

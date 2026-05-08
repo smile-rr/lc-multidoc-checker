@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Parse · Slot Compare Diff — design study</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --paper:        #faf9f5;
+    --paper-warm:   #f4f1e6;
+    --paper-rule:   #ece9df;
+    --ink:          #1d1d1f;
+    --ink-muted:    #6e6e73;
+    --ink-faint:    #a8a39a;
+    --teal:         #0a7e6a;
+    --gold:         #8a5700;
+    --add-bg:       #e6f1e8;
+    --add-line:     #1a7a43;
+    --del-bg:       #fbe8e8;
+    --del-line:     #c0252e;
+    --warn-bg:      #fbf3df;
+    --warn-line:    #b07c00;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--paper);
+    background-image:
+      radial-gradient(circle at 20% 0%, rgba(10,126,106,0.025), transparent 40%),
+      radial-gradient(circle at 80% 100%, rgba(138,87,0,0.02), transparent 50%);
+    color: var(--ink);
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-size: 15px;
+    line-height: 1.55;
+    font-feature-settings: "kern", "liga", "onum";
+    padding: 56px 64px 96px;
+    min-height: 100vh;
+  }
+  .grain {
+    position: fixed; inset: 0; pointer-events: none; z-index: 1;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    mix-blend-mode: multiply;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; position: relative; z-index: 2; }
+  /* eyebrow */
+  .eyebrow {
+    display: flex; align-items: baseline; gap: 18px;
+    border-bottom: 1px solid var(--paper-rule);
+    padding-bottom: 14px; margin-bottom: 40px;
+  }
+  .eyebrow .num {
+    font-family: 'Source Serif 4', serif; font-style: italic; font-weight: 400;
+    font-size: 40px; line-height: 1; color: var(--ink); letter-spacing: -0.01em;
+  }
+  .eyebrow h1 {
+    margin: 0; font-family: 'Source Serif 4', serif; font-weight: 500;
+    font-size: 22px; letter-spacing: -0.005em;
+  }
+  .eyebrow .meta {
+    margin-left: auto;
+    font-family: 'Inter Tight', sans-serif; font-size: 10.5px;
+    text-transform: uppercase; letter-spacing: 0.18em; color: var(--ink-muted);
+  }
+  .lede {
+    font-family: 'Source Serif 4', serif; font-style: italic;
+    color: var(--ink-muted); font-size: 14.5px; max-width: 720px;
+    margin-bottom: 56px;
+  }
+  /* section */
+  section { margin-bottom: 64px; }
+  section header {
+    display: flex; align-items: baseline; gap: 14px; margin-bottom: 18px;
+  }
+  section header .idx {
+    font-family: 'Source Serif 4', serif; font-style: italic; font-weight: 400;
+    font-size: 22px; color: var(--gold); width: 28px; flex: none;
+  }
+  section header h2 {
+    margin: 0; font-size: 16.5px; font-weight: 600; letter-spacing: -0.005em;
+  }
+  section header .tag {
+    font-family: 'Inter Tight', sans-serif; font-size: 10px;
+    text-transform: uppercase; letter-spacing: 0.16em;
+    color: var(--ink-muted);
+    border: 1px solid var(--paper-rule); padding: 2px 8px;
+  }
+  section > .hint {
+    font-family: 'Source Serif 4', serif; font-style: italic; font-size: 13.5px;
+    color: var(--ink-muted); margin: 0 0 22px 42px; max-width: 760px;
+  }
+
+  /* ───────── pattern A : inline strip (replaces in-row "compare" link) ───────── */
+  .strip-card {
+    margin-left: 42px;
+    border: 1px solid var(--paper-rule);
+    background: var(--paper);
+    padding: 0;
+  }
+  .strip-row {
+    display: grid; grid-template-columns: 184px 1fr 92px;
+    align-items: stretch;
+    border-bottom: 1px solid var(--paper-rule);
+  }
+  .strip-row:last-child { border-bottom: none; }
+  .strip-key {
+    font-family: 'Inter Tight', sans-serif; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.13em; color: var(--ink-muted);
+    padding: 14px 16px; border-right: 1px solid var(--paper-rule);
+    background: var(--paper-warm);
+  }
+  .strip-key small {
+    display: block; margin-top: 4px;
+    font-size: 9.5px; letter-spacing: 0.18em; color: var(--ink-faint);
+    text-transform: uppercase;
+  }
+  .strip-body {
+    padding: 12px 16px; display: flex; flex-direction: column; gap: 6px;
+    font-size: 13.5px;
+  }
+  .strip-line {
+    display: grid; grid-template-columns: 56px 1fr; align-items: baseline; gap: 12px;
+  }
+  .strip-line .label {
+    font-family: 'Inter Tight', sans-serif; font-size: 9.5px;
+    letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-faint);
+  }
+  .strip-line .label.win { color: var(--teal); font-weight: 600; }
+  .strip-line .val { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: var(--ink); }
+  .strip-line .val.serif { font-family: 'Source Serif 4', serif; font-size: 13.5px; }
+  .strip-status {
+    padding: 12px 14px; border-left: 1px solid var(--paper-rule);
+    display: flex; flex-direction: column; align-items: flex-end; justify-content: center;
+    text-align: right;
+  }
+  .delta {
+    font-family: 'Source Serif 4', serif; font-style: italic; font-size: 22px; color: var(--gold);
+    line-height: 1;
+  }
+  .delta.match { color: var(--teal); font-style: normal; font-size: 14px; }
+  .delta-label {
+    margin-top: 4px;
+    font-family: 'Inter Tight', sans-serif; font-size: 9.5px;
+    letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-muted);
+  }
+
+  /* diff pills — same vocabulary used everywhere */
+  .d-add {
+    background: var(--add-bg);
+    color: var(--add-line);
+    border-bottom: 1px solid var(--add-line);
+    padding: 0 1px;
+  }
+  .d-del {
+    background: var(--del-bg);
+    color: var(--del-line);
+    text-decoration: line-through;
+    text-decoration-color: rgba(192,37,46,0.55);
+    text-decoration-thickness: 1px;
+    padding: 0 1px;
+  }
+  .d-eq { color: var(--ink); }
+  .d-space { letter-spacing: 0.02em; }
+  /* a tiny visible mark for whitespace-only diffs */
+  .d-add[data-ws],
+  .d-del[data-ws] {
+    position: relative;
+  }
+  .d-add[data-ws]::before,
+  .d-del[data-ws]::before {
+    content: "·"; font-family: 'JetBrains Mono', monospace;
+    color: rgba(0,0,0,0.4); margin-right: 1px;
+  }
+
+  /* ───────── pattern B : stacked compare (right panel) ───────── */
+  .stack {
+    margin-left: 42px;
+    background: var(--paper);
+    border: 1px solid var(--paper-rule);
+    padding: 22px 26px;
+    max-width: 720px;
+  }
+  .stack-head {
+    display: flex; align-items: baseline; gap: 14px;
+    border-bottom: 1px solid var(--paper-rule); padding-bottom: 12px; margin-bottom: 18px;
+  }
+  .stack-head .field-name {
+    font-family: 'Source Serif 4', serif; font-size: 18px; font-weight: 500;
+  }
+  .stack-head .field-key {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    color: var(--ink-faint); text-transform: lowercase;
+  }
+  .stack-head .right {
+    margin-left: auto;
+    font-family: 'Inter Tight', sans-serif; font-size: 10.5px;
+    text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-muted);
+  }
+  .stack-row {
+    display: grid; grid-template-columns: 110px 1fr;
+    align-items: baseline; gap: 16px;
+    padding: 10px 0;
+    border-bottom: 1px dotted var(--paper-rule);
+  }
+  .stack-row:last-of-type { border-bottom: none; }
+  .stack-row .who {
+    font-family: 'Inter Tight', sans-serif; font-size: 10.5px;
+    text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-muted);
+  }
+  .stack-row .who .conf {
+    display: block; margin-top: 3px; font-size: 9px; color: var(--ink-faint);
+    letter-spacing: 0.2em;
+  }
+  .stack-row.consensus .who { color: var(--teal); font-weight: 600; }
+  .stack-row .val {
+    font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.5;
+  }
+  .stack-row .val.serif { font-family: 'Source Serif 4', serif; font-size: 14.5px; line-height: 1.55; }
+  .stack-summary {
+    margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--paper-rule);
+    display: flex; gap: 24px; align-items: baseline;
+    font-family: 'Inter Tight', sans-serif; font-size: 11px;
+    color: var(--ink-muted); letter-spacing: 0.04em;
+  }
+  .stack-summary .legend {
+    display: inline-flex; align-items: baseline; gap: 6px;
+  }
+  .stack-summary .swatch {
+    display: inline-block; width: 10px; height: 10px; vertical-align: middle;
+    border-bottom: 1px solid;
+  }
+  .stack-summary .swatch.add { background: var(--add-bg); border-color: var(--add-line); }
+  .stack-summary .swatch.del { background: var(--del-bg); border-color: var(--del-line); }
+
+  /* ───────── pattern C : correction modal popup ───────── */
+  .modal-stage {
+    margin-left: 42px;
+    position: relative;
+    background:
+      repeating-linear-gradient(45deg,
+        transparent 0 12px,
+        rgba(20,34,54,0.025) 12px 13px);
+    padding: 60px 80px;
+    border: 1px dashed var(--ink-faint);
+  }
+  .modal {
+    max-width: 640px; margin: 0 auto;
+    background: var(--paper);
+    border: 1px solid var(--ink);
+    box-shadow: 8px 8px 0 -1px rgba(20,34,54,0.06);
+  }
+  .modal-eyebrow {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 12px 20px; border-bottom: 1px solid var(--paper-rule);
+    background: var(--paper-warm);
+  }
+  .modal-eyebrow .crumbs {
+    font-family: 'Inter Tight', sans-serif; font-size: 10px;
+    text-transform: uppercase; letter-spacing: 0.18em; color: var(--ink-muted);
+  }
+  .modal-eyebrow .crumbs strong { color: var(--ink); font-weight: 600; }
+  .modal-eyebrow .x {
+    font-family: 'JetBrains Mono', monospace; color: var(--ink-muted);
+    cursor: pointer; font-size: 14px;
+  }
+  .modal-title {
+    padding: 22px 26px 8px;
+  }
+  .modal-title h3 {
+    margin: 0; font-family: 'Source Serif 4', serif;
+    font-size: 19px; font-weight: 500; letter-spacing: -0.005em;
+  }
+  .modal-title .sub {
+    font-family: 'Inter Tight', sans-serif; font-size: 10.5px;
+    text-transform: uppercase; letter-spacing: 0.16em; color: var(--ink-muted);
+    margin-top: 6px;
+  }
+  .modal-body { padding: 6px 26px 22px; }
+
+  /* the slot strip inside the modal */
+  .slot-strip {
+    margin-top: 14px; border: 1px solid var(--paper-rule);
+  }
+  .slot-strip .row {
+    display: grid; grid-template-columns: 100px 1fr 36px;
+    align-items: stretch; border-bottom: 1px solid var(--paper-rule);
+  }
+  .slot-strip .row:last-child { border-bottom: none; }
+  .slot-strip .row.consensus { background: var(--paper-warm); }
+  .slot-strip .who {
+    font-family: 'Inter Tight', sans-serif; font-size: 10px;
+    letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-muted);
+    padding: 12px 12px; border-right: 1px solid var(--paper-rule);
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .slot-strip .row.consensus .who { color: var(--teal); font-weight: 600; }
+  .slot-strip .who .conf { font-size: 9px; color: var(--ink-faint); margin-top: 3px; letter-spacing: 0.2em; }
+  .slot-strip .val {
+    font-family: 'JetBrains Mono', monospace; font-size: 12.5px;
+    padding: 12px 14px; line-height: 1.5;
+  }
+  .slot-strip .val.serif { font-family: 'Source Serif 4', serif; font-size: 13.5px; }
+  .slot-strip .pick {
+    display: flex; align-items: center; justify-content: center;
+    border-left: 1px solid var(--paper-rule);
+    cursor: pointer;
+  }
+  .slot-strip .pick input[type=radio] { accent-color: var(--ink); }
+
+  .raw-quote {
+    margin-top: 18px; padding: 12px 14px;
+    border-left: 3px solid var(--gold);
+    background: rgba(138,87,0,0.04);
+    font-family: 'Source Serif 4', serif; font-style: italic;
+    font-size: 13px; color: var(--ink); line-height: 1.5;
+  }
+  .raw-quote::before {
+    content: "raw quote · slot-1 · page 1";
+    display: block;
+    font-family: 'Inter Tight', sans-serif; font-style: normal;
+    font-size: 9.5px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--gold); margin-bottom: 6px;
+  }
+
+  .modal-input {
+    margin-top: 18px;
+    border: 1px solid var(--ink); padding: 0;
+  }
+  .modal-input label {
+    display: block; padding: 8px 14px 0;
+    font-family: 'Inter Tight', sans-serif; font-size: 10px;
+    letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-muted);
+  }
+  .modal-input input {
+    width: 100%; border: 0; outline: 0; background: transparent;
+    font-family: 'JetBrains Mono', monospace; font-size: 14px;
+    padding: 4px 14px 12px; color: var(--ink);
+  }
+  .modal-actions {
+    display: flex; justify-content: flex-end; gap: 18px;
+    padding: 18px 26px 24px;
+    font-family: 'Inter Tight', sans-serif; font-size: 12px;
+    letter-spacing: 0.04em;
+  }
+  .modal-actions button {
+    background: transparent; border: 0; padding: 0; cursor: pointer;
+    color: var(--ink-muted); font: inherit;
+  }
+  .modal-actions button.primary { color: var(--ink); font-weight: 600; }
+  .modal-actions button.primary::after { content: " →"; }
+  .modal-actions button:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 4px; }
+
+  /* footnote / arch box */
+  .arch {
+    margin-top: 80px;
+    border-top: 1px solid var(--paper-rule);
+    padding-top: 32px;
+    display: grid; grid-template-columns: 220px 1fr; gap: 48px;
+  }
+  .arch h3 {
+    margin: 0; font-family: 'Source Serif 4', serif; font-style: italic;
+    font-size: 18px; font-weight: 400; color: var(--ink);
+  }
+  .arch .num {
+    font-family: 'Source Serif 4', serif; font-style: italic; color: var(--gold);
+    font-size: 36px; line-height: 1;
+  }
+  .arch p {
+    font-size: 14px; line-height: 1.65; color: var(--ink); margin: 0 0 12px;
+    max-width: 640px;
+  }
+  .arch code {
+    font-family: 'JetBrains Mono', monospace; font-size: 12.5px;
+    background: var(--paper-warm); padding: 1px 5px;
+  }
+
+  /* tiny visible character markers used inline */
+  sup.mark {
+    font-family: 'Source Serif 4', serif; font-feature-settings: "sups";
+    color: var(--gold); margin-left: 1px;
+  }
+</style>
+</head>
+<body>
+<div class="grain"></div>
+<div class="wrap">
+
+  <div class="eyebrow">
+    <div class="num">07</div>
+    <h1>Parse · slot compare</h1>
+    <div class="meta">design study · diff visualisation</div>
+  </div>
+
+  <p class="lede">
+    The current compare view prints two rows of plain text and lets the officer
+    scan for divergences character by character. Three patterns below replace
+    that with a token-level diff. The vocabulary is the same in all three:
+    <span class="d-del">washed crimson, struck through</span> for what one slot omitted,
+    <span class="d-add">a celadon underline</span> for what the other added.
+    Whitespace differences carry a small <code style="font-family:'JetBrains Mono',monospace;font-size:12px;background:var(--del-bg);padding:0 3px;">·</code> mark
+    so they're never invisible.
+  </p>
+
+  <!-- ─────────── PATTERN A · INLINE STRIP ─────────── -->
+  <section>
+    <header>
+      <span class="idx">i.</span>
+      <h2>In-row strip — replaces the “+ compare” link</h2>
+      <span class="tag">expand-in-place</span>
+    </header>
+    <p class="hint">
+      Default state collapses into the existing field row. When the officer expands a
+      disagreeing field, both slot values appear with token-level highlight; the right
+      gutter shows a single &nbsp;<i style="color:var(--gold)">δ</i>&nbsp; with a count.
+      Designed for short fields (party names, dates, currencies) where stacking is overkill.
+    </p>
+
+    <div class="strip-card" id="stripA"></div>
+  </section>
+
+  <!-- ─────────── PATTERN B · STACKED COMPARE ─────────── -->
+  <section>
+    <header>
+      <span class="idx">ii.</span>
+      <h2>Stacked compare — for the right panel</h2>
+      <span class="tag">replaces CompareModeTable</span>
+    </header>
+    <p class="hint">
+      Per-field card. Consensus on top in warm paper; each slot below with its
+      diff rendered against the consensus, not against each other. For long-form
+      fields (goods description, conditions text) the diff renders as a single
+      flowing block — divergent words pop out without forcing eye-pingpong.
+    </p>
+
+    <div class="stack" id="stackB"></div>
+  </section>
+
+  <!-- ─────────── PATTERN C · CORRECTION MODAL ─────────── -->
+  <section>
+    <header>
+      <span class="idx">iii.</span>
+      <h2>Correction popup — “model got it wrong”</h2>
+      <span class="tag">CorrectionModal.jsx</span>
+    </header>
+    <p class="hint">
+      The popup shows a slot picker (radio per slot, one click adopts that slot
+      verbatim), the diff against the current consensus, the verbatim
+      <code style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--gold);background:var(--paper-warm);padding:0 4px;">raw_quote</code>
+      from the document with page number, and a free-text override input for cases
+      where neither slot is right.
+    </p>
+
+    <div class="modal-stage">
+      <div class="modal" id="modalC"></div>
+    </div>
+  </section>
+
+  <div class="arch">
+    <div>
+      <div class="num">α</div>
+      <h3>Where the diff is computed</h3>
+    </div>
+    <div>
+      <p>
+        In the UI. The <code>diff</code> npm package (≈ 5 KB gzip) is the only
+        dependency. <code>diffWordsWithSpace</code> for prose,
+        <code>diffChars</code> for ids and amounts. Field values are short
+        enough that O(mn) is invisible — typical render is sub-millisecond per row.
+      </p>
+      <p>
+        Backend already returns the raw material at
+        <code>/sessions/{id}/documents/{docId}/extracts</code> — the per-slot map plus
+        consensus plus <code>raw_quote</code> provenance. No new endpoint, no
+        new event, no schema change. The diff lives entirely in
+        <code>CompareModeTable.jsx</code> and <code>CorrectionModal.jsx</code>.
+      </p>
+      <p>
+        Tokenization picks itself up from the field’s declared
+        <code>type</code> in <code>field-pool.yaml</code>:
+        <code>AMOUNT / DATE / CURRENCY_CODE / INTEGER</code> →
+        <code>diffChars</code>, everything else → <code>diffWordsWithSpace</code>.
+        The same mapping decides whether to render in mono or serif.
+      </p>
+    </div>
+  </div>
+
+</div>
+
+<script type="module">
+  import { diffChars, diffWordsWithSpace } from "https://esm.sh/diff@5.2.0";
+
+  // ─────────── data ───────────
+  const samples = [
+    {
+      key:        "beneficiary_name",
+      label:      "Beneficiary",
+      kind:       "text",
+      consensus:  "ACME TRADING CO., LTD.",
+      slot1:      "ACME TRADING CO., LTD.",
+      slot2:      "ACME TRADING CO. LTD",
+      conf1:      "0.97",
+      conf2:      "0.84",
+    },
+    {
+      key:        "credit_amount",
+      label:      "Credit amount",
+      kind:       "amount",
+      consensus:  "124,500.00",
+      slot1:      "124,500.00",
+      slot2:      "124500,00",
+      conf1:      "0.99",
+      conf2:      "0.91",
+    },
+    {
+      key:        "latest_shipment_date",
+      label:      "Latest shipment",
+      kind:       "date",
+      consensus:  "2026-04-08",
+      slot1:      "2026-04-08",
+      slot2:      "2026-04-03",
+      conf1:      "0.93",
+      conf2:      "0.95",
+    },
+    {
+      key:        "port_of_discharge",
+      label:      "Port of discharge",
+      kind:       "text",
+      consensus:  "HAMBURG, GERMANY",
+      slot1:      "HAMBURG, GERMANY",
+      slot2:      "HAMBURG GERMANY",
+      conf1:      "0.96",
+      conf2:      "0.88",
+    },
+  ];
+
+  const longSample = {
+    key:       "goods_description",
+    label:     "Goods description",
+    kind:      "prose",
+    consensus: "1,000 SETS OF INDUSTRIAL WIDGETS GRADE A MODEL X-12, PACKED IN EXPORT CARTONS, COUNTRY OF ORIGIN: CHINA, CIF HAMBURG INCOTERMS 2020.",
+    slot1:     "1,000 SETS OF INDUSTRIAL WIDGETS GRADE A MODEL X-12, PACKED IN EXPORT CARTONS, COUNTRY OF ORIGIN: CHINA, CIF HAMBURG INCOTERMS 2020.",
+    slot2:     "1000 SETS OF INDUSTRIAL WIDGETS GRADE-A MODEL X12, PACKED IN EXPORT CARTONS, COUNTRY OF ORIGIN CHINA, CIF HAMBURG INCOTERMS 2020.",
+    conf1:     "0.94",
+    conf2:     "0.87",
+    rawQuote:  "Description of goods: 1,000 SETS OF INDUSTRIAL WIDGETS GRADE A MODEL X-12, packed in export cartons, country of origin: China, CIF Hamburg Incoterms 2020.",
+  };
+
+  // ─────────── diff helpers ───────────
+  // mark whitespace-only diffs so they get a tiny dot indicator
+  const isWS = s => /^\s+$/.test(s);
+
+  function renderDiff(consensus, slot, kind) {
+    const fn = (kind === "amount" || kind === "date") ? diffChars : diffWordsWithSpace;
+    const parts = fn(consensus ?? "", slot ?? "");
+    return parts.map(p => {
+      if (p.added) {
+        const v = escape(p.value);
+        return `<span class="d-add"${isWS(p.value) ? ' data-ws' : ''}>${v}</span>`;
+      }
+      if (p.removed) {
+        const v = escape(p.value);
+        return `<span class="d-del"${isWS(p.value) ? ' data-ws' : ''}>${v}</span>`;
+      }
+      return `<span class="d-eq">${escape(p.value)}</span>`;
+    }).join("");
+  }
+
+  function diffCount(consensus, slot, kind) {
+    const fn = (kind === "amount" || kind === "date") ? diffChars : diffWordsWithSpace;
+    return fn(consensus ?? "", slot ?? "").filter(p => p.added || p.removed).length;
+  }
+
+  function escape(s) {
+    return String(s)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
+  }
+
+  // ─────────── pattern A · in-row strip ───────────
+  const stripA = document.getElementById("stripA");
+  stripA.innerHTML = samples.map(s => {
+    const matches = s.slot1 === s.slot2;
+    const δ = matches ? 0 : diffCount(s.slot1, s.slot2, s.kind);
+    const valClass = (s.kind === "text") ? "val serif" : "val";
+    return `
+      <div class="strip-row">
+        <div class="strip-key">
+          ${s.label}
+          <small>${s.key} · ${s.kind}</small>
+        </div>
+        <div class="strip-body">
+          <div class="strip-line">
+            <span class="label win">slot 1</span>
+            <span class="${valClass}">${renderDiff(s.slot2, s.slot1, s.kind)}</span>
+          </div>
+          <div class="strip-line">
+            <span class="label">slot 2</span>
+            <span class="${valClass}">${renderDiff(s.slot1, s.slot2, s.kind)}</span>
+          </div>
+        </div>
+        <div class="strip-status">
+          ${matches
+            ? `<span class="delta match">✓</span>
+               <span class="delta-label">identical</span>`
+            : `<span class="delta">δ</span>
+               <span class="delta-label">${δ} change${δ===1?"":"s"}</span>`}
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  // ─────────── pattern B · stacked compare ───────────
+  const stackB = document.getElementById("stackB");
+  const s = longSample;
+  const δlong = diffCount(s.slot1, s.slot2, s.kind);
+  stackB.innerHTML = `
+    <div class="stack-head">
+      <span class="field-name">${s.label}</span>
+      <span class="field-key">${s.key}</span>
+      <span class="right">δ ${δlong} · MED confidence</span>
+    </div>
+    <div class="stack-row consensus">
+      <div class="who">consensus<span class="conf">— · majority</span></div>
+      <div class="val serif">${escape(s.consensus)}</div>
+    </div>
+    <div class="stack-row">
+      <div class="who">slot 1<span class="conf">${s.conf1} · qwen3-vl</span></div>
+      <div class="val serif">${renderDiff(s.consensus, s.slot1, s.kind)}</div>
+    </div>
+    <div class="stack-row">
+      <div class="who">slot 2<span class="conf">${s.conf2} · qwen-plus</span></div>
+      <div class="val serif">${renderDiff(s.consensus, s.slot2, s.kind)}</div>
+    </div>
+    <div class="stack-summary">
+      <span class="legend"><span class="swatch del"></span> only in consensus</span>
+      <span class="legend"><span class="swatch add"></span> only in this slot</span>
+      <span style="margin-left:auto;font-style:italic;color:var(--ink-faint);">click any slot row to adopt verbatim</span>
+    </div>
+  `;
+
+  // ─────────── pattern C · correction modal ───────────
+  const dateSample = samples[2];   // the date discrepancy is the most consequential
+  const dδ = diffCount(dateSample.slot1, dateSample.slot2, dateSample.kind);
+  const modalC = document.getElementById("modalC");
+  modalC.innerHTML = `
+    <div class="modal-eyebrow">
+      <div class="crumbs">parse · BOL · 03 of 06 · <strong>${dateSample.label}</strong></div>
+      <div class="x">esc</div>
+    </div>
+    <div class="modal-title">
+      <h3>Officer correction</h3>
+      <div class="sub">slots disagree · ${dδ} character${dδ===1?"":"s"}</div>
+    </div>
+    <div class="modal-body">
+      <div class="slot-strip">
+        <div class="row consensus">
+          <div class="who">consensus<span class="conf">MED</span></div>
+          <div class="val">${escape(dateSample.consensus)}</div>
+          <label class="pick"><input type="radio" name="pick" checked /></label>
+        </div>
+        <div class="row">
+          <div class="who">slot 1<span class="conf">${dateSample.conf1}</span></div>
+          <div class="val">${renderDiff(dateSample.consensus, dateSample.slot1, dateSample.kind)}</div>
+          <label class="pick"><input type="radio" name="pick" /></label>
+        </div>
+        <div class="row">
+          <div class="who">slot 2<span class="conf">${dateSample.conf2}</span></div>
+          <div class="val">${renderDiff(dateSample.consensus, dateSample.slot2, dateSample.kind)}</div>
+          <label class="pick"><input type="radio" name="pick" /></label>
+        </div>
+      </div>
+
+      <div class="raw-quote">
+        “LATEST SHIPMENT DATE: 08 APR 2026, port of loading SHANGHAI.”
+      </div>
+
+      <div class="modal-input">
+        <label for="ov">override · type your own</label>
+        <input id="ov" type="text" value="2026-04-08" />
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button>cancel</button>
+      <button>flag · model wrong</button>
+      <button class="primary">save correction</button>
+    </div>
+  `;
+</script>
+</body>
+</html>
