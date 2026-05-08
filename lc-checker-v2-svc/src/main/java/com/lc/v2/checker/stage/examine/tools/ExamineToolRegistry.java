@@ -136,6 +136,58 @@ public class ExamineToolRegistry {
     }
 
     @Tool(description = """
+            ★ Preferred bulk-fetch tool. Returns every extracted field for the
+            LC and every presented document in ONE call. Shape:
+              { "lc": { field_key: value, ... },
+                "docs": { "INV": { field_key: value, ... }, "BOL": {...}, ... } }
+            Use this FIRST whenever you need fields from multiple docs/fields —
+            avoids dozens of per-field round-trips. Per-field tools (getLcField,
+            getDocField) remain available for targeted re-checks only.""")
+    public Map<String, Object> getAllExtractedFields(
+            @ToolParam(description = "Session UUID") String sessionId) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        // LC fields
+        Map<String, Object> lcFields = new LinkedHashMap<>();
+        Map<String, Object> lcView = sessionStore.getLcParse(sessionId);
+        if (lcView != null) {
+            Object j = lcView.get("fields");
+            if (j instanceof String s && !s.isBlank()) {
+                try {
+                    lcFields = objectMapper.readValue(s, new TypeReference<>() {});
+                } catch (Exception e) {
+                    log.warn("getAllExtractedFields LC parse failed: {}", e.getMessage());
+                }
+            }
+        }
+        out.put("lc", lcFields);
+
+        // Per-doc consensus fields
+        Map<String, Map<String, Object>> docs = new LinkedHashMap<>();
+        for (Map<String, Object> d : sessionStore.getDocuments(sessionId)) {
+            Object t = d.get("doc_type");
+            Object id = d.get("id");
+            if (t == null || id == null) continue;
+            Map<String, Object> consensus = sessionStore.getDocConsensus(id.toString());
+            Map<String, Object> fields = new LinkedHashMap<>();
+            if (consensus != null) {
+                Object j = consensus.get("fields");
+                if (j instanceof String s && !s.isBlank()) {
+                    try {
+                        fields = objectMapper.readValue(s, new TypeReference<>() {});
+                    } catch (Exception e) {
+                        log.warn("getAllExtractedFields {} parse failed: {}", t, e.getMessage());
+                    }
+                }
+            }
+            docs.put(String.valueOf(t), fields);
+        }
+        out.put("docs", docs);
+        record("getAllExtractedFields", Map.of("sessionId", sessionId),
+                Map.of("doc_count", docs.size(), "lc_field_count", lcFields.size()));
+        return out;
+    }
+
+    @Tool(description = """
             Get a summary of every presented document in the session: doc type,
             original filename, parse status, and page count. Use this to discover
             which docs are available before querying their fields.""")

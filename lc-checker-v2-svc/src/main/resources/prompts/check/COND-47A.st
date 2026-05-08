@@ -5,6 +5,17 @@ INPUT
   • All extracted document fields above.
   • UCP 600 / ISBP 821 reference text resolved inline (use as authoritative basis).
 
+EFFICIENCY (mandatory)
+  • If you need ANY document field beyond what's already inlined above, call
+    `getAllExtractedFields(sessionId)` ONCE at the start. It returns every LC
+    field and every doc field in one round-trip.
+  • Do NOT loop on `getLcField` / `getDocField` per (field, doc). One bulk
+    call is the entire data plane for this rule.
+  • You have 6 LLM iterations max. Reserve them: 1 for the bulk fetch, 1-2
+    for any compute (`calculateDateDiff`), the final iteration for the
+    terminal JSON. If you find yourself at iteration 4+ without the verdict
+    JSON, emit it now with whatever evidence you have.
+
 TASK
 This rule is a *single AGENTIC check whose verdict aggregates a per-condition
 breakdown*. You MUST:

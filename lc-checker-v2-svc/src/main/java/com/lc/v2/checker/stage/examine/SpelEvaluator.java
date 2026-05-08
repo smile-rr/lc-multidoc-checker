@@ -5,7 +5,9 @@ import com.lc.v2.checker.domain.result.CheckResult;
 import com.lc.v2.checker.domain.rule.Rule;
 import com.lc.v2.checker.pipeline.StageContext;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,9 +54,15 @@ public class SpelEvaluator {
                 Object expl = m.get("explanation");
                 Object conf = m.get("confidence");
                 double confidence = conf instanceof Number n ? n.doubleValue() : 1.0;
+                // Helpers may return per-pair / per-key sub-results that the UI
+                // renders as expandable child rows under the parent rule.
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> subs = m.get("condition_results") instanceof List<?> ls
+                        ? new ArrayList<>((List<Map<String, Object>>) ls)
+                        : null;
                 return new CheckResult(rule.ruleId(), verdict,
                         expl == null ? null : expl.toString(),
-                        buildEvidence(rule, ctx), confidence, "PROGRAMMATIC");
+                        buildEvidence(rule, ctx), confidence, "PROGRAMMATIC", null, subs);
             }
             // Legacy boolean expression path: true → PASS, false → FAIL
             Boolean result = raw instanceof Boolean b ? b : null;

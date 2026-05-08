@@ -423,7 +423,7 @@ rules:
     field_keys: [quantity, total_packages, total_net_weight, total_gross_weight, shipping_marks]
     expression: |
       T(com.lc.v2.checker.stage.examine.MultiDocHelpers).quantitiesConsistent(
-        #docs['INV'], #docs['PKL'])
+        #docs['INV'], #docs['PKL'], #docs['BOL'])
     enabled: true
 
   # ---------------------------------------------------------------------------
@@ -504,7 +504,7 @@ rules:
     isbp_refs: [ISBP-A1, ISBP-A19]
     field_keys: [additional_conditions, documents_required]
     enabled: true
-    max_iterations: 4
+    max_iterations: 6
     execution_strategy: structured_output
 
   # ---------------------------------------------------------------------------

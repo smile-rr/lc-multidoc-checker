@@ -214,35 +214,93 @@ public final class MultiDocHelpers {
     }
 
     /**
-     * GOODS-02 — quantity / package count consistent between INV and PKL (ISBP M1).
-     * Compares numeric `quantity`, `total_packages`, and `total_weight` if both sides
-     * provide them. Any single mismatch fails; missing fields downgrade to N/A.
+     * XD-01 — for every (docPair × key) check across {INV, PKL, BOL}, emit one
+     * sub-result. The aggregate verdict folds the worst:
+     *   any FAIL    → FAIL
+     *   else any DOUBTS → DOUBTS
+     *   else any PASS   → PASS
+     *   else            → NOT_APPLICABLE  (only if zero docs presented)
+     *
+     * Each sub-result carries condition_id, condition_text, verdict, severity,
+     * explanation. UI renders these as expandable child rows under XD-01.
      */
     public static Map<String, Object> quantitiesConsistent(
-            Map<String, Object> inv, Map<String, Object> pkl) {
-        if (inv == null || pkl == null) {
-            return result("NOT_APPLICABLE", "INV or PKL not presented", 1.0);
+            Map<String, Object> inv, Map<String, Object> pkl, Map<String, Object> bol) {
+        Map<String, Map<String, Object>> docs = new java.util.LinkedHashMap<>();
+        if (inv != null) docs.put("INV", inv);
+        if (pkl != null) docs.put("PKL", pkl);
+        if (bol != null) docs.put("BOL", bol);
+        String[] keys = {"quantity", "total_packages", "total_net_weight",
+                          "total_gross_weight", "shipping_marks"};
+        java.util.List<Map<String, Object>> subs = new java.util.ArrayList<>();
+        java.util.List<String> docNames = new java.util.ArrayList<>(docs.keySet());
+
+        if (docNames.size() < 2) {
+            return result("NOT_APPLICABLE",
+                    "Need at least two of INV/PKL/BOL — only " + docs.keySet() + " presented", 1.0);
         }
-        String[] keys = {"quantity", "total_packages", "total_weight"};
-        StringJoiner notes = new StringJoiner("; ");
-        boolean checked = false, failed = false;
-        for (String k : keys) {
-            Object iv = unwrap(inv.get(k)), pv = unwrap(pkl.get(k));
-            if (iv == null || pv == null) continue;
-            checked = true;
-            Double in = parseAmount(iv), pn = parseAmount(pv);
-            if (in != null && pn != null) {
-                if (Math.abs(in - pn) < 0.001) notes.add(k + ": " + in + " ✓");
-                else { failed = true; notes.add(k + ": INV=" + in + " ≠ PKL=" + pn); }
-            } else if (iv.toString().equalsIgnoreCase(pv.toString())) {
-                notes.add(k + ": '" + iv + "' ✓");
-            } else {
-                failed = true;
-                notes.add(k + ": '" + iv + "' ≠ '" + pv + "'");
+
+        int subIdx = 0;
+        for (int i = 0; i < docNames.size(); i++) {
+            for (int j = i + 1; j < docNames.size(); j++) {
+                String a = docNames.get(i), b = docNames.get(j);
+                Map<String, Object> ad = docs.get(a), bd = docs.get(b);
+                for (String k : keys) {
+                    subIdx++;
+                    Object av = unwrap(ad.get(k)), bv = unwrap(bd.get(k));
+                    Map<String, Object> sub = new java.util.LinkedHashMap<>();
+                    sub.put("condition_id", String.format("xd-01-%02d", subIdx));
+                    sub.put("condition_text", a + " vs " + b + " · " + k);
+                    sub.put("check_kind", "PROG");
+                    sub.put("severity", "MAJOR");
+                    if (av == null && bv == null) {
+                        sub.put("verdict", "NOT_APPLICABLE");
+                        sub.put("explanation", "neither " + a + " nor " + b + " extracted '" + k + "'");
+                        sub.put("confidence", 1.0);
+                    } else if (av == null || bv == null) {
+                        String missing = av == null ? a : b;
+                        sub.put("verdict", "DOUBTS");
+                        sub.put("explanation", missing + " did not extract '" + k
+                                + "'; cannot verify against the other side");
+                        sub.put("confidence", 0.4);
+                    } else {
+                        Double an = parseAmount(av), bn = parseAmount(bv);
+                        boolean equal;
+                        String aStr = String.valueOf(av), bStr = String.valueOf(bv);
+                        if (an != null && bn != null) {
+                            equal = Math.abs(an - bn) < 0.001;
+                        } else {
+                            equal = aStr.trim().equalsIgnoreCase(bStr.trim());
+                        }
+                        sub.put("verdict", equal ? "PASS" : "FAIL");
+                        sub.put("explanation", equal
+                                ? a + "=" + b + "='" + aStr + "'"
+                                : a + "='" + aStr + "' ≠ " + b + "='" + bStr + "'");
+                        sub.put("confidence", 1.0);
+                    }
+                    subs.add(sub);
+                }
             }
         }
-        if (!checked) return result("NOT_APPLICABLE", "No comparable quantity fields extracted", 1.0);
-        return result(failed ? "FAIL" : "PASS", notes.toString(), 1.0);
+
+        // Aggregate
+        long fails = subs.stream().filter(s -> "FAIL".equals(s.get("verdict"))).count();
+        long doubts = subs.stream().filter(s -> "DOUBTS".equals(s.get("verdict"))).count();
+        long pass = subs.stream().filter(s -> "PASS".equals(s.get("verdict"))).count();
+        long na = subs.stream().filter(s -> "NOT_APPLICABLE".equals(s.get("verdict"))).count();
+        String agg;
+        double conf;
+        String summary;
+        if (fails > 0) { agg = "FAIL"; conf = 1.0; }
+        else if (doubts > 0) { agg = "DOUBTS"; conf = 0.5; }
+        else if (pass > 0) { agg = "PASS"; conf = 1.0; }
+        else { agg = "NOT_APPLICABLE"; conf = 1.0; }
+        summary = String.format("%d checks: %d PASS, %d FAIL, %d DOUBTS, %d N/A",
+                subs.size(), pass, fails, doubts, na);
+
+        Map<String, Object> out = result(agg, summary, conf);
+        out.put("condition_results", subs);
+        return out;
     }
 
     /**

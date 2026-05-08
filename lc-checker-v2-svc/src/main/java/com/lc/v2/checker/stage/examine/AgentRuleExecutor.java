@@ -370,6 +370,17 @@ public class AgentRuleExecutor {
 
         // W3: ucpExcerpt deprecated — UCP/ISBP text resolves via ArticleRefRegistry.
 
+        // Always state which documents are presented — set-membership rules
+        // (DOCSET-01, PARTY-01, CERT-01, COND-47A) can't reason without this
+        // even when their fieldKeys reference only LC-side fields.
+        if (ctx.extracts != null && !ctx.extracts.isEmpty()) {
+            StringJoiner presented = new StringJoiner(", ");
+            ctx.extracts.keySet().forEach(dt -> presented.add(dt.name()));
+            sb.append("Presented documents: ").append(presented).append("\n\n");
+        } else {
+            sb.append("Presented documents: (none)\n\n");
+        }
+
         sb.append("LC fields:\n");
         for (String key : rule.fieldKeys()) {
             if (ctx.lc != null && ctx.lc.envelope().has(key)) {
@@ -400,8 +411,9 @@ public class AgentRuleExecutor {
                 // AGENTIC: full read-only tool set; iteration policy lives in the
                 // system prompt (prompts/system/check-system.st). Inject only the
                 // per-rule turn budget; the system prompt explains how to spend it.
-                sb.append("Tools available: getLcField, getDocField, getDocInventory, ")
-                  .append("calculateDateDiff, listPresentedDocs. ")
+                sb.append("Tools available: getAllExtractedFields (★ bulk — prefer this), ")
+                  .append("getLcField, getDocField, getDocInventory, calculateDateDiff, ")
+                  .append("listPresentedDocs. Bias toward ONE bulk fetch over many small calls. ")
                   .append("Turn budget for this rule: ").append(maxIterations).append(". ");
             } else {
                 // AGENT_TOOL: compute-only tools. Iteration policy lives in the

@@ -28,7 +28,18 @@ satisfies it:
 Implicit doc requirements (e.g. :41A:/:41D: "available by negotiation of
 beneficiary's drafts" → BOE required) must be considered.
 
-The set of presented doc types is provided in the evidence block.
+The set of presented doc types is given on the line "Presented documents: …"
+above. Treat that list as authoritative — those (and only those) are the
+documents the bank received in this presentation. Map LC requirements to:
+  Commercial Invoice          → INV
+  Packing List                → PKL
+  Bill of Lading              → BOL
+  Bill of Exchange / Draft    → BOE
+  Beneficiary's Certificate   → BC
+  Warranty / Quality Cert     → WC
+
+If "Presented documents: (none)" appears, the presentation is empty —
+return verdict NOT_APPLICABLE with explanation "no documents presented".
 
 DECISION
 - PASS  : every requirement is satisfied by at least one presented document.

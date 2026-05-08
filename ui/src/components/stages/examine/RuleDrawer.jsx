@@ -157,20 +157,38 @@ export function RuleDrawer({ rule, width = 540, session, onClose, onOverride, on
           </Section>
         )}
 
-        {/* 2. NA — why this rule didn't fire */}
-        {isNa && (
-          <Section eyebrow="WHY THIS RULE DIDN'T FIRE" tone="neutral">
-            {(rule.triggerTrace && rule.triggerTrace.length > 0) ? (
-              <ul className="text-[11px] space-y-1 font-mono">
-                {rule.triggerTrace.map((line, i) => (
-                  <li key={i} className="text-navy-1">{line}</li>
-                ))}
-              </ul>
-            ) : (
-              <div className="text-[11px] text-muted">{rule.explanation || 'No trace available.'}</div>
-            )}
-          </Section>
-        )}
+        {/* 2. NA — distinguish trigger-gate skip from agent's own NA verdict.
+            A non-empty triggerTrace means the trigger gate decided NA before
+            the rule ran. An empty triggerTrace + NA verdict means the
+            executor (PROG helper or AGENT call) ran and itself returned NA. */}
+        {isNa && (() => {
+          const skipped = rule.triggerTrace && rule.triggerTrace.length > 0;
+          return (
+            <Section
+              eyebrow={skipped ? 'WHY THIS RULE WAS SKIPPED' : 'EXECUTOR RETURNED N/A'}
+              tone="neutral"
+            >
+              {skipped ? (
+                <ul className="text-[11px] space-y-1 font-mono">
+                  {rule.triggerTrace.map((line, i) => (
+                    <li key={i} className="text-navy-1">{line}</li>
+                  ))}
+                </ul>
+              ) : (
+                <>
+                  <div className="text-[10px] text-muted font-mono mb-1.5 tracking-wider">
+                    {rule.checkType === 'PROGRAMMATIC'
+                      ? 'PROG helper ran but had no comparable data'
+                      : 'Agent call ran and decided not applicable'}
+                  </div>
+                  <div className="text-[11px] text-navy-1 leading-relaxed">
+                    {rule.explanation || 'No explanation captured.'}
+                  </div>
+                </>
+              )}
+            </Section>
+          );
+        })()}
 
         {/* 3. SOURCES — what data the verdict was based on */}
         {!isPending && rule.evidence && (
