@@ -6,15 +6,39 @@ INPUT
   • UCP 600 / ISBP 821 reference text resolved inline (use as authoritative basis).
 
 EFFICIENCY (mandatory)
-  • If you need ANY document field beyond what's already inlined above, call
-    `getAllExtractedFields(sessionId)` ONCE at the start. It returns every LC
-    field and every doc field in one round-trip.
-  • Do NOT loop on `getLcField` / `getDocField` per (field, doc). One bulk
-    call is the entire data plane for this rule.
-  • You have 6 LLM iterations max. Reserve them: 1 for the bulk fetch, 1-2
-    for any compute (`calculateDateDiff`), the final iteration for the
-    terminal JSON. If you find yourself at iteration 4+ without the verdict
-    JSON, emit it now with whatever evidence you have.
+  • Call `getAllExtractedFields(sessionId)` ONCE at the start. It returns
+    every LC field, every doc's typed fields, AND every doc's
+    `off_schema` array (verbatim non-schema text — declarations, footers,
+    stamped clauses, quoted statements). One bulk call is the entire
+    data plane for this rule.
+  • Do NOT loop per (field, doc). 6 LLM iterations max — reserve 1 for the
+    bulk fetch, 1-2 for compute, the final for the terminal JSON.
+
+EVIDENCE TO USE (in priority order)
+  1. Typed schema fields (e.g. `lc_number`, `invoice_number`).
+  2. **off_schema[] for every relevant doc** — this is where statements
+     like "INVOICE NUMBER: INV-2024-0317", "LC NO. WIDG-2024-0317",
+     "ISSUED IN ENGLISH", "CERTIFY THAT…" actually live. Search the
+     rawQuote / value of every off_schema item for the LC condition
+     keywords before you decide.
+  3. Cross-doc consistency (e.g. invoice's lc_number == LC's lc_number).
+
+DOUBTS vs FAIL — be strict, not lenient
+  FAIL when:
+    • LC condition stipulates a fact that documents must show, AND
+      the documents (typed fields + off_schema) clearly do NOT show it
+      (e.g. invoice missing LC number string anywhere, BC bears wrong
+      LC number, document obviously not in the required language).
+    • Numeric / id mismatch (LC number differs, contract number wrong).
+  DOUBTS only when:
+    • Genuinely ambiguous extraction (the off_schema captured a fragment
+      that *might* contain the required text but is unreadable or
+      truncated), OR
+    • The condition requires semantic interpretation that needs a human
+      (e.g. "of acceptable quality" — not decidable from text).
+  Default to FAIL over DOUBTS when extraction is complete and the data
+  simply isn't there. Missing required data IS a discrepancy under UCP
+  14(a) "documents on their face".
 
 TASK
 This rule is a *single AGENTIC check whose verdict aggregates a per-condition

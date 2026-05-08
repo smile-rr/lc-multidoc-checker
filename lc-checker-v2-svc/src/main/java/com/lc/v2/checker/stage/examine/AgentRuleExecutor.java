@@ -461,6 +461,20 @@ public class AgentRuleExecutor {
         return t == null ? "" : t.replaceAll("\\s+", " ").trim();
     }
 
+    private static CheckResult.Verdict aggregateFromConditions(List<Map<String, Object>> subs) {
+        boolean anyFail = false, anyDoubts = false, anyPass = false;
+        for (Map<String, Object> s : subs) {
+            String v = String.valueOf(s.getOrDefault("verdict", "")).trim().toUpperCase();
+            if ("FAIL".equals(v) || "FAILED".equals(v)) anyFail = true;
+            else if ("DOUBTS".equals(v) || "NEEDS_REVIEW".equals(v)) anyDoubts = true;
+            else if ("PASS".equals(v)) anyPass = true;
+        }
+        if (anyFail) return CheckResult.Verdict.FAIL;
+        if (anyDoubts) return CheckResult.Verdict.DOUBTS;
+        if (anyPass) return CheckResult.Verdict.PASS;
+        return CheckResult.Verdict.NOT_APPLICABLE;
+    }
+
     private CheckResult parseResponse(String ruleId, String checkType, String response,
                                        List<Map<String, Object>> toolCalls) {
         try {
@@ -483,6 +497,26 @@ public class AgentRuleExecutor {
             if (crNode.isArray() && crNode.size() > 0) {
                 conditionResults = objectMapper.convertValue(crNode,
                         new TypeReference<List<Map<String, Object>>>() {});
+            }
+
+            // Server-side aggregation override for sub-result-bearing rules.
+            // The model can be inconsistent ("any FAIL → FAIL" rule and yet
+            // returns DOUBTS at the top). We trust the per-condition verdicts
+            // it produced and recompute the parent deterministically:
+            //   any FAIL  → FAIL
+            //   else any DOUBTS → DOUBTS
+            //   else any PASS   → PASS
+            //   else            → NOT_APPLICABLE
+            if (conditionResults != null && !conditionResults.isEmpty()) {
+                CheckResult.Verdict aggregated = aggregateFromConditions(conditionResults);
+                if (aggregated != verdict) {
+                    log.info("Rule {} verdict overridden: agent='{}' → aggregated='{}' from {} sub-results",
+                            ruleId, verdict, aggregated, conditionResults.size());
+                    verdict = aggregated;
+                    if (explanation == null || explanation.isBlank()) {
+                        explanation = "Aggregated from " + conditionResults.size() + " sub-conditions";
+                    }
+                }
             }
             return new CheckResult(ruleId, verdict, explanation, null, confidence, checkType,
                     toolCalls, conditionResults);

@@ -136,13 +136,22 @@ public class ExamineToolRegistry {
     }
 
     @Tool(description = """
-            ★ Preferred bulk-fetch tool. Returns every extracted field for the
-            LC and every presented document in ONE call. Shape:
+            ★ Preferred bulk-fetch tool. Returns LC fields, per-doc schema fields,
+            AND per-doc off_schema_items (verbatim text the extractor captured
+            outside the schema — declarations, stamps, footers, quoted clauses).
+            Shape:
               { "lc": { field_key: value, ... },
-                "docs": { "INV": { field_key: value, ... }, "BOL": {...}, ... } }
-            Use this FIRST whenever you need fields from multiple docs/fields —
-            avoids dozens of per-field round-trips. Per-field tools (getLcField,
-            getDocField) remain available for targeted re-checks only.""")
+                "docs": {
+                  "INV": {
+                    "fields": { field_key: value, ... },
+                    "off_schema": [ { rawQuote, value, location, page, tags }, ... ]
+                  },
+                  "BOL": { ... }, ...
+                } }
+            Use this FIRST. The off_schema array is how you verify clauses like
+            "must be in English", "must quote LC number", "must state X" — those
+            statements appear verbatim in off_schema even when no typed field
+            exists for them. Per-field tools remain for targeted re-checks only.""")
     public Map<String, Object> getAllExtractedFields(
             @ToolParam(description = "Session UUID") String sessionId) {
         Map<String, Object> out = new LinkedHashMap<>();
@@ -161,29 +170,40 @@ public class ExamineToolRegistry {
         }
         out.put("lc", lcFields);
 
-        // Per-doc consensus fields
+        // Per-doc consensus fields + off_schema_items (verbatim text the
+        // agent needs for "must contain / must state / must be in <lang>" checks).
         Map<String, Map<String, Object>> docs = new LinkedHashMap<>();
+        int totalOffSchema = 0;
         for (Map<String, Object> d : sessionStore.getDocuments(sessionId)) {
             Object t = d.get("doc_type");
             Object id = d.get("id");
             if (t == null || id == null) continue;
             Map<String, Object> consensus = sessionStore.getDocConsensus(id.toString());
             Map<String, Object> fields = new LinkedHashMap<>();
+            List<Object> offSchema = new ArrayList<>();
             if (consensus != null) {
-                Object j = consensus.get("fields");
-                if (j instanceof String s && !s.isBlank()) {
-                    try {
-                        fields = objectMapper.readValue(s, new TypeReference<>() {});
-                    } catch (Exception e) {
-                        log.warn("getAllExtractedFields {} parse failed: {}", t, e.getMessage());
-                    }
+                Object jf = consensus.get("fields");
+                if (jf instanceof String fs && !fs.isBlank()) {
+                    try { fields = objectMapper.readValue(fs, new TypeReference<>() {}); }
+                    catch (Exception e) { log.warn("getAllExtractedFields {} fields parse failed: {}", t, e.getMessage()); }
+                }
+                Object jo = consensus.get("off_schema_items");
+                if (jo instanceof String os && !os.isBlank()) {
+                    try { offSchema = objectMapper.readValue(os, new TypeReference<>() {}); }
+                    catch (Exception e) { log.warn("getAllExtractedFields {} off_schema parse failed: {}", t, e.getMessage()); }
                 }
             }
-            docs.put(String.valueOf(t), fields);
+            Map<String, Object> docPayload = new LinkedHashMap<>();
+            docPayload.put("fields", fields);
+            docPayload.put("off_schema", offSchema);
+            docs.put(String.valueOf(t), docPayload);
+            totalOffSchema += offSchema.size();
         }
         out.put("docs", docs);
         record("getAllExtractedFields", Map.of("sessionId", sessionId),
-                Map.of("doc_count", docs.size(), "lc_field_count", lcFields.size()));
+                Map.of("doc_count", docs.size(),
+                       "lc_field_count", lcFields.size(),
+                       "off_schema_total", totalOffSchema));
         return out;
     }
 
