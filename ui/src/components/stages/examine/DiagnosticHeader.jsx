@@ -18,13 +18,24 @@ export function DiagnosticHeader({ active, notApplicable, outOfScope, statusFilt
 
   const tally = countActive(active);
   const ranTotal = tally.PASS + tally.FAIL + tally.DOUBTS + tally.FAILED;
+  // "Done" means: officer doesn't have to wait. NA (LC fields absent) and
+  // OOS (docs not presented) are deterministic outcomes, not pending work —
+  // they count toward done. Only PENDING is "still in flight".
+  const doneTotal = ranTotal + notApplicable.length + outOfScope.length;
+  const pendingTotal = tally.PENDING;
 
   return (
     <div className="bg-white border-b border-line px-6 py-2.5">
       <div className="flex items-center gap-4 text-[11px] font-mono">
         <DensityBar active={active} notApplicable={notApplicable} outOfScope={outOfScope} />
         <span className="text-muted">
-          <span className="text-navy-1 font-semibold tabular-nums">{total}</span> catalog rules
+          <span className="text-navy-1 font-semibold tabular-nums">{doneTotal}</span>
+          <span className="text-[#a1a1a6]"> / </span>
+          <span className="tabular-nums">{total}</span>
+          <span className="ml-1 uppercase tracking-[0.15em] text-[10px]">complete</span>
+          {pendingTotal > 0 && (
+            <span className="ml-1 text-status-gold animate-pulse">· {pendingTotal} pending</span>
+          )}
         </span>
         <Pill
           id="ran" active={statusFilter} onClick={onStatusFilter}
@@ -105,8 +116,8 @@ function cellColor(c) {
     fail:    'bg-status-red',
     doubts:  'bg-status-gold',
     error:   'bg-orange-500',
-    pending: 'bg-line animate-pulse',
-    na:      'bg-line',
-    oos:     'bg-[#e5e5ea]',
+    pending: 'bg-status-gold animate-pulse',
+    na:      'bg-[#e5e5ea]',
+    oos:     'bg-[#eeeef0]',
   })[c] || 'bg-line';
 }

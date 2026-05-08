@@ -19,7 +19,11 @@ export function SummaryBar({ rules }) {
         {seg('bg-status-gold',  counts.DOUBTS, total)}
         {seg('bg-status-red',   counts.FAIL, total)}
         {seg('bg-orange-500',   counts.FAILED, total)}
-        {seg('bg-line',         counts.NOT_APPLICABLE + counts.PENDING, total)}
+        {/* NA is a completed verdict (no officer action needed) — distinct
+            light-stone tint, separate from PENDING which keeps the muted
+            animated grey to signal "still in flight". */}
+        {seg('bg-[#e5e5ea]',    counts.NOT_APPLICABLE, total)}
+        {seg('bg-line animate-pulse', counts.PENDING, total)}
       </div>
     </div>
   );

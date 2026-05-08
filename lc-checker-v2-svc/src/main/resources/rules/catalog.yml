@@ -1,34 +1,57 @@
 # =============================================================================
-# catalog.yml — v2 rule catalog (18 consolidated rules)
+# catalog.yml — v2 rule catalog (19 rules)
 # =============================================================================
 #
 # SoT: docs/architecture/rule-set.md (Phase 2 deliverable 1).
 # Companion: docs/architecture/production-readiness.md (architecture rationale).
 #
+# COVERAGE TABLE — quick scan of every rule
+# -----------------------------------------------------------------------------
+# ID         TIER          SEV       SCOPE                  AUTH (top 3)                 CONCERN
+# -----------------------------------------------------------------------------
+# DATE-01    PROGRAMMATIC  MAJOR     INV,BOL,PKL,BOE,BC,WC  UCP-14-c,UCP-14-i            Doc dates within valid window
+# DATE-02    AGENT_TOOL    CRITICAL  BOL                    UCP-14-c                     Presentation within window and before LC expiry
+# DATE-03    PROGRAMMATIC  CRITICAL  BOL                    UCP-14-c                     Latest shipment date observed
+# AMT-01     AGENT_TOOL    CRITICAL  INV                    UCP-18-b,UCP-30-b            Invoice amount and currency conform to LC, within tolerance
+# AMT-02     PROGRAMMATIC  CRITICAL  BOE,INV                UCP-18-b                     BOE amount equals invoice amount and conforms to LC
+# DOCSET-01  AGENT         CRITICAL  INV,BOL,PKL,BOE,BC,WC  UCP-14-a,UCP-14-f,ISBP-A1    Every required document is presented
+# DOCSET-02  PROGRAMMATIC  CRITICAL  BOL                    UCP-17,UCP-20-a-4            Full set of originals presented (transport doc)
+# GOODS-01   AGENT         MAJOR     INV                    UCP-18-c,UCP-14-e,ISBP-C3    Invoice goods description corresponds to :45A:
+# TRANS-01   PROGRAMMATIC  CRITICAL  BOL                    UCP-20-a-2                   B/L bears on-board notation and date
+# TRANS-02   AGENT         MAJOR     BOL                    UCP-27,ISBP-D25              B/L is clean (no defect/damage clauses)
+# TRANS-03   AGENT         CRITICAL  BOL                    UCP-20-a-3                   Ports of loading and discharge match LC
+# TRANS-04   AGENT         MAJOR     BOL,INV                UCP-26,ISBP-D24              Freight terms conform to LC and Incoterm
+# PARTY-01   AGENT         MAJOR     INV,BOL,PKL,BOE,BC,WC  UCP-14-j,ISBP-A14,ISBP-A19   Beneficiary and applicant identity consistent across documents
+# PARTY-02   AGENT         CRITICAL  BOE                    ISBP-A19,ISBP-A20            BOE drawee matches LC stipulated drawee
+# XD-01      PROGRAMMATIC  MAJOR     INV,PKL,BOL            UCP-14-e,ISBP-C2             Quantity, weight, and shipping marks consistent across INV/PKL/BOL
+# XD-02      AGENT         MAJOR     PKL,BOL                UCP-14-e                     Goods description on PKL/BOL not inconsistent with INV/LC
+# CERT-01    AGENT         MAJOR     BC,WC                  UCP-14-a,UCP-14-f,ISBP-Q1    Certificate content satisfies stipulating LC clauses
+# CERT-02    AGENT         MAJOR     BC,WC                  ISBP-A12,ISBP-Q3             Certificate signature and form requirements
+# COND-47A   AGENTIC       MAJOR     INV,BOL,PKL,BOE,BC,WC  UCP-14-a,UCP-14-d,ISBP-A1    Additional conditions (:47A:) compliance
+# -----------------------------------------------------------------------------
+# Tally: 6 PROG · 9 AGENT · 2 AGENT_TOOL · 1 AGENTIC · 8 CRITICAL · 11 MAJOR
+#
 # Concern-prefix scheme (concern-driven, not doc-driven):
-#   DATE   · DATE-01..03  date conformance
-#   AMT    · AMT-01..02   amount, currency, arithmetic
-#   DOCSET · DOCSET-01..02 required-document set + full-set originals
-#   GOODS  · GOODS-01     goods description (correspondence to LC)
-#   TRANS  · TRANS-01..04 transport-doc specifics (BOL)
-#   PARTY  · PARTY-01..02 identities of parties across docs and LC
-#   XD     · XD-01..02    cross-document factual consistency
-#   CERT   · CERT-01..02  beneficiary/warranty certificate content + form
-#   COND   · COND-47A     :47A: additional-conditions aggregate (one rule, N sub-results)
+#   DATE   · date conformance         AMT  · amount/currency/arithmetic
+#   DOCSET · required-document set    GOODS · goods description correspondence
+#   TRANS  · transport-doc specifics  PARTY · cross-doc party identity
+#   XD     · cross-doc factual        CERT  · BC/WC content + form
+#   COND   · :47A: free-text aggregate (one rule, N sub-results)
 #
 # Execution tiers (check_type):
-#   PROGRAMMATIC — SpEL expression on #lc / #docs / #presentationDate
-#   AGENT        — single ChatClient call, structured JSON output
-#   AGENT_TOOL   — ChatClient + compute tool (date math, calculator), 1 tool round
+#   PROGRAMMATIC — SpEL on #lc / #docs / #presentationDate; <100ms; deterministic
+#   AGENT        — single ChatClient call, structured JSON, no tools
+#   AGENT_TOOL   — ChatClient + compute tool (date math, arithmetic), max 3 LLM calls
 #   AGENTIC      — multi-iteration tool-using loop. COND-47A uses execution_strategy
-#                  "structured_output" (default) — single AGENTIC call returns terminal
-#                  JSON with `condition_results[]` per :47A: condition. Future strategy
-#                  "sub_agent" will fan out to N parallel AGENT calls; same output shape.
+#                  "structured_output" (default) — single multi-iter call returns
+#                  terminal JSON with `condition_results[]` per :47A: condition.
+#                  Future "sub_agent" strategy will fan out to N parallel AGENT calls;
+#                  output shape unchanged.
 #
 # Trigger semantics (rule-set.md §1):
 #   triggers.all_of/any_of with docs_present + lc_field_present nodes.
-#   When trigger fails → rule yields NOT_APPLICABLE (recorded, not silent skip).
-#   "Missing required doc" as a discrepancy is owned exclusively by DOCSET-01.
+#   Trigger fail → NOT_APPLICABLE recorded with trace (never silent skip).
+#   Missing-required-doc as a discrepancy is owned exclusively by DOCSET-01.
 #
 # Citations: by id only. UCP/ISBP text resolves at execution time from
 # refs/ucp600.yaml + refs/isbp821.yaml via {{ref.<id>.text}} tokens in .st
