@@ -27,6 +27,10 @@ public record FieldValue(
         return new FieldValue(value, confidence, rawQuote, null, null);
     }
 
+    public static FieldValue of(Object value, Double confidence, String rawQuote) {
+        return new FieldValue(value, confidence, rawQuote, null, null);
+    }
+
     public static FieldValue of(Object value, double confidence, String rawQuote, Integer page, BBox bbox) {
         return new FieldValue(value, confidence, rawQuote, page, bbox);
     }

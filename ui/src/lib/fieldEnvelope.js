@@ -12,8 +12,8 @@ export function extractConf(v) {
   const c = v.confidence;
   if (typeof c === 'string') return c.toUpperCase();
   if (typeof c === 'number') {
-    if (c >= 0.95) return 'HIGH';
-    if (c >= 0.75) return 'MED';
+    if (c >= 0.9) return 'HIGH';
+    if (c >= 0.6) return 'MED';
     return 'LOW';
   }
   return 'HIGH';

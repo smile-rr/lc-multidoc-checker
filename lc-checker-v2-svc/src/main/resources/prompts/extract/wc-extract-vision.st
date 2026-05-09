@@ -41,6 +41,26 @@ Example:
 
 If a field value is null, do not include a key for it in raw_quotes.
 
+PROVENANCE — field_confidence (mandatory)
+-----------------------------------------
+For every schema field you populated with a non-null value, emit a confidence
+score (0.0–1.0) in a top-level "field_confidence" object, keyed by field name.
+Confidence reflects how clearly the value was visible/legible/unambiguous on
+the page — NOT how confident you are in the document's authenticity.
+
+  - 1.0 — printed cleanly, single unambiguous value
+  - 0.7-0.9 — present but visually noisy / partially obscured / inferred from context
+  - <0.5 — heavily damaged / handwritten / multiple candidates / OCR-uncertain
+
+Example:
+  "field_confidence": {
+    "wc_scope": 1.0,
+    "wc_period": 0.9,
+    "wc_conditions_text": 0.85
+  }
+
+If a field is null, omit it from field_confidence.
+
 OFF-SCHEMA ITEMS — exhaustive open-world capture
 ------------------------------------------------
 off_schema_items: array — EXHAUSTIVE capture of every visible content block NOT

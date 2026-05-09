@@ -406,17 +406,22 @@ public class VisionExtractService {
             if (content == null || content.isBlank()) return FieldEnvelope.empty();
             JsonNode fields = objectMapper.readTree(content);
             FieldEnvelope.Builder builder = FieldEnvelope.builder();
-            // Read raw_quotes side-channel (W2 provenance contract) — used to populate FieldValue meta.
+            // Read raw_quotes + field_confidence side-channels (W2 provenance contract).
             JsonNode rawQuotes = fields.path("raw_quotes");
+            JsonNode fieldConfs = fields.path("field_confidence");
             fields.fields().forEachRemaining(e -> {
                 String key = e.getKey();
-                if ("off_schema_items".equals(key) || "raw_quotes".equals(key)) return;
+                if ("off_schema_items".equals(key)
+                        || "raw_quotes".equals(key)
+                        || "field_confidence".equals(key)) return;
                 JsonNode v = e.getValue();
                 if (v.isNull()) return;
                 Object value = v.isTextual() ? v.asText() : (v.isNumber() ? (Object) v.numberValue() : v.toString());
                 String quote = rawQuotes.has(key) ? rawQuotes.path(key).asText(null) : null;
-                if (quote != null) {
-                    builder.put(key, FieldValue.of(value, 1.0, quote));
+                Double conf = fieldConfs.has(key) && fieldConfs.path(key).isNumber()
+                        ? fieldConfs.path(key).asDouble() : null;
+                if (quote != null || conf != null) {
+                    builder.put(key, FieldValue.of(value, conf, quote));
                 } else {
                     builder.put(key, value);
                 }
@@ -447,10 +452,35 @@ public class VisionExtractService {
                 Object v = entry.getValue().get(key);
                 if (v != null) votes.merge(v, 1, Integer::sum);
             }
-            Object winner = votes.entrySet().stream()
-                    .max(Map.Entry.comparingByValue())
-                    .map(Map.Entry::getKey)
-                    .orElse(null);
+            int topVotes = votes.values().stream().max(Integer::compareTo).orElse(0);
+            long topCount = votes.values().stream().filter(c -> c == topVotes).count();
+            boolean tied = topCount > 1;
+
+            Object winner;
+            if (tied) {
+                // Tiebreak by highest per-field confidence among tied candidates.
+                Object best = null;
+                double bestConf = -1.0;
+                for (var entry : votes.entrySet()) {
+                    if (entry.getValue() != topVotes) continue;
+                    Object candidate = entry.getKey();
+                    for (var slotEntry : bySlot.entrySet()) {
+                        if (!candidate.equals(slotEntry.getValue().get(key))) continue;
+                        FieldValue m = slotEntry.getValue().meta(key);
+                        double c = (m != null && m.confidence() != null) ? m.confidence() : 0.0;
+                        if (c > bestConf) { best = candidate; bestConf = c; }
+                    }
+                }
+                winner = best;
+                if (winner == null && bySlot.containsKey(primarySourceName)) {
+                    winner = bySlot.get(primarySourceName).get(key);
+                }
+            } else {
+                winner = votes.entrySet().stream()
+                        .max(Map.Entry.comparingByValue())
+                        .map(Map.Entry::getKey)
+                        .orElse(null);
+            }
             if (winner == null && bySlot.containsKey(primarySourceName)) {
                 winner = bySlot.get(primarySourceName).get(key);
             }
@@ -470,8 +500,23 @@ public class VisionExtractService {
                     }
                 }
             }
+            // Aggregate confidence across all slots that voted for the winner — take the min
+            // so "everyone agreed but everyone was unsure" surfaces as low confidence.
+            Double aggConf = null;
+            for (var entry : bySlot.entrySet()) {
+                if (!winner.equals(entry.getValue().get(key))) continue;
+                FieldValue m = entry.getValue().meta(key);
+                if (m == null || m.confidence() == null) continue;
+                aggConf = (aggConf == null) ? m.confidence() : Math.min(aggConf, m.confidence());
+            }
             if (meta != null) {
-                builder.put(key, meta);
+                if (aggConf != null && !aggConf.equals(meta.confidence())) {
+                    builder.put(key, FieldValue.of(meta.value(), aggConf, meta.rawQuote()));
+                } else {
+                    builder.put(key, meta);
+                }
+            } else if (aggConf != null) {
+                builder.put(key, FieldValue.of(winner, aggConf, null));
             } else {
                 builder.put(key, winner);
             }

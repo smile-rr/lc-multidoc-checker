@@ -3,6 +3,7 @@ package com.lc.v2.checker.stage.parse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lc.v2.checker.domain.common.DocType;
 import com.lc.v2.checker.domain.common.FieldEnvelope;
+import com.lc.v2.checker.domain.common.FieldValue;
 import com.lc.v2.checker.domain.document.DocumentExtract;
 import com.lc.v2.checker.infra.observability.PipelineStage;
 import com.lc.v2.checker.infra.persistence.SessionStore;
@@ -135,7 +136,7 @@ public class ParseStage implements Stage {
                 FieldEnvelope env = entry.getValue();
                 Map<String, Object> stepResult = new java.util.LinkedHashMap<>();
                 stepResult.put("doc_id", docId);
-                stepResult.put("fields", env.fields());
+                stepResult.put("fields", serializeFields(env));
                 stepResult.put("off_schema_items", java.util.List.of());
                 sessionStore.upsertPipelineStep(ctx.sessionId, "parse",
                         "extract:" + dt.name() + ":" + slot,
@@ -149,7 +150,7 @@ public class ParseStage implements Stage {
             };
             Map<String, Object> consensusResult = new java.util.LinkedHashMap<>();
             consensusResult.put("doc_id", docId);
-            consensusResult.put("fields", extract.consensus().fields());
+            consensusResult.put("fields", serializeFields(extract.consensus()));
             consensusResult.put("off_schema_items", extract.offSchemaItems());
             consensusResult.put("overall_confidence", overallConf);
             sessionStore.upsertPipelineStep(ctx.sessionId, "parse",
@@ -159,5 +160,26 @@ public class ParseStage implements Stage {
         } catch (Exception e) {
             log.warn("[{}] Failed to persist extraction for {}: {}", ctx.sessionId, dt, e.getMessage());
         }
+    }
+
+    /**
+     * Merge raw values with per-field provenance (confidence, raw_quote) into
+     * the envelope shape the UI consumes — {@code {value, confidence, rawQuote}}
+     * — so {@code extractValue} / {@code extractConf} on the frontend can read
+     * both. Fields without recorded meta serialize as bare values.
+     */
+    private static Map<String, Object> serializeFields(FieldEnvelope env) {
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        Map<String, FieldValue> meta = env.fieldMeta();
+        for (var e : env.fields().entrySet()) {
+            FieldValue m = meta.get(e.getKey());
+            if (m == null || (m.confidence() == null && m.rawQuote() == null
+                    && m.page() == null && m.bbox() == null)) {
+                out.put(e.getKey(), e.getValue());
+            } else {
+                out.put(e.getKey(), m);
+            }
+        }
+        return out;
     }
 }
