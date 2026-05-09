@@ -42,12 +42,12 @@ own jointly to keep the platform extensible.
 
 ## Rule Types
 
-| **Type**          | **Description**                                          | **Reasoning** | **Iteration** | **Est. Cost** |
-| :---------------- | :------------------------------------------------------- | :------------ | :------------ | :------------ |
-| **Programmatic**  | SpEL expression checks. **No LLM.**                      | n/a           | 0             | $0            |
-| **Agent**         | Single LLM call. Prompt includes fields and rules.       | false         | 1 call        | ~$0.01        |
-| **Agent + Tools** | LLM call with calculation tools (math, dates, currency). | false         | ≤3 calls      | ~$0.03        |
-| **Agentic**       | ReAct loop: reason → act → repeat. Has iteration limit.  | **true**      | ≤6 calls      | ~$0.06        |
+| **Type**          | **Description**                                              | **Reasoning** | **Iteration** | **Est. Cost** |
+| :---------------- | :----------------------------------------------------------- | :------------ | :------------ | :------------ |
+| **Programmatic**  | SpEL expression checks. **No LLM.**                          | n/a           | 0             | $0            |
+| **Agent**         | Single LLM call. Prompt includes fields and rules.           | false         | 1 call        | ~$0.01        |
+| **Agent + Tools** | LLM call with calculation tools (math, dates, currency).     | false         | ≤3 calls      | ~$0.03        |
+| **Agentic**       | - ReAct loop: reason → act → repeat. Has iteration limit.<br />- Main Agent drives over Sub Agents  （LC tag: 47A） | **true**      | ≤6 calls      | ~$0.06        |
 
 **Cost Estimation** — Benchmarked against GPT-4o ($2.50/M input, $10.00/M output). 
 
