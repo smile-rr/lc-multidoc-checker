@@ -65,11 +65,9 @@ The system deployment architecture and the runtime flow across its components.
 
 ## Implementation Strategy
 
-### AI as an assistant plugin:
+### AI as assistant plugin:
 
 The AI workbench integration in the existing process —  same officer roles, same sign-off authority, same audit format.  
-
-Existing system remains primary in Phase 1 so the team can  validate AI output against known ground truth before  gradually shifting load across.
 
 ### AI driven system:
 
