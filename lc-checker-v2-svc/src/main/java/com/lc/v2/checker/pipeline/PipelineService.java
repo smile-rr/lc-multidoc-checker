@@ -10,6 +10,7 @@ import com.lc.v2.checker.infra.fields.DocTypeRegistry;
 import com.lc.v2.checker.infra.observability.SessionTraceRegistry;
 import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.infra.storage.PdfBytesCache;
+import com.lc.v2.checker.infra.storage.S3FileStore;
 import com.lc.v2.checker.infra.stream.PipelineEventChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -47,6 +48,7 @@ public class PipelineService {
     private final DocTypeRegistry docTypeRegistry;
     private final ObjectMapper objectMapper;
     private final PdfBytesCache pdfCache;
+    private final S3FileStore s3Store;
     private final SessionTraceRegistry traceRegistry;
 
     /** Per-session context cache so stage runs can find prior in-memory state. */
@@ -57,7 +59,8 @@ public class PipelineService {
     public PipelineService(LcV2Pipeline pipeline, PipelineEventBus eventBus,
                            PipelineEventChannel eventChannel, SessionStore sessionStore,
                            DocTypeRegistry docTypeRegistry, ObjectMapper objectMapper,
-                           PdfBytesCache pdfCache, SessionTraceRegistry traceRegistry) {
+                           PdfBytesCache pdfCache, S3FileStore s3Store,
+                           SessionTraceRegistry traceRegistry) {
         this.pipeline = pipeline;
         this.eventBus = eventBus;
         this.eventChannel = eventChannel;
@@ -65,6 +68,7 @@ public class PipelineService {
         this.docTypeRegistry = docTypeRegistry;
         this.objectMapper = objectMapper;
         this.pdfCache = pdfCache;
+        this.s3Store = s3Store;
         this.traceRegistry = traceRegistry;
     }
 
@@ -295,6 +299,17 @@ public class PipelineService {
             if (Boolean.TRUE.equals(d.get("confirmed_by_officer"))) {
                 ctx.confirmedDocTypes.add(dt);
             }
+            // Re-load PDF bytes from MinIO (or hot cache) for non-LC docs so a
+            // Parse-stage rerun works after the in-memory context was evicted.
+            if (dt != DocType.LC && idObj != null) {
+                try {
+                    s3Store.get(idObj.toString())
+                            .ifPresent(bytes -> ctx.uploadedDocBytes.put(dt, bytes));
+                } catch (Exception e) {
+                    log.warn("[{}] PDF re-load for doc {} failed: {}",
+                            sessionId, idObj, e.getMessage());
+                }
+            }
         }
         Map<String, Object> lcRow = sessionStore.getLcParse(sessionId);
         if (lcRow != null) {
@@ -340,7 +355,11 @@ public class PipelineService {
         String s = fromStage == null ? "" : fromStage.toLowerCase();
         return switch (s) {
             case "reconcile", "examine", "signoff" -> ctx.lc != null && !ctx.extracts.isEmpty();
-            default -> false; // intake/parse need raw PDF bytes
+            case "parse" -> ctx.lc != null
+                    && ctx.docIds.keySet().stream()
+                            .filter(dt -> dt != DocType.LC)
+                            .allMatch(dt -> ctx.uploadedDocBytes.get(dt) != null);
+            default -> false; // intake still needs raw PDF bytes + classification reset
         };
     }
 
