@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lc.v2.checker.domain.common.DocType;
 import com.lc.v2.checker.domain.common.FieldEnvelope;
+import com.lc.v2.checker.domain.common.FieldValue;
 import com.lc.v2.checker.domain.document.DocumentExtract;
 import com.lc.v2.checker.domain.lc.LcParseResult;
 import com.lc.v2.checker.infra.fields.DocTypeRegistry;
@@ -317,7 +318,7 @@ public class PipelineService {
                 Map<String, Object> fields = readJsonMap((String) lcRow.get("fields"));
                 Map<String, String> rawFields = readJsonStringMap((String) lcRow.get("raw_fields"));
                 String raw = (String) lcRow.get("raw_mt700");
-                FieldEnvelope env = FieldEnvelope.builder().putAll(fields).build();
+                FieldEnvelope env = buildEnvelope(fields);
                 ctx.lcText = raw;
                 ctx.lc = new LcParseResult(env, raw, rawFields, List.of(), List.of(), null);
             } catch (Exception e) {
@@ -329,7 +330,7 @@ public class PipelineService {
             if (consRow == null) continue;
             try {
                 Map<String, Object> fields = readJsonMap((String) consRow.get("fields"));
-                FieldEnvelope env = FieldEnvelope.builder().putAll(fields).build();
+                FieldEnvelope env = buildEnvelope(fields);
                 DocumentExtract.ExtractionConfidence conf = DocumentExtract.ExtractionConfidence.MED;
                 Object oc = consRow.get("overall_confidence");
                 if (oc instanceof Number n) {
@@ -361,6 +362,37 @@ public class PipelineService {
                             .allMatch(dt -> ctx.uploadedDocBytes.get(dt) != null);
             default -> false; // intake still needs raw PDF bytes + classification reset
         };
+    }
+
+    /**
+     * Rebuild a {@link FieldEnvelope} from persisted JSON. Handles both shapes:
+     * the legacy bare-value map ({@code {key: "USD"}}) and the current
+     * envelope shape ({@code {key: {value, confidence, rawQuote, manual}}}).
+     * Without this unwrap, downstream stages (Reconcile / Examine) see a
+     * {@code Map} as the field value and every comparison silently fails.
+     */
+    @SuppressWarnings("unchecked")
+    private static FieldEnvelope buildEnvelope(Map<String, Object> persisted) {
+        FieldEnvelope.Builder b = FieldEnvelope.builder();
+        for (var e : persisted.entrySet()) {
+            Object raw = e.getValue();
+            if (raw instanceof Map<?, ?> m && m.containsKey("value")) {
+                Map<String, Object> env = (Map<String, Object>) m;
+                Object val = env.get("value");
+                if (val == null) continue;
+                Object c = env.get("confidence");
+                Double conf = (c instanceof Number n) ? n.doubleValue() : null;
+                String quote = (env.get("rawQuote") instanceof String s) ? s : null;
+                if (conf != null || quote != null) {
+                    b.put(e.getKey(), FieldValue.of(val, conf, quote));
+                } else {
+                    b.put(e.getKey(), val);
+                }
+            } else if (raw != null) {
+                b.put(e.getKey(), raw);
+            }
+        }
+        return b.build();
     }
 
     private Map<String, Object> readJsonMap(String json) throws Exception {
