@@ -80,6 +80,17 @@ public class ReconcileStage implements Stage {
             // 2. Pull each doc's value, compare to LC
             for (var entry : ctx.extracts.entrySet()) {
                 DocType dt = entry.getKey();
+
+                // Field-pool gate: if this field is not declared on this doc
+                // type (applies_to), the doc is not expected to carry it.
+                // Mark NA so the matrix stays rectangular but no triage is
+                // required and lock-gate isn't blocked by a spurious MISSING.
+                if (!fd.appliesToDoc(dt.name())) {
+                    cellStatus.put(dt, ReconField.ReconStatus.NA);
+                    cellDetail.put(dt, "field not applicable to " + dt.name());
+                    continue;
+                }
+
                 Object docVal = entry.getValue().consensus().get(fd.key());
                 if (docVal != null && !docVal.toString().isBlank()) {
                     valueByDocType.put(dt, docVal);

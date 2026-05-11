@@ -11,13 +11,70 @@ import React, { useMemo, useState } from 'react';
  *   events  — array from useSse().events
  *   onFormat — optional (msg) => string formatter for each row
  */
+/**
+ * Group key derived from event payload — events sharing a group key form a
+ * single timeline (e.g. one vision slot's progression, or one rule's lifecycle).
+ * Returns null for events that don't belong to a tracked group.
+ */
+function groupKey(msg) {
+  const type = msg.type || '';
+  const d = msg.data || {};
+  if (type === 'ExtractionProgress') return `extract:${d.docType || ''}:${d.slot || ''}`;
+  if (type === 'RuleStarted' || type === 'RuleChecked') return `rule:${d.ruleId || ''}`;
+  if (type === 'StageStarted' || type === 'StageCompleted' || type === 'StageRerun') {
+    return `stage:${d.stageName || d.fromStage || ''}`;
+  }
+  return null;
+}
+
+function tsMillis(ts) {
+  if (ts == null) return NaN;
+  if (typeof ts === 'number') return ts;
+  const v = new Date(ts).getTime();
+  return Number.isFinite(v) ? v : NaN;
+}
+
+/**
+ * Compact ms-or-s duration: 8ms, 240ms, 12.3s, 4m, 2h.
+ * Returns '' for null/undefined so callers can drop the cell entirely.
+ */
+function fmtDur(ms) {
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return '';
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(s < 10 ? 1 : 0)}s`;
+  const m = s / 60;
+  if (m < 60) return `${Math.floor(m)}m`;
+  return `${Math.floor(m / 60)}h`;
+}
+
 export function EventHistory({ events = [], onFormat }) {
   const [open, setOpen] = useState(false);
 
-  const sorted = useMemo(
-    () => [...events].sort((a, b) => (b.seq ?? 0) - (a.seq ?? 0)),
-    [events]
-  );
+  /**
+   * Walk events in seq-ascending order and stamp each with `durationMs` =
+   * (next event in the same group's ts) − (this event's ts). The last event
+   * in any group gets `durationMs = null` (still in progress / no successor).
+   * Static — derived from server-stamped timestamps, never from Date.now().
+   */
+  const sorted = useMemo(() => {
+    const asc = [...events].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+    const lastSeenByGroup = new Map(); // groupKey -> index in asc[]
+    const durations = new Array(asc.length).fill(null);
+    for (let i = 0; i < asc.length; i++) {
+      const k = groupKey(asc[i]);
+      if (k == null) continue;
+      const prevIdx = lastSeenByGroup.get(k);
+      if (prevIdx != null) {
+        const d = tsMillis(asc[i].ts) - tsMillis(asc[prevIdx].ts);
+        durations[prevIdx] = Number.isFinite(d) ? Math.max(0, d) : null;
+      }
+      lastSeenByGroup.set(k, i);
+    }
+    return asc
+      .map((m, i) => ({ ...m, durationMs: durations[i] }))
+      .sort((a, b) => (b.seq ?? 0) - (a.seq ?? 0));
+  }, [events]);
 
   function formatRow(msg) {
     if (onFormat) return onFormat(msg);
@@ -57,19 +114,6 @@ export function EventHistory({ events = [], onFormat }) {
     } catch { return ''; }
   }
 
-  /** Compact relative time: 12s, 4m, 2h, 3d. */
-  function fmtAgo(ts) {
-    if (!ts) return '';
-    const t = typeof ts === 'number' ? ts : new Date(ts).getTime();
-    if (!Number.isFinite(t)) return '';
-    const sec = Math.max(0, Math.floor((Date.now() - t) / 1000));
-    if (sec < 60) return `${sec}s`;
-    const min = Math.floor(sec / 60);
-    if (min < 60) return `${min}m`;
-    const hr = Math.floor(min / 60);
-    if (hr < 24) return `${hr}h`;
-    return `${Math.floor(hr / 24)}d`;
-  }
 
   return (
     <div className="relative">
@@ -101,7 +145,7 @@ export function EventHistory({ events = [], onFormat }) {
 
             {/* Column header — clarifies the compact metadata cluster */}
             <div className="flex items-center gap-2 px-3 py-1 border-b border-line bg-slate2/60 text-[9px] font-mono uppercase tracking-wider text-muted">
-              <span className="w-[160px] shrink-0">seq · time · ago · type</span>
+              <span className="w-[160px] shrink-0">seq · time · dur · type</span>
               <span className="flex-1">description</span>
             </div>
 
@@ -117,7 +161,7 @@ export function EventHistory({ events = [], onFormat }) {
                       <div className="w-[160px] shrink-0 flex flex-col gap-0 pt-0.5">
                         <span className="text-[10px] font-mono text-[#a1a1a6] truncate">
                           #{msg.seq ?? '—'} · {fmtTs(msg.ts)}
-                          {fmtAgo(msg.ts) && <span className="text-muted"> · {fmtAgo(msg.ts)}</span>}
+                          {fmtDur(msg.durationMs) && <span className="text-muted"> · {fmtDur(msg.durationMs)}</span>}
                         </span>
                         <span className="text-[9px] font-mono font-semibold text-muted truncate">
                           {msg.type}
