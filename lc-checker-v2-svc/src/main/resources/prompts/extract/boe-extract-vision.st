@@ -103,14 +103,37 @@ Each item:
 Tag vocabulary (lowercase snake_case):
   draft_boilerplate · amount_in_words · endorsement · acceptance_stamp ·
   protest_stamp · payment_instruction · correspondent_bank · signature_block ·
-  stamp_seal · watermark · reference_code · header · footer · contact_info
+  stamp_seal · watermark · reference_code · header · footer · contact_info ·
+  handwritten_signature · handwritten_amendment · handwritten_initials ·
+  handwritten_note
 
 Allowed "kind" values (legacy):
-- "free-text", "handwritten", "stamp", "watermark", "correction"
+- "free-text", "stamp", "watermark", "correction"
+- "handwritten" — ANY pen/ink markings (drawer/acceptor signatures,
+  endorsements on the back, manual amendments to amount or tenor, initials,
+  handwritten dates). Capture EVERY handwritten region as a SEPARATE
+  off_schema_items entry, EVEN IF the same content is also reflected in a
+  schema field (a handwritten drawer signature is BOTH signed=true AND a
+  kind="handwritten" off-schema item). Stamps and handwriting are independent.
+  Examples:
+    • drawer signature → kind=handwritten. For raw_quote, use this priority:
+      (1) the signer's NAME printed/typed beside or below the signature line
+      (e.g. "John Smith / Director" under the scrawl); (2) the handwritten
+      name if written in legible block letters or clear cursive; (3) the
+      literal string "[handwritten — text not identified]" when neither is
+      available. Never use "illegible". When BOTH a stylised scrawl AND a
+      printed name appear, ALWAYS pick the printed name.
+      tags=["handwritten_signature", "signature_block"]
+    • amendment "USD 125,000 → USD 120,000" → kind=handwritten,
+      tags=["handwritten_amendment", "correction"]
+    • endorsement on reverse → kind=handwritten,
+      tags=["handwritten_signature", "endorsement"]
 
 Coverage self-check (mandatory): re-scan the page; if any printed/written
 region is not in a schema field or off_schema item, add it as "free-text"
-before returning. When in doubt, INCLUDE it.
+before returning. Handwritten content (any pen/ink markings) MUST be captured
+as a kind="handwritten" off-schema item even if also reflected in a schema
+field. When in doubt, INCLUDE it.
 
 IMPORTANT:
 - drawee_name: extract EXACTLY as printed. Bank name + address as one block.

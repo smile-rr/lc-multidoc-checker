@@ -92,14 +92,37 @@ Tag vocabulary (lowercase snake_case):
   package_marks · shipping_marks_block · per_carton_row · sum_inconsistency ·
   shipper_count_notation · container_seal · transport_reference ·
   declaration · certification · signature_block · stamp_seal · watermark ·
-  reference_code · header · footer · contact_info
+  reference_code · header · footer · contact_info ·
+  handwritten_signature · handwritten_amendment · handwritten_initials ·
+  handwritten_note
 
 Allowed "kind" values (legacy):
-- "free-text", "handwritten", "stamp", "watermark", "correction"
+- "free-text", "stamp", "watermark", "correction"
+- "handwritten" — ANY pen/ink markings (packer signatures, manual carton-count
+  amendments, hand-written shipping marks, initials, handwritten dates).
+  Capture EVERY handwritten region as a SEPARATE off_schema_items entry,
+  EVEN IF the same content is also reflected in a schema field (a handwritten
+  signature is BOTH signed=true AND a kind="handwritten" off-schema item).
+  Stamps and handwriting are independent.
+  Examples:
+    • packer signature → kind=handwritten. For raw_quote, use this priority:
+      (1) the signer's NAME printed/typed beside or below the signature line
+      (e.g. "Packer: John Smith" under the scrawl); (2) the handwritten name
+      if written in legible block letters or clear cursive; (3) the literal
+      string "[handwritten — text not identified]" when neither is available.
+      Never use "illegible". When BOTH a stylised scrawl AND a printed name
+      appear, ALWAYS pick the printed name.
+      tags=["handwritten_signature", "signature_block"]
+    • manual carton-count amendment "200 → 195" → kind=handwritten,
+      tags=["handwritten_amendment", "correction"]
+    • initials / handwritten date → kind=handwritten,
+      tags=["handwritten_initials"]
 
 Coverage self-check (mandatory): re-scan the page; if any printed/written
 region is not in a schema field or off_schema item, add it as "free-text"
-before returning. When in doubt, INCLUDE it.
+before returning. Handwritten content (any pen/ink markings) MUST be captured
+as a kind="handwritten" off-schema item even if also reflected in a schema
+field. When in doubt, INCLUDE it.
 
 IMPORTANT:
 - Shipping marks must be extracted verbatim — these are checked against the B/L (UCP 14(e), ISBP C12)

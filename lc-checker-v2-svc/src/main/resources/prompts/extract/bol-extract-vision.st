@@ -108,16 +108,41 @@ Tag vocabulary (lowercase snake_case):
   freight_terms · clean_indicator_stamp · defect_notation · on_deck_notation ·
   endorsement · carrier_clause · conditions_of_carriage · container_seal ·
   shipping_marks · package_marks · signature_block · stamp_seal · watermark ·
-  reference_code · header · footer · contact_info · disclaimer
+  reference_code · header · footer · contact_info · disclaimer ·
+  handwritten_signature · handwritten_amendment · handwritten_initials ·
+  handwritten_note
 
 Allowed "kind" values (legacy):
-- "free-text", "handwritten", "stamp", "watermark", "correction"
+- "free-text", "stamp", "watermark", "correction"
 - For "stamp": e.g. "CLEAN ON BOARD" stamp → kind=stamp, raw_quote=full stamp text, tags=["clean_indicator_stamp", "stamp_seal"]
+- "handwritten" — ANY pen/ink markings (carrier signatures, master signatures,
+  manual amendments to ports / dates / quantities, "ORIGINAL" hand-marks,
+  initials, handwritten countersignatures next to a stamp). Capture EVERY
+  handwritten region as a SEPARATE off_schema_items entry, EVEN IF the same
+  content is also reflected in a schema field (a handwritten carrier signature
+  is BOTH signed=true AND a kind="handwritten" off-schema item). Stamps and
+  handwriting are independent — do NOT collapse a handwritten countersignature
+  on a stamp into one entry.
+  Examples:
+    • carrier signature → kind=handwritten. For raw_quote, use this priority:
+      (1) the signer's NAME printed/typed beside or below the signature line
+      (e.g. "Master: J. Tan" under the scrawl); (2) the handwritten name if
+      written in legible block letters or clear cursive; (3) the literal
+      string "[handwritten — text not identified]" when neither is available.
+      Never use "illegible". When BOTH a stylised scrawl AND a printed name
+      appear, ALWAYS pick the printed name.
+      tags=["handwritten_signature", "signature_block"]
+    • amendment "DISCHARGE: SINGAPORE → JAKARTA" → kind=handwritten,
+      tags=["handwritten_amendment", "correction"]
+    • handwritten "ORIGINAL" / set marker → kind=handwritten,
+      tags=["handwritten_note"]
 
 Coverage self-check (mandatory): mentally re-scan the page top-to-bottom. For
 every printed/written region, confirm it landed in EITHER a schema field (with
 raw_quote in raw_quotes) OR an off_schema_items entry. If anything is
-unaccounted for, add it as "free-text". When in doubt, INCLUDE it.
+unaccounted for, add it as "free-text". Handwritten content (any pen/ink
+markings) MUST be captured as a kind="handwritten" off-schema item even if
+also reflected in a schema field. When in doubt, INCLUDE it.
 
 IMPORTANT:
 - raw_quotes must contain an entry for every non-null schema field

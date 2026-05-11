@@ -109,14 +109,38 @@ Tag vocabulary (use one or more that fit; lowercase snake_case):
   incoterm_signal · freight_terms · payment_instruction · bank_details ·
   contract_reference · package_marks · line_item · trade_term · signature_block ·
   stamp_seal · watermark · contact_info · header · footer · reference_code ·
-  declaration · certification · warranty_clause · language_clause · disclaimer
+  declaration · certification · warranty_clause · language_clause · disclaimer ·
+  handwritten_signature · handwritten_amendment · handwritten_initials · handwritten_note
 
 Allowed "kind" values (legacy — choose one in addition to tags):
 - "free-text"   — DEFAULT for any printed text block (clauses, declarations,
                   payment/bank/SWIFT details, footer text, headers, reference
                   codes, disclaimers). Preserve line breaks via \n.
-- "handwritten" — handwritten annotation
-- "stamp"       — ink stamp / seal (raw_quote = stamp text)
+- "handwritten" — ANY pen/ink markings made by hand: signatures, margin notes,
+                  countersignatures, manual amendments, tick marks, dates,
+                  initials. Capture EVERY handwritten region as a SEPARATE
+                  off_schema_items entry, EVEN IF the same content is also
+                  reflected in a schema field (a handwritten signature is BOTH
+                  signed=true AND a kind="handwritten" off-schema item).
+                  Examples:
+                    • signature → kind=handwritten. For raw_quote, use this
+                      priority: (1) the signer's NAME printed/typed beside or
+                      below the signature line (e.g. "John Smith" under the
+                      scrawl); (2) the handwritten name if written in legible
+                      block letters or clear cursive; (3) the literal string
+                      "[handwritten — text not identified]" when neither is
+                      available. Never use "illegible". When BOTH a stylised
+                      scrawl AND a printed name appear, ALWAYS pick the
+                      printed name — the verbatim text records signer
+                      identity, not ink shape.
+                      tags=["handwritten_signature", "signature_block"]
+                    • amendment "QTY 250 → 240" → kind=handwritten,
+                      tags=["handwritten_amendment", "correction"]
+                    • initials / handwritten date → kind=handwritten,
+                      tags=["handwritten_initials"]
+- "stamp"       — ink stamp / seal (raw_quote = stamp text). Stamps and
+                  handwriting are tracked independently — do NOT collapse a
+                  handwritten countersignature on a stamp into one entry.
 - "watermark"   — watermark text (ORIGINAL, COPY, SPECIMEN, DUPLICATE, etc.)
 - "correction"  — struck-through or corrected text. Also include "original" + "authenticated"
 
@@ -125,8 +149,9 @@ Mentally re-scan the page top-to-bottom. For every printed/written region,
 confirm it landed in EITHER a schema field (with raw_quote in raw_quotes) OR
 an off_schema_items entry. If anything is unaccounted for — even a single
 sentence, a stamp legend, a footer line — add it as a "free-text" item with
-tags. When in doubt, INCLUDE it. Over-inclusion is acceptable; silent
-omission is not.
+tags. Handwritten content (any pen/ink markings) MUST be captured as a
+kind="handwritten" off-schema item even if also reflected in a schema field.
+When in doubt, INCLUDE it. Over-inclusion is acceptable; silent omission is not.
 
 IMPORTANT:
 - Extract EXACTLY what is printed — do not paraphrase, summarise, translate, or infer

@@ -86,14 +86,37 @@ Each item:
 Tag vocabulary (lowercase snake_case):
   letterhead · addressee · attestation · warranty_clause · scope_clause ·
   period_clause · signature_block · stamp_seal · watermark · contact_info ·
-  registration_id · accreditation · reference_code · header · footer · disclaimer
+  registration_id · accreditation · reference_code · header · footer ·
+  disclaimer · handwritten_signature · handwritten_amendment ·
+  handwritten_initials · handwritten_note
 
 Allowed "kind" values (legacy):
-- "free-text", "handwritten", "stamp", "watermark", "correction"
+- "free-text", "stamp", "watermark", "correction"
+- "handwritten" — ANY pen/ink markings (signatures, margin notes, manual
+  amendments to scope/period clauses, initials, handwritten dates). Capture
+  EVERY handwritten region as a SEPARATE off_schema_items entry, EVEN IF the
+  same content is also reflected in a schema field (a handwritten signature
+  is BOTH signed=true AND a kind="handwritten" off-schema item). Stamps and
+  handwriting are independent.
+  Examples:
+    • signature → kind=handwritten. For raw_quote, use this priority:
+      (1) the signer's NAME printed/typed beside or below the signature line
+      (e.g. "John Smith / QA Manager" under the scrawl); (2) the handwritten
+      name if written in legible block letters or clear cursive; (3) the
+      literal string "[handwritten — text not identified]" when neither is
+      available. Never use "illegible". When BOTH a stylised scrawl AND a
+      printed name appear, ALWAYS pick the printed name.
+      tags=["handwritten_signature", "signature_block"]
+    • amendment to scope clause → kind=handwritten,
+      tags=["handwritten_amendment", "correction"]
+    • initials / handwritten date → kind=handwritten,
+      tags=["handwritten_initials"]
 
 Coverage self-check (mandatory): re-scan the page; if any printed/written
 region is not in a schema field (including wc_conditions_text) or off_schema
-item, add it as "free-text" before returning. When in doubt, INCLUDE it.
+item, add it as "free-text" before returning. Handwritten content (any pen/ink
+markings) MUST be captured as a kind="handwritten" off-schema item even if
+also reflected in a schema field. When in doubt, INCLUDE it.
 
 IMPORTANT:
 - wc_conditions_text: extract VERBATIM — this is critical for CERT-01 which checks all stipulating LC clauses
