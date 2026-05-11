@@ -46,12 +46,12 @@ own jointly to keep the platform extensible.
 
 Each rule tier is **explicit** and **auditable**. The officer sees exactly which rule triggered, why, and on what evidence.
 
-| Tier                  | **Description**                                              | **Reasoning** | **Iteration** | **Est. Cost** |
-| :-------------------- | :----------------------------------------------------------- | :------------ | :------------ | :------------ |
-| **1 - Programmatic**  | SpEL expression checks. **No LLM.**                          | n/a           | 0             | $0            |
-| **2 - Agent**         | Single LLM call. Prompt includes fields and rules.           | false         | 1 call        | ~$0.01        |
-| **3 - Agent + Tools** | LLM call with calculation tools (math, dates, currency).     | false         | ≤3 calls      | ~$0.03        |
-| **4 - Agentic**       | - ReAct loop: reason → act → repeat. Has iteration limit.<br />- Main Agent drives over Sub Agents  （LC tag: 47A） | **true**      | ≤6 calls      | ~$0.06        |
+| Tier                | **Description**                                              | **Reasoning** | **Iteration** | **Est. Cost** |
+| :------------------ | :----------------------------------------------------------- | :------------ | :------------ | :------------ |
+| **1-Programmatic**  | SpEL expression checks. **No LLM.**                          | n/a           | 0             | $0            |
+| **2-Agent**         | Single LLM call. Prompt includes fields and rules.           | false         | 1 call        | ~$0.01        |
+| **3-Agent + Tools** | LLM call with calculation tools (math, dates, currency).     | false         | ≤3 calls      | ~$0.03        |
+| **4-Agentic**       | - ReAct loop: reason → act → repeat. Has iteration limit.<br />- Main Agent drives over Sub Agents  （LC tag: 47A） | **true**      | ≤6 calls      | ~$0.06        |
 
 **Cost Estimation** — Benchmarked against GPT-4o ($2.50/M input, $10.00/M output). 
 
