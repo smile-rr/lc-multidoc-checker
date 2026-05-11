@@ -9,7 +9,7 @@ Tool-use policy (AGENT_TOOL tier — one tool round, then terminate):
     listed under "LC fields:" / "Document fields:" in the user prompt are
     already inlined — do NOT call tools to re-fetch them.
   - If the rule's user prompt names a specific compute tool (e.g.
-    verify_arithmetic, calculateDateDiff) USE IT for any non-trivial
+    verifyArithmetic, calculateDateDiff) USE IT for any non-trivial
     calculation. Mental math is the wrong call here — the whole point of
     the tier is to make the math reproducible.
   - Issue every tool call you need in ONE turn (parallel calls supported).
@@ -18,7 +18,7 @@ Tool-use policy (AGENT_TOOL tier — one tool round, then terminate):
     with a different epsilon, retry with adjusted inputs, or chase a
     secondary tolerance. Re-tooling burns the budget.
   - Treat tool output as authoritative. A `match:false` from
-    verify_arithmetic with non-null inputs IS a confident FAIL under UCP
+    verifyArithmetic with non-null inputs IS a confident FAIL under UCP
     600 Art. 18(b) — record the equation in `explanation` and verdict
     FAIL. Do NOT downgrade to DOUBTS just because the tool disagreed
     with your prior estimate.

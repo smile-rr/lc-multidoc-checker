@@ -30,6 +30,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -159,11 +160,19 @@ public class AgentRuleExecutor {
     }
 
     private String systemPromptFor(Rule rule) {
-        return switch (rule.checkType()) {
+        String base = switch (rule.checkType()) {
             case "AGENT_TOOL" -> systemPromptTools;
             case "AGENTIC"    -> systemPromptAgentic;
             default           -> systemPrompt;
         };
+        // Composed at call time (not load time) so the date stays current
+        // across midnight rollover without a service restart. Mirrors the
+        // SpEL variable `#presentationDate` exposed to PROGRAMMATIC rules in
+        // SpelEvaluator — same value, same purpose: anchor for UCP 14(c)
+        // presentation-window and expiry-window reasoning.
+        return base + "\n\nAmbient context (use for any date-window / expiry / "
+                + "stale-document reasoning):\n"
+                + "  Today / presentation date: " + java.time.LocalDate.now() + "\n";
     }
 
     public CheckResult execute(Rule rule, StageContext ctx) {
@@ -309,8 +318,33 @@ public class AgentRuleExecutor {
                             new ArrayList<>(toolCalls), null);
                 }
 
-                ToolExecutionResult toolResult = toolCallingManager.executeToolCalls(prompt, response);
-                messages = new ArrayList<>(toolResult.conversationHistory());
+                try {
+                    ToolExecutionResult toolResult = toolCallingManager.executeToolCalls(prompt, response);
+                    messages = new ArrayList<>(toolResult.conversationHistory());
+                } catch (IllegalStateException e) {
+                    // Common case: model hallucinated a tool name (e.g.
+                    // "getAllExtapedFields" for "getAllExtractedFields").
+                    // Inject a synthetic tool-error response listing the valid
+                    // names and let the model self-correct on the next turn
+                    // — wasting a turn beats failing the entire rule.
+                    String msg = e.getMessage() == null ? "" : e.getMessage();
+                    if (!msg.contains("No ToolCallback found")) throw e;
+                    String validNames = tools.stream()
+                            .map(t -> t.getToolDefinition().name())
+                            .collect(java.util.stream.Collectors.joining(", "));
+                    log.warn("[{}] rule={} unknown tool requested: {} — injecting recovery, valid={}",
+                            ctx.sessionId, rule.ruleId(), msg, validNames);
+                    List<ToolResponseMessage.ToolResponse> errResponses = new ArrayList<>();
+                    for (AssistantMessage.ToolCall tc : assistant.getToolCalls()) {
+                        String body = "{\"error\":\"Unknown tool '" + tc.name() + "'."
+                                + " Use only these exact tool names: " + validNames + "\"}";
+                        errResponses.add(new ToolResponseMessage.ToolResponse(
+                                tc.id(), tc.name(), body));
+                    }
+                    messages = new ArrayList<>(messages);
+                    messages.add(assistant);
+                    messages.add(ToolResponseMessage.builder().responses(errResponses).build());
+                }
             }
             // Defensive — loop should have returned already.
             return new CheckResult(rule.ruleId(), CheckResult.Verdict.NEEDS_REVIEW,
