@@ -40,14 +40,18 @@ own jointly to keep the platform extensible.
 
 
 
-## Rule Types
+## Rule Tiers
 
-| **Type**          | **Description**                                              | **Reasoning** | **Iteration** | **Est. Cost** |
-| :---------------- | :----------------------------------------------------------- | :------------ | :------------ | :------------ |
-| **Programmatic**  | SpEL expression checks. **No LLM.**                          | n/a           | 0             | $0            |
-| **Agent**         | Single LLM call. Prompt includes fields and rules.           | false         | 1 call        | ~$0.01        |
-| **Agent + Tools** | LLM call with calculation tools (math, dates, currency).     | false         | ≤3 calls      | ~$0.03        |
-| **Agentic**       | - ReAct loop: reason → act → repeat. Has iteration limit.<br />- Main Agent drives over Sub Agents  （LC tag: 47A） | **true**      | ≤6 calls      | ~$0.06        |
+**AI-assisted, not autopilot** — built for regulated environments, human sign-off preserved at every stage.
+
+Each rule tier is **explicit** and **auditable**. The officer sees exactly which rule triggered, why, and on what evidence.
+
+| Tier                  | **Description**                                              | **Reasoning** | **Iteration** | **Est. Cost** |
+| :-------------------- | :----------------------------------------------------------- | :------------ | :------------ | :------------ |
+| **1 - Programmatic**  | SpEL expression checks. **No LLM.**                          | n/a           | 0             | $0            |
+| **2 - Agent**         | Single LLM call. Prompt includes fields and rules.           | false         | 1 call        | ~$0.01        |
+| **3 - Agent + Tools** | LLM call with calculation tools (math, dates, currency).     | false         | ≤3 calls      | ~$0.03        |
+| **4 - Agentic**       | - ReAct loop: reason → act → repeat. Has iteration limit.<br />- Main Agent drives over Sub Agents  （LC tag: 47A） | **true**      | ≤6 calls      | ~$0.06        |
 
 **Cost Estimation** — Benchmarked against GPT-4o ($2.50/M input, $10.00/M output). 
 
@@ -79,15 +83,13 @@ The AI workbench integration in the existing process —  same officer roles, sa
 
 
 
-## Opinion
+## Further Thoughts
 
-### Improvement cycle
+- **No RAG on UCP 600 / ISBP 821**
+  The ruleset fits in context per rule check. **RAG introduces the risk of silently missing a clause** — unacceptable in compliance. Rules are owned explicitly, not retrieved probabilistically.
 
-- **Accumulate document parsing corrections** as few-shot examples to keep improving VLM prompts
-- **Accumulate rule decision corrections per rule** as few-shot examples to keep improving rule prompts
+- **Case Knowledge Base - build on existing system data**
+  Historical decision data from the current system eliminates the cold-start problem — mined into new Agent rules and made searchable for officers handling edge cases and judgment calls. A data audit on record structure and granularity is the recommended first step before seeding.
 
-### On RAG
-
-- **Build a Case Knowledge Base from closed cases** — mine patterns into new Agent rules, and let officers search precedents via RAG when making judgment calls
-
-- RAG on UCP 600 / ISBP 821 — **the ruleset fits in context per rule**,  so there's no retrieval problem to solve; **RAG** only **adds the risk of silently missing a clause**, which is unacceptable in compliance**
+- **Iterative improvement, not one-shot fine-tuning**
+  **Parsing and rule decision corrections** are **accumulated** as few-shot examples per rule prompt — improving accuracy incrementally. Volume is limited early, but the per-rule prompt structure ensures each correction is targeted, not diluted.
