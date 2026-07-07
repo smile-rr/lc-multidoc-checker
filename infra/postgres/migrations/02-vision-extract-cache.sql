@@ -2,7 +2,7 @@
 -- Hit when same (pdf bytes, prompt, model, base_url, render params, request shape) repeats.
 -- Per-slot row; consensus is recomputed at read time from current slot config.
 
-CREATE TABLE IF NOT EXISTS lc_v2.vision_extract_cache (
+CREATE TABLE IF NOT EXISTS lc_v3.vision_extract_cache (
   cache_key         TEXT PRIMARY KEY,
   pdf_sha256        TEXT NOT NULL,
   prompt_sha256     TEXT NOT NULL,
@@ -24,11 +24,11 @@ CREATE TABLE IF NOT EXISTS lc_v2.vision_extract_cache (
   last_hit_at       TIMESTAMPTZ
 );
 
-ALTER TABLE lc_v2.vision_extract_cache
+ALTER TABLE lc_v3.vision_extract_cache
   ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS ix_vec_pdf_model
-  ON lc_v2.vision_extract_cache (pdf_sha256, model);
+  ON lc_v3.vision_extract_cache (pdf_sha256, model);
 
 CREATE INDEX IF NOT EXISTS ix_vec_expires_at
-  ON lc_v2.vision_extract_cache (expires_at) WHERE expires_at IS NOT NULL;
+  ON lc_v3.vision_extract_cache (expires_at) WHERE expires_at IS NOT NULL;

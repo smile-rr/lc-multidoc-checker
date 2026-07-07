@@ -43,13 +43,16 @@ public class S3FileStore {
     private final S3Client s3;
     private final StorageProperties cfg;
     private final PdfBytesCache cache;
+    private final MinioReachability reachability;
 
-    public S3FileStore(S3Client s3, StorageProperties cfg, PdfBytesCache cache) {
+    public S3FileStore(S3Client s3, StorageProperties cfg, PdfBytesCache cache,
+                       MinioReachability reachability) {
         this.s3 = s3;
         this.cfg = cfg;
         this.cache = cache;
-        log.info("S3FileStore wired: endpoint={} bucket={} prefix={}",
-                cfg.endpoint(), cfg.bucket(), cfg.pathPrefix());
+        this.reachability = reachability;
+        log.info("S3FileStore wired: endpoint={} bucket={} prefix={} minioRequired={}",
+                cfg.endpoint(), cfg.bucket(), cfg.pathPrefix(), cfg.required());
     }
 
     public boolean enabled() { return cfg.enabled(); }
@@ -65,7 +68,12 @@ public class S3FileStore {
         cache.put(docId, bytes);
 
         if (!cfg.enabled()) {
-            log.debug("S3 disabled — PDF cached in-process only");
+            log.debug("S3 disabled (STORAGE_MINIO_REQUIRED=false) — PDF cached in-process only");
+            return true;
+        }
+
+        if (!reachability.isReachable()) {
+            log.debug("S3 skipped (MinIO unreachable) — PDF cached in-process only: {}", key);
             return true;
         }
 
@@ -89,6 +97,7 @@ public class S3FileStore {
                             .build(),
                     RequestBody.fromBytes(bytes));
             log.info("S3 PUT ok: bucket={} key={} bytes={}", cfg.bucket(), key, bytes.length);
+            reachability.markReachable();
             return true;
 
         } catch (SdkServiceException e) {
@@ -96,6 +105,7 @@ public class S3FileStore {
                     key, e.statusCode(), e.getMessage());
             return true;
         } catch (SdkClientException e) {
+            reachability.markUnreachable();
             log.warn("S3 PUT {} unreachable: {} — serving from hot cache", key, e.getMessage());
             return true;
         }
@@ -119,6 +129,11 @@ public class S3FileStore {
             return Optional.empty();
         }
 
+        if (!reachability.isReachable()) {
+            log.debug("S3 skipped (MinIO unreachable), no cache entry: docId={}", docId);
+            return Optional.empty();
+        }
+
         String key = objectKey(docId);
         int attempt = 0;
         SdkClientException lastFailure = null;
@@ -133,6 +148,7 @@ public class S3FileStore {
                 cache.put(docId, bytes);
                 log.info("S3 GET ok: bucket={} key={} bytes={} attempts={}",
                         cfg.bucket(), key, bytes.length, attempt);
+                reachability.markReachable();
                 return Optional.of(bytes);
 
             } catch (NoSuchKeyException e) {
@@ -159,6 +175,7 @@ public class S3FileStore {
                 }
                 log.error("S3 GET {} unreachable after {} attempts: {}",
                         key, RETRY_MAX_ATTEMPTS, e.getMessage());
+                reachability.markUnreachable();
                 throw new MinioAccessException(key, e);
             }
         }

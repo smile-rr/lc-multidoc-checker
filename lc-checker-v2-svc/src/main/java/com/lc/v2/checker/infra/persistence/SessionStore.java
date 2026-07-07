@@ -13,7 +13,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 /**
- * JDBC store for the lc_v2 schema (six tables: check_sessions, documents,
+ * JDBC store for the lc_v3 schema (six tables: check_sessions, documents,
  * pipeline_steps, pipeline_events, officer_actions).
  *
  * <p>Conventions:
@@ -44,7 +44,7 @@ public class SessionStore {
     public String createSession(int docCount) {
         String id = UUID.randomUUID().toString();
         jdbc.update("""
-                INSERT INTO lc_v2.check_sessions (id, status, doc_count, created_at)
+                INSERT INTO lc_v3.check_sessions (id, status, doc_count, created_at)
                 VALUES (?::uuid, 'QUEUED', ?, NOW())
                 """, id, docCount);
         log.info("Created session: {}", id);
@@ -52,13 +52,13 @@ public class SessionStore {
     }
 
     public void updateStatus(String sessionId, String status) {
-        jdbc.update("UPDATE lc_v2.check_sessions SET status = ? WHERE id = ?::uuid",
+        jdbc.update("UPDATE lc_v3.check_sessions SET status = ? WHERE id = ?::uuid",
                 status, sessionId);
     }
 
     public void markAwaitingOfficer(String sessionId, String justCompleted, String nextStage) {
         jdbc.update("""
-                UPDATE lc_v2.check_sessions
+                UPDATE lc_v3.check_sessions
                 SET status = 'AWAITING_OFFICER',
                     awaiting_officer = TRUE,
                     next_stage = ?,
@@ -70,7 +70,7 @@ public class SessionStore {
 
     public void clearAwaitingOfficer(String sessionId, String runningStage) {
         jdbc.update("""
-                UPDATE lc_v2.check_sessions
+                UPDATE lc_v3.check_sessions
                 SET status = ?, awaiting_officer = FALSE, next_stage = NULL
                 WHERE id = ?::uuid
                 """, runningStage.toUpperCase(), sessionId);
@@ -78,7 +78,7 @@ public class SessionStore {
 
     public String getNextStage(String sessionId) {
         var rows = jdbc.queryForList(
-                "SELECT next_stage FROM lc_v2.check_sessions WHERE id = ?::uuid", sessionId);
+                "SELECT next_stage FROM lc_v3.check_sessions WHERE id = ?::uuid", sessionId);
         if (rows.isEmpty()) return null;
         Object v = rows.get(0).get("next_stage");
         return v == null ? null : v.toString();
@@ -91,7 +91,7 @@ public class SessionStore {
      */
     public void updateCompleted(String sessionId, Boolean compliant) {
         jdbc.update("""
-                UPDATE lc_v2.check_sessions
+                UPDATE lc_v3.check_sessions
                 SET status = 'COMPLETED',
                     compliant = ?,
                     completed_at = NOW()
@@ -101,7 +101,7 @@ public class SessionStore {
 
     public void updateFailed(String sessionId, String error) {
         jdbc.update("""
-                UPDATE lc_v2.check_sessions
+                UPDATE lc_v3.check_sessions
                 SET status = 'FAILED', error = ?, completed_at = NOW()
                 WHERE id = ?::uuid
                 """, error, sessionId);
@@ -110,7 +110,7 @@ public class SessionStore {
     public boolean sessionExists(String sessionId) {
         if (!isValidUuid(sessionId)) return false;
         Integer count = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM lc_v2.check_sessions WHERE id = ?::uuid",
+                "SELECT COUNT(*) FROM lc_v3.check_sessions WHERE id = ?::uuid",
                 Integer.class, sessionId);
         return count != null && count > 0;
     }
@@ -130,7 +130,7 @@ public class SessionStore {
                        error, next_stage, awaiting_officer,
                        stage_completed_at::text AS stage_completed_at,
                        lc_number, beneficiary_name
-                FROM   lc_v2.v_session_overview
+                FROM   lc_v3.v_session_overview
                 ORDER  BY created_at DESC
                 LIMIT  ?
                 """, limit);
@@ -145,7 +145,7 @@ public class SessionStore {
         List<Map<String, Object>> rows = jdbc.queryForList("""
                 SELECT id, status, compliant, doc_count, error, created_at, completed_at,
                        next_stage, awaiting_officer, stage_completed_at::text AS stage_completed_at
-                FROM   lc_v2.check_sessions WHERE id = ?::uuid
+                FROM   lc_v3.check_sessions WHERE id = ?::uuid
                 """, sessionId);
         if (rows.isEmpty()) return null;
         Map<String, Object> session = rows.get(0);
@@ -167,7 +167,7 @@ public class SessionStore {
         String docId = UUID.randomUUID().toString();
         boolean autoConfirmed = docType != DocType.UNKNOWN;
         jdbc.update("""
-                INSERT INTO lc_v2.documents
+                INSERT INTO lc_v3.documents
                   (id, session_id, doc_type, original_filename, page_count,
                    parse_status, confirmed_by_officer, created_at)
                 VALUES (?::uuid, ?::uuid, ?, ?, ?, 'PENDING', ?, NOW())
@@ -178,13 +178,13 @@ public class SessionStore {
 
     public void updateDocumentStatusByType(String sessionId, String docType, String parseStatus) {
         jdbc.update("""
-                UPDATE lc_v2.documents SET parse_status = ?
+                UPDATE lc_v3.documents SET parse_status = ?
                 WHERE session_id = ?::uuid AND doc_type = ?
                 """, parseStatus, sessionId, docType);
     }
 
     public void updateDocumentStatus(String documentId, String parseStatus) {
-        jdbc.update("UPDATE lc_v2.documents SET parse_status = ? WHERE id = ?::uuid",
+        jdbc.update("UPDATE lc_v3.documents SET parse_status = ? WHERE id = ?::uuid",
                 parseStatus, documentId);
     }
 
@@ -192,7 +192,7 @@ public class SessionStore {
         return jdbc.queryForList("""
                 SELECT id, doc_type, original_filename, parse_status, page_count,
                        confirmed_by_officer, created_at
-                FROM   lc_v2.documents WHERE session_id = ?::uuid ORDER BY created_at
+                FROM   lc_v3.documents WHERE session_id = ?::uuid ORDER BY created_at
                 """, sessionId);
     }
 
@@ -201,7 +201,7 @@ public class SessionStore {
                 SELECT id, session_id, doc_type, original_filename, file_sha256,
                        page_count, parse_status, classification_conf,
                        confirmed_by_officer, created_at
-                FROM   lc_v2.documents WHERE id = ?::uuid
+                FROM   lc_v3.documents WHERE id = ?::uuid
                 """, docId);
         return rows.isEmpty() ? null : rows.get(0);
     }
@@ -209,7 +209,7 @@ public class SessionStore {
     /** Patch a document row. Pass null fields to leave them unchanged. */
     public void patchDocument(String docId, String docType, String parseStatus,
                               Boolean confirmedByOfficer) {
-        StringBuilder sql = new StringBuilder("UPDATE lc_v2.documents SET ");
+        StringBuilder sql = new StringBuilder("UPDATE lc_v3.documents SET ");
         List<Object> params = new java.util.ArrayList<>();
         boolean first = true;
         if (docType != null) {
@@ -231,7 +231,7 @@ public class SessionStore {
 
     public List<String> getDocumentIds(String sessionId) {
         return jdbc.query(
-                "SELECT id::text FROM lc_v2.documents WHERE session_id = ?::uuid",
+                "SELECT id::text FROM lc_v3.documents WHERE session_id = ?::uuid",
                 (rs, n) -> rs.getString(1),
                 sessionId);
     }
@@ -249,7 +249,7 @@ public class SessionStore {
                                     Long durationMs, String error) {
         if (resultJson == null || resultJson.isBlank()) resultJson = "{}";
         jdbc.update("""
-                INSERT INTO lc_v2.pipeline_steps
+                INSERT INTO lc_v3.pipeline_steps
                   (session_id, stage, step_key, status, started_at, completed_at,
                    duration_ms, result, error, created_at)
                 VALUES (?::uuid, ?, ?, ?, NOW(), NOW(), ?, ?::jsonb, ?, NOW())
@@ -266,7 +266,7 @@ public class SessionStore {
     public String getPipelineStepResult(String sessionId, String stage, String stepKey) {
         try {
             return jdbc.queryForObject("""
-                    SELECT result::text FROM lc_v2.pipeline_steps
+                    SELECT result::text FROM lc_v3.pipeline_steps
                     WHERE session_id = ?::uuid AND stage = ? AND step_key = ?
                     """, String.class, sessionId, stage, stepKey);
         } catch (org.springframework.dao.EmptyResultDataAccessException e) {
@@ -281,7 +281,7 @@ public class SessionStore {
                        explanation, evidence::text AS evidence,
                        trigger_trace::text AS trigger_trace,
                        duration_ms, started_at, completed_at, error
-                FROM   lc_v2.v_check_results
+                FROM   lc_v3.v_check_results
                 WHERE  session_id = ?::uuid
                 ORDER  BY started_at, rule_id
                 """, sessionId);
@@ -295,7 +295,7 @@ public class SessionStore {
                        value_by_doc_type::text AS value_by_doc_type,
                        cell_status::text       AS cell_status,
                        cell_detail::text       AS cell_detail
-                FROM   lc_v2.v_reconcile_rows
+                FROM   lc_v3.v_reconcile_rows
                 WHERE  session_id = ?::uuid
                 ORDER  BY field_group NULLS LAST, field_key
                 """, sessionId);
@@ -310,7 +310,7 @@ public class SessionStore {
                        derived::text    AS derived,
                        warnings::text   AS warnings,
                        parsed_at
-                FROM   lc_v2.v_lc_parse
+                FROM   lc_v3.v_lc_parse
                 WHERE  session_id = ?::uuid
                 """, sessionId);
         return rows.isEmpty() ? null : rows.get(0);
@@ -322,7 +322,7 @@ public class SessionStore {
                 SELECT consistency_warnings::text AS consistency_warnings,
                        consistency::text         AS consistency,
                        trigger_traces::text      AS trigger_traces
-                FROM   lc_v2.v_examine_meta
+                FROM   lc_v3.v_examine_meta
                 WHERE  session_id = ?::uuid
                 """, sessionId);
         return rows.isEmpty() ? null : rows.get(0);
@@ -335,7 +335,7 @@ public class SessionStore {
                        off_schema_items::text AS off_schema_items,
                        overall_confidence,
                        extracted_at
-                FROM   lc_v2.v_doc_extracts_consensus
+                FROM   lc_v3.v_doc_extracts_consensus
                 WHERE  document_id = ?::uuid
                 """, docId);
         return rows.isEmpty() ? null : rows.get(0);
@@ -345,7 +345,7 @@ public class SessionStore {
     public List<Map<String, Object>> getDocSlots(String docId) {
         return jdbc.queryForList("""
                 SELECT slot, fields::text AS fields, extracted_at
-                FROM   lc_v2.v_doc_extracts_slots
+                FROM   lc_v3.v_doc_extracts_slots
                 WHERE  document_id = ?::uuid
                 ORDER  BY slot
                 """, docId);
@@ -357,7 +357,7 @@ public class SessionStore {
 
     public void appendEvent(String sessionId, long seq, String eventJson) {
         jdbc.update("""
-                INSERT INTO lc_v2.pipeline_events (session_id, seq, event, created_at)
+                INSERT INTO lc_v3.pipeline_events (session_id, seq, event, created_at)
                 VALUES (?::uuid, ?, ?::jsonb, NOW())
                 ON CONFLICT (session_id, seq) DO NOTHING
                 """, sessionId, seq, eventJson);
@@ -370,7 +370,7 @@ public class SessionStore {
                        (event->>'ts')              AS ts,
                        (event->>'sessionId')       AS sessionId,
                        event
-                FROM lc_v2.pipeline_events
+                FROM lc_v3.pipeline_events
                 WHERE session_id = ?::uuid
                 ORDER BY seq
                 """, sessionId);
@@ -390,7 +390,7 @@ public class SessionStore {
                                      String payloadJson, String officerId, String note) {
         if (payloadJson == null || payloadJson.isBlank()) payloadJson = "{}";
         jdbc.update("""
-                INSERT INTO lc_v2.officer_actions
+                INSERT INTO lc_v3.officer_actions
                   (session_id, action, target, payload, officer_id, note, acted_at)
                 VALUES (?::uuid, ?, ?, ?::jsonb, ?, ?, NOW())
                 """, sessionId, action, target, payloadJson, officerId, note);
@@ -400,7 +400,7 @@ public class SessionStore {
     public Map<String, Object> getLockState(String sessionId) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
                 SELECT locked, locked_at, locked_by_officer, unlock_reason
-                FROM   lc_v2.v_lock_state WHERE session_id = ?::uuid
+                FROM   lc_v3.v_lock_state WHERE session_id = ?::uuid
                 """, sessionId);
         return rows.isEmpty() ? null : rows.get(0);
     }
@@ -408,7 +408,7 @@ public class SessionStore {
     public List<Map<String, Object>> getCellDecisions(String sessionId) {
         return jdbc.queryForList("""
                 SELECT field_key, doc_type, decision, value, note, officer_id, decided_at
-                FROM   lc_v2.v_cell_decisions
+                FROM   lc_v3.v_cell_decisions
                 WHERE  session_id = ?::uuid
                 ORDER  BY decided_at
                 """, sessionId);
@@ -417,7 +417,7 @@ public class SessionStore {
     public List<Map<String, Object>> getOverrides(String sessionId) {
         return jdbc.queryForList("""
                 SELECT rule_id, new_status, reason, flagged, note, officer_id, created_at
-                FROM   lc_v2.v_rule_overrides
+                FROM   lc_v3.v_rule_overrides
                 WHERE  session_id = ?::uuid
                 ORDER  BY created_at DESC
                 """, sessionId);
@@ -437,7 +437,7 @@ public class SessionStore {
     public List<Map<String, Object>> getFieldCorrections(String docId) {
         return jdbc.queryForList("""
                 SELECT field_key, value, issue_kind, note, officer_id, corrected_at
-                FROM   lc_v2.v_field_corrections
+                FROM   lc_v3.v_field_corrections
                 WHERE  document_id = ?::uuid
                 ORDER  BY field_key
                 """, docId);
@@ -448,14 +448,14 @@ public class SessionStore {
                 SELECT decision,
                        discrepancy_dispositions::text AS discrepancy_dispositions,
                        officer_note, signed_at, officer_id, frozen
-                FROM   lc_v2.v_signoff WHERE session_id = ?::uuid
+                FROM   lc_v3.v_signoff WHERE session_id = ?::uuid
                 """, sessionId);
         return rows.isEmpty() ? null : rows.get(0);
     }
 
     public boolean isSigned(String sessionId) {
         Integer count = jdbc.queryForObject("""
-                SELECT COUNT(*) FROM lc_v2.officer_actions
+                SELECT COUNT(*) FROM lc_v3.officer_actions
                 WHERE session_id = ?::uuid AND action = 'signoff'
                 """, Integer.class, sessionId);
         return count != null && count > 0;
@@ -469,7 +469,7 @@ public class SessionStore {
     public Map<String, String> getExamineRuleResultJson(String sessionId) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
                 SELECT step_key, result::text AS result
-                FROM   lc_v2.pipeline_steps
+                FROM   lc_v3.pipeline_steps
                 WHERE  session_id = ?::uuid
                   AND  stage = 'examine'
                   AND  step_key <> 'meta'
@@ -504,22 +504,22 @@ public class SessionStore {
         // Wipe pipeline_steps for fromStage and every stage after it.
         List<String> stages = STAGE_ORDER.subList(idx, STAGE_ORDER.size());
         for (String s : stages) {
-            jdbc.update("DELETE FROM lc_v2.pipeline_steps WHERE session_id = ?::uuid AND stage = ?",
+            jdbc.update("DELETE FROM lc_v3.pipeline_steps WHERE session_id = ?::uuid AND stage = ?",
                     sessionId, s);
         }
         // Reset session-level scalars.
         jdbc.update("""
-                UPDATE lc_v2.check_sessions
+                UPDATE lc_v3.check_sessions
                 SET status = ?, compliant = NULL, error = NULL, completed_at = NULL
                 WHERE id = ?::uuid
                 """, stage.toUpperCase(), sessionId);
         // Re-run from intake also wipes documents (the inputs).
         if (idx == 0) {
-            jdbc.update("DELETE FROM lc_v2.documents WHERE session_id = ?::uuid", sessionId);
+            jdbc.update("DELETE FROM lc_v3.documents WHERE session_id = ?::uuid", sessionId);
         } else if (idx == 1) {
             // Re-run from parse: documents reset to PENDING for re-extraction.
             jdbc.update("""
-                    UPDATE lc_v2.documents SET parse_status = 'PENDING',
+                    UPDATE lc_v3.documents SET parse_status = 'PENDING',
                                                 confirmed_by_officer = false
                     WHERE session_id = ?::uuid
                     """, sessionId);

@@ -2,7 +2,7 @@
 #
 # Deploys lc-checker-v2-svc (Spring Boot) + ui-v2 (React/nginx).
 # Uses the shared PostgreSQL instance at 192.168.31.214:5436 (same as v1).
-# V2 schema lives in the lc_v2 schema within the same lc_checker database.
+# App tables live in schema lc_v3 inside the shared lc_checker database (v2 uses lc_v2).
 #
 # Traefik routing (shared-infra network):
 #   lccheck-v2.infra.local      → UI (nginx) — local dev

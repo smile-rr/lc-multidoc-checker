@@ -30,6 +30,7 @@ export function HomePage() {
   const [presets, setPresets] = useState([]);
   const [presetsStatus, setPresetsStatus] = useState('loading'); // loading | ok | empty | error
   const [presetsError, setPresetsError] = useState(null);
+  const [presetsRetryKey, setPresetsRetryKey] = useState(0);
   const [presetLoadingId, setPresetLoadingId] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef();
@@ -40,18 +41,41 @@ export function HomePage() {
   }, [files.length, registerDraft]);
 
   useEffect(() => {
-    getPresets()
-      .then(r => {
-        const list = r.presets ?? [];
-        setPresets(list);
-        setPresetsStatus(list.length ? 'ok' : 'empty');
-      })
-      .catch(e => {
-        setPresets([]);
-        setPresetsError(e.message || String(e));
-        setPresetsStatus('error');
-      });
-  }, []);
+    let cancelled = false;
+    const RETRIES = 6;
+    const DELAY_MS = 1500;
+
+    (async () => {
+      setPresetsStatus('loading');
+      setPresetsError(null);
+      for (let attempt = 0; attempt < RETRIES; attempt++) {
+        if (cancelled) return;
+        try {
+          const r = await getPresets();
+          if (cancelled) return;
+          const list = r.presets ?? [];
+          setPresets(list);
+          setPresetsStatus(list.length ? 'ok' : 'empty');
+          return;
+        } catch (e) {
+          if (cancelled) return;
+          const msg = e.message || String(e);
+          const retryable = /\b(500|502|503|504)\b/.test(msg)
+            || /failed to fetch/i.test(msg)
+            || /network/i.test(msg);
+          if (retryable && attempt < RETRIES - 1) {
+            await new Promise(r => setTimeout(r, DELAY_MS));
+            continue;
+          }
+          setPresets([]);
+          setPresetsError(msg);
+          setPresetsStatus('error');
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [presetsRetryKey]);
 
   const classifyFile = (file) => {
     const name = (file.name || '').toLowerCase();
@@ -159,8 +183,16 @@ export function HomePage() {
               <div className="font-semibold">Couldn't load preset bundles</div>
               <div className="mt-1 font-mono text-[10px] break-words">{presetsError}</div>
               <div className="mt-1 text-[10px] opacity-80">
-                Backend likely can't see <code>presets.dir</code>. Check svc logs for <code>[Presets] dir not found</code>.
+                500 usually means svc is restarting (<code>make svc-watch</code>) or not up — run <code>make status</code> / <code>make health</code>, then retry.
+                Empty list: check svc logs for <code>[Presets] dir not found</code> and <code>PRESETS_DIR</code> → <code>test/cases</code>.
               </div>
+              <button
+                type="button"
+                className="mt-2 text-[11px] underline"
+                onClick={() => setPresetsRetryKey(k => k + 1)}
+              >
+                Retry
+              </button>
             </div>
           )}
           {presetsStatus === 'empty' && (

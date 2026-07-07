@@ -1,0 +1,41 @@
+---
+description: v3-e2e-flow core context — read before any task in this repo
+alwaysApply: true
+---
+
+# v3-e2e-flow
+
+LC Checker **v3** e2e workbench (multi-doc LC pipeline). Full spec: `AGENTS.md`. Human ops: `Local-Startup.md`.
+
+## Stack
+
+- **svc** `lc-checker-v2-svc/` — Spring Boot 3.5, JDK 21, Gradle, port **9082**
+- **ui** `ui/` — React 18 + Vite, port **5173** (proxies `/api` → 9082)
+- **Mac local**: `make db`, `make svc-watch`, `make ui` — **not** `docker compose` from `infra/`
+
+## Database (do not confuse)
+
+- PostgreSQL database: **`lc_checker`** (shared with v1/v2)
+- Application schema: **`lc_v3`** (v2 uses `lc_v2`)
+- All JDBC/SQL must use `lc_v3.*` tables/views
+- DDL SoT: `lc-checker-v2-svc/src/main/resources/db/schema.sql`
+
+## Mac `.env` defaults
+
+```
+DB_NAME=lc_checker
+STORAGE_MINIO_REQUIRED=false
+LANGFUSE_ENABLED=false
+```
+
+`.env` changes need `make svc-down && make svc` (not DevTools reload).
+
+## Pipeline (officer-paced)
+
+`intake` → `parse` → `reconcile` → `examine` → `signoff` — each stage awaits officer trigger after completion.
+
+## Before debugging
+
+1. `make status` / `make health`
+2. Check false alarms table in `AGENTS.md` (MinIO/Langfuse/presets 500)
+3. Parent monorepo conventions: `../AGENTS.md` (RestClient vision, `enable_thinking: false`, etc.)

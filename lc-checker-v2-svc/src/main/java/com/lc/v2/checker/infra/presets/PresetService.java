@@ -44,7 +44,7 @@ public class PresetService {
 
     @PostConstruct
     public void scan() {
-        Path dir = Path.of(props.getDir()).toAbsolutePath().normalize();
+        Path dir = resolveDir();
         this.resolvedDir = dir;
         if (!Files.isDirectory(dir)) {
             log.warn("[Presets] dir not found: {} — preset endpoints will be empty", dir);
@@ -68,6 +68,30 @@ public class PresetService {
         }
         this.bundles = Collections.unmodifiableList(out);
         log.info("[Presets] loaded {} bundles from {}", bundles.size(), dir);
+    }
+
+    /**
+     * Resolve {@code presets.dir}. {@code PRESETS_DIR} / application.yml may be relative to
+     * the JVM working directory; when that path is missing, try common repo layouts.
+     */
+    private Path resolveDir() {
+        Path configured = Path.of(props.getDir()).toAbsolutePath().normalize();
+        if (Files.isDirectory(configured)) {
+            return configured;
+        }
+        String userDir = System.getProperty("user.dir");
+        Path[] fallbacks = {
+                Path.of(userDir, "test", "cases"),
+                Path.of(userDir, "..", "test", "cases"),
+        };
+        for (Path candidate : fallbacks) {
+            Path abs = candidate.toAbsolutePath().normalize();
+            if (Files.isDirectory(abs)) {
+                log.info("[Presets] configured dir {} not found; using {}", configured, abs);
+                return abs;
+            }
+        }
+        return configured;
     }
 
     private Bundle loadBundle(Path sub) throws IOException {

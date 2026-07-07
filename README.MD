@@ -1,32 +1,26 @@
-# LC Checker v2.0— Solution Document
+# LC Checker v3 — E2E Flow
 
+> **Agents**: start with [`AGENTS.md`](AGENTS.md) · **Humans**: [`Local-Startup.md`](Local-Startup.md)
 
+## Quick Start (Mac Dev)
 
-> When building applications with LLMs, we recommend **finding the simplest solution possible**, and **only increasing complexity when needed**.
+Everything via `make`. Full command list: [`Local-Startup.md`](Local-Startup.md).
 
-— Anthropic, [*Building effective agents*](https://www.anthropic.com/engineering/building-effective-agents)
+```bash
+cp .env.example .env   # fill keys; DB defaults match make db
+make all && open http://127.0.0.1:5173
+```
 
-
-
-## Versions
-
-### v1.0 — LC Invoice Checker
-
-A POC proving vision model and LLM integration for document data extraction and UCP 600 / ISBP 821 rule checking.
-
-- git repo: https://github.com/smile-rr/lc-invoice-checker
-- demo: https://lccheck.moments-plus.com/
+| | Up | Down |
+|---|-----|------|
+| **All** | `make all` | `make down` |
+| **db** `:5432` | `make db` | `make db-down` |
+| **svc** `:9082` | `make svc` | `make svc-down` |
+| **ui** `:5173` | `make ui` | `make ui-down` |
+| **svc + ui only** | — | `make all-down` |
+| **status** | `make status` · `make health` | |
 
 ------
-
-### v2.0 — LC Checker, Multiple Document Support
-
-Extends v1 with multi-document support and addresses real-world business implementation considerations for LC examination.
-
-- git repo: https://github.com/smile-rr/lc-multidoc-checker
-- demo: https://lccheck-v2.moments-plus.com/
-
-
 
 ## Operation Flow
 

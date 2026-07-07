@@ -12,6 +12,10 @@ spring:
     name: lc-checker-v2-api
   profiles:
     active: default
+  devtools:
+    restart:
+      # Suppress the long "CONDITION EVALUATION DELTA" block on every hot-restart.
+      log-condition-evaluation-delta: false
   autoconfigure:
     exclude:
       - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
@@ -138,9 +142,11 @@ vision:
     ttl-days: 90
 
 # --- File storage (MinIO — shared with v1, separate bucket/prefix) -----------
+# STORAGE_MINIO_REQUIRED=false → memory-only PDF cache (Mac local dev).
+# Omit or true on Ubuntu prod where MinIO is reachable.
 storage:
   minio:
-    enabled:    true
+    required:   ${STORAGE_MINIO_REQUIRED:true}
     endpoint:   http://192.168.31.214:9000
     bucket:     lc-pdfs-v2
     region:     us-east-1
@@ -175,13 +181,14 @@ session:
 dev-mode: true
 
 # --- Preset bundles ---------------------------------------------------------
-# Filesystem dir scanned for test-case bundle subdirectories. Default resolves
-# from svc CWD: gradle bootRun → lc-checker-v2-svc/  →  ../test/cases.
+# Filesystem dir scanned for test-case bundle subdirectories.
+# make svc exports PRESETS_DIR=<repo>/test/cases; override via env if needed.
 presets:
-  dir: ${PRESETS_DIR:../test/cases}
+  dir: ${PRESETS_DIR:${user.dir}/../test/cases}
   max-count: 3
 
 # --- Actuator + Prometheus + Tracing → Langfuse -----------------------------
+# LANGFUSE_ENABLED=false → no OTLP export (Mac local dev; avoids :3300 timeouts).
 management:
   endpoints:
     web:
@@ -194,7 +201,7 @@ management:
     tags:
       application: ${spring.application.name}
   tracing:
-    enabled: true
+    enabled: ${LANGFUSE_ENABLED:true}
     sampling:
       probability: 1.0
   otlp:

@@ -1,0 +1,37 @@
+---
+description: Spring Boot backend conventions for lc-checker-v2-svc
+globs: lc-checker-v2-svc/**/*
+alwaysApply: false
+---
+
+# Java backend (lc-checker-v2-svc)
+
+## Layout
+
+- Vertical-slice packages under `com.lc.v2.checker` (`stage/`, `api/`, `infra/`, `pipeline/`)
+- Config knobs in `src/main/resources/application.yml`; secrets only in `.env`
+
+## Persistence
+
+- Schema prefix **`lc_v3`** in all SQL (`SessionStore`, `VisionExtractCache`, `schema.sql`)
+- Session outputs → `pipeline_steps`; officer decisions → `officer_actions`
+- Vision cross-session cache → `lc_v3.vision_extract_cache` (`vision.cache.enabled: true`)
+
+## LLM
+
+- **Text rules**: Spring AI `ChatClient` (MiniMax via `application.yml`)
+- **Vision**: `RestClient` only — not Spring AI ChatClient
+- Qwen3-family: `enable_thinking: false` at **top-level** request body
+- Prompts: `src/main/resources/prompts/` (`.st` files); rules in `rules/catalog.yml`
+
+## Local dev
+
+- `make svc-watch` for hot-reload (Java + resources)
+- `PRESETS_DIR` set by Makefile → `test/cases/`
+- MinIO optional: `S3FileStore` uses in-process `PdfBytesCache` when `STORAGE_MINIO_REQUIRED=false`
+
+## Do not
+
+- Point Mac local svc at Ubuntu MinIO/Langfuse without reachable network
+- Use `lc_v2` schema in new SQL
+- Commit `.env` or rotate secrets into yaml

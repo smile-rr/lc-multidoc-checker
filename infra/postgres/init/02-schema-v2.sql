@@ -1,5 +1,5 @@
 -- ============================================================================
--- LC Checker V2 schema — lc_v2  (consolidated)
+-- LC Checker V3 schema — lc_v3  (consolidated)
 --
 -- Six tables. Three forces, three role-distinct stores:
 --   System computes  → pipeline_steps   (idempotent, latest-wins, UNIQUE step_key)
@@ -19,7 +19,7 @@
 -- Schema evolution lives in views below. New stage = zero DDL.
 -- ============================================================================
 
-CREATE SCHEMA IF NOT EXISTS lc_v2;
+CREATE SCHEMA IF NOT EXISTS lc_v3;
 
 -- ============================================================================
 -- Migration: drop retired structures (idempotent — safe on fresh installs).
@@ -29,25 +29,25 @@ CREATE SCHEMA IF NOT EXISTS lc_v2;
 --
 -- DROP TABLE … CASCADE wipes any view that referenced them; recreated below.
 -- ============================================================================
-DROP VIEW  IF EXISTS lc_v2.v_session_overview        CASCADE;
-DROP VIEW  IF EXISTS lc_v2.v_latest_session          CASCADE;
-DROP VIEW  IF EXISTS lc_v2.v_rule_confirmations      CASCADE;
+DROP VIEW  IF EXISTS lc_v3.v_session_overview        CASCADE;
+DROP VIEW  IF EXISTS lc_v3.v_latest_session          CASCADE;
+DROP VIEW  IF EXISTS lc_v3.v_rule_confirmations      CASCADE;
 
-DROP TABLE IF EXISTS lc_v2.signoff                    CASCADE;
-DROP TABLE IF EXISTS lc_v2.examine_overrides          CASCADE;
-DROP TABLE IF EXISTS lc_v2.rule_confirmations         CASCADE;
-DROP TABLE IF EXISTS lc_v2.reconcile_cell_decisions   CASCADE;
-DROP TABLE IF EXISTS lc_v2.reconcile_state            CASCADE;
-DROP TABLE IF EXISTS lc_v2.extraction_results         CASCADE;
-DROP TABLE IF EXISTS lc_v2.adhoc_rule_cache           CASCADE;
+DROP TABLE IF EXISTS lc_v3.signoff                    CASCADE;
+DROP TABLE IF EXISTS lc_v3.examine_overrides          CASCADE;
+DROP TABLE IF EXISTS lc_v3.rule_confirmations         CASCADE;
+DROP TABLE IF EXISTS lc_v3.reconcile_cell_decisions   CASCADE;
+DROP TABLE IF EXISTS lc_v3.reconcile_state            CASCADE;
+DROP TABLE IF EXISTS lc_v3.extraction_results         CASCADE;
+DROP TABLE IF EXISTS lc_v3.adhoc_rule_cache           CASCADE;
 
-ALTER TABLE IF EXISTS lc_v2.check_sessions DROP COLUMN IF EXISTS final_report;
-ALTER TABLE IF EXISTS lc_v2.check_sessions DROP COLUMN IF EXISTS adhoc_cache_key;
+ALTER TABLE IF EXISTS lc_v3.check_sessions DROP COLUMN IF EXISTS final_report;
+ALTER TABLE IF EXISTS lc_v3.check_sessions DROP COLUMN IF EXISTS adhoc_cache_key;
 
 -- ---------------------------------------------------------------------------
 -- check_sessions — session umbrella (one row per LC examination job)
 -- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS lc_v2.check_sessions (
+CREATE TABLE IF NOT EXISTS lc_v3.check_sessions (
     id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     status          VARCHAR(20)  NOT NULL DEFAULT 'QUEUED',
     -- QUEUED | INTAKE | PARSE | RECONCILE | EXAMINE | SIGNOFF | AWAITING_OFFICER | COMPLETED | FAILED
@@ -64,18 +64,18 @@ CREATE TABLE IF NOT EXISTS lc_v2.check_sessions (
     queue_attempt   INT          NOT NULL DEFAULT 0
 );
 
-CREATE INDEX IF NOT EXISTS idx_v2_sessions_status     ON lc_v2.check_sessions(status);
-CREATE INDEX IF NOT EXISTS idx_v2_sessions_created_at ON lc_v2.check_sessions(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_v2_sessions_queue
-    ON lc_v2.check_sessions(status, enqueued_at)
+CREATE INDEX IF NOT EXISTS idx_v3_sessions_status     ON lc_v3.check_sessions(status);
+CREATE INDEX IF NOT EXISTS idx_v3_sessions_created_at ON lc_v3.check_sessions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_v3_sessions_queue
+    ON lc_v3.check_sessions(status, enqueued_at)
     WHERE status = 'QUEUED';
 
 -- ---------------------------------------------------------------------------
 -- documents — one row per uploaded file
 -- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS lc_v2.documents (
+CREATE TABLE IF NOT EXISTS lc_v3.documents (
     id                    UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id            UUID         NOT NULL REFERENCES lc_v2.check_sessions(id) ON DELETE CASCADE,
+    session_id            UUID         NOT NULL REFERENCES lc_v3.check_sessions(id) ON DELETE CASCADE,
     doc_type              VARCHAR(20)  NOT NULL,   -- LC | INV | BOL | PKL | BOE | BC | WC | UNKNOWN
     original_filename     TEXT,
     file_sha256           CHAR(64),
@@ -87,8 +87,8 @@ CREATE TABLE IF NOT EXISTS lc_v2.documents (
     created_at            TIMESTAMP    NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_v2_docs_session    ON lc_v2.documents(session_id);
-CREATE INDEX IF NOT EXISTS idx_v2_docs_type       ON lc_v2.documents(session_id, doc_type);
+CREATE INDEX IF NOT EXISTS idx_v3_docs_session    ON lc_v3.documents(session_id);
+CREATE INDEX IF NOT EXISTS idx_v3_docs_type       ON lc_v3.documents(session_id, doc_type);
 
 -- ---------------------------------------------------------------------------
 -- pipeline_steps — every system output, every stage. Idempotent: re-running
@@ -107,9 +107,9 @@ CREATE INDEX IF NOT EXISTS idx_v2_docs_type       ON lc_v2.documents(session_id,
 --
 -- result JSONB shape varies by step (each view projects its own scalars).
 -- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS lc_v2.pipeline_steps (
+CREATE TABLE IF NOT EXISTS lc_v3.pipeline_steps (
     id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id    UUID         NOT NULL REFERENCES lc_v2.check_sessions(id) ON DELETE CASCADE,
+    session_id    UUID         NOT NULL REFERENCES lc_v3.check_sessions(id) ON DELETE CASCADE,
     stage         VARCHAR(40)  NOT NULL,
     step_key      VARCHAR(100) NOT NULL DEFAULT '-',
     status        VARCHAR(30)  NOT NULL,
@@ -122,15 +122,15 @@ CREATE TABLE IF NOT EXISTS lc_v2.pipeline_steps (
     UNIQUE (session_id, stage, step_key)
 );
 
-CREATE INDEX IF NOT EXISTS idx_v2_ps_session       ON lc_v2.pipeline_steps(session_id);
-CREATE INDEX IF NOT EXISTS idx_v2_ps_session_stage ON lc_v2.pipeline_steps(session_id, stage);
+CREATE INDEX IF NOT EXISTS idx_v3_ps_session       ON lc_v3.pipeline_steps(session_id);
+CREATE INDEX IF NOT EXISTS idx_v3_ps_session_stage ON lc_v3.pipeline_steps(session_id, stage);
 
 -- ---------------------------------------------------------------------------
 -- pipeline_events — append-only SSE replay tape.
 -- No FK to check_sessions: session.started events fire before the session row
 -- is fully populated; we don't want one race to lose those early events.
 -- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS lc_v2.pipeline_events (
+CREATE TABLE IF NOT EXISTS lc_v3.pipeline_events (
     session_id  UUID      NOT NULL,
     seq         BIGINT    NOT NULL,
     event       JSONB     NOT NULL,
@@ -138,7 +138,7 @@ CREATE TABLE IF NOT EXISTS lc_v2.pipeline_events (
     PRIMARY KEY (session_id, seq)
 );
 
-CREATE INDEX IF NOT EXISTS idx_v2_pe_session ON lc_v2.pipeline_events(session_id, seq);
+CREATE INDEX IF NOT EXISTS idx_v3_pe_session ON lc_v3.pipeline_events(session_id, seq);
 
 -- ---------------------------------------------------------------------------
 -- officer_actions — append-only audit log of every officer decision.
@@ -158,8 +158,8 @@ CREATE INDEX IF NOT EXISTS idx_v2_pe_session ON lc_v2.pipeline_events(session_id
 --   lock | unlock            (target = '-', payload optional reason)
 --   signoff                  (target = '-', payload {decision, dispositions, frozen})
 -- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS lc_v2.officer_actions (
-    session_id  UUID         NOT NULL REFERENCES lc_v2.check_sessions(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS lc_v3.officer_actions (
+    session_id  UUID         NOT NULL REFERENCES lc_v3.check_sessions(id) ON DELETE CASCADE,
     seq         BIGSERIAL,
     action      VARCHAR(40)  NOT NULL,
     target      TEXT,
@@ -171,9 +171,9 @@ CREATE TABLE IF NOT EXISTS lc_v2.officer_actions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_oa_action_target
-    ON lc_v2.officer_actions (session_id, action, target, acted_at DESC);
+    ON lc_v3.officer_actions (session_id, action, target, acted_at DESC);
 CREATE INDEX IF NOT EXISTS idx_oa_officer
-    ON lc_v2.officer_actions (officer_id, acted_at DESC);
+    ON lc_v3.officer_actions (officer_id, acted_at DESC);
 
 -- ============================================================================
 -- Views — projections over pipeline_steps + officer_actions.
@@ -183,7 +183,7 @@ CREATE INDEX IF NOT EXISTS idx_oa_officer
 
 -- ── System-output projections (over pipeline_steps) ───────────────────────
 
-CREATE OR REPLACE VIEW lc_v2.v_lc_parse AS
+CREATE OR REPLACE VIEW lc_v3.v_lc_parse AS
 SELECT  session_id,
         result->>'raw_mt700'    AS raw_mt700,
         result->'fields'        AS fields,
@@ -191,18 +191,18 @@ SELECT  session_id,
         result->'derived'       AS derived,
         result->'warnings'      AS warnings,
         completed_at            AS parsed_at
-FROM    lc_v2.pipeline_steps
+FROM    lc_v3.pipeline_steps
 WHERE   stage = 'intake' AND step_key = 'lc_parse';
 
-CREATE OR REPLACE VIEW lc_v2.v_required_docs AS
+CREATE OR REPLACE VIEW lc_v3.v_required_docs AS
 SELECT  session_id,
         result->>'parsed46A'    AS parsed_46a,
         result->'required'      AS required
-FROM    lc_v2.pipeline_steps
+FROM    lc_v3.pipeline_steps
 WHERE   stage = 'intake' AND step_key = 'required_docs';
 
 -- Per-doc consensus extract row from Parse stage.
-CREATE OR REPLACE VIEW lc_v2.v_doc_extracts_consensus AS
+CREATE OR REPLACE VIEW lc_v3.v_doc_extracts_consensus AS
 SELECT  ps.session_id,
         d.id                                       AS document_id,
         split_part(ps.step_key, ':', 2)            AS doc_type,
@@ -210,27 +210,27 @@ SELECT  ps.session_id,
         ps.result->'off_schema_items'              AS off_schema_items,
         (ps.result->>'overall_confidence')::numeric AS overall_confidence,
         ps.completed_at                            AS extracted_at
-FROM    lc_v2.pipeline_steps ps
-JOIN    lc_v2.documents d
+FROM    lc_v3.pipeline_steps ps
+JOIN    lc_v3.documents d
   ON    d.session_id = ps.session_id
   AND   d.doc_type   = split_part(ps.step_key, ':', 2)
 WHERE   ps.stage = 'parse' AND ps.step_key LIKE 'consensus:%';
 
 -- Per-doc per-slot extract rows.
-CREATE OR REPLACE VIEW lc_v2.v_doc_extracts_slots AS
+CREATE OR REPLACE VIEW lc_v3.v_doc_extracts_slots AS
 SELECT  ps.session_id,
         d.id                              AS document_id,
         split_part(ps.step_key, ':', 2)   AS doc_type,
         split_part(ps.step_key, ':', 3)   AS slot,
         ps.result->'fields'               AS fields,
         ps.completed_at                   AS extracted_at
-FROM    lc_v2.pipeline_steps ps
-JOIN    lc_v2.documents d
+FROM    lc_v3.pipeline_steps ps
+JOIN    lc_v3.documents d
   ON    d.session_id = ps.session_id
   AND   d.doc_type   = split_part(ps.step_key, ':', 2)
 WHERE   ps.stage = 'parse' AND ps.step_key LIKE 'extract:%';
 
-CREATE OR REPLACE VIEW lc_v2.v_reconcile_rows AS
+CREATE OR REPLACE VIEW lc_v3.v_reconcile_rows AS
 SELECT  session_id,
         substring(step_key from 7)                          AS field_key,  -- strip 'field:' prefix
         result->>'label'                                    AS label,
@@ -242,10 +242,10 @@ SELECT  session_id,
         result->'cell_status'                               AS cell_status,
         result->'cell_detail'                               AS cell_detail,
         completed_at                                        AS computed_at
-FROM    lc_v2.pipeline_steps
+FROM    lc_v3.pipeline_steps
 WHERE   stage = 'reconcile' AND step_key LIKE 'field:%';
 
-CREATE OR REPLACE VIEW lc_v2.v_examine_phases AS
+CREATE OR REPLACE VIEW lc_v3.v_examine_phases AS
 SELECT  session_id,
         substring(step_key from 7)                AS phase,  -- strip 'phase:' prefix
         (result->>'ran')::int                     AS ran,
@@ -257,10 +257,10 @@ SELECT  session_id,
         duration_ms,
         started_at,
         completed_at
-FROM    lc_v2.pipeline_steps
+FROM    lc_v3.pipeline_steps
 WHERE   stage = 'examine' AND step_key LIKE 'phase:%';
 
-CREATE OR REPLACE VIEW lc_v2.v_check_results AS
+CREATE OR REPLACE VIEW lc_v3.v_check_results AS
 SELECT  session_id,
         step_key                                      AS rule_id,
         result->>'check_type'                         AS check_type,
@@ -273,32 +273,32 @@ SELECT  session_id,
         started_at,
         completed_at,
         error
-FROM    lc_v2.pipeline_steps
+FROM    lc_v3.pipeline_steps
 WHERE   stage = 'examine'
   AND   step_key NOT LIKE 'phase:%'
   AND   step_key <> 'meta';
 
--- Drop-then-create: v_examine_meta dropped adhoc_rules when the planner was
--- removed; CREATE OR REPLACE VIEW cannot drop columns in Postgres.
-DROP VIEW IF EXISTS lc_v2.v_examine_meta;
-CREATE VIEW lc_v2.v_examine_meta AS
+-- Drop-then-create: v_examine_meta lost the adhoc_rules column when the
+-- planner was removed; CREATE OR REPLACE VIEW cannot drop columns in Postgres.
+DROP VIEW IF EXISTS lc_v3.v_examine_meta;
+CREATE VIEW lc_v3.v_examine_meta AS
 SELECT  session_id,
         result->'consistency_warnings'     AS consistency_warnings,
         result->'consistency'              AS consistency,
         result->'trigger_traces'           AS trigger_traces
-FROM    lc_v2.pipeline_steps
+FROM    lc_v3.pipeline_steps
 WHERE   stage = 'examine' AND step_key = 'meta';
 
-CREATE OR REPLACE VIEW lc_v2.v_signoff_report AS
+CREATE OR REPLACE VIEW lc_v3.v_signoff_report AS
 SELECT  session_id,
         result          AS report,
         completed_at    AS signed_at
-FROM    lc_v2.pipeline_steps
+FROM    lc_v3.pipeline_steps
 WHERE   stage = 'signoff' AND step_key = 'report';
 
 -- ── Officer-state projections (over officer_actions, "latest wins") ─────────
 
-CREATE OR REPLACE VIEW lc_v2.v_lock_state AS
+CREATE OR REPLACE VIEW lc_v3.v_lock_state AS
 SELECT  session_id,
         action = 'lock'                  AS locked,
         acted_at                         AS locked_at,
@@ -307,12 +307,12 @@ SELECT  session_id,
 FROM   (
     SELECT DISTINCT ON (session_id)
            session_id, action, payload, officer_id, acted_at
-    FROM   lc_v2.officer_actions
+    FROM   lc_v3.officer_actions
     WHERE  action IN ('lock', 'unlock')
     ORDER  BY session_id, acted_at DESC
 ) latest;
 
-CREATE OR REPLACE VIEW lc_v2.v_cell_decisions AS
+CREATE OR REPLACE VIEW lc_v3.v_cell_decisions AS
 SELECT  session_id,
         split_part(target, ':', 1)         AS field_key,
         split_part(target, ':', 2)         AS doc_type,
@@ -324,13 +324,13 @@ SELECT  session_id,
 FROM   (
     SELECT DISTINCT ON (session_id, target)
            session_id, action, target, payload, note, officer_id, acted_at
-    FROM   lc_v2.officer_actions
+    FROM   lc_v3.officer_actions
     WHERE  action IN ('cell_decision', 'cell_decision_cleared')
     ORDER  BY session_id, target, acted_at DESC
 ) latest
 WHERE   action = 'cell_decision';   -- cleared rows are filtered out
 
-CREATE OR REPLACE VIEW lc_v2.v_rule_overrides AS
+CREATE OR REPLACE VIEW lc_v3.v_rule_overrides AS
 SELECT  session_id,
         target                             AS rule_id,
         payload->>'new_status'             AS new_status,
@@ -342,13 +342,13 @@ SELECT  session_id,
 FROM   (
     SELECT DISTINCT ON (session_id, target)
            session_id, action, target, payload, note, officer_id, acted_at
-    FROM   lc_v2.officer_actions
+    FROM   lc_v3.officer_actions
     WHERE  action IN ('rule_override', 'rule_override_cleared')
     ORDER  BY session_id, target, acted_at DESC
 ) latest
 WHERE   action = 'rule_override';
 
-CREATE OR REPLACE VIEW lc_v2.v_field_corrections AS
+CREATE OR REPLACE VIEW lc_v3.v_field_corrections AS
 SELECT  session_id,
         (split_part(target, ':', 1))::uuid AS document_id,
         split_part(target, ':', 2)         AS field_key,
@@ -360,12 +360,12 @@ SELECT  session_id,
 FROM   (
     SELECT DISTINCT ON (session_id, target)
            session_id, target, payload, note, officer_id, acted_at
-    FROM   lc_v2.officer_actions
+    FROM   lc_v3.officer_actions
     WHERE  action = 'field_corrected'
     ORDER  BY session_id, target, acted_at DESC
 ) latest;
 
-CREATE OR REPLACE VIEW lc_v2.v_signoff AS
+CREATE OR REPLACE VIEW lc_v3.v_signoff AS
 SELECT DISTINCT ON (session_id)
         session_id,
         payload->>'decision'                  AS decision,
@@ -374,7 +374,7 @@ SELECT DISTINCT ON (session_id)
         acted_at                              AS signed_at,
         officer_id,
         COALESCE((payload->>'frozen')::boolean, true) AS frozen
-FROM    lc_v2.officer_actions
+FROM    lc_v3.officer_actions
 WHERE   action = 'signoff'
 ORDER BY session_id, acted_at DESC;
 
@@ -383,60 +383,26 @@ ORDER BY session_id, acted_at DESC;
 -- pipeline_steps (intake/lc_parse).
 -- ============================================================================
 
-CREATE OR REPLACE VIEW lc_v2.v_session_overview AS
+CREATE OR REPLACE VIEW lc_v3.v_session_overview AS
 SELECT  s.id              AS session_id,
         s.status, s.compliant, s.error, s.doc_count,
         s.created_at, s.completed_at,
         s.next_stage, s.awaiting_officer, s.stage_completed_at,
         (SELECT result->'fields'->>'lc_number'
-         FROM   lc_v2.pipeline_steps
+         FROM   lc_v3.pipeline_steps
          WHERE  session_id = s.id AND stage = 'intake' AND step_key = 'lc_parse')
                             AS lc_number,
         (SELECT result->'fields'->>'beneficiary_name'
-         FROM   lc_v2.pipeline_steps
+         FROM   lc_v3.pipeline_steps
          WHERE  session_id = s.id AND stage = 'intake' AND step_key = 'lc_parse')
                             AS beneficiary_name,
         (SELECT result->'fields'->>'applicant_name'
-         FROM   lc_v2.pipeline_steps
+         FROM   lc_v3.pipeline_steps
          WHERE  session_id = s.id AND stage = 'intake' AND step_key = 'lc_parse')
                             AS applicant_name
-FROM    lc_v2.check_sessions s;
+FROM    lc_v3.check_sessions s;
 
-CREATE OR REPLACE VIEW lc_v2.v_latest_session AS
-SELECT * FROM lc_v2.v_session_overview
-WHERE  created_at = (SELECT MAX(created_at) FROM lc_v2.check_sessions)
+CREATE OR REPLACE VIEW lc_v3.v_latest_session AS
+SELECT * FROM lc_v3.v_session_overview
+WHERE  created_at = (SELECT MAX(created_at) FROM lc_v3.check_sessions)
 LIMIT 1;
--- Vision-extractor result cache.
--- Hit when same (pdf bytes, prompt, model, base_url, render params, request shape) repeats.
--- Per-slot row; consensus is recomputed at read time from current slot config.
-
-CREATE TABLE IF NOT EXISTS lc_v2.vision_extract_cache (
-  cache_key         TEXT PRIMARY KEY,
-  pdf_sha256        TEXT NOT NULL,
-  prompt_sha256     TEXT NOT NULL,
-  model             TEXT NOT NULL,
-  base_url          TEXT NOT NULL,
-  render_dpi        INT  NOT NULL,
-  max_pages         INT  NOT NULL,
-  max_long_edge     INT,
-  request_shape_v   INT  NOT NULL,
-  raw_response      JSONB NOT NULL,
-  parsed_envelope   JSONB NOT NULL,
-  off_schema_raw    JSONB,
-  prompt_tokens     INT,
-  completion_tokens INT,
-  total_tokens      INT,
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-  expires_at        TIMESTAMPTZ,
-  hit_count         INT NOT NULL DEFAULT 0,
-  last_hit_at       TIMESTAMPTZ
-);
-
-ALTER TABLE lc_v2.vision_extract_cache
-  ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
-
-CREATE INDEX IF NOT EXISTS ix_vec_pdf_model
-  ON lc_v2.vision_extract_cache (pdf_sha256, model);
-
-CREATE INDEX IF NOT EXISTS ix_vec_expires_at
-  ON lc_v2.vision_extract_cache (expires_at) WHERE expires_at IS NOT NULL;

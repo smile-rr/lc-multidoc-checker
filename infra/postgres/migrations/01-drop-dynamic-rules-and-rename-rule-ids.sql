@@ -9,17 +9,17 @@
 BEGIN;
 
 -- ── 1. Drop the runtime-rules cache table ──────────────────────────────────
-DROP TABLE IF EXISTS lc_v2.dynamic_rules;
+DROP TABLE IF EXISTS lc_v3.dynamic_rules;
 
 -- Refresh v_examine_meta if it still references adhoc_rules. Dropping and
 -- recreating is safer than ALTER VIEW because the column count differs.
-DROP VIEW IF EXISTS lc_v2.v_examine_meta;
-CREATE VIEW lc_v2.v_examine_meta AS
+DROP VIEW IF EXISTS lc_v3.v_examine_meta;
+CREATE VIEW lc_v3.v_examine_meta AS
 SELECT  session_id,
         result->'consistency_warnings'     AS consistency_warnings,
         result->'consistency'              AS consistency,
         result->'trigger_traces'           AS trigger_traces
-FROM    lc_v2.pipeline_steps
+FROM    lc_v3.pipeline_steps
 WHERE   stage = 'examine' AND step_key = 'meta';
 
 -- ── 2. Rename rule IDs across pipeline_steps (examine stage) ──────────────
@@ -45,7 +45,7 @@ WHERE   stage = 'examine' AND step_key = 'meta';
 --   OP04-PRESENTATION-WINDOW               → DATE-02
 --   XD-022                                 → PARTY-02
 --   XD-024                                 → SHIP-03
-UPDATE lc_v2.pipeline_steps
+UPDATE lc_v3.pipeline_steps
 SET    step_key = CASE step_key
     WHEN 'INV-001' THEN 'PARTY-01'
     WHEN 'INV-003' THEN 'CCY-01'
@@ -83,7 +83,7 @@ WHERE  stage = 'examine'
   AND  step_key <> 'meta';
 
 -- ── 3. Rename rule IDs in officer_actions (rule-related actions) ──────────
-UPDATE lc_v2.officer_actions
+UPDATE lc_v3.officer_actions
 SET    target = CASE target
     WHEN 'INV-001' THEN 'PARTY-01'
     WHEN 'INV-003' THEN 'CCY-01'

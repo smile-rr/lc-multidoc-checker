@@ -1,37 +1,30 @@
 # lc-checker-v2 — Makefile
 #
-# Dev (foreground, Ctrl-C to stop):
-#   make svc                   Spring Boot on :9082
-#   make ui                    Vite dev server on :5173
+# Mac local dev (all via make):
+#   make db                    Postgres in Docker (Colima) on :5432
+#   make svc                   Spring Boot on :9082 (foreground)
+#   make ui                    Vite dev server on :5173 (foreground)
+#   make all                   db + svc + ui in background
 #
-# Stop dev processes:
+# Stop:
+#   make db-down               stop Postgres container
 #   make svc-down              kill :9082
 #   make ui-down               kill :5173
+#   make all-down              stop svc + ui (keeps db running)
+#   make down                  stop everything (svc + ui + db)
 #
-# Both in background:
-#   make all                   svc + ui in background (logs → /tmp/lc-checker-v2/)
-#   make all-down              stop both
-#
-# Docker production (runs docker compose from infra/):
-#   make dep-svc               build + deploy lc-checker-v2-svc
-#   make dep-ui                build + deploy lc-checker-v2-ui
-#   make dep-all               build + deploy both
-#   make dep-svc-down          stop + remove lc-checker-v2-svc container
-#   make dep-ui-down           stop + remove lc-checker-v2-ui container
+# Docker production (Ubuntu only — infra/docker-compose.yml):
+#   make dep-svc / dep-ui / dep-all
 #
 # Utilities:
-#   make status                port-listen check for svc + ui
-#   make health                hit /actuator/health on the running svc
-#   make pull                  git pull --ff-only origin main
-#   make langfuse-auth         derive LANGFUSE_AUTH_BASIC from .env keys
+#   make status / make health / make langfuse-auth
 #
 # +------------------+-------------------+------------------+-------+-----------------------------+
 # | Component        | Up                | Down             | Port  | URL                         |
 # +------------------+-------------------+------------------+-------+-----------------------------+
+# | db               | make db           | make db-down     |  5432 | postgres://localhost:5432   |
 # | svc (dev)        | make svc          | make svc-down    |  9082 | http://127.0.0.1:9082       |
 # | ui  (dev)        | make ui           | make ui-down     |  5173 | http://127.0.0.1:5173       |
-# | svc (docker)     | make dep-svc      | make dep-svc-down|  9082 | http://127.0.0.1:9082       |
-# | ui  (docker)     | make dep-ui       | make dep-ui-down |  9080 | http://127.0.0.1:9080       |
 # +------------------+-------------------+------------------+-------+-----------------------------+
 
 SHELL    := /bin/bash
@@ -42,8 +35,15 @@ SVC_DIR  := lc-checker-v2-svc
 UI_DIR   := ui
 LOG_DIR  := /tmp/lc-checker-v2
 
-SVC_PORT := 9082
-UI_DEV_PORT := 5173
+SVC_PORT     := 9082
+UI_DEV_PORT  := 5173
+DB_CONTAINER := lc-checker-postgres
+DB_IMAGE     := postgres:16-alpine
+DB_PORT      := 5432
+DB_NAME      := lc_checker
+DB_USER      := lcuser
+DB_PASS      := lcdev
+PRESETS_DIR  := $(abspath test/cases)
 
 .DEFAULT_GOAL := help
 
@@ -58,16 +58,94 @@ help:  ## list targets
 	@echo ""
 
 # ---------------------------------------------------------------------------
+# db — local Postgres (Docker / Colima)
+# ---------------------------------------------------------------------------
+_ensure-docker:
+	@if docker info >/dev/null 2>&1; then exit 0; fi; \
+	 if command -v colima >/dev/null 2>&1; then \
+	   echo "→ starting Colima…"; colima start; \
+	 else \
+	   echo "✗ Docker not running — start Colima or Docker Desktop"; exit 1; \
+	 fi
+
+db: _ensure-docker  ## start local Postgres container — localhost:5432
+	@set -a && [ -f $(ENV_FILE) ] && source $(ENV_FILE); set +a; \
+	 db_name=$${DB_NAME:-$(DB_NAME)}; db_user=$${DB_USERNAME:-$(DB_USER)}; db_pass=$${DB_PASSWORD:-$(DB_PASS)}; \
+	 if docker inspect -f '{{.State.Running}}' $(DB_CONTAINER) 2>/dev/null | grep -q true; then \
+	   echo "✓ postgres already running ($(DB_CONTAINER)) → $$db_name"; \
+	 else \
+	   echo "→ starting postgres (database=$$db_name)…"; \
+	   docker start $(DB_CONTAINER) 2>/dev/null || \
+	     docker run -d --name $(DB_CONTAINER) --restart unless-stopped \
+	       -e POSTGRES_DB=$$db_name -e POSTGRES_USER=$$db_user -e POSTGRES_PASSWORD=$$db_pass \
+	       -p $(DB_PORT):5432 $(DB_IMAGE); \
+	 fi
+	@DB_NAME=$$(grep '^DB_NAME=' $(ENV_FILE) 2>/dev/null | cut -d= -f2-); \
+	 $(MAKE) --no-print-directory db-wait DB_NAME=$${DB_NAME:-$(DB_NAME)}
+
+db-reinit: _ensure-docker  ## destroy Postgres container + recreate fresh DB (uses .env DB_*)
+	@echo "→ reinit postgres: database=$(DB_NAME) (container $(DB_CONTAINER))"
+	@if docker inspect $(DB_CONTAINER) >/dev/null 2>&1; then \
+	   docker rm -f $(DB_CONTAINER) && echo "✓ removed $(DB_CONTAINER)"; \
+	 else echo "  (no existing container)"; fi
+	@$(MAKE) --no-print-directory db
+
+db-wait:  ## wait until Postgres accepts connections (used by db)
+	@_db_name=$${DB_NAME:-$(DB_NAME)}; \
+	 echo "→ waiting for postgres on :$(DB_PORT)/$$_db_name…"; \
+	 set -e; \
+	deadline=$$(( $$(date +%s) + 30 )); \
+	while :; do \
+	  if command -v nc >/dev/null 2>&1 && nc -z -w 1 127.0.0.1 $(DB_PORT) 2>/dev/null; then \
+	    echo "✓ postgres → localhost:$(DB_PORT)/$$_db_name"; exit 0; \
+	  fi; \
+	  if [ $$(date +%s) -ge $$deadline ]; then \
+	    echo "✗ timeout waiting for postgres"; docker logs --tail=50 $(DB_CONTAINER) 2>&1 || true; exit 1; \
+	  fi; \
+	  sleep 1; \
+	done
+
+db-down:  ## stop Postgres container
+	@if docker inspect $(DB_CONTAINER) >/dev/null 2>&1; then \
+	   docker stop $(DB_CONTAINER) && echo "✓ postgres stopped"; \
+	 else echo "  (postgres container not found)"; fi
+
+# ---------------------------------------------------------------------------
 # svc — Spring Boot (dev)
 # ---------------------------------------------------------------------------
 svc:  ## start Spring Boot service (foreground) — http://127.0.0.1:9082
 	@echo "→ svc on :$(SVC_PORT) → http://127.0.0.1:$(SVC_PORT)   (Ctrl-C to stop)"
-	@cd $(SVC_DIR) && set -a && source ../$(ENV_FILE) && set +a && ./gradlew bootRun
+	@cd $(SVC_DIR) && set -a && source ../$(ENV_FILE) && set +a && \
+	  PRESETS_DIR=$(PRESETS_DIR) ./gradlew bootRun
+
+svc-watch:  ## bootRun + continuous compile — DevTools auto-restart on Java save (~3s)
+	@echo "→ svc-watch on :$(SVC_PORT) — save .java / resources → auto-restart (Ctrl-C to stop)"
+	@cd $(SVC_DIR) && set -a && source ../$(ENV_FILE) && set +a && \
+	  PRESETS_DIR=$(PRESETS_DIR) bash -c '\
+	    ./gradlew classes --continuous -q & _cpid=$$!; \
+	    trap "kill $$_cpid 2>/dev/null" EXIT INT TERM; \
+	    ./gradlew bootRun'
 
 svc-down:  ## stop Spring Boot service (kills :9082)
 	@pid=$$(lsof -ti tcp:$(SVC_PORT) 2>/dev/null); \
 	  if [ -n "$$pid" ]; then kill $$pid && echo "✓ svc stopped (pid $$pid)"; \
 	  else echo "  (svc not running on :$(SVC_PORT))"; fi
+
+svc-wait:  ## wait until svc /actuator/health is UP (timeout 120s; used by make all)
+	@echo "→ waiting for svc on :$(SVC_PORT)…"
+	@set -e; \
+	deadline=$$(( $$(date +%s) + 120 )); \
+	while :; do \
+	  if curl -fsS http://127.0.0.1:$(SVC_PORT)/actuator/health 2>/dev/null \
+	      | grep -q '"status":"UP"'; then \
+	    echo "✓ svc ready → http://127.0.0.1:$(SVC_PORT)"; exit 0; \
+	  fi; \
+	  if [ $$(date +%s) -ge $$deadline ]; then \
+	    echo "✗ timeout waiting for svc — tail $(LOG_DIR)/svc.log:"; \
+	    tail -40 $(LOG_DIR)/svc.log 2>/dev/null || true; exit 1; \
+	  fi; \
+	  sleep 2; \
+	done
 
 # ---------------------------------------------------------------------------
 # ui — Vite dev server
@@ -94,21 +172,24 @@ _ui-install:
 $(LOG_DIR):
 	@mkdir -p $(LOG_DIR)
 
-all: $(LOG_DIR) _ui-install  ## start svc + ui in background (logs → /tmp/lc-checker-v2/)
+all: db $(LOG_DIR) _ui-install  ## start db + svc + ui in background (logs → /tmp/lc-checker-v2/)
 	@$(MAKE) --no-print-directory svc-down  2>/dev/null || true
 	@$(MAKE) --no-print-directory ui-down   2>/dev/null || true
 	@(cd $(SVC_DIR) && set -a && source ../$(ENV_FILE) && set +a && \
-	  nohup ./gradlew bootRun > $(LOG_DIR)/svc.log 2>&1 &) \
+	  PRESETS_DIR=$(PRESETS_DIR) nohup ./gradlew bootRun > $(LOG_DIR)/svc.log 2>&1 &) \
 	  && echo "✓ svc bg → http://127.0.0.1:$(SVC_PORT)    (log: $(LOG_DIR)/svc.log)"
+	@$(MAKE) --no-print-directory svc-wait
 	@(cd $(UI_DIR) && nohup npm run dev > $(LOG_DIR)/ui.log 2>&1 &) \
 	  && echo "✓ ui  bg → http://127.0.0.1:$(UI_DEV_PORT)    (log: $(LOG_DIR)/ui.log)"
 	@echo ""
-	@echo "  stop:    make all-down"
+	@echo "  stop:    make all-down   (keeps db)  |  make down   (stop all incl. db)"
 	@echo "  status:  make status"
 
-all-down:  ## stop both dev servers
+all-down:  ## stop svc + ui (postgres container left running)
 	@$(MAKE) --no-print-directory svc-down
 	@$(MAKE) --no-print-directory ui-down
+
+down: all-down db-down  ## stop everything — svc + ui + postgres
 
 # ---------------------------------------------------------------------------
 # dep-* — Docker production deploy (via infra/docker-compose.yml)
@@ -192,21 +273,22 @@ dep-ui-down:  ## stop + remove lc-checker-v2-ui container
 # ---------------------------------------------------------------------------
 # status / health / pull
 # ---------------------------------------------------------------------------
-status:  ## show port-listen status for svc + ui
-	@printf '  %-12s %-20s %-8s %s\n' service host:port status url
-	@printf '  %-12s %-20s %-8s %s\n' ------------ -------------------- -------- ---
-	@for entry in "svc (dev):$(SVC_PORT):http://127.0.0.1:$(SVC_PORT)" \
-	              "ui  (dev):$(UI_DEV_PORT):http://127.0.0.1:$(UI_DEV_PORT)" \
-	              "ui  (docker):9080:http://127.0.0.1:9080"; do \
+status:  ## show port-listen status for db + svc + ui
+	@db_host=$$(grep '^DB_HOST=' $(ENV_FILE) 2>/dev/null | cut -d= -f2-); \
+	 db_port=$$(grep '^DB_PORT=' $(ENV_FILE) 2>/dev/null | cut -d= -f2-); \
+	 db_host=$${db_host:-localhost}; db_port=$${db_port:-$(DB_PORT)}; \
+	 printf '  %-12s %-20s %-8s %s\n' service host:port status url; \
+	 printf '  %-12s %-20s %-8s %s\n' ------------ -------------------- -------- ---; \
+	 if command -v nc >/dev/null 2>&1 && nc -z -w 2 "$$db_host" "$$db_port" 2>/dev/null; then db_state="✓ up"; else db_state="·"; fi; \
+	 printf '  %-12s %-20s %-8s %s\n' "postgres" "$$db_host:$$db_port" "$$db_state" "postgres://$$db_host:$$db_port"; \
+	 for entry in "svc:$(SVC_PORT):http://127.0.0.1:$(SVC_PORT)" \
+	              "ui:$(UI_DEV_PORT):http://127.0.0.1:$(UI_DEV_PORT)"; do \
 	   name=$$(echo "$$entry" | cut -d: -f1); \
 	   port=$$(echo "$$entry" | cut -d: -f2); \
 	   url=$$(echo "$$entry"  | cut -d: -f3-); \
 	   if lsof -i tcp:$$port -sTCP:LISTEN >/dev/null 2>&1; then state="✓ up"; else state="·"; fi; \
 	   printf '  %-12s %-20s %-8s %s\n' "$$name" "127.0.0.1:$$port" "$$state" "$$url"; \
 	 done
-	@db_host=192.168.31.214; db_port=5436; \
-	 if command -v nc >/dev/null 2>&1 && nc -z -w 2 "$$db_host" "$$db_port" 2>/dev/null; then db_state="✓ up"; else db_state="·"; fi; \
-	 printf '  %-12s %-20s %-8s %s\n' "postgres" "$$db_host:$$db_port" "$$db_state" "postgres://$$db_host:$$db_port"
 
 health:  ## hit /actuator/health on the running svc
 	@echo -n "SVC health (:$(SVC_PORT)): "
@@ -232,8 +314,9 @@ langfuse-auth:  ## derive LANGFUSE_AUTH_BASIC from .env keys and write it back
 	 echo "✓ LANGFUSE_AUTH_BASIC updated in $(ENV_FILE)"
 
 .PHONY: help \
-        svc svc-down \
+        _ensure-docker db db-wait db-down db-reinit \
+        svc svc-watch svc-down svc-wait \
         ui ui-down _ui-install \
-        all all-down \
+        all all-down down \
         dep-svc dep-svc-wait dep-ui dep-ui-wait dep-all dep-svc-down dep-ui-down \
         status health pull langfuse-auth

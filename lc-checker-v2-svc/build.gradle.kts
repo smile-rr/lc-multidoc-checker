@@ -43,7 +43,7 @@ dependencies {
     // --- Spring AI (text LLM only — vision uses RestClient) -----------------
     implementation("org.springframework.ai:spring-ai-starter-model-openai")
 
-    // --- Spring JDBC + PostgreSQL (lc_v2 schema) ----------------------------
+    // --- Spring JDBC + PostgreSQL (lc_v3 schema in lc_checker database) ------
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
     runtimeOnly("org.postgresql:postgresql")
 

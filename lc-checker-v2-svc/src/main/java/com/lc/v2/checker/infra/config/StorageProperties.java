@@ -4,11 +4,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
  * Binds {@code storage.minio.*} from application.yml.
+ *
+ * <p>{@code required=false} (env {@code STORAGE_MINIO_REQUIRED=false}) skips MinIO
+ * bootstrap and S3 I/O — PDFs stay in the in-process {@link com.lc.v2.checker.infra.storage.PdfBytesCache} only.
  */
 @ConfigurationProperties(prefix = "storage.minio")
 public class StorageProperties {
 
-    private boolean enabled = true;
+    /** When false, MinIO is not used (memory-only mode). */
+    private boolean required = true;
     private String endpoint = "http://192.168.31.214:9000";
     private String bucket = "lc-pdfs";
     private String region = "us-east-1";
@@ -18,7 +22,8 @@ public class StorageProperties {
     private String pathPrefix = "v2/";
     private int requestTimeoutSeconds = 30;
 
-    public boolean enabled() { return enabled; }
+    public boolean enabled() { return required; }
+    public boolean required() { return required; }
     public String endpoint() { return endpoint; }
     public String bucket() { return bucket; }
     public String region() { return region; }
@@ -28,7 +33,10 @@ public class StorageProperties {
     public String pathPrefix() { return pathPrefix; }
     public int requestTimeoutSeconds() { return requestTimeoutSeconds; }
 
-    public void setEnabled(boolean enabled) { this.enabled = enabled; }
+    public void setRequired(boolean required) { this.required = required; }
+    /** @deprecated use {@link #setRequired}; kept for {@code storage.minio.enabled} in old yml. */
+    @Deprecated
+    public void setEnabled(boolean enabled) { this.required = enabled; }
     public void setEndpoint(String endpoint) { this.endpoint = endpoint; }
     public void setBucket(String bucket) { this.bucket = bucket; }
     public void setRegion(String region) { this.region = region; }

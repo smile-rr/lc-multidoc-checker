@@ -34,7 +34,8 @@ public class S3Config {
     }
 
     @Bean
-    public S3FileStore s3FileStore(S3Client s3Client, StorageProperties cfg, PdfBytesCache pdfBytesCache) {
-        return new S3FileStore(s3Client, cfg, pdfBytesCache);
+    public S3FileStore s3FileStore(S3Client s3Client, StorageProperties cfg,
+                                   PdfBytesCache pdfBytesCache, MinioReachability reachability) {
+        return new S3FileStore(s3Client, cfg, pdfBytesCache, reachability);
     }
 }

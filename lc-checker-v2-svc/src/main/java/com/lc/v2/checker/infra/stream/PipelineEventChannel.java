@@ -20,7 +20,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 /**
  * SSE fan-out: subscribes to Spring ApplicationEvents from PipelineEventBus,
  * delivers to all registered SseEmitters for the session, and persists every
- * event to {@code lc_v2.pipeline_events} via SessionStore.
+ * event to {@code lc_v3.pipeline_events} via SessionStore.
  *
  * One SessionChannel per active session: holds a ring buffer (last 512 events)
  * for late-joining subscribers, and a live emitter list.

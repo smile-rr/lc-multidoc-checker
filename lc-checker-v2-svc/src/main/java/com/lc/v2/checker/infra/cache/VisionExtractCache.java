@@ -9,7 +9,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 /**
- * JDBC repo for {@code lc_v2.vision_extract_cache}. Stores per-slot raw VLM responses
+ * JDBC repo for {@code lc_v3.vision_extract_cache}. Stores per-slot raw VLM responses
  * keyed by the deterministic input hash composed in {@link CacheKey}.
  *
  * <p>Self-heals on startup: runs idempotent CREATE TABLE / ADD COLUMN / CREATE INDEX
@@ -33,7 +33,7 @@ public class VisionExtractCache {
     public void ensureSchema() {
         try {
             jdbc.execute("""
-                    CREATE TABLE IF NOT EXISTS lc_v2.vision_extract_cache (
+                    CREATE TABLE IF NOT EXISTS lc_v3.vision_extract_cache (
                       cache_key         TEXT PRIMARY KEY,
                       pdf_sha256        TEXT NOT NULL,
                       prompt_sha256     TEXT NOT NULL,
@@ -56,16 +56,16 @@ public class VisionExtractCache {
                     )
                     """);
             jdbc.execute("""
-                    ALTER TABLE lc_v2.vision_extract_cache
+                    ALTER TABLE lc_v3.vision_extract_cache
                       ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ
                     """);
             jdbc.execute("""
                     CREATE INDEX IF NOT EXISTS ix_vec_pdf_model
-                      ON lc_v2.vision_extract_cache (pdf_sha256, model)
+                      ON lc_v3.vision_extract_cache (pdf_sha256, model)
                     """);
             jdbc.execute("""
                     CREATE INDEX IF NOT EXISTS ix_vec_expires_at
-                      ON lc_v2.vision_extract_cache (expires_at) WHERE expires_at IS NOT NULL
+                      ON lc_v3.vision_extract_cache (expires_at) WHERE expires_at IS NOT NULL
                     """);
             log.info("[VisionCache] schema ready (ttl-days={})", ttlDays);
         } catch (Exception e) {
@@ -79,7 +79,7 @@ public class VisionExtractCache {
         try {
             return jdbc.queryForObject("""
                     SELECT raw_response::text, prompt_tokens, completion_tokens, total_tokens
-                    FROM   lc_v2.vision_extract_cache
+                    FROM   lc_v3.vision_extract_cache
                     WHERE  cache_key = ?
                       AND  (expires_at IS NULL OR expires_at > now())
                     """,
@@ -109,7 +109,7 @@ public class VisionExtractCache {
                     ? "now() + (? || ' days')::interval"
                     : "NULL";
             String sql = """
-                    INSERT INTO lc_v2.vision_extract_cache
+                    INSERT INTO lc_v3.vision_extract_cache
                       (cache_key, pdf_sha256, prompt_sha256, model, base_url,
                        render_dpi, max_pages, max_long_edge, request_shape_v,
                        raw_response, parsed_envelope, off_schema_raw,
@@ -149,7 +149,7 @@ public class VisionExtractCache {
     public void incrementHit(String cacheKey) {
         try {
             jdbc.update("""
-                    UPDATE lc_v2.vision_extract_cache
+                    UPDATE lc_v3.vision_extract_cache
                     SET    hit_count = hit_count + 1,
                            last_hit_at = NOW()
                     WHERE  cache_key = ?
@@ -163,7 +163,7 @@ public class VisionExtractCache {
     public int purgeExpired() {
         try {
             return jdbc.update("""
-                    DELETE FROM lc_v2.vision_extract_cache
+                    DELETE FROM lc_v3.vision_extract_cache
                     WHERE  expires_at IS NOT NULL AND expires_at <= now()
                     """);
         } catch (Exception e) {

@@ -1,0 +1,30 @@
+---
+description: React UI conventions for the Vite dev app
+globs: ui/**/*
+alwaysApply: false
+---
+
+# UI (ui/)
+
+## Dev
+
+- Vite **5173**; API base `/api/v2` in `src/api.js` (proxied to `127.0.0.1:9082`)
+- Start: `make ui` from repo root
+- HMR for React; backend changes need svc restart/`svc-watch`
+
+## Structure
+
+- `src/pages/` — HomePage, SessionPage (stage router)
+- `src/components/stages/` — Intake, Parse, Reconcile, Examine, Signoff panels
+- `src/hooks/` — `useSse`, `useStageProgress`, data hooks
+- Pipeline progress from SSE events + `session.status`
+
+## Stage UX notes
+
+- **Intake** shows "classifying" while `status === 'INTAKE'`
+- **Parse** meter uses `ExtractionProgress` events after `StageStarted{parse}`
+- Presets: `GET /api/v2/presets` — requires svc up + `test/cases` mounted
+
+## Styling
+
+- Tailwind CSS; financial/workbench density — match existing components in `components/ui/`

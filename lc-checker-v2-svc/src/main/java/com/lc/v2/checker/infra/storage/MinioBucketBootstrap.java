@@ -24,21 +24,26 @@ public class MinioBucketBootstrap {
 
     private final S3Client s3;
     private final StorageProperties cfg;
+    private final MinioReachability reachability;
 
-    public MinioBucketBootstrap(S3Client s3, StorageProperties cfg) {
+    public MinioBucketBootstrap(S3Client s3, StorageProperties cfg,
+                                MinioReachability reachability) {
         this.s3 = s3;
         this.cfg = cfg;
+        this.reachability = reachability;
     }
 
     @EventListener(ApplicationReadyEvent.class)
     public void ensureBucket() {
         if (!cfg.enabled()) {
-            log.info("MinIO disabled — skipping bucket bootstrap");
+            log.info("MinIO not required (STORAGE_MINIO_REQUIRED=false) — memory-only PDF cache");
+            reachability.markUnreachable();
             return;
         }
         try {
             s3.headBucket(HeadBucketRequest.builder().bucket(cfg.bucket()).build());
             log.info("MinIO bucket '{}' exists at {} — store enabled", cfg.bucket(), cfg.endpoint());
+            reachability.markReachable();
         } catch (NoSuchBucketException e) {
             createBucket();
         } catch (S3Exception e) {
@@ -47,11 +52,13 @@ public class MinioBucketBootstrap {
             } else {
                 log.warn("MinIO headBucket failed (status={}): {} — sessions will run memory-only",
                         e.statusCode(), e.getMessage());
+                reachability.markUnreachable();
                 return;
             }
         } catch (RuntimeException e) {
             log.warn("MinIO unreachable at {}: {} ({}) — sessions will run memory-only",
                     cfg.endpoint(), e.getMessage(), e.getClass().getSimpleName());
+            reachability.markUnreachable();
             return;
         }
         preWarmConnection();
@@ -83,6 +90,7 @@ public class MinioBucketBootstrap {
         } catch (RuntimeException e) {
             log.warn("MinIO createBucket('{}') failed: {} — sessions will run memory-only",
                     cfg.bucket(), e.getMessage());
+            reachability.markUnreachable();
         }
     }
 }
