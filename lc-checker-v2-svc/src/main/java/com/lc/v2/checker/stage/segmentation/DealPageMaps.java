@@ -89,7 +89,10 @@ public class DealPageMaps {
                     continue;
                 }
                 String source = String.valueOf(m.getOrDefault("source", ""));
-                segments.add(new DealManifest.Segment(docType, List.copyOf(pages), source));
+                Object descObj = m.get("desc");
+                String desc = descObj != null ? String.valueOf(descObj).strip() : "";
+                if (desc.isEmpty() || "null".equals(desc)) desc = null;
+                segments.add(new DealManifest.Segment(docType, List.copyOf(pages), source, desc));
             }
         }
         return new DealManifest(dealNo, caseId, tiff, lc, total, List.copyOf(segments));

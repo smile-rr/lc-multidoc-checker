@@ -171,7 +171,7 @@ public class SessionStore {
      */
     public String createDocument(String sessionId, DocType docType,
                                   String originalFilename, int pageCount) {
-        return createDocument(sessionId, docType, originalFilename, pageCount, null);
+        return createDocument(sessionId, docType, originalFilename, pageCount, null, null);
     }
 
     /**
@@ -180,16 +180,26 @@ public class SessionStore {
     public String createDocument(String sessionId, DocType docType,
                                   String originalFilename, int pageCount,
                                   List<Integer> dealTiffPages) {
+        return createDocument(sessionId, docType, originalFilename, pageCount, dealTiffPages, null);
+    }
+
+    /**
+     * @param dealTiffPages 1-based page number(s) in the merged deal TIFF (deal bundle only)
+     * @param docTypeDesc   officer-facing label; manifest override or registry default
+     */
+    public String createDocument(String sessionId, DocType docType,
+                                  String originalFilename, int pageCount,
+                                  List<Integer> dealTiffPages, String docTypeDesc) {
         String docId = UUID.randomUUID().toString();
         boolean autoConfirmed = docType != DocType.UNKNOWN;
         String pagesJson = toJsonIntList(dealTiffPages);
         jdbc.update("""
                 INSERT INTO lc_v3.documents
                   (id, session_id, doc_type, original_filename, page_count, deal_tiff_pages,
-                   parse_status, confirmed_by_officer, created_at)
-                VALUES (?::uuid, ?::uuid, ?, ?, ?, ?::jsonb, 'PENDING', ?, NOW())
+                   doc_type_desc, parse_status, confirmed_by_officer, created_at)
+                VALUES (?::uuid, ?::uuid, ?, ?, ?, ?::jsonb, ?, 'PENDING', ?, NOW())
                 """, docId, sessionId, docType.name(), originalFilename, pageCount, pagesJson,
-                autoConfirmed);
+                docTypeDesc, autoConfirmed);
         return docId;
     }
 
@@ -207,8 +217,8 @@ public class SessionStore {
 
     public List<Map<String, Object>> getDocuments(String sessionId) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
-                SELECT id, doc_type, original_filename, parse_status, page_count, deal_tiff_pages,
-                       confirmed_by_officer, created_at
+                SELECT id, doc_type, doc_type_desc, original_filename, parse_status, page_count,
+                       deal_tiff_pages, confirmed_by_officer, created_at
                 FROM   lc_v3.documents WHERE session_id = ?::uuid ORDER BY created_at
                 """, sessionId);
         rows.forEach(this::normalizeDocumentRow);
@@ -217,7 +227,7 @@ public class SessionStore {
 
     public Map<String, Object> getDocument(String docId) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
-                SELECT id, session_id, doc_type, original_filename, file_sha256,
+                SELECT id, session_id, doc_type, doc_type_desc, original_filename, file_sha256,
                        page_count, deal_tiff_pages, parse_status, classification_conf,
                        confirmed_by_officer, created_at
                 FROM   lc_v3.documents WHERE id = ?::uuid
@@ -253,11 +263,20 @@ public class SessionStore {
     /** Patch a document row. Pass null fields to leave them unchanged. */
     public void patchDocument(String docId, String docType, String parseStatus,
                               Boolean confirmedByOfficer) {
+        patchDocument(docId, docType, parseStatus, confirmedByOfficer, null);
+    }
+
+    public void patchDocument(String docId, String docType, String parseStatus,
+                              Boolean confirmedByOfficer, String docTypeDesc) {
         StringBuilder sql = new StringBuilder("UPDATE lc_v3.documents SET ");
         List<Object> params = new java.util.ArrayList<>();
         boolean first = true;
         if (docType != null) {
             sql.append("doc_type = ?"); params.add(docType); first = false;
+        }
+        if (docTypeDesc != null) {
+            if (!first) sql.append(", ");
+            sql.append("doc_type_desc = ?"); params.add(docTypeDesc); first = false;
         }
         if (parseStatus != null) {
             if (!first) sql.append(", ");

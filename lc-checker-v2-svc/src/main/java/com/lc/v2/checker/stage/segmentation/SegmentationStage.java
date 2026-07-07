@@ -3,6 +3,7 @@ package com.lc.v2.checker.stage.segmentation;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lc.v2.checker.domain.common.DocType;
 import com.lc.v2.checker.domain.lc.LcParseResult;
+import com.lc.v2.checker.infra.fields.DocTypeRegistry;
 import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.infra.storage.PdfBytesCache;
 import com.lc.v2.checker.infra.storage.S3FileStore;
@@ -49,10 +50,12 @@ public class SegmentationStage implements Stage {
     private final ObjectMapper objectMapper;
     private final DealPageMaps dealPageMaps;
     private final DealTiffSplitter dealTiffSplitter;
+    private final DocTypeRegistry docTypeRegistry;
 
     public SegmentationStage(SessionStore sessionStore, PdfBytesCache pdfCache, S3FileStore s3Store,
                         Mt700Parser mt700Parser, ObjectMapper objectMapper,
-                        DealPageMaps dealPageMaps, DealTiffSplitter dealTiffSplitter) {
+                        DealPageMaps dealPageMaps, DealTiffSplitter dealTiffSplitter,
+                        DocTypeRegistry docTypeRegistry) {
         this.sessionStore = sessionStore;
         this.pdfCache = pdfCache;
         this.s3Store = s3Store;
@@ -60,6 +63,7 @@ public class SegmentationStage implements Stage {
         this.objectMapper = objectMapper;
         this.dealPageMaps = dealPageMaps;
         this.dealTiffSplitter = dealTiffSplitter;
+        this.docTypeRegistry = docTypeRegistry;
     }
 
     private static final String STAGE = PipelineStageId.SEGMENTATION.id();
@@ -90,7 +94,8 @@ public class SegmentationStage implements Stage {
             byte[] bytes = ctx.uploadedDocBytes.get(docType);
 
             int pageCount = countPages(bytes);
-            String docId = sessionStore.createDocument(ctx.sessionId, docType, filename, pageCount);
+            String docId = sessionStore.createDocument(
+                    ctx.sessionId, docType, filename, pageCount, null, docTypeRegistry.descFor(docType));
             ctx.docIds.put(docType, docId);
 
             // Persist to S3 first, then hot-cache (S3FileStore.put handles both).
@@ -161,8 +166,10 @@ public class SegmentationStage implements Stage {
                     ? seg.source()
                     : docType.name().toLowerCase() + ".pdf";
             int pageCount = countPages(pdf);
+            String desc = seg.desc() != null && !seg.desc().isBlank()
+                    ? seg.desc() : docTypeRegistry.descFor(docType);
             String docId = sessionStore.createDocument(
-                    ctx.sessionId, docType, filename, pageCount, List.copyOf(seg.pages()));
+                    ctx.sessionId, docType, filename, pageCount, List.copyOf(seg.pages()), desc);
             ctx.docIds.put(docType, docId);
             ctx.uploadedDocBytes.put(docType, pdf);
             ctx.uploadedDocNames.put(docType, filename);

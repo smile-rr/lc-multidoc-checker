@@ -1,5 +1,6 @@
 import React from 'react';
 import { docTypeMeta } from '../../../constants/docTypes';
+import { formatPageLabel } from '../../../lib/dealPages';
 
 /**
  * Vertical document navigator. 64px wide.
@@ -49,6 +50,7 @@ export function DocRail({ lcEntry, docs, activeId, onActive }) {
         {docs.map(d => {
           const t = docTypeMeta(d.doc_type);
           const active = d.id === activeId;
+          const bundlePage = formatPageLabel(d.deal_tiff_pages);
           const reviewed = d.parse_status === 'REVIEWED';
           const extracted = d.parse_status === 'EXTRACTED';
           const failed = d.parse_status === 'FAILED';
@@ -63,7 +65,7 @@ export function DocRail({ lcEntry, docs, activeId, onActive }) {
             <button
               key={d.id}
               onClick={() => onActive(d.id)}
-              title={`${t.name} · ${d.original_filename || ''}`}
+              title={[t.name, bundlePage, d.original_filename].filter(Boolean).join(' · ')}
               className={`w-full py-1.5 rounded-[6px] flex flex-col items-center gap-1 transition relative
                 ${active ? 'bg-slate2' : 'hover:bg-slate2/60'}`}
             >

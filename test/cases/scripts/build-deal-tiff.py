@@ -42,6 +42,15 @@ DOC_TYPE_BY_FILE = {
     "warranty-cert.pdf": "WC",
 }
 
+DOC_TYPE_DESC = {
+    "INV": "Commercial Invoice",
+    "BOL": "Bill of Lading",
+    "PKL": "Packing List",
+    "BOE": "Bill of Exchange",
+    "BC": "Beneficiary Certificate",
+    "WC": "Warranty Certificate",
+}
+
 
 class InlineList(list):
     """YAML flow-style list, e.g. pages: [1, 2]."""
@@ -124,10 +133,12 @@ def write_deal(case_dir: Path) -> None:
         page_nums = list(range(page, page + len(imgs)))
         all_pages.extend(imgs)
         page += len(imgs)
+        doc_type = DOC_TYPE_BY_FILE.get(pdf_name, "UNKNOWN")
         segments.append({
-            "doc_type": DOC_TYPE_BY_FILE.get(pdf_name, "UNKNOWN"),
+            "doc_type": doc_type,
             "pages": InlineList(page_nums),
             "source": pdf_name,
+            "desc": DOC_TYPE_DESC.get(doc_type),
         })
         print(f"  {pdf_name}: pages {page_nums} ({len(imgs)} page(s))")
 

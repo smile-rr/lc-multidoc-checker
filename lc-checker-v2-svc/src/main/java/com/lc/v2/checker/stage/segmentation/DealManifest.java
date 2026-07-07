@@ -13,5 +13,5 @@ public record DealManifest(
         List<Segment> segments) {
 
     /** {@code pages} — 1-based exact page numbers in the deal TIFF (e.g. {@code [2, 3]}). */
-    public record Segment(DocType docType, List<Integer> pages, String source) {}
+    public record Segment(DocType docType, List<Integer> pages, String source, String desc) {}
 }

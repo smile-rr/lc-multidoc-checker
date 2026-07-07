@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS lc_v3.documents (
     file_sha256           CHAR(64),
     page_count            INT,
     deal_tiff_pages       JSONB,
+    doc_type_desc         TEXT,
     parse_status          VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
     -- PENDING | EXTRACTING | EXTRACTED | REVIEWED | FAILED
     classification_conf   NUMERIC(4,3),
@@ -92,6 +93,7 @@ CREATE INDEX IF NOT EXISTS idx_v3_docs_session    ON lc_v3.documents(session_id)
 CREATE INDEX IF NOT EXISTS idx_v3_docs_type       ON lc_v3.documents(session_id, doc_type);
 
 ALTER TABLE lc_v3.documents ADD COLUMN IF NOT EXISTS deal_tiff_pages JSONB;
+ALTER TABLE lc_v3.documents ADD COLUMN IF NOT EXISTS doc_type_desc TEXT;
 
 -- ---------------------------------------------------------------------------
 -- pipeline_steps — every system output, every stage. Idempotent: re-running

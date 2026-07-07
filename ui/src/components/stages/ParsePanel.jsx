@@ -24,6 +24,8 @@ import { DevShortcutButton, GhostButton } from '../ui/Button';
 
 const STORAGE_W_KEY = 'lcv2-parse-fields-width';
 const STORAGE_SWAP_KEY = 'lcv2-parse-lc-swap';
+/** Deal bundle: LC from lc.txt has no documents row — synthetic rail entry. */
+const LC_SYNTHETIC_ID = '__lc_parse__';
 
 /**
  * Stage 1 — Parse. Three-pane workbench.
@@ -96,9 +98,24 @@ export function ParsePanel({ session, stagesCompleted, events, refresh, onContin
   useEffect(() => { localStorage.setItem(STORAGE_SWAP_KEY, lcSwap ? '1' : '0'); }, [lcSwap]);
 
   const { markReviewed, correct } = useDocActions(sessionId);
-  const isLcActive = lcDoc && activeId === lcDoc.id;
-  const { data: extracts, refresh: refreshExtracts } = useDocExtracts(sessionId, isLcActive ? null : activeId);
   const { data: lcData, loading: lcLoading, refresh: refreshLc } = useLc(sessionId);
+
+  const lcEntry = useMemo(() => {
+    if (lcDoc) return lcDoc;
+    const hasFields = lcData?.fields && Object.keys(lcData.fields).length > 0;
+    const hasText = Boolean(lcData?.text);
+    if (hasFields || hasText) {
+      return {
+        id: LC_SYNTHETIC_ID,
+        doc_type: 'LC',
+        original_filename: 'lc.txt',
+      };
+    }
+    return null;
+  }, [lcDoc, lcData]);
+
+  const isLcActive = activeId === LC_SYNTHETIC_ID || (lcDoc != null && activeId === lcDoc.id);
+  const { data: extracts, refresh: refreshExtracts } = useDocExtracts(sessionId, isLcActive ? null : activeId);
 
   // Auto-refresh LC source when Parse stage completes (LC fields populate without nav).
   const parseDone = stagesCompleted?.has('parse');
@@ -143,16 +160,16 @@ export function ParsePanel({ session, stagesCompleted, events, refresh, onContin
 
   // Default-active to LC if present, else first doc.
   useEffect(() => {
-    if (lcDoc && !activeId) { setActiveId(lcDoc.id); return; }
-    if (!lcDoc && docs.length === 0) { setActiveId(null); return; }
-    if (!lcDoc && (!activeId || (!docs.find(d => d.id === activeId)))) {
+    if (lcEntry && !activeId) { setActiveId(lcEntry.id); return; }
+    if (!lcEntry && docs.length === 0) { setActiveId(null); return; }
+    if (!lcEntry && (!activeId || (!docs.find(d => d.id === activeId)))) {
       setActiveId(docs[0].id);
     }
-  }, [lcDoc, docs, activeId]);
+  }, [lcEntry, docs, activeId]);
 
   useEffect(() => { setPage(1); setPages(0); }, [activeId]);
 
-  const navList = useMemo(() => lcDoc ? [lcDoc, ...docs] : docs, [lcDoc, docs]);
+  const navList = useMemo(() => lcEntry ? [lcEntry, ...docs] : docs, [lcEntry, docs]);
   useKeyboardNav({
     onDocPrev: () => {
       const i = navList.findIndex(d => d.id === activeId);
@@ -271,13 +288,13 @@ export function ParsePanel({ session, stagesCompleted, events, refresh, onContin
         }
       />
 
-      {!lcDoc && docs.length === 0 ? (
+      {!lcEntry && docs.length === 0 ? (
         <div className="p-8 text-center text-muted text-sm">
           No documents in this session yet.
         </div>
       ) : (
         <div ref={splitRef} className="flex flex-1 min-h-0 overflow-hidden">
-          <DocRail lcEntry={lcDoc} docs={docs} activeId={activeId} onActive={setActiveId} />
+          <DocRail lcEntry={lcEntry} docs={docs} activeId={activeId} onActive={setActiveId} />
 
           {isLcActive && lcSwap ? (
             // Swapped layout (LC view only): parsed fields on LEFT, raw text on RIGHT

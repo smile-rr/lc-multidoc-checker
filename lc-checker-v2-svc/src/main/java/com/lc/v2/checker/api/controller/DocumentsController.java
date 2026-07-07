@@ -3,6 +3,8 @@ package com.lc.v2.checker.api.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lc.v2.checker.api.dto.DocPatchRequest;
 import com.lc.v2.checker.api.dto.FieldCorrectionRequest;
+import com.lc.v2.checker.domain.common.DocType;
+import com.lc.v2.checker.infra.fields.DocTypeRegistry;
 import com.lc.v2.checker.infra.fields.FieldPoolRegistry;
 import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.infra.storage.S3FileStore;
@@ -47,15 +49,17 @@ public class DocumentsController {
     private final PipelineEventBus eventBus;
     private final ObjectMapper objectMapper;
     private final FieldPoolRegistry fieldPool;
+    private final DocTypeRegistry docTypeRegistry;
 
     public DocumentsController(SessionStore sessionStore, S3FileStore s3Store,
                               PipelineEventBus eventBus, ObjectMapper objectMapper,
-                              FieldPoolRegistry fieldPool) {
+                              FieldPoolRegistry fieldPool, DocTypeRegistry docTypeRegistry) {
         this.sessionStore = sessionStore;
         this.s3Store = s3Store;
         this.eventBus = eventBus;
         this.objectMapper = objectMapper;
         this.fieldPool = fieldPool;
+        this.docTypeRegistry = docTypeRegistry;
     }
 
     @GetMapping("/pdf")
@@ -171,7 +175,15 @@ public class DocumentsController {
         Map<String, Object> doc = sessionStore.getDocument(docId);
         if (doc == null) return ResponseEntity.notFound().build();
 
-        sessionStore.patchDocument(docId, req.docType(), req.parseStatus(), req.confirmedByOfficer());
+        String typeDesc = null;
+        if (req.docType() != null) {
+            try {
+                typeDesc = docTypeRegistry.descFor(DocType.valueOf(req.docType()));
+            } catch (IllegalArgumentException ignored) {
+                typeDesc = req.docType();
+            }
+        }
+        sessionStore.patchDocument(docId, req.docType(), req.parseStatus(), req.confirmedByOfficer(), typeDesc);
         log.info("[{}] doc {} patched: type={} status={} confirmed={}",
                 sessionId, docId, req.docType(), req.parseStatus(), req.confirmedByOfficer());
 

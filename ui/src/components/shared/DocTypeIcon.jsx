@@ -1,10 +1,10 @@
 import React from 'react';
 import { docTypeMeta } from '../../constants/docTypes';
-import { formatPageLabel } from '../../lib/dealPages';
+import { formatPageBadge } from '../../lib/dealPages';
 
 function iconPageBadge(dealTiffPages, pages) {
-  const label = formatPageLabel(dealTiffPages);
-  if (label) return label;
+  const badge = formatPageBadge(dealTiffPages);
+  if (badge) return badge;
   if (pages != null) return String(pages);
   return null;
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { docTypeMeta } from '../../../constants/docTypes';
+import { docTypeMeta, docSegmentLabel } from '../../../constants/docTypes';
 import { TypePickerMenu } from '../../shared/TypePickerMenu';
 import { DocTypeIcon } from '../../shared/DocTypeIcon';
 import { formatPageLabel } from '../../../lib/dealPages';
@@ -9,6 +9,7 @@ export function ReviewTile({ doc, idx, total, onConfirm, onTypeChange, disabled 
   const isUnknown = doc.doc_type === 'UNKNOWN';
   const t = docTypeMeta(isUnknown ? 'INV' : doc.doc_type);
   const [picking, setPicking] = useState(false);
+  const label = isUnknown ? 'Unclassified document' : docSegmentLabel(doc);
   const pageLabel = formatPageLabel(doc.deal_tiff_pages);
 
   return (
@@ -32,15 +33,15 @@ export function ReviewTile({ doc, idx, total, onConfirm, onTypeChange, disabled 
         />
 
         <div className="flex-1 min-w-0">
-          <div className="text-[13px] font-semibold font-mono tracking-tight" style={{ color: isUnknown ? undefined : t.color }}>
-            {isUnknown ? '?' : t.short}
-            {pageLabel && <span className="text-navy-1 font-normal"> · {pageLabel}</span>}
+          <div className="text-[13px] font-semibold tracking-tight text-navy-1">
+            {label}
+            {pageLabel && <span className="text-muted font-normal font-mono"> · {pageLabel}</span>}
           </div>
 
           <div className="mt-3 mb-2 text-[11px] text-navy-1">
             {isUnknown
               ? <>We couldn't classify this document. Please pick the correct type.</>
-              : <>We classified this as <b style={{ color: t.color }}>{t.name}</b>. Is that correct?</>
+              : <>We classified this as <b style={{ color: t.color }}>{label}</b>. Is that correct?</>
             }
           </div>
 
@@ -51,7 +52,7 @@ export function ReviewTile({ doc, idx, total, onConfirm, onTypeChange, disabled 
                 disabled={disabled}
                 className="px-3 py-1.5 rounded-[6px] bg-teal-1 text-white text-xs font-medium hover:bg-teal-2 flex items-center gap-1.5 disabled:opacity-30"
               >
-                ✓ Yes, confirm as <span className="font-mono uppercase tracking-wider text-[10px]">{t.short}</span>
+                ✓ Yes, confirm
               </button>
             )}
             <button

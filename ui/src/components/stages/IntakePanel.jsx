@@ -12,6 +12,7 @@ import { RequiredDocChecklist } from './intake/RequiredDocChecklist';
 import { OFFICER_ID } from '../../lib/officer';
 import { sortDocsForDisplay } from '../../constants/docTypes';
 import { hasDealTiffPages, dealTiffPageRange } from '../../lib/dealPages';
+import { isLcReady } from '../../lib/sessionGates';
 import { StagePage, StageBody } from '../ui/StagePage';
 import { StageToolbar } from '../ui/StageToolbar';
 import { StageNavButtons } from '../ui/StageNavButtons';
@@ -51,7 +52,7 @@ export function IntakePanel({ session, stagesCompleted, events, refresh, onConti
   const dealBundle = useMemo(() => hasDealTiffPages(docs), [docs]);
   const dealPageSpan = useMemo(() => dealTiffPageRange(docs), [docs]);
 
-  const lcPresent = docs.some(d => d.doc_type === 'LC');
+  const lcPresent = isLcReady(session, docs);
   const allConfirmed = reviewNeeded.length === 0;
   const requiredPresent = (required?.required ?? []).every(r => r.present);
   const canContinue = devMode || (lcPresent && allConfirmed && requiredPresent);

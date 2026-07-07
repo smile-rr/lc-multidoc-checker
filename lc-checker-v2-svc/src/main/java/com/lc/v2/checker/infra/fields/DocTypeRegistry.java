@@ -92,6 +92,13 @@ public class DocTypeRegistry {
         return Optional.ofNullable(byCode.get(docType.name()));
     }
 
+    /** Officer-facing label for segmentation UI; falls back to {@code nameEn}. */
+    public String descFor(DocType docType) {
+        return byDocType(docType)
+                .map(e -> e.descEn() != null && !e.descEn().isBlank() ? e.descEn() : e.nameEn())
+                .orElse(docType.name());
+    }
+
     public List<DocTypeEntry> filenameDetectionOrder() { return filenameDetectionOrder; }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -102,6 +109,7 @@ public class DocTypeRegistry {
             String code,
             String nameEn,
             String nameZh,
+            String descEn,
             String detection,
             List<String> filenameKeywords,
             String extractionPrompt,

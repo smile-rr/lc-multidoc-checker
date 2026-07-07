@@ -13,6 +13,7 @@ doc_types:
     code: LC
     name_en: Letter of Credit (MT700)
     name_zh: 信用证 (MT700)
+    desc_en: Letter of Credit
     detection: MT700_PARSER
     filename_keywords: [mt700, lc]
     extraction_prompt: null   # parsed by Mt700Parser, not VLM
@@ -55,6 +56,7 @@ doc_types:
     code: INV
     name_en: Commercial Invoice
     name_zh: 商业发票
+    desc_en: Commercial Invoice
     detection: FILENAME
     filename_keywords: [invoice]
     extraction_prompt: extract/inv-extract-vision.st
@@ -91,6 +93,7 @@ doc_types:
     code: BOL
     name_en: Bill of Lading
     name_zh: 提单
+    desc_en: Bill of Lading
     detection: FILENAME
     filename_keywords: [bill-of-lading, bol]
     extraction_prompt: extract/bol-extract-vision.st
@@ -126,6 +129,7 @@ doc_types:
     code: PKL
     name_en: Packing List
     name_zh: 装箱单
+    desc_en: Packing List
     detection: FILENAME
     filename_keywords: [packing-list]
     extraction_prompt: extract/pkl-extract-vision.st
@@ -149,6 +153,7 @@ doc_types:
     code: BOE
     name_en: Bill of Exchange / Draft
     name_zh: 汇票/跟单汇票
+    desc_en: Bill of Exchange
     detection: FILENAME
     filename_keywords: [bill-of-exchange, boe]
     extraction_prompt: extract/boe-extract-vision.st
@@ -174,6 +179,7 @@ doc_types:
     code: BC
     name_en: Beneficiary Certificate
     name_zh: 受益人证书
+    desc_en: Beneficiary Certificate
     detection: FILENAME
     filename_keywords: [beneficiary-cert, bc]
     extraction_prompt: extract/bc-extract-vision.st
@@ -194,6 +200,7 @@ doc_types:
     code: WC
     name_en: Warranty Certificate
     name_zh: 质量保证书
+    desc_en: Warranty Certificate
     detection: FILENAME
     filename_keywords: [warranty-cert, wc]
     extraction_prompt: extract/wc-extract-vision.st

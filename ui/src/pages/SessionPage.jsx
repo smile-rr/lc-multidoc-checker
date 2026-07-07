@@ -19,6 +19,7 @@ import {
   landingStageForNext,
   stageLabel,
 } from '../constants/pipelineStages';
+import { isLcReady } from '../lib/sessionGates';
 
 export function SessionPage() {
   const { id } = useParams();
@@ -74,7 +75,7 @@ export function SessionPage() {
 
   // ── Gates ──────────────────────────────────────────────────────────────
   const docs = session?.documents ?? [];
-  const lcPresent = docs.some(d => d.doc_type === 'LC');
+  const lcPresent = isLcReady(session, docs);
   const allConfirmed = docs.every(d => d.doc_type !== 'UNKNOWN' && d.confirmed_by_officer !== false);
   const segmentationGate = lcPresent && allConfirmed;
 
