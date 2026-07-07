@@ -92,12 +92,12 @@ public class SessionController {
             if (hasDeal && !documents.containsKey(DocType.LC) && !hasLcText) {
                 return ResponseEntity.badRequest().body(Map.of(
                         "error", "missing_lc",
-                        "message", "Deal bundle requires lc.txt (or lcText) alongside deal-NN.tiff"));
+                        "message", "Deal bundle requires lc.txt (or lcText) alongside deal-NN.pdf"));
             }
             if (hasDeal && documents.size() > 2) {
                 return ResponseEntity.badRequest().body(Map.of(
                         "error", "deal_bundle_extra_files",
-                        "message", "Deal bundle accepts only lc.txt + deal-NN.tiff"));
+                        "message", "Deal bundle accepts only lc.txt + deal-NN.pdf"));
             }
 
             String sessionId = pipelineService.createSession(lcText, documents);

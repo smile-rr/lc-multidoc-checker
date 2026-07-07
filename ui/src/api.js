@@ -98,6 +98,17 @@ export async function getLcRequiredDocs(sessionId) {
   return res.json();
 }
 
+/** Merged deal bundle PDF metadata for Segmentation preview. */
+export async function getDealInfo(sessionId) {
+  const res = await fetch(`${BASE}/sessions/${sessionId}/deal`);
+  if (!res.ok) throw await apiError(res);
+  return res.json();
+}
+
+export function dealPdfUrl(sessionId) {
+  return `${BASE}/sessions/${sessionId}/deal/pdf`;
+}
+
 // ── Reconcile ──────────────────────────────────────────────────────────────
 export async function getReconcile(sessionId) {
   const res = await fetch(`${BASE}/sessions/${sessionId}/reconcile`);

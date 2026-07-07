@@ -82,7 +82,7 @@ export function HomePage() {
     if (name === 'lc.txt' || (name.includes('mt700') && (name.endsWith('.txt') || name.endsWith('.fin') || name.endsWith('.swift')))) {
       return 'LC';
     }
-    if (/^deal-\d+\.(tiff?|tif)$/.test(name)) return 'DEAL';
+    if (/^deal-\d+\.(pdf)$/.test(name)) return 'DEAL';
     if (name.endsWith('.txt') || name.endsWith('.fin') || name.endsWith('.swift')) return 'TXT';
     if (name.endsWith('.pdf')) return classifyFilename(file.name);
     return 'OTHER';
@@ -95,8 +95,7 @@ export function HomePage() {
       const toAdd = Array.from(newFiles)
         .filter(f => {
           const n = (f.name || '').toLowerCase();
-          return (n.endsWith('.pdf') || n.endsWith('.txt') || n.endsWith('.fin') || n.endsWith('.swift')
-            || n.endsWith('.tiff') || n.endsWith('.tif'))
+            return (n.endsWith('.pdf') || n.endsWith('.txt') || n.endsWith('.fin') || n.endsWith('.swift'))
             && !existing.has(f.name);
         })
         .map(f => ({ file: f, detectedType: classifyFile(f) }));
@@ -122,9 +121,9 @@ export function HomePage() {
     setError(null);
     try {
       const isDeal = preset.ingestMode === 'deal'
-        || (preset.files.some(f => f.type === 'lc') && preset.files.some(f => f.type === 'deal-tiff'));
+        || (preset.files.some(f => f.type === 'lc') && preset.files.some(f => f.type === 'deal-pdf'));
       const wanted = isDeal
-        ? preset.files.filter(f => f.type === 'lc' || f.type === 'deal-tiff')
+        ? preset.files.filter(f => f.type === 'lc' || f.type === 'deal-pdf')
         : preset.files.filter(f =>
           f.type === 'pdf' || f.type === 'mt700-pass' || (
             f.type === 'mt700' && !preset.files.some(g => g.type === 'mt700-pass')
@@ -137,7 +136,6 @@ export function HomePage() {
         const blob = await getPresetFile(preset.id, f.name);
         const lower = f.name.toLowerCase();
         const mime = lower.endsWith('.pdf') ? 'application/pdf'
-          : (lower.endsWith('.tiff') || lower.endsWith('.tif')) ? 'image/tiff'
           : 'text/plain';
         return new File([blob], f.name, { type: mime });
       }));
@@ -157,7 +155,7 @@ export function HomePage() {
       return;
     }
     if (dealCount > 0 && (lcCount !== 1 || dealCount !== 1 || files.length !== 2)) {
-      setError('Deal bundle requires exactly lc.txt + deal-NN.tiff (2 files).');
+      setError('Deal bundle requires exactly lc.txt + deal-NN.pdf (2 files).');
       return;
     }
     setError(null);
@@ -252,7 +250,7 @@ export function HomePage() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,.txt,.fin,.swift,.tiff,.tif"
+            accept=".pdf,.txt,.fin,.swift"
             multiple
             className="hidden"
             onChange={e => addFiles(e.target.files)}
@@ -335,7 +333,7 @@ function TypeBadge({ type }) {
 
 function PresetCard({ preset, loading, onLoad }) {
   const isDeal = preset.ingestMode === 'deal'
-    || (preset.files.some(f => f.type === 'lc') && preset.files.some(f => f.type === 'deal-tiff'));
+    || (preset.files.some(f => f.type === 'lc') && preset.files.some(f => f.type === 'deal-pdf'));
   const pdfCount = preset.files.filter(f => f.type === 'pdf').length;
   const hasMt700 = preset.files.some(f => f.type && f.type.startsWith('mt700'));
 
@@ -349,7 +347,7 @@ function PresetCard({ preset, loading, onLoad }) {
         <div className="min-w-0">
           <div className="text-[12px] font-semibold tracking-tight truncate">{preset.label}</div>
           <div className="text-[10px] text-muted font-mono mt-0.5">
-            {isDeal ? 'deal bundle · lc.txt + TIFF' : `${pdfCount} PDFs${hasMt700 ? ' · MT700' : ''}`}
+            {isDeal ? 'deal bundle · lc.txt + deal file' : `${pdfCount} PDFs${hasMt700 ? ' · MT700' : ''}`}
           </div>
         </div>
         {loading && <Spinner size="sm" />}

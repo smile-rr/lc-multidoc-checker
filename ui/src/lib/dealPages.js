@@ -22,13 +22,17 @@ export function formatPageBadge(pages) {
   return sorted.map(p => `P${p}`).join(',');
 }
 
-/** @deprecated use formatPageLabel */
-export function formatDealTiffPages(pages) {
-  return formatPageLabel(pages);
-}
+/** @deprecated kept for backward compatibility */
+export function formatDealTiffPages(pages) { return formatPageLabel(pages); }
 
 export function hasDealTiffPages(docs, pageKey = 'deal_tiff_pages') {
   return docs.some(d => d[pageKey]?.length > 0);
+}
+
+export function firstDealPage(doc) {
+  const pages = doc?.deal_tiff_pages;
+  if (!pages?.length) return 1;
+  return Math.min(...pages);
 }
 
 export function dealTiffPageRange(docs, pageKey = 'deal_tiff_pages') {

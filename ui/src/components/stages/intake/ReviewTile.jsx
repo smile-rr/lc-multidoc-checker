@@ -48,7 +48,7 @@ export function ReviewTile({ doc, idx, total, onConfirm, onTypeChange, disabled 
           <div className="flex items-center gap-2 flex-wrap relative">
             {!isUnknown && (
               <button
-                onClick={() => onConfirm(doc.id)}
+                onClick={(e) => { e.stopPropagation(); onConfirm(doc.id); }}
                 disabled={disabled}
                 className="px-3 py-1.5 rounded-[6px] bg-teal-1 text-white text-xs font-medium hover:bg-teal-2 flex items-center gap-1.5 disabled:opacity-30"
               >
@@ -56,7 +56,7 @@ export function ReviewTile({ doc, idx, total, onConfirm, onTypeChange, disabled 
               </button>
             )}
             <button
-              onClick={() => !disabled && setPicking(!picking)}
+              onClick={(e) => { e.stopPropagation(); if (!disabled) setPicking(!picking); }}
               disabled={disabled}
               className="px-3 py-1.5 rounded-[6px] bg-white border border-line text-xs hover:bg-slate2 disabled:opacity-30"
             >

@@ -5,6 +5,7 @@ import com.lc.v2.checker.domain.common.DocType;
 import com.lc.v2.checker.domain.lc.LcParseResult;
 import com.lc.v2.checker.infra.fields.DocTypeRegistry;
 import com.lc.v2.checker.infra.persistence.SessionStore;
+import com.lc.v2.checker.infra.storage.DealPdfStore;
 import com.lc.v2.checker.infra.storage.PdfBytesCache;
 import com.lc.v2.checker.infra.storage.S3FileStore;
 import com.lc.v2.checker.pipeline.IngestMode;
@@ -49,12 +50,15 @@ public class SegmentationStage implements Stage {
     private final Mt700Parser mt700Parser;
     private final ObjectMapper objectMapper;
     private final DealPageMaps dealPageMaps;
-    private final DealTiffSplitter dealTiffSplitter;
+    private final DealPdfSplitter dealPdfSplitter;
+    private final DealPdfStore dealPdfStore;
     private final DocTypeRegistry docTypeRegistry;
 
     public SegmentationStage(SessionStore sessionStore, PdfBytesCache pdfCache, S3FileStore s3Store,
                         Mt700Parser mt700Parser, ObjectMapper objectMapper,
-                        DealPageMaps dealPageMaps, DealTiffSplitter dealTiffSplitter,
+                        DealPageMaps dealPageMaps,
+                        DealPdfSplitter dealPdfSplitter,
+                        DealPdfStore dealPdfStore,
                         DocTypeRegistry docTypeRegistry) {
         this.sessionStore = sessionStore;
         this.pdfCache = pdfCache;
@@ -62,7 +66,8 @@ public class SegmentationStage implements Stage {
         this.mt700Parser = mt700Parser;
         this.objectMapper = objectMapper;
         this.dealPageMaps = dealPageMaps;
-        this.dealTiffSplitter = dealTiffSplitter;
+        this.dealPdfSplitter = dealPdfSplitter;
+        this.dealPdfStore = dealPdfStore;
         this.docTypeRegistry = docTypeRegistry;
     }
 
@@ -128,15 +133,39 @@ public class SegmentationStage implements Stage {
     }
 
     private void executeDealBundle(StageContext ctx) {
-        byte[] tiff = ctx.uploadedDocBytes.get(DocType.DEAL);
-        if (tiff == null || tiff.length == 0) {
-            throw new IllegalStateException("Deal TIFF bytes missing from upload bundle");
+        byte[] dealPdf = ctx.uploadedDocBytes.get(DocType.DEAL);
+        if (dealPdf == null || dealPdf.length == 0) {
+            throw new IllegalStateException("Deal bundle PDF bytes missing from upload bundle");
+        }
+        String dealFilename = ctx.uploadedDocNames.get(DocType.DEAL);
+        if (dealFilename == null || !dealFilename.toLowerCase().endsWith(".pdf")) {
+            throw new IllegalStateException("Deal bundle must be a PDF named deal-NN.pdf");
         }
 
         DealManifest manifest = dealPageMaps.resolve(ctx.dealNo)
                 .orElseThrow(() -> new IllegalStateException(
                         "No deal.manifest.yml for deal_no=" + ctx.dealNo
-                                + " — run build-deal-tiff.py for preset cases 01–03"));
+                                + " — run build-deal-tiff.py (PDF bundle generator) for preset cases 01–03"));
+
+        dealPdfStore.put(ctx.sessionId, dealPdf);
+
+        int pages;
+        try {
+            pages = dealPdfSplitter.pageCount(dealPdf);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to read deal bundle page count: " + e.getMessage(), e);
+        }
+
+        try {
+            Map<String, Object> meta = new LinkedHashMap<>();
+            meta.put("pageCount", pages);
+            meta.put("filename", dealFilename);
+            meta.put("kind", "pdf");
+            sessionStore.upsertPipelineStep(ctx.sessionId, STAGE, "deal_pdf",
+                    "SUCCESS", objectMapper.writeValueAsString(meta), null, null);
+        } catch (Exception e) {
+            log.warn("[{}] deal bundle metadata persistence failed: {}", ctx.sessionId, e.getMessage());
+        }
 
         try {
             sessionStore.upsertPipelineStep(ctx.sessionId, STAGE, "deal_manifest",
@@ -155,10 +184,10 @@ public class SegmentationStage implements Stage {
 
             byte[] pdf;
             try {
-                pdf = dealTiffSplitter.segmentToPdf(tiff, seg.pages());
+                pdf = dealPdfSplitter.segmentToPdf(dealPdf, seg.pages());
             } catch (Exception e) {
                 throw new IllegalStateException(
-                        "Failed to split deal TIFF pages " + seg.pages()
+                        "Failed to split deal bundle pages " + seg.pages()
                                 + " for " + docType + ": " + e.getMessage(), e);
             }
 

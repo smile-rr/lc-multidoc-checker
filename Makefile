@@ -120,8 +120,8 @@ db-sessions-clean: _ensure-docker db-wait  ## wipe lc_v3 sessions; keep vision_e
 	   -f - < infra/postgres/migrations/03-wipe-sessions-keep-vision-cache.sql; \
 	 echo "✓ sessions cleared"
 
-deal-build:  ## build deal TIFF fixtures (cases 01–03) — needs PDFs in test/cases/*
-	@echo "→ building deal bundles (lc.txt + deal-NN.tiff + deal.manifest.yml)…"
+deal-build:  ## build deal PDF fixtures (cases 01–03) — needs PDFs in test/cases/*
+	@echo "→ building deal bundles (lc.txt + deal-NN.pdf + deal.manifest.yml)…"
 	@if [ ! -d test/cases/scripts/.venv ]; then \
 	   python3 -m venv test/cases/scripts/.venv && \
 	   test/cases/scripts/.venv/bin/pip install -q -r test/cases/scripts/requirements.txt; \

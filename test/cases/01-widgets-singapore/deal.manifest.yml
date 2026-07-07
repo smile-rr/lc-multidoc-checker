@@ -1,6 +1,6 @@
 deal_no: '01'
 case_id: 01-widgets-singapore
-tiff: deal-01.tiff
+pdf: deal-01.pdf
 lc: lc.txt
 total_pages: 6
 segments:

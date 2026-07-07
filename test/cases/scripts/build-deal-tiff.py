@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Build deal bundle fixtures: lc.txt + deal-NN.tiff + deal.manifest.yml
+Build deal bundle fixtures: lc.txt + deal-NN.pdf + deal.manifest.yml
 
-Merges per-case PDFs (default sequence) into one multi-page TIFF.
+Merges per-case PDFs (default sequence) into one multi-page PDF.
 Optional merge order: test/archive/cases/<case-id>/deal-order.yml
 
-Requires: pip install pypdfium2 pillow pyyaml
+Requires: pip install pypdf pyyaml
 
 Usage:
   python test/cases/scripts/build-deal-tiff.py              # cases 01-03
@@ -70,18 +70,9 @@ def case_deal_no(case_id: str) -> str:
     return m.group(1) if m else case_id
 
 
-def pdf_pages_to_images(pdf_path: Path, scale: float = 2.0):
-    import pypdfium2 as pdfium
-    from PIL import Image
-
-    doc = pdfium.PdfDocument(str(pdf_path))
-    images = []
-    for i in range(len(doc)):
-        page = doc[i]
-        bitmap = page.render(scale=scale)
-        pil = bitmap.to_pil()
-        images.append(pil.convert("RGB"))
-    return images
+def pdf_page_count(pdf_path: Path) -> int:
+    from pypdf import PdfReader
+    return len(PdfReader(str(pdf_path)).pages)
 
 
 def resolve_pdf(case_dir: Path, pdf_name: str) -> Path:
@@ -122,17 +113,24 @@ def write_deal(case_dir: Path) -> None:
         else:
             raise FileNotFoundError(f"{case_dir}: need lc.txt (deal bundle LC source)")
 
-    from PIL import Image
-
-    all_pages: list[Image.Image] = []
+    total_pages = 0
     segments = []
     page = 1
+
+    # Build merged PDF (source-of-truth for UI display when present).
+    from pypdf import PdfWriter
+    writer = PdfWriter()
+
     for pdf_name in sequence:
         pdf_path = resolve_pdf(case_dir, pdf_name)
-        imgs = pdf_pages_to_images(pdf_path)
-        page_nums = list(range(page, page + len(imgs)))
-        all_pages.extend(imgs)
-        page += len(imgs)
+
+        # Append pages to the merged deal PDF.
+        writer.append(str(pdf_path))
+
+        n_pages = pdf_page_count(pdf_path)
+        page_nums = list(range(page, page + n_pages))
+        page += n_pages
+        total_pages += n_pages
         doc_type = DOC_TYPE_BY_FILE.get(pdf_name, "UNKNOWN")
         segments.append({
             "doc_type": doc_type,
@@ -140,24 +138,20 @@ def write_deal(case_dir: Path) -> None:
             "source": pdf_name,
             "desc": DOC_TYPE_DESC.get(doc_type),
         })
-        print(f"  {pdf_name}: pages {page_nums} ({len(imgs)} page(s))")
+        print(f"  {pdf_name}: pages {page_nums} ({n_pages} page(s))")
 
-    tiff_name = f"deal-{deal_no}.tiff"
-    tiff_path = case_dir / tiff_name
-    all_pages[0].save(
-        tiff_path,
-        save_all=True,
-        append_images=all_pages[1:],
-        compression="tiff_lzw",
-    )
-    print(f"  {tiff_name}: {len(all_pages)} pages total")
+    pdf_name = f"deal-{deal_no}.pdf"
+    pdf_path = case_dir / pdf_name
+    with pdf_path.open("wb") as f:
+        writer.write(f)
+    print(f"  {pdf_name}: {total_pages} pages total")
 
     manifest = {
         "deal_no": deal_no,
         "case_id": case_id,
-        "tiff": tiff_name,
+        "pdf": pdf_name,
         "lc": "lc.txt",
-        "total_pages": len(all_pages),
+        "total_pages": total_pages,
         "segments": segments,
     }
     manifest_path = case_dir / "deal.manifest.yml"

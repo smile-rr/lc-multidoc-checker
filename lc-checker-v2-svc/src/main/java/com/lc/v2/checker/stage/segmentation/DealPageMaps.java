@@ -51,7 +51,7 @@ public class DealPageMaps {
                 log.warn("Failed to read {}: {}", manifestPath, e.getMessage());
             }
         }
-        log.warn("deal.manifest.yml missing for case {} — run build-deal-tiff.py", caseId);
+        log.warn("deal.manifest.yml missing for case {} — run build-deal-tiff.py (PDF bundle generator)", caseId);
         return Optional.empty();
     }
 
@@ -60,7 +60,9 @@ public class DealPageMaps {
         Map<String, Object> root = new Yaml().load(yamlText);
         if (root == null) root = Map.of();
         String dealNo = String.valueOf(root.getOrDefault("deal_no", ""));
+        // Backward compatible: older manifests only have 'tiff'. Newer ones may provide 'pdf'.
         String tiff = String.valueOf(root.getOrDefault("tiff", ""));
+        String pdf = String.valueOf(root.getOrDefault("pdf", ""));
         String lc = String.valueOf(root.getOrDefault("lc", "lc.txt"));
         int total = ((Number) root.getOrDefault("total_pages", 0)).intValue();
         List<DealManifest.Segment> segments = new ArrayList<>();
@@ -95,7 +97,10 @@ public class DealPageMaps {
                 segments.add(new DealManifest.Segment(docType, List.copyOf(pages), source, desc));
             }
         }
-        return new DealManifest(dealNo, caseId, tiff, lc, total, List.copyOf(segments));
+        // DealManifest keeps the legacy 'tiff' field; when 'pdf' is provided,
+        // we prefer it as the deal bundle source file name for display.
+        String source = (pdf != null && !pdf.isBlank() && !"null".equals(pdf)) ? pdf : tiff;
+        return new DealManifest(dealNo, caseId, source, lc, total, List.copyOf(segments));
     }
 
     /** Exposed for tests / diagnostics. */

@@ -39,7 +39,7 @@ export function ConfirmedTile({ doc, onTypeChange, disabled }) {
 
       <div className="relative">
         <button
-          onClick={() => !disabled && setPicking(!picking)}
+          onClick={(e) => { e.stopPropagation(); !disabled && setPicking(!picking); }}
           disabled={disabled}
           className="text-[10px] text-muted hover:text-status-blue px-2 py-1 rounded hover:bg-slate2 disabled:opacity-30"
         >

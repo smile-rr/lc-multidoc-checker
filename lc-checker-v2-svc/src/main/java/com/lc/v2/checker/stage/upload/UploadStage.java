@@ -7,7 +7,8 @@ import com.lc.v2.checker.pipeline.IngestMode;
 import com.lc.v2.checker.pipeline.PipelineStageId;
 import com.lc.v2.checker.pipeline.Stage;
 import com.lc.v2.checker.pipeline.StageContext;
-import com.lc.v2.checker.stage.segmentation.DealTiffSplitter;
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.HexFormat;
@@ -35,13 +36,10 @@ public class UploadStage implements Stage {
 
     private final SessionStore sessionStore;
     private final ObjectMapper objectMapper;
-    private final DealTiffSplitter dealTiffSplitter;
 
-    public UploadStage(SessionStore sessionStore, ObjectMapper objectMapper,
-                       DealTiffSplitter dealTiffSplitter) {
+    public UploadStage(SessionStore sessionStore, ObjectMapper objectMapper) {
         this.sessionStore = sessionStore;
         this.objectMapper = objectMapper;
-        this.dealTiffSplitter = dealTiffSplitter;
     }
 
     @Override
@@ -59,7 +57,7 @@ public class UploadStage implements Stage {
                     "MT700 LC text is required — provide lcText or an MT700 file");
         }
         if (dealBundle && !ctx.uploadedDocBytes.containsKey(DocType.DEAL)) {
-            throw new IllegalStateException("Deal bundle requires deal-NN.tiff");
+            throw new IllegalStateException("Deal bundle requires deal-NN.pdf");
         }
         if (!dealBundle && ctx.uploadedDocBytes.isEmpty() && !hasLcText) {
             throw new IllegalStateException("No documents in upload bundle");
@@ -97,11 +95,13 @@ public class UploadStage implements Stage {
         manifest.put("docCount", files.size() + (hasLcText && !hasLcFile ? 1 : 0));
         if (dealBundle) {
             manifest.put("dealNo", ctx.dealNo);
-            byte[] tiff = ctx.uploadedDocBytes.get(DocType.DEAL);
+            byte[] dealPdf = ctx.uploadedDocBytes.get(DocType.DEAL);
             try {
-                manifest.put("pageCount", dealTiffSplitter.pageCount(tiff));
+                try (PDDocument doc = Loader.loadPDF(dealPdf)) {
+                    manifest.put("pageCount", doc.getNumberOfPages());
+                }
             } catch (Exception e) {
-                log.warn("[{}] deal TIFF page count failed: {}", ctx.sessionId, e.getMessage());
+                log.warn("[{}] deal PDF page count failed: {}", ctx.sessionId, e.getMessage());
             }
         }
 

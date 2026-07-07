@@ -115,8 +115,8 @@ public class PresetService {
 
     private static String ingestMode(List<FileEntry> files) {
         boolean hasLc = files.stream().anyMatch(f -> "lc".equals(f.type()));
-        boolean hasDealTiff = files.stream().anyMatch(f -> "deal-tiff".equals(f.type()));
-        if (hasLc && hasDealTiff) return "deal";
+        boolean hasDealPdf = files.stream().anyMatch(f -> "deal-pdf".equals(f.type()));
+        if (hasLc && hasDealPdf) return "deal";
         return "legacy";
     }
 
@@ -138,9 +138,7 @@ public class PresetService {
 
     private static String classify(String filename) {
         String lower = filename.toLowerCase();
-        if (lower.startsWith("deal-") && (lower.endsWith(".tiff") || lower.endsWith(".tif"))) {
-            return "deal-tiff";
-        }
+        if (lower.startsWith("deal-") && lower.endsWith(".pdf")) return "deal-pdf";
         if ("lc.txt".equals(lower)) return "lc";
         if (lower.endsWith(".txt")) {
             if (lower.contains("mt700") && lower.contains("pass")) return "mt700-pass";
@@ -174,8 +172,6 @@ public class PresetService {
             String lower = filename.toLowerCase();
             if (lower.endsWith(".pdf")) {
                 contentType = "application/pdf";
-            } else if (lower.endsWith(".tiff") || lower.endsWith(".tif")) {
-                contentType = "image/tiff";
             } else {
                 contentType = "text/plain;charset=UTF-8";
             }
