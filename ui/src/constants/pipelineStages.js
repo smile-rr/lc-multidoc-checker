@@ -4,7 +4,7 @@
  */
 
 export const UI_PIPELINE_STAGES = [
-  { key: 'upload',           label: 'Upload',           icon: '⓪', backendKey: null },
+  { key: 'upload',           label: 'Upload',           icon: '⓪', backendKey: 'upload' },
   { key: 'segmentation',     label: 'Segmentation',     icon: '①', backendKey: 'segmentation' },
   { key: 'parse',            label: 'Parse',            icon: '②', backendKey: 'parse' },
   { key: 'compliance-check', label: 'Compliance Check', icon: '③', backendKey: 'compliance-check' },

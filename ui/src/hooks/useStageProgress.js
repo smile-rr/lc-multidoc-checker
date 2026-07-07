@@ -180,7 +180,7 @@ function deriveStageInfo(events, stage) {
     return info;
   }
 
-  if (stage === 'segmentation' || stage === 'reconcile' || stage === 'signoff') {
+  if (stage === 'upload' || stage === 'segmentation' || stage === 'reconcile' || stage === 'signoff') {
     // No fine-grained per-step events today. Use StageStarted's ts so the
     // pulse dot has a heartbeat; staleness then signals "still no progress".
     for (let i = events.length - 1; i >= 0; i--) {
@@ -209,6 +209,7 @@ function defaultLabel(stage, phase) {
 
 function stageFallbackSub(stage) {
   switch (stage) {
+    case 'upload':       return 'ingesting…';
     case 'segmentation': return 'classifying…';
     case 'signoff':      return 'finalising…';
     default:             return null;

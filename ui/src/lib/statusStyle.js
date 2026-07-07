@@ -8,6 +8,7 @@ export function statusStyle(status, compliant) {
     return { tone: 'gold', label: 'COMPLETED', dot: 'bg-status-gold' };
   }
   if (status === 'RUNNING')   return { tone: 'teal', label: 'RUNNING',   dot: 'bg-teal-1 animate-pulse' };
+  if (status === 'UPLOAD')        return { tone: 'teal', label: 'UPLOAD',        dot: 'bg-teal-1' };
   if (status === 'SEGMENTATION')    return { tone: 'teal', label: 'SEGMENTATION',    dot: 'bg-teal-1' };
   if (status === 'QUEUED')    return { tone: 'gray', label: 'QUEUED',    dot: 'bg-[#a1a1a6]' };
   if (status === 'CANCELLED') return { tone: 'gold', label: 'CANCELLED', dot: 'bg-status-gold' };

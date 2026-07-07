@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useSession } from '../hooks/useSession';
 import { useSse } from '../hooks/useSse';
 import { useSignoff } from '../hooks/useSignoff';
 import { useSessionStatus } from '../context/SessionStatusContext';
 import { useDevMode } from '../context/DevModeContext';
-import { useConfirm } from '../hooks/useConfirm';
 import { SessionStatusBar } from '../components/shell/SessionStatusBar';
+import { UploadPanel }    from '../components/stages/UploadPanel';
 import { IntakePanel }    from '../components/stages/IntakePanel';
 import { ParsePanel }     from '../components/stages/ParsePanel';
 import { ExaminePanel }   from '../components/stages/ExaminePanel';
@@ -22,8 +22,6 @@ import {
 
 export function SessionPage() {
   const { id } = useParams();
-  const navigate = useNavigate();
-  const { confirm, Dialog } = useConfirm();
   const { session, loading, error, refresh } = useSession(id);
   const {
     events, stagesCompleted, ruleResults, sessionCompleted,
@@ -89,7 +87,6 @@ export function SessionPage() {
 
   const effectiveCompleted = useMemo(() => {
     const out = new Set(stagesCompleted);
-    out.add('upload');
     const raw = session?.stage_completed_at;
     if (raw) {
       try {
@@ -104,7 +101,7 @@ export function SessionPage() {
   }, [stagesCompleted, session?.stage_completed_at, signoffGate]);
 
   const reachable = useMemo(() => {
-    const all = new Set(['upload', ...BACKEND_STAGE_ORDER]);
+    const all = new Set(BACKEND_STAGE_ORDER);
     if (devMode) return all;
     if (signoffGate) return all;
     const r = new Set(['upload', 'segmentation']);
@@ -121,9 +118,17 @@ export function SessionPage() {
     }
     const s = String(session?.status || '').toLowerCase();
     if (s === 'reconcile') return 'parse';
+    if (s === 'upload' || s === 'queued') return 'segmentation';
     if (BACKEND_STAGE_ORDER.includes(s)) return s;
     return 'segmentation';
   }, [session?.awaiting_officer, session?.next_stage, session?.status, signoffData?.signed]);
+
+  // Upload auto-chains to segmentation — keep the officer on Segmentation view.
+  useEffect(() => {
+    if (activeStage === 'upload' && session?.status !== 'UPLOAD') {
+      setActiveStage('segmentation');
+    }
+  }, [activeStage, session?.status]);
 
   useEffect(() => {
     if (activeStage !== null) return;
@@ -172,19 +177,7 @@ export function SessionPage() {
     if (i > 0) setActiveStage(BACKEND_STAGE_ORDER[i - 1]);
   };
 
-  const handleStageSelect = async (key) => {
-    if (key === 'upload') {
-      const ok = await confirm({
-        title: 'Return to upload?',
-        message:
-          'You are viewing a compliance check session. Returning to the upload page will hide it from view.\n\n' +
-          'The session stays in History — you can reopen it at any time.',
-        confirmLabel: 'Go to upload',
-        cancelLabel: 'Stay here',
-      });
-      if (ok) navigate('/');
-      return;
-    }
+  const handleStageSelect = (key) => {
     setActiveStage(key);
   };
 
@@ -229,8 +222,6 @@ export function SessionPage() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {Dialog}
-
       <SessionStatusBar
         activeStage={activeStage}
         completedStages={effectiveCompleted}
@@ -244,6 +235,7 @@ export function SessionPage() {
       />
 
       <div className="flex-1 min-h-0 overflow-hidden">
+        {activeStage === 'upload'            && <UploadPanel   {...props} sessionId={id} />}
         {activeStage === 'segmentation'     && <IntakePanel  {...props} onContinue={goNext} />}
         {activeStage === 'parse'            && <ParsePanel   {...props} onContinue={goNext} />}
         {activeStage === 'compliance-check' && <ExaminePanel {...props} onContinue={goNext} onBack={goBack} />}

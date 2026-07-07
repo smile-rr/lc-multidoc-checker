@@ -1,9 +1,9 @@
 package com.lc.v2.checker.api.controller;
 
 import com.lc.v2.checker.domain.common.DocType;
-import com.lc.v2.checker.infra.fields.DocTypeRegistry;
 import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.pipeline.PipelineService;
+import com.lc.v2.checker.stage.upload.IngestClassifier;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,7 +22,7 @@ import org.springframework.web.multipart.MultipartFile;
 /**
  * REST API for LC v2 sessions.
  *
- * POST /api/v2/sessions          — Upload: multipart files + MT700 text, create session, return ID
+ * POST /api/v2/sessions          — multipart ingest → create session → auto-run Upload
  * GET  /api/v2/sessions          — list recent sessions (default: 50)
  * GET  /api/v2/sessions/{id}     — get single session with documents
  * GET  /api/v2/sessions/{id}/trace — pipeline events for debug
@@ -35,18 +35,18 @@ public class SessionController {
 
     private final PipelineService pipelineService;
     private final SessionStore sessionStore;
-    private final DocTypeRegistry docTypeRegistry;
+    private final IngestClassifier ingestClassifier;
 
     public SessionController(PipelineService pipelineService, SessionStore sessionStore,
-                              DocTypeRegistry docTypeRegistry) {
+                              IngestClassifier ingestClassifier) {
         this.pipelineService = pipelineService;
         this.sessionStore = sessionStore;
-        this.docTypeRegistry = docTypeRegistry;
+        this.ingestClassifier = ingestClassifier;
     }
 
     /**
      * Create a new session. Accepts:
-     *   - lcText: MT700 text in form field (required)
+     *   - lcText: MT700 text in form field (required unless LC file present)
      *   - files[]: PDF files (multipart, one per doc type)
      * Returns: { sessionId: "...", message: "pipeline started" }
      */
@@ -62,7 +62,7 @@ public class SessionController {
                     if (file.isEmpty()) continue;
                     String filename = file.getOriginalFilename();
                     byte[] bytes = file.getBytes();
-                    DocType docType = classify(filename, bytes);
+                    DocType docType = ingestClassifier.classify(filename, bytes);
                     log.info("Received file: {} → {}", filename, docType);
                     String safeName = filename != null ? filename : "unknown.bin";
                     if (docType != DocType.UNKNOWN && documents.containsKey(docType)) {
@@ -89,39 +89,17 @@ public class SessionController {
             }
 
             String sessionId = pipelineService.createSession(lcText, documents);
-            log.info("Upload complete — created session: {} with {} docs", sessionId, documents.size());
+            log.info("Session created — upload stage started: {} ({} docs)", sessionId, documents.size());
 
             return ResponseEntity.ok(Map.of(
                     "sessionId", sessionId,
                     "message", "pipeline started",
-                    "docCount", documents.size()));
+                    "docCount", documents.size(),
+                    "nextStage", "segmentation"));
         } catch (Exception e) {
             log.error("Session creation failed: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
         }
-    }
-
-    /**
-     * Filename + content sniff classification.
-     *
-     *   *.txt with filename containing "mt700"  → DocType.LC
-     *   *.txt with content starting :27: or :20: → DocType.LC
-     *   otherwise → docTypeRegistry.classifyFilename (existing PDF path)
-     */
-    private DocType classify(String filename, byte[] bytes) {
-        if (filename == null) return docTypeRegistry.classifyFilename(null);
-        String lower = filename.toLowerCase();
-        if (lower.endsWith(".txt") || lower.endsWith(".fin") || lower.endsWith(".swift")) {
-            if (lower.contains("mt700")) return DocType.LC;
-            if (bytes != null && bytes.length > 0) {
-                String head = new String(bytes, 0, Math.min(256, bytes.length),
-                        java.nio.charset.StandardCharsets.UTF_8).trim();
-                if (head.startsWith(":27:") || head.startsWith(":20:") || head.startsWith(":40A:")) {
-                    return DocType.LC;
-                }
-            }
-        }
-        return docTypeRegistry.classifyFilename(filename);
     }
 
     @GetMapping

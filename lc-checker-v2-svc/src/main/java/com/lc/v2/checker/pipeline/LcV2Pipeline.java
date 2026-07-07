@@ -1,5 +1,6 @@
 package com.lc.v2.checker.pipeline;
 
+import com.lc.v2.checker.stage.upload.UploadStage;
 import com.lc.v2.checker.stage.compliance.ComplianceCheckStage;
 import com.lc.v2.checker.stage.parse.ParseStage;
 import com.lc.v2.checker.stage.reconcile.ReconcileStage;
@@ -11,7 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Officer-paced pipeline: Upload (pre-stage) → Segmentation → Parse → Compliance Check → Sign-off.
+ * Officer-paced pipeline: Upload → Segmentation → Parse → Compliance Check → Sign-off.
  * Reconcile is registered but skipped in {@link PipelineService} orchestration (v3).
  *
  * Pipeline API ids: {@link com.lc.v2.checker.pipeline.PipelineStageId}.
@@ -25,13 +26,14 @@ public class LcV2Pipeline {
     private final PipelineEventBus eventBus;
 
     public LcV2Pipeline(
+            UploadStage upload,
             SegmentationStage segmentation,
             ParseStage parse,
             ReconcileStage reconcile,
             ComplianceCheckStage complianceCheck,
             SignoffStage signoff,
             PipelineEventBus eventBus) {
-        this.stages = List.of(segmentation, parse, reconcile, complianceCheck, signoff);
+        this.stages = List.of(upload, segmentation, parse, reconcile, complianceCheck, signoff);
         this.eventBus = eventBus;
     }
 

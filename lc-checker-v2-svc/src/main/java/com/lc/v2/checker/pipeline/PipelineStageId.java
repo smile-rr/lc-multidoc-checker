@@ -6,11 +6,12 @@ import java.util.Locale;
 /**
  * Canonical pipeline stage ids (API / DB / SSE) and session status names.
  *
- * <p>Upload is a pre-pipeline ingest step ({@link com.lc.v2.checker.api.controller.SessionController})
- * and is not a member of this enum.</p>
+ * <p>HTTP multipart parsing stays in {@link com.lc.v2.checker.api.controller.SessionController};
+ * business ingest validation runs in {@link com.lc.v2.checker.stage.upload.UploadStage}.</p>
  */
 public enum PipelineStageId {
 
+    UPLOAD("upload", "UPLOAD"),
     SEGMENTATION("segmentation", "SEGMENTATION"),
     PARSE("parse", "PARSE"),
     RECONCILE("reconcile", "RECONCILE"),
@@ -33,11 +34,11 @@ public enum PipelineStageId {
 
     /** Full pipeline slot order (includes dormant {@link #RECONCILE}). */
     public static final List<PipelineStageId> PIPELINE_ORDER = List.of(
-            SEGMENTATION, PARSE, RECONCILE, COMPLIANCE_CHECK, SIGNOFF);
+            UPLOAD, SEGMENTATION, PARSE, RECONCILE, COMPLIANCE_CHECK, SIGNOFF);
 
-    /** Officer-paced flow — reconcile omitted. */
+    /** Officer-paced flow — reconcile omitted; upload auto-runs on session create. */
     public static final List<String> ACTIVE_IDS = List.of(
-            SEGMENTATION.id(), PARSE.id(), COMPLIANCE_CHECK.id(), SIGNOFF.id());
+            UPLOAD.id(), SEGMENTATION.id(), PARSE.id(), COMPLIANCE_CHECK.id(), SIGNOFF.id());
 
     public static PipelineStageId fromId(String raw) {
         if (raw == null || raw.isBlank()) return null;

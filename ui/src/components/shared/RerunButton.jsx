@@ -4,7 +4,8 @@ import { OFFICER_ID } from '../../lib/officer';
 import { stageLabel, BACKEND_STAGE_ORDER } from '../../constants/pipelineStages';
 
 const DOWNSTREAM_LABEL = {
-  segmentation:     'discard everything (documents, extraction, compliance check, sign-off)',
+  upload:             'discard everything (documents, extraction, compliance check, sign-off)',
+  segmentation:     'discard segmentation onward (documents, extraction, compliance check, sign-off)',
   parse:            'discard extraction, compliance check, sign-off',
   'compliance-check': 'discard compliance check, sign-off',
   signoff:          'discard sign-off draft (no other state lost)',

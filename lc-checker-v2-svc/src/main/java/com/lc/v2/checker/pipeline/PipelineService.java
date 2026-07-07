@@ -27,15 +27,15 @@ import org.springframework.stereotype.Service;
 /**
  * Orchestrates session lifecycle for the officer-paced pipeline.
  *
- *   createSession()    — Upload ingest: creates DB row, runs Segmentation (pipeline id intake) async
+ *   createSession()    — HTTP ingest → builds ctx, auto-runs Upload (stage 0)
  *   runStage(sessionId, stage)
  *                      — runs the requested stage async (must match next_stage
  *                        unless rerun, in which case use rerunFromStage)
  *   rerunFromStage()   — wipes downstream rows + re-runs from the chosen stage
  *
  * After every successful stage (except the terminal Sign-off) the session
- * is marked AWAITING_OFFICER with next_stage set; the officer triggers the
- * next stage via the controller.
+ * is marked AWAITING_OFFICER with next_stage set — except Upload, which
+ * auto-chains into Segmentation on session create (no officer click).
  */
 @Service
 public class PipelineService {
@@ -77,9 +77,8 @@ public class PipelineService {
     }
 
     /**
-     * Create a session and run Segmentation. After it completes,
-     * the session is marked AWAITING_OFFICER and waits for the officer to trigger
-     * Parse via POST /sessions/{id}/stages/parse/run.
+     * Create a session and auto-run Upload, then Segmentation (chained).
+     * After Segmentation completes the session waits for the officer to trigger Parse.
      */
     public String createSession(String lcText, Map<DocType, Map.Entry<String, byte[]>> documents) {
         String effectiveLcText = lcText;
@@ -105,7 +104,7 @@ public class PipelineService {
         // SessionTraceRegistry — pipeline code never touches a Tracer.
         traceRegistry.open(sessionId, Map.of("doc_count", String.valueOf(docCount)));
 
-        // Kick off Segmentation. Subsequent stages require explicit officer triggers.
+        // Kick off Upload (stage 0); runStageAsync chains into Segmentation.
         self.runStageAsync(sessionId, ctx, 0);
         return sessionId;
     }
@@ -162,42 +161,50 @@ public class PipelineService {
     }
 
     /**
-     * Run a single stage async. After it completes, mark next_stage and emit
-     * AwaitingOfficer (or finalise if it was Sign-off).
+     * Run stage(s) async. Upload auto-chains into Segmentation; all other
+     * transitions pause for officer trigger (or finalise on Sign-off).
      */
     @Async
-    public void runStageAsync(String sessionId, StageContext ctx, int idx) {
-        String stageName = pipeline.nameAt(idx);
-        // Re-attach the session root span on this async thread so any spans
-        // started inside the stage (parse, examine, vision.generate, gen_ai.*)
-        // inherit it as parent. The PipelineTracingAspect opens the per-stage
-        // span automatically when Stage.execute is annotated with @PipelineStage.
+    public void runStageAsync(String sessionId, StageContext ctx, int startIdx) {
         traceRegistry.runInSession(sessionId, () -> {
             try {
-                sessionStore.updateStatus(sessionId, PipelineStageId.statusForId(stageName));
-                boolean ok = pipeline.runOne(ctx, idx);
-                if (!ok) {
-                    if (ctx.hasFatalError()) {
-                        sessionStore.updateFailed(sessionId, ctx.fatalError.getMessage());
-                        traceRegistry.end(sessionId, ctx.fatalError.getMessage());
+                int idx = startIdx;
+                while (idx >= 0 && idx < pipeline.stageCount()) {
+                    String stageName = pipeline.nameAt(idx);
+                    sessionStore.updateStatus(sessionId, PipelineStageId.statusForId(stageName));
+                    boolean ok = pipeline.runOne(ctx, idx);
+                    if (!ok) {
+                        if (ctx.hasFatalError()) {
+                            sessionStore.updateFailed(sessionId, ctx.fatalError.getMessage());
+                            traceRegistry.end(sessionId, ctx.fatalError.getMessage());
+                        }
+                        return;
                     }
+
+                    if (idx == pipeline.stageCount() - 1) {
+                        finalize(sessionId, ctx);
+                        return;
+                    }
+
+                    // Upload → Segmentation: no officer pause (Option A).
+                    if (PipelineStageId.UPLOAD.id().equals(stageName)) {
+                        int segIdx = pipeline.indexOf(PipelineStageId.SEGMENTATION.id());
+                        if (segIdx > idx) {
+                            log.info("[{}] upload complete; auto-chaining segmentation", sessionId);
+                            idx = segIdx;
+                            continue;
+                        }
+                    }
+
+                    String nextStage = nextStageAfter(idx);
+                    sessionStore.markAwaitingOfficer(sessionId, stageName, nextStage);
+                    eventBus.awaitingOfficer(sessionId, nextStage);
+                    log.info("[{}] stage={} complete; awaiting officer to trigger {}",
+                            sessionId, stageName, nextStage);
                     return;
                 }
-
-                // Terminal stage? Finalise.
-                if (idx == pipeline.stageCount() - 1) {
-                    finalize(sessionId, ctx);
-                    return;
-                }
-
-                // Hard gate: pause and wait for officer.
-                String nextStage = nextStageAfter(idx);
-                sessionStore.markAwaitingOfficer(sessionId, stageName, nextStage);
-                eventBus.awaitingOfficer(sessionId, nextStage);
-                log.info("[{}] stage={} complete; awaiting officer to trigger {}",
-                        sessionId, stageName, nextStage);
             } catch (Exception e) {
-                log.error("[{}] stage={} failed: {}", sessionId, stageName, e.getMessage(), e);
+                log.error("[{}] stage run failed: {}", sessionId, e.getMessage(), e);
                 sessionStore.updateFailed(sessionId, e.getMessage());
                 traceRegistry.end(sessionId, e.getMessage());
             }
@@ -375,6 +382,12 @@ public class PipelineService {
                     ctx.lc != null && !ctx.extracts.isEmpty();
             case String signoff when PipelineStageId.SIGNOFF.id().equals(signoff) ->
                     ctx.lc != null && !ctx.extracts.isEmpty();
+            case String segmentation when PipelineStageId.SEGMENTATION.id().equals(segmentation) ->
+                    ctx.lcText != null && !ctx.lcText.isBlank()
+                            && !ctx.uploadedDocBytes.isEmpty();
+            case String upload when PipelineStageId.UPLOAD.id().equals(upload) ->
+                    !ctx.uploadedDocBytes.isEmpty()
+                            || (ctx.lcText != null && !ctx.lcText.isBlank());
             case String parse when PipelineStageId.PARSE.id().equals(parse) -> ctx.lc != null
                     && ctx.docIds.keySet().stream()
                             .filter(dt -> dt != DocType.LC)
@@ -426,24 +439,26 @@ public class PipelineService {
 
     private void resetContextForStage(StageContext ctx, String fromStage) {
         String stage = fromStage == null ? "" : fromStage.toLowerCase();
+        String upload = PipelineStageId.UPLOAD.id();
         String seg = PipelineStageId.SEGMENTATION.id();
         String parse = PipelineStageId.PARSE.id();
         String reconcile = PipelineStageId.RECONCILE.id();
         String compliance = PipelineStageId.COMPLIANCE_CHECK.id();
-        if (stage.equals(seg)) {
+        if (stage.equals(upload) || stage.equals(seg)) {
             pdfCache.evictSession(new java.util.ArrayList<>(ctx.docIds.values()));
             ctx.docIds.clear();
             ctx.confirmedDocTypes.clear();
         }
-        if (stage.equals(seg) || stage.equals(parse)) {
+        if (stage.equals(upload) || stage.equals(seg) || stage.equals(parse)) {
             ctx.lc = null;
             ctx.extracts.clear();
         }
-        if (stage.equals(seg) || stage.equals(parse) || stage.equals(reconcile)) {
+        if (stage.equals(upload) || stage.equals(seg) || stage.equals(parse) || stage.equals(reconcile)) {
             ctx.reconFields = null;
             ctx.reconLocked = false;
         }
-        if (stage.equals(seg) || stage.equals(parse) || stage.equals(reconcile) || stage.equals(compliance)) {
+        if (stage.equals(upload) || stage.equals(seg) || stage.equals(parse)
+                || stage.equals(reconcile) || stage.equals(compliance)) {
             ctx.checkResults.clear();
         }
         ctx.finalReport = null;

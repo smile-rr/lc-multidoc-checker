@@ -21,8 +21,8 @@ public final class StageContext {
     public final PipelineEventBus eventBus;
     public final Instant pipelineStarted;
 
-    // Stage 0 — Intake
-    public String lcText;                                       // raw MT700 text
+    // Upload — ingest bundle (bytes + lcText from HTTP)
+    public String lcText;
     public final Map<DocType, byte[]> uploadedDocBytes = new LinkedHashMap<>();
     public final Map<DocType, String> uploadedDocNames = new LinkedHashMap<>();
     public final Map<DocType, String> docIds = new LinkedHashMap<>(); // docType → DB documents.id

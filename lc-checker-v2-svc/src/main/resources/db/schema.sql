@@ -50,7 +50,7 @@ ALTER TABLE IF EXISTS lc_v3.check_sessions DROP COLUMN IF EXISTS adhoc_cache_key
 CREATE TABLE IF NOT EXISTS lc_v3.check_sessions (
     id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     status          VARCHAR(20)  NOT NULL DEFAULT 'QUEUED',
-    -- QUEUED | SEGMENTATION | PARSE | RECONCILE | COMPLIANCE_CHECK | SIGNOFF | AWAITING_OFFICER | COMPLETED | FAILED
+    -- QUEUED | UPLOAD | SEGMENTATION | PARSE | RECONCILE | COMPLIANCE_CHECK | SIGNOFF | AWAITING_OFFICER | COMPLETED | FAILED
     next_stage      VARCHAR(20),
     awaiting_officer BOOLEAN NOT NULL DEFAULT FALSE,
     stage_completed_at JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -95,6 +95,7 @@ CREATE INDEX IF NOT EXISTS idx_v3_docs_type       ON lc_v3.documents(session_id,
 -- a stage upserts the same row keyed by (session, stage, step_key).
 --
 -- step_key conventions:
+--   upload/manifest                          ingest file manifest (sha, sizes)
 --   segmentation/lc_parse                    MT700 parse result
 --   segmentation/required_docs                 :46A: parsed required-doc checklist
 --   parse/extract:<doc_type>:<slot>          per-slot vision extract

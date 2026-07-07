@@ -515,10 +515,10 @@ public class SessionStore {
                 SET status = ?, compliant = NULL, error = NULL, completed_at = NULL
                 WHERE id = ?::uuid
                 """, PipelineStageId.statusForId(stage), sessionId);
-        // Re-run from segmentation also wipes documents (the inputs).
-        if (idx == 0) {
+        // Re-run from segmentation wipes documents (created at segmentation).
+        if (idx == 1) {
             jdbc.update("DELETE FROM lc_v3.documents WHERE session_id = ?::uuid", sessionId);
-        } else if (idx == 1) {
+        } else if (idx == 2) {
             // Re-run from parse: documents reset to PENDING for re-extraction.
             jdbc.update("""
                     UPDATE lc_v3.documents SET parse_status = 'PENDING',
