@@ -40,6 +40,18 @@ export function sortByDocType(docs, key = 'doc_type') {
   return [...docs].sort((a, b) => compareDocType(a[key], b[key]));
 }
 
+/** Prefer deal TIFF page order when present; otherwise doc-type order. */
+export function sortDocsForDisplay(docs, pageKey = 'deal_tiff_pages', typeKey = 'doc_type') {
+  const dealOrdered = docs.some(d => d[pageKey]?.length > 0);
+  if (!dealOrdered) return sortByDocType(docs, typeKey);
+  return [...docs].sort((a, b) => {
+    const pa = a[pageKey]?.[0] ?? 999;
+    const pb = b[pageKey]?.[0] ?? 999;
+    if (pa !== pb) return pa - pb;
+    return compareDocType(a[typeKey], b[typeKey]);
+  });
+}
+
 export function docTypeMeta(id) {
   return DOC_TYPE_MAP[id] || { id, short: id || '?', name: id || 'Unknown', icon: '?', color: '#6e6e73' };
 }

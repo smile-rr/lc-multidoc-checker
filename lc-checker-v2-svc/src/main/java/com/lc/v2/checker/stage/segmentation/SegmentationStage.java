@@ -13,6 +13,7 @@ import com.lc.v2.checker.pipeline.StageContext;
 import com.lc.v2.checker.stage.parse.LcParseException;
 import com.lc.v2.checker.stage.parse.Mt700Parser;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -160,7 +161,8 @@ public class SegmentationStage implements Stage {
                     ? seg.source()
                     : docType.name().toLowerCase() + ".pdf";
             int pageCount = countPages(pdf);
-            String docId = sessionStore.createDocument(ctx.sessionId, docType, filename, pageCount);
+            String docId = sessionStore.createDocument(
+                    ctx.sessionId, docType, filename, pageCount, List.copyOf(seg.pages()));
             ctx.docIds.put(docType, docId);
             ctx.uploadedDocBytes.put(docType, pdf);
             ctx.uploadedDocNames.put(docType, filename);

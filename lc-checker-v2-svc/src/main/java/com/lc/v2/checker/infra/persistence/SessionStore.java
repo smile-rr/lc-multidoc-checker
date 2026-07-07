@@ -1,5 +1,7 @@
 package com.lc.v2.checker.infra.persistence;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lc.v2.checker.domain.common.DocType;
 import com.lc.v2.checker.pipeline.PipelineStageId;
 import java.sql.Timestamp;
@@ -35,8 +37,12 @@ public class SessionStore {
 
     private static final Logger log = LoggerFactory.getLogger(SessionStore.class);
     private final JdbcTemplate jdbc;
+    private final ObjectMapper objectMapper;
 
-    public SessionStore(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+    public SessionStore(JdbcTemplate jdbc, ObjectMapper objectMapper) {
+        this.jdbc = jdbc;
+        this.objectMapper = objectMapper;
+    }
 
     // ───────────────────────────────────────────────────────────────────────
     // check_sessions
@@ -165,14 +171,24 @@ public class SessionStore {
      */
     public String createDocument(String sessionId, DocType docType,
                                   String originalFilename, int pageCount) {
+        return createDocument(sessionId, docType, originalFilename, pageCount, null);
+    }
+
+    /**
+     * @param dealTiffPages 1-based page number(s) in the merged deal TIFF (deal bundle only)
+     */
+    public String createDocument(String sessionId, DocType docType,
+                                  String originalFilename, int pageCount,
+                                  List<Integer> dealTiffPages) {
         String docId = UUID.randomUUID().toString();
         boolean autoConfirmed = docType != DocType.UNKNOWN;
+        String pagesJson = toJsonIntList(dealTiffPages);
         jdbc.update("""
                 INSERT INTO lc_v3.documents
-                  (id, session_id, doc_type, original_filename, page_count,
+                  (id, session_id, doc_type, original_filename, page_count, deal_tiff_pages,
                    parse_status, confirmed_by_officer, created_at)
-                VALUES (?::uuid, ?::uuid, ?, ?, ?, 'PENDING', ?, NOW())
-                """, docId, sessionId, docType.name(), originalFilename, pageCount,
+                VALUES (?::uuid, ?::uuid, ?, ?, ?, ?::jsonb, 'PENDING', ?, NOW())
+                """, docId, sessionId, docType.name(), originalFilename, pageCount, pagesJson,
                 autoConfirmed);
         return docId;
     }
@@ -190,21 +206,48 @@ public class SessionStore {
     }
 
     public List<Map<String, Object>> getDocuments(String sessionId) {
-        return jdbc.queryForList("""
-                SELECT id, doc_type, original_filename, parse_status, page_count,
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT id, doc_type, original_filename, parse_status, page_count, deal_tiff_pages,
                        confirmed_by_officer, created_at
                 FROM   lc_v3.documents WHERE session_id = ?::uuid ORDER BY created_at
                 """, sessionId);
+        rows.forEach(this::normalizeDocumentRow);
+        return rows;
     }
 
     public Map<String, Object> getDocument(String docId) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
                 SELECT id, session_id, doc_type, original_filename, file_sha256,
-                       page_count, parse_status, classification_conf,
+                       page_count, deal_tiff_pages, parse_status, classification_conf,
                        confirmed_by_officer, created_at
                 FROM   lc_v3.documents WHERE id = ?::uuid
                 """, docId);
-        return rows.isEmpty() ? null : rows.get(0);
+        if (rows.isEmpty()) return null;
+        normalizeDocumentRow(rows.get(0));
+        return rows.get(0);
+    }
+
+    private void normalizeDocumentRow(Map<String, Object> row) {
+        Object raw = row.get("deal_tiff_pages");
+        if (raw == null) return;
+        try {
+            String json = raw.toString();
+            if (json.isBlank()) return;
+            List<Integer> pages = objectMapper.readValue(json, new TypeReference<List<Integer>>() {});
+            row.put("deal_tiff_pages", pages);
+        } catch (Exception e) {
+            log.warn("deal_tiff_pages parse failed: {}", e.getMessage());
+            row.remove("deal_tiff_pages");
+        }
+    }
+
+    private String toJsonIntList(List<Integer> pages) {
+        if (pages == null || pages.isEmpty()) return null;
+        try {
+            return objectMapper.writeValueAsString(pages);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** Patch a document row. Pass null fields to leave them unchanged. */

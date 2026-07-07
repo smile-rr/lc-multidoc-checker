@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { docTypeMeta } from '../../../constants/docTypes';
 import { TypePickerMenu } from '../../shared/TypePickerMenu';
 import { DocTypeIcon } from '../../shared/DocTypeIcon';
+import { formatPageLabel } from '../../../lib/dealPages';
 
 /** Yellow review-needed tile for UNKNOWN / low-confidence classifications. */
 export function ReviewTile({ doc, idx, total, onConfirm, onTypeChange, disabled }) {
   const isUnknown = doc.doc_type === 'UNKNOWN';
   const t = docTypeMeta(isUnknown ? 'INV' : doc.doc_type);
   const [picking, setPicking] = useState(false);
+  const pageLabel = formatPageLabel(doc.deal_tiff_pages);
 
   return (
     <div className={`border-2 border-status-gold rounded-[10px] bg-status-goldSoft relative ${picking ? 'z-30' : 'overflow-hidden'}`}>
@@ -22,19 +24,22 @@ export function ReviewTile({ doc, idx, total, onConfirm, onTypeChange, disabled 
       </div>
 
       <div className="p-4 flex items-start gap-4">
-        <DocTypeIcon type={isUnknown ? 'UNKNOWN' : doc.doc_type} size="lg" pages={doc.page_count} />
+        <DocTypeIcon
+          type={isUnknown ? 'UNKNOWN' : doc.doc_type}
+          size="lg"
+          dealTiffPages={doc.deal_tiff_pages}
+          pages={pageLabel ? null : doc.page_count}
+        />
 
         <div className="flex-1 min-w-0">
-          <div className="text-[12px] truncate text-navy-1 font-mono">
-            {doc.original_filename || doc.id}
-          </div>
-          <div className="text-[10px] text-muted mt-0.5 font-mono">
-            {doc.page_count != null ? `${doc.page_count} pages` : ''}
+          <div className="text-[13px] font-semibold font-mono tracking-tight" style={{ color: isUnknown ? undefined : t.color }}>
+            {isUnknown ? '?' : t.short}
+            {pageLabel && <span className="text-navy-1 font-normal"> · {pageLabel}</span>}
           </div>
 
           <div className="mt-3 mb-2 text-[11px] text-navy-1">
             {isUnknown
-              ? <>We couldn't classify this from the filename. Please pick the correct type.</>
+              ? <>We couldn't classify this document. Please pick the correct type.</>
               : <>We classified this as <b style={{ color: t.color }}>{t.name}</b>. Is that correct?</>
             }
           </div>
@@ -46,7 +51,7 @@ export function ReviewTile({ doc, idx, total, onConfirm, onTypeChange, disabled 
                 disabled={disabled}
                 className="px-3 py-1.5 rounded-[6px] bg-teal-1 text-white text-xs font-medium hover:bg-teal-2 flex items-center gap-1.5 disabled:opacity-30"
               >
-                ✓ Yes, confirm as <span className="font-mono uppercase tracking-wider text-[10px]">{t.name} ({t.short})</span>
+                ✓ Yes, confirm as <span className="font-mono uppercase tracking-wider text-[10px]">{t.short}</span>
               </button>
             )}
             <button

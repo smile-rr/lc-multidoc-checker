@@ -10,7 +10,8 @@ import { ConfirmedTile } from './intake/ConfirmedTile';
 import { ReviewTile } from './intake/ReviewTile';
 import { RequiredDocChecklist } from './intake/RequiredDocChecklist';
 import { OFFICER_ID } from '../../lib/officer';
-import { sortByDocType } from '../../constants/docTypes';
+import { sortDocsForDisplay } from '../../constants/docTypes';
+import { hasDealTiffPages, dealTiffPageRange } from '../../lib/dealPages';
 import { StagePage, StageBody } from '../ui/StagePage';
 import { StageToolbar } from '../ui/StageToolbar';
 import { StageNavButtons } from '../ui/StageNavButtons';
@@ -44,9 +45,11 @@ export function IntakePanel({ session, stagesCompleted, events, refresh, onConti
   useEffect(() => { if (segmentationDone) refreshRequired?.(); }, [segmentationDone, refreshRequired]);
 
   const reviewNeeded = useMemo(() =>
-    sortByDocType(docs.filter(d => d.doc_type === 'UNKNOWN' || d.confirmed_by_officer === false)), [docs]);
+    sortDocsForDisplay(docs.filter(d => d.doc_type === 'UNKNOWN' || d.confirmed_by_officer === false)), [docs]);
   const confirmed = useMemo(() =>
-    sortByDocType(docs.filter(d => d.doc_type !== 'UNKNOWN' && d.confirmed_by_officer !== false)), [docs]);
+    sortDocsForDisplay(docs.filter(d => d.doc_type !== 'UNKNOWN' && d.confirmed_by_officer !== false)), [docs]);
+  const dealBundle = useMemo(() => hasDealTiffPages(docs), [docs]);
+  const dealPageSpan = useMemo(() => dealTiffPageRange(docs), [docs]);
 
   const lcPresent = docs.some(d => d.doc_type === 'LC');
   const allConfirmed = reviewNeeded.length === 0;
@@ -98,7 +101,9 @@ export function IntakePanel({ session, stagesCompleted, events, refresh, onConti
           />
         ) : (
           <span className="text-[11px] text-muted font-mono">
-            {docs.length} doc{docs.length === 1 ? '' : 's'} classified · awaiting confirmation
+            {docs.length} doc{docs.length === 1 ? '' : 's'} classified
+            {dealBundle && dealPageSpan ? ` · pages ${dealPageSpan}` : ''}
+            {' · '}awaiting confirmation
           </span>
         )}
         actions={
