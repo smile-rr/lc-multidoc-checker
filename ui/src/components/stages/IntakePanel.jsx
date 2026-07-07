@@ -58,7 +58,7 @@ export function IntakePanel({ session, stagesCompleted, events, refresh, onConti
   const canContinue = devMode || (lcPresent && allConfirmed && requiredPresent);
 
   const blockers = [];
-  if (!lcPresent) blockers.push('Add a Letter of Credit (MT700)');
+  if (!lcPresent) blockers.push('Letter of Credit not parsed yet (lc.txt or MT700)');
   if (!allConfirmed) blockers.push(`Confirm types on ${reviewNeeded.length} flagged document${reviewNeeded.length > 1 ? 's' : ''}`);
   if (lcPresent && !requiredPresent) blockers.push('Provide all required documents per LC :46A:');
 
@@ -130,7 +130,7 @@ export function IntakePanel({ session, stagesCompleted, events, refresh, onConti
           ) : (
             <EmptyState dense>
               <EyebrowLabel className="block mb-2">Required-doc checklist</EyebrowLabel>
-              Add a Letter of Credit (MT700) to populate the checklist from field :46A:.
+              Upload lc.txt (or MT700) and wait for segmentation to parse field :46A:.
             </EmptyState>
           )}
 

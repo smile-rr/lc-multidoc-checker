@@ -125,13 +125,20 @@ public class LcController {
         String lcText = lcView == null ? "" : ((String) lcView.getOrDefault("raw_mt700", ""));
         Lc46aRequiredDocsParser.Result parsed = parser.parse(lcText);
 
-        // Mark which required docs are present in the session
+        // Mark which required docs are present in the session.
+        // LC: legacy uploads create a documents(LC) row; deal bundle only has
+        // lc.txt parsed into pipeline_steps(segmentation/lc_parse) — not a doc row.
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> docs = (List<Map<String, Object>>) session.get("documents");
         java.util.Set<String> presentTypes = new java.util.HashSet<>();
         if (docs != null) for (Map<String, Object> d : docs) {
             Object dt = d.get("doc_type");
             if (dt != null) presentTypes.add(dt.toString());
+        }
+        boolean lcParsed = false;
+        if (lcView != null) {
+            Object rawMt700 = lcView.get("raw_mt700");
+            lcParsed = rawMt700 != null && !rawMt700.toString().isBlank();
         }
 
         List<Map<String, Object>> required = new java.util.ArrayList<>(parsed.required().size());
@@ -140,7 +147,10 @@ public class LcController {
             entry.put("type", r.type());
             entry.put("copies", r.copies());
             entry.put("label", r.label());
-            entry.put("present", presentTypes.contains(r.type()));
+            boolean present = "LC".equals(r.type())
+                    ? presentTypes.contains("LC") || lcParsed
+                    : presentTypes.contains(r.type());
+            entry.put("present", present);
             required.add(entry);
         }
 
