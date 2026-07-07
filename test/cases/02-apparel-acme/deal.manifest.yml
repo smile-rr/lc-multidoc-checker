@@ -1,0 +1,24 @@
+deal_no: '02'
+case_id: 02-apparel-acme
+tiff: deal-02.tiff
+lc: lc.txt
+total_pages: 6
+segments:
+- doc_type: INV
+  pages: [1]
+  source: invoice.pdf
+- doc_type: BOL
+  pages: [2]
+  source: bill-of-lading.pdf
+- doc_type: PKL
+  pages: [3]
+  source: packing-list.pdf
+- doc_type: BOE
+  pages: [4]
+  source: bill-of-exchange.pdf
+- doc_type: BC
+  pages: [5]
+  source: beneficiary-cert.pdf
+- doc_type: WC
+  pages: [6]
+  source: warranty-cert.pdf

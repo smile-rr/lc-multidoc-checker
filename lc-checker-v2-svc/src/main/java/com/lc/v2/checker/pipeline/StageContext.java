@@ -22,6 +22,9 @@ public final class StageContext {
     public final Instant pipelineStarted;
 
     // Upload — ingest bundle (bytes + lcText from HTTP)
+    public IngestMode ingestMode = IngestMode.LEGACY_MULTI_FILE;
+    /** Preset deal number (e.g. "01") when {@link #ingestMode} is DEAL_BUNDLE. */
+    public String dealNo;
     public String lcText;
     public final Map<DocType, byte[]> uploadedDocBytes = new LinkedHashMap<>();
     public final Map<DocType, String> uploadedDocNames = new LinkedHashMap<>();

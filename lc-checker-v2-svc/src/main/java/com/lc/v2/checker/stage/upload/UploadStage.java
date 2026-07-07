@@ -3,9 +3,11 @@ package com.lc.v2.checker.stage.upload;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lc.v2.checker.domain.common.DocType;
 import com.lc.v2.checker.infra.persistence.SessionStore;
+import com.lc.v2.checker.pipeline.IngestMode;
 import com.lc.v2.checker.pipeline.PipelineStageId;
 import com.lc.v2.checker.pipeline.Stage;
 import com.lc.v2.checker.pipeline.StageContext;
+import com.lc.v2.checker.stage.segmentation.DealTiffSplitter;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.HexFormat;
@@ -33,10 +35,13 @@ public class UploadStage implements Stage {
 
     private final SessionStore sessionStore;
     private final ObjectMapper objectMapper;
+    private final DealTiffSplitter dealTiffSplitter;
 
-    public UploadStage(SessionStore sessionStore, ObjectMapper objectMapper) {
+    public UploadStage(SessionStore sessionStore, ObjectMapper objectMapper,
+                       DealTiffSplitter dealTiffSplitter) {
         this.sessionStore = sessionStore;
         this.objectMapper = objectMapper;
+        this.dealTiffSplitter = dealTiffSplitter;
     }
 
     @Override
@@ -48,17 +53,22 @@ public class UploadStage implements Stage {
 
         boolean hasLcText = ctx.lcText != null && !ctx.lcText.isBlank();
         boolean hasLcFile = ctx.uploadedDocBytes.containsKey(DocType.LC);
+        boolean dealBundle = ctx.ingestMode == IngestMode.DEAL_BUNDLE;
         if (!hasLcText && !hasLcFile) {
             throw new IllegalStateException(
                     "MT700 LC text is required — provide lcText or an MT700 file");
         }
-        if (ctx.uploadedDocBytes.isEmpty() && !hasLcText) {
+        if (dealBundle && !ctx.uploadedDocBytes.containsKey(DocType.DEAL)) {
+            throw new IllegalStateException("Deal bundle requires deal-NN.tiff");
+        }
+        if (!dealBundle && ctx.uploadedDocBytes.isEmpty() && !hasLcText) {
             throw new IllegalStateException("No documents in upload bundle");
         }
 
         List<Map<String, Object>> files = new ArrayList<>();
         for (var entry : ctx.uploadedDocNames.entrySet()) {
             DocType docType = entry.getKey();
+            if (docType == DocType.DEAL) continue;
             String filename = entry.getValue();
             byte[] bytes = ctx.uploadedDocBytes.get(docType);
             int size = bytes != null ? bytes.length : 0;
@@ -81,9 +91,19 @@ public class UploadStage implements Stage {
         }
 
         Map<String, Object> manifest = new LinkedHashMap<>();
+        manifest.put("mode", ctx.ingestMode.name());
         manifest.put("files", files);
         manifest.put("lcTextChars", hasLcText ? ctx.lcText.length() : 0);
         manifest.put("docCount", files.size() + (hasLcText && !hasLcFile ? 1 : 0));
+        if (dealBundle) {
+            manifest.put("dealNo", ctx.dealNo);
+            byte[] tiff = ctx.uploadedDocBytes.get(DocType.DEAL);
+            try {
+                manifest.put("pageCount", dealTiffSplitter.pageCount(tiff));
+            } catch (Exception e) {
+                log.warn("[{}] deal TIFF page count failed: {}", ctx.sessionId, e.getMessage());
+            }
+        }
 
         try {
             sessionStore.upsertPipelineStep(ctx.sessionId, STAGE, "manifest",

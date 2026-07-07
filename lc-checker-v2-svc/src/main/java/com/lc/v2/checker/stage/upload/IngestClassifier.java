@@ -27,6 +27,12 @@ public class IngestClassifier {
     public DocType classify(String filename, byte[] bytes) {
         if (filename == null) return docTypeRegistry.classifyFilename(null);
         String lower = filename.toLowerCase();
+        if (lower.matches("deal-\\d+\\.(tiff?|tif)")) {
+            return DocType.DEAL;
+        }
+        if ("lc.txt".equals(lower)) {
+            return DocType.LC;
+        }
         if (lower.endsWith(".txt") || lower.endsWith(".fin") || lower.endsWith(".swift")) {
             if (lower.contains("mt700")) return DocType.LC;
             if (bytes != null && bytes.length > 0) {

@@ -1,0 +1,8 @@
+deal_no: "01"
+merge_sequence:
+  - invoice.pdf
+  - bill-of-lading.pdf
+  - packing-list.pdf
+  - bill-of-exchange.pdf
+  - beneficiary-cert.pdf
+  - warranty-cert.pdf

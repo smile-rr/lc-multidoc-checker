@@ -88,6 +88,18 @@ public class SessionController {
                                 + " :27: / :20: / :40A:."));
             }
 
+            boolean hasDeal = documents.containsKey(DocType.DEAL);
+            if (hasDeal && !documents.containsKey(DocType.LC) && !hasLcText) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "error", "missing_lc",
+                        "message", "Deal bundle requires lc.txt (or lcText) alongside deal-NN.tiff"));
+            }
+            if (hasDeal && documents.size() > 2) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "error", "deal_bundle_extra_files",
+                        "message", "Deal bundle accepts only lc.txt + deal-NN.tiff"));
+            }
+
             String sessionId = pipelineService.createSession(lcText, documents);
             log.info("Session created — upload stage started: {} ({} docs)", sessionId, documents.size());
 

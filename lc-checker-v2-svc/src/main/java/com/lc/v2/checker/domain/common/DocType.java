@@ -14,6 +14,7 @@ public enum DocType {
     BOE,  // Bill of Exchange / Draft
     BC,   // Beneficiary Certificate
     WC,   // Warranty Certificate
+    DEAL, // Merged deal TIFF bundle (pre-segmentation container — not a presented doc)
 
     // Reserved — taxonomy V2 expansion, not in v2 POC scope
     INS,  // Insurance Policy / Certificate
@@ -24,7 +25,7 @@ public enum DocType {
     UNKNOWN;  // User must confirm doc type in UI before pipeline proceeds
 
     public boolean isPresentedDocument() {
-        return this != LC && this != UNKNOWN;
+        return this != LC && this != UNKNOWN && this != DEAL;
     }
 
     public boolean isV2PocScope() {

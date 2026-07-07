@@ -62,6 +62,9 @@ dependencies {
     // --- PDF rendering (vision extraction) ---------------------------------
     implementation("org.apache.pdfbox:pdfbox:3.0.7")
 
+    // --- Multi-page TIFF (deal bundle segmentation) -------------------------
+    implementation("com.twelvemonkeys.imageio:imageio-tiff:3.12.0")
+
     // --- MT700 parser -------------------------------------------------------
     implementation("com.prowidesoftware:pw-swift-core:SRU2025-10.3.12")
     implementation("org.apache.commons:commons-lang3:3.18.0")

@@ -17,6 +17,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,6 +43,7 @@ import org.springframework.stereotype.Service;
 public class PipelineService {
 
     private static final Logger log = LoggerFactory.getLogger(PipelineService.class);
+    private static final Pattern DEAL_NO_PATTERN = Pattern.compile("deal-(\\d+)", Pattern.CASE_INSENSITIVE);
 
     /** Reconcile is retained in code but removed from the officer-paced flow (v3). */
     private static final String SKIPPED_STAGE = PipelineStageId.RECONCILE.id();
@@ -117,7 +120,22 @@ public class PipelineService {
             ctx.uploadedDocBytes.put(e.getKey(), e.getValue().getValue());
             ctx.uploadedDocNames.put(e.getKey(), e.getValue().getKey());
         }
+        if (documents.containsKey(DocType.DEAL)) {
+            ctx.ingestMode = IngestMode.DEAL_BUNDLE;
+            String dealFilename = documents.get(DocType.DEAL).getKey();
+            ctx.dealNo = extractDealNo(dealFilename);
+            if (ctx.dealNo == null || ctx.dealNo.isBlank()) {
+                throw new IllegalArgumentException(
+                        "Cannot parse deal number from filename: " + dealFilename);
+            }
+        }
         return ctx;
+    }
+
+    private static String extractDealNo(String filename) {
+        if (filename == null) return null;
+        Matcher m = DEAL_NO_PATTERN.matcher(filename);
+        return m.find() ? m.group(1) : null;
     }
 
     /**
@@ -448,6 +466,8 @@ public class PipelineService {
             pdfCache.evictSession(new java.util.ArrayList<>(ctx.docIds.values()));
             ctx.docIds.clear();
             ctx.confirmedDocTypes.clear();
+            ctx.dealNo = null;
+            ctx.ingestMode = IngestMode.LEGACY_MULTI_FILE;
         }
         if (stage.equals(upload) || stage.equals(seg) || stage.equals(parse)) {
             ctx.lc = null;

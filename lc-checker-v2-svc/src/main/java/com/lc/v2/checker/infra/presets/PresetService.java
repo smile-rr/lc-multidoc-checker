@@ -110,7 +110,14 @@ public class PresetService {
                         files.add(new FileEntry(name, type, size));
                     });
         }
-        return new Bundle(id, label, files);
+        return new Bundle(id, label, ingestMode(files), files);
+    }
+
+    private static String ingestMode(List<FileEntry> files) {
+        boolean hasLc = files.stream().anyMatch(f -> "lc".equals(f.type()));
+        boolean hasDealTiff = files.stream().anyMatch(f -> "deal-tiff".equals(f.type()));
+        if (hasLc && hasDealTiff) return "deal";
+        return "legacy";
     }
 
     private static String humaniseLabel(String id) {
@@ -131,6 +138,10 @@ public class PresetService {
 
     private static String classify(String filename) {
         String lower = filename.toLowerCase();
+        if (lower.startsWith("deal-") && (lower.endsWith(".tiff") || lower.endsWith(".tif"))) {
+            return "deal-tiff";
+        }
+        if ("lc.txt".equals(lower)) return "lc";
         if (lower.endsWith(".txt")) {
             if (lower.contains("mt700") && lower.contains("pass")) return "mt700-pass";
             if (lower.contains("mt700") && lower.contains("fail")) return "mt700-fail";
@@ -159,8 +170,15 @@ public class PresetService {
         }
         try {
             byte[] bytes = Files.readAllBytes(filePath);
-            String contentType = filename.toLowerCase().endsWith(".pdf")
-                    ? "application/pdf" : "text/plain;charset=UTF-8";
+            String contentType;
+            String lower = filename.toLowerCase();
+            if (lower.endsWith(".pdf")) {
+                contentType = "application/pdf";
+            } else if (lower.endsWith(".tiff") || lower.endsWith(".tif")) {
+                contentType = "image/tiff";
+            } else {
+                contentType = "text/plain;charset=UTF-8";
+            }
             return Optional.of(new FileBytes(filename, contentType, bytes));
         } catch (IOException e) {
             log.warn("[Presets] read {} / {} failed: {}", bundleId, filename, e.getMessage());
@@ -182,13 +200,14 @@ public class PresetService {
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("id", b.id());
             entry.put("label", b.label());
+            entry.put("ingestMode", b.ingestMode());
             entry.put("files", files);
             out.add(entry);
         }
         return out;
     }
 
-    public record Bundle(String id, String label, List<FileEntry> files) {}
+    public record Bundle(String id, String label, String ingestMode, List<FileEntry> files) {}
     public record FileEntry(String name, String type, long size) {}
     public record FileBytes(String name, String contentType, byte[] bytes) {}
 }

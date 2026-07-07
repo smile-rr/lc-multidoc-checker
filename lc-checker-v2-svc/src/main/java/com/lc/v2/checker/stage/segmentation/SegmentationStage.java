@@ -6,6 +6,7 @@ import com.lc.v2.checker.domain.lc.LcParseResult;
 import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.infra.storage.PdfBytesCache;
 import com.lc.v2.checker.infra.storage.S3FileStore;
+import com.lc.v2.checker.pipeline.IngestMode;
 import com.lc.v2.checker.pipeline.PipelineStageId;
 import com.lc.v2.checker.pipeline.Stage;
 import com.lc.v2.checker.pipeline.StageContext;
@@ -45,14 +46,19 @@ public class SegmentationStage implements Stage {
     private final S3FileStore s3Store;
     private final Mt700Parser mt700Parser;
     private final ObjectMapper objectMapper;
+    private final DealPageMaps dealPageMaps;
+    private final DealTiffSplitter dealTiffSplitter;
 
     public SegmentationStage(SessionStore sessionStore, PdfBytesCache pdfCache, S3FileStore s3Store,
-                        Mt700Parser mt700Parser, ObjectMapper objectMapper) {
+                        Mt700Parser mt700Parser, ObjectMapper objectMapper,
+                        DealPageMaps dealPageMaps, DealTiffSplitter dealTiffSplitter) {
         this.sessionStore = sessionStore;
         this.pdfCache = pdfCache;
         this.s3Store = s3Store;
         this.mt700Parser = mt700Parser;
         this.objectMapper = objectMapper;
+        this.dealPageMaps = dealPageMaps;
+        this.dealTiffSplitter = dealTiffSplitter;
     }
 
     private static final String STAGE = PipelineStageId.SEGMENTATION.id();
@@ -62,12 +68,23 @@ public class SegmentationStage implements Stage {
 
     @Override
     public void execute(StageContext ctx) {
-        log.info("[{}] Segmentation: {} docs", ctx.sessionId, ctx.uploadedDocBytes.size());
+        log.info("[{}] Segmentation: mode={} docs={}",
+                ctx.sessionId, ctx.ingestMode, ctx.uploadedDocBytes.size());
         ctx.eventBus.stageStarted(ctx.sessionId, STAGE);
 
+        if (ctx.ingestMode == IngestMode.DEAL_BUNDLE) {
+            executeDealBundle(ctx);
+            return;
+        }
+
+        executeLegacyMultiFile(ctx);
+    }
+
+    private void executeLegacyMultiFile(StageContext ctx) {
         int unknownCount = 0;
         for (var entry : ctx.uploadedDocNames.entrySet()) {
             DocType docType = entry.getKey();
+            if (docType == DocType.DEAL) continue;
             String filename = entry.getValue();
             byte[] bytes = ctx.uploadedDocBytes.get(docType);
 
@@ -99,6 +116,77 @@ public class SegmentationStage implements Stage {
         // MT700 parse — runs at segmentation so ctx.lc is populated before the
         // segmentation gate. The Parse stage's LC viewer + :46A: required-doc gate
         // both depend on this being done by the time the officer sees Segmentation.
+        parseLcOrFail(ctx);
+
+        finishSegmentation(ctx, ctx.uploadedDocBytes.size(), unknownCount);
+    }
+
+    private void executeDealBundle(StageContext ctx) {
+        byte[] tiff = ctx.uploadedDocBytes.get(DocType.DEAL);
+        if (tiff == null || tiff.length == 0) {
+            throw new IllegalStateException("Deal TIFF bytes missing from upload bundle");
+        }
+
+        DealManifest manifest = dealPageMaps.resolve(ctx.dealNo)
+                .orElseThrow(() -> new IllegalStateException(
+                        "No deal.manifest.yml for deal_no=" + ctx.dealNo
+                                + " — run build-deal-tiff.py for preset cases 01–03"));
+
+        try {
+            sessionStore.upsertPipelineStep(ctx.sessionId, STAGE, "deal_manifest",
+                    "SUCCESS", objectMapper.writeValueAsString(manifest), null, null);
+        } catch (Exception e) {
+            log.warn("[{}] deal manifest persistence failed: {}", ctx.sessionId, e.getMessage());
+        }
+
+        ctx.uploadedDocBytes.remove(DocType.DEAL);
+        ctx.uploadedDocNames.remove(DocType.DEAL);
+
+        int segmentCount = 0;
+        for (DealManifest.Segment seg : manifest.segments()) {
+            DocType docType = seg.docType();
+            if (!docType.isPresentedDocument()) continue;
+
+            byte[] pdf;
+            try {
+                pdf = dealTiffSplitter.segmentToPdf(tiff, seg.pages());
+            } catch (Exception e) {
+                throw new IllegalStateException(
+                        "Failed to split deal TIFF pages " + seg.pages()
+                                + " for " + docType + ": " + e.getMessage(), e);
+            }
+
+            String filename = seg.source() != null && !seg.source().isBlank()
+                    ? seg.source()
+                    : docType.name().toLowerCase() + ".pdf";
+            int pageCount = countPages(pdf);
+            String docId = sessionStore.createDocument(ctx.sessionId, docType, filename, pageCount);
+            ctx.docIds.put(docType, docId);
+            ctx.uploadedDocBytes.put(docType, pdf);
+            ctx.uploadedDocNames.put(docType, filename);
+            s3Store.put(docId, pdf);
+
+            if (!ctx.confirmedDocTypes.contains(docType)) {
+                ctx.confirmedDocTypes.add(docType);
+            }
+            segmentCount++;
+            ctx.eventBus.extractionProgress(ctx.sessionId, docType.name(), STAGE,
+                    "deal pages " + seg.pages() + " → " + docType.name());
+        }
+
+        parseLcOrFail(ctx);
+        finishSegmentation(ctx, segmentCount, 0);
+    }
+
+    private void finishSegmentation(StageContext ctx, int docCount, int unknownCount) {
+        log.info("[{}] Segmentation complete: {} total, {} UNKNOWN, confirmed={}, s3Enabled={}, lc={}",
+                ctx.sessionId, docCount, unknownCount,
+                ctx.confirmedDocTypes, s3Store.enabled(), ctx.lc != null);
+        ctx.eventBus.stageCompleted(ctx.sessionId, STAGE,
+                "docs=" + docCount + " unknown=" + unknownCount + " lc=parsed");
+    }
+
+    private void parseLcOrFail(StageContext ctx) {
         if (ctx.lcText != null && !ctx.lcText.isBlank()) {
             try {
                 ctx.eventBus.extractionProgress(ctx.sessionId, "LC", "mt700_parser", "parsing");
@@ -119,12 +207,6 @@ public class SegmentationStage implements Stage {
             log.warn("[{}] No LC text in context — pipeline cannot proceed", ctx.sessionId);
             throw new IllegalStateException("LC (MT700) text is missing — required for the pipeline");
         }
-
-        log.info("[{}] Segmentation complete: {} total, {} UNKNOWN, confirmed={}, s3Enabled={}, lc={}",
-                ctx.sessionId, ctx.uploadedDocBytes.size(), unknownCount,
-                ctx.confirmedDocTypes, s3Store.enabled(), ctx.lc != null);
-        ctx.eventBus.stageCompleted(ctx.sessionId, STAGE,
-                "docs=" + ctx.uploadedDocBytes.size() + " unknown=" + unknownCount + " lc=parsed");
     }
 
     private int countPages(byte[] pdfBytes) {
