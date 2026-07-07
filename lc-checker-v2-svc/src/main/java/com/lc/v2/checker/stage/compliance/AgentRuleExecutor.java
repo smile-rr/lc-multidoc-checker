@@ -1,4 +1,4 @@
-package com.lc.v2.checker.stage.examine;
+package com.lc.v2.checker.stage.compliance;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -10,7 +10,7 @@ import com.lc.v2.checker.infra.config.LlmBudgetProperties;
 import com.lc.v2.checker.infra.observability.TraceNames;
 import com.lc.v2.checker.infra.refs.ArticleRefRegistry;
 import com.lc.v2.checker.pipeline.StageContext;
-import com.lc.v2.checker.stage.examine.tools.ExamineToolRegistry;
+import com.lc.v2.checker.stage.compliance.tools.ComplianceToolRegistry;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import io.micrometer.tracing.Span;
@@ -78,7 +78,7 @@ public class AgentRuleExecutor {
     private final ToolCallingManager toolCallingManager;
     private final ArticleRefRegistry refs;
     private final ResourceLoader resourceLoader;
-    private final ExamineToolRegistry toolRegistry;
+    private final ComplianceToolRegistry toolRegistry;
     /** All tools — exposed to AGENTIC rules. */
     private final List<ToolCallback> toolCallbacksAll;
     /** Compute-only tools (no data-fetch) — exposed to AGENT_TOOL rules so the
@@ -108,7 +108,7 @@ public class AgentRuleExecutor {
                               ToolCallingManager toolCallingManager,
                               ArticleRefRegistry refs,
                               ResourceLoader resourceLoader,
-                              ExamineToolRegistry toolRegistry,
+                              ComplianceToolRegistry toolRegistry,
                               ObservationRegistry observationRegistry,
                               Tracer tracer,
                               LlmBudgetProperties budget) throws IOException {

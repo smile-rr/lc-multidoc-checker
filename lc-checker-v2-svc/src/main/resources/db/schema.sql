@@ -50,7 +50,7 @@ ALTER TABLE IF EXISTS lc_v3.check_sessions DROP COLUMN IF EXISTS adhoc_cache_key
 CREATE TABLE IF NOT EXISTS lc_v3.check_sessions (
     id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     status          VARCHAR(20)  NOT NULL DEFAULT 'QUEUED',
-    -- QUEUED | INTAKE | PARSE | RECONCILE | EXAMINE | SIGNOFF | AWAITING_OFFICER | COMPLETED | FAILED
+    -- QUEUED | SEGMENTATION | PARSE | RECONCILE | COMPLIANCE_CHECK | SIGNOFF | AWAITING_OFFICER | COMPLETED | FAILED
     next_stage      VARCHAR(20),
     awaiting_officer BOOLEAN NOT NULL DEFAULT FALSE,
     stage_completed_at JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -95,14 +95,14 @@ CREATE INDEX IF NOT EXISTS idx_v3_docs_type       ON lc_v3.documents(session_id,
 -- a stage upserts the same row keyed by (session, stage, step_key).
 --
 -- step_key conventions:
---   intake/lc_parse                          MT700 parse result
---   intake/required_docs                     :46A: parsed required-doc checklist
+--   segmentation/lc_parse                    MT700 parse result
+--   segmentation/required_docs                 :46A: parsed required-doc checklist
 --   parse/extract:<doc_type>:<slot>          per-slot vision extract
 --   parse/consensus:<doc_type>               majority-vote consensus
 --   reconcile/field:<field_key>              one row per canonical field
---   examine/<rule_id>                        per-rule outcome
---   examine/phase:<phase_name>               phase summary
---   examine/meta                             trigger traces, dynamic rules, consistency
+--   compliance-check/<rule_id>                 per-rule outcome
+--   compliance-check/phase:<phase_name>        phase summary
+--   compliance-check/meta                      trigger traces, dynamic rules, consistency
 --   signoff/report                           the assembled "final report"
 --
 -- result JSONB shape varies by step (each view projects its own scalars).
@@ -192,14 +192,14 @@ SELECT  session_id,
         result->'warnings'      AS warnings,
         completed_at            AS parsed_at
 FROM    lc_v3.pipeline_steps
-WHERE   stage = 'intake' AND step_key = 'lc_parse';
+WHERE   stage = 'segmentation' AND step_key = 'lc_parse';
 
 CREATE OR REPLACE VIEW lc_v3.v_required_docs AS
 SELECT  session_id,
         result->>'parsed46A'    AS parsed_46a,
         result->'required'      AS required
 FROM    lc_v3.pipeline_steps
-WHERE   stage = 'intake' AND step_key = 'required_docs';
+WHERE   stage = 'segmentation' AND step_key = 'required_docs';
 
 -- Per-doc consensus extract row from Parse stage.
 CREATE OR REPLACE VIEW lc_v3.v_doc_extracts_consensus AS
@@ -258,7 +258,7 @@ SELECT  session_id,
         started_at,
         completed_at
 FROM    lc_v3.pipeline_steps
-WHERE   stage = 'examine' AND step_key LIKE 'phase:%';
+WHERE   stage = 'compliance-check' AND step_key LIKE 'phase:%';
 
 CREATE OR REPLACE VIEW lc_v3.v_check_results AS
 SELECT  session_id,
@@ -274,7 +274,7 @@ SELECT  session_id,
         completed_at,
         error
 FROM    lc_v3.pipeline_steps
-WHERE   stage = 'examine'
+WHERE   stage = 'compliance-check'
   AND   step_key NOT LIKE 'phase:%'
   AND   step_key <> 'meta';
 
@@ -287,7 +287,7 @@ SELECT  session_id,
         result->'consistency'              AS consistency,
         result->'trigger_traces'           AS trigger_traces
 FROM    lc_v3.pipeline_steps
-WHERE   stage = 'examine' AND step_key = 'meta';
+WHERE   stage = 'compliance-check' AND step_key = 'meta';
 
 CREATE OR REPLACE VIEW lc_v3.v_signoff_report AS
 SELECT  session_id,
@@ -380,7 +380,7 @@ ORDER BY session_id, acted_at DESC;
 
 -- ============================================================================
 -- Convenience views — session list with display scalars projected from
--- pipeline_steps (intake/lc_parse).
+-- pipeline_steps (segmentation/lc_parse).
 -- ============================================================================
 
 CREATE OR REPLACE VIEW lc_v3.v_session_overview AS
@@ -390,15 +390,15 @@ SELECT  s.id              AS session_id,
         s.next_stage, s.awaiting_officer, s.stage_completed_at,
         (SELECT result->'fields'->>'lc_number'
          FROM   lc_v3.pipeline_steps
-         WHERE  session_id = s.id AND stage = 'intake' AND step_key = 'lc_parse')
+         WHERE  session_id = s.id AND stage = 'segmentation' AND step_key = 'lc_parse')
                             AS lc_number,
         (SELECT result->'fields'->>'beneficiary_name'
          FROM   lc_v3.pipeline_steps
-         WHERE  session_id = s.id AND stage = 'intake' AND step_key = 'lc_parse')
+         WHERE  session_id = s.id AND stage = 'segmentation' AND step_key = 'lc_parse')
                             AS beneficiary_name,
         (SELECT result->'fields'->>'applicant_name'
          FROM   lc_v3.pipeline_steps
-         WHERE  session_id = s.id AND stage = 'intake' AND step_key = 'lc_parse')
+         WHERE  session_id = s.id AND stage = 'segmentation' AND step_key = 'lc_parse')
                             AS applicant_name
 FROM    lc_v3.check_sessions s;
 

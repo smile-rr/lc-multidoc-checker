@@ -1,4 +1,4 @@
-package com.lc.v2.checker.stage.examine;
+package com.lc.v2.checker.stage.compliance;
 
 import com.lc.v2.checker.domain.common.DocType;
 import com.lc.v2.checker.domain.result.CheckResult;

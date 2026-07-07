@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
  *
  * <p>Anything beyond this — "goods description corresponds to :45A:", typos,
  * abbreviations not in the synonym table — is a UCP/ISBP rule judgement and
- * belongs in ExamineStage as an AGENT rule, not here.</p>
+ * belongs in ComplianceCheckStage as an AGENT rule, not here.</p>
  */
 @Component
 public class ReconcileNormaliser {

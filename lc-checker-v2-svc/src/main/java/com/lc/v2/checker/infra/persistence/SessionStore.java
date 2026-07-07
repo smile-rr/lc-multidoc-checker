@@ -1,6 +1,7 @@
 package com.lc.v2.checker.infra.persistence;
 
 import com.lc.v2.checker.domain.common.DocType;
+import com.lc.v2.checker.pipeline.PipelineStageId;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -73,7 +74,7 @@ public class SessionStore {
                 UPDATE lc_v3.check_sessions
                 SET status = ?, awaiting_officer = FALSE, next_stage = NULL
                 WHERE id = ?::uuid
-                """, runningStage.toUpperCase(), sessionId);
+                """, PipelineStageId.statusForId(runningStage), sessionId);
     }
 
     public String getNextStage(String sessionId) {
@@ -465,15 +466,15 @@ public class SessionStore {
     // examine — per-rule result JSON for drawer extras (tool_calls, condition_results)
     // ───────────────────────────────────────────────────────────────────────
 
-    /** Map of {ruleId → result JSONB text} for every persisted examine rule row. */
+    /** Map of {ruleId → result JSONB text} for every persisted compliance-check rule row. */
     public Map<String, String> getExamineRuleResultJson(String sessionId) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
                 SELECT step_key, result::text AS result
                 FROM   lc_v3.pipeline_steps
                 WHERE  session_id = ?::uuid
-                  AND  stage = 'examine'
+                  AND  stage = ?
                   AND  step_key <> 'meta'
-                """, sessionId);
+                """, sessionId, PipelineStageId.COMPLIANCE_CHECK.id());
         Map<String, String> out = new java.util.LinkedHashMap<>();
         for (Map<String, Object> r : rows) {
             Object key = r.get("step_key");
@@ -491,8 +492,9 @@ public class SessionStore {
     // to re-emit its rows on the new run.
     // ───────────────────────────────────────────────────────────────────────
 
-    private static final List<String> STAGE_ORDER = List.of(
-            "intake", "parse", "reconcile", "examine", "signoff");
+    private static final List<String> STAGE_ORDER = PipelineStageId.PIPELINE_ORDER.stream()
+            .map(PipelineStageId::id)
+            .toList();
 
     public void clearDownstreamState(String sessionId, String fromStage) {
         String stage = fromStage == null ? "" : fromStage.toLowerCase();
@@ -512,8 +514,8 @@ public class SessionStore {
                 UPDATE lc_v3.check_sessions
                 SET status = ?, compliant = NULL, error = NULL, completed_at = NULL
                 WHERE id = ?::uuid
-                """, stage.toUpperCase(), sessionId);
-        // Re-run from intake also wipes documents (the inputs).
+                """, PipelineStageId.statusForId(stage), sessionId);
+        // Re-run from segmentation also wipes documents (the inputs).
         if (idx == 0) {
             jdbc.update("DELETE FROM lc_v3.documents WHERE session_id = ?::uuid", sessionId);
         } else if (idx == 1) {

@@ -22,7 +22,7 @@ import org.springframework.web.multipart.MultipartFile;
 /**
  * REST API for LC v2 sessions.
  *
- * POST /api/v2/sessions          — upload files + MT700 text, create session, return ID
+ * POST /api/v2/sessions          — Upload: multipart files + MT700 text, create session, return ID
  * GET  /api/v2/sessions          — list recent sessions (default: 50)
  * GET  /api/v2/sessions/{id}     — get single session with documents
  * GET  /api/v2/sessions/{id}/trace — pipeline events for debug
@@ -89,7 +89,7 @@ public class SessionController {
             }
 
             String sessionId = pipelineService.createSession(lcText, documents);
-            log.info("Created session: {} with {} docs", sessionId, documents.size());
+            log.info("Upload complete — created session: {} with {} docs", sessionId, documents.size());
 
             return ResponseEntity.ok(Map.of(
                     "sessionId", sessionId,

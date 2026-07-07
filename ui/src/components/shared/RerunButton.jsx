@@ -1,20 +1,13 @@
 import React, { useState } from 'react';
 import { rerunStage } from '../../api';
 import { OFFICER_ID } from '../../lib/officer';
+import { stageLabel, BACKEND_STAGE_ORDER } from '../../constants/pipelineStages';
 
-const STAGE_LABELS = {
-  intake:    'Intake',
-  parse:     'Parse',
-  reconcile: 'Reconcile',
-  examine:   'Examine',
-  signoff:   'Sign-off',
-};
 const DOWNSTREAM_LABEL = {
-  intake:    'discard everything (documents, extraction, reconciliation, examination, sign-off)',
-  parse:     'discard extraction, reconciliation, examination, sign-off',
-  reconcile: 'discard reconciliation, examination, sign-off',
-  examine:   'discard examination, sign-off',
-  signoff:   'discard sign-off draft (no other state lost)',
+  segmentation:     'discard everything (documents, extraction, compliance check, sign-off)',
+  parse:            'discard extraction, compliance check, sign-off',
+  'compliance-check': 'discard compliance check, sign-off',
+  signoff:          'discard sign-off draft (no other state lost)',
 };
 
 /**
@@ -26,9 +19,10 @@ const DOWNSTREAM_LABEL = {
 export function RerunButton({ sessionId, stage, devMode, disabled }) {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState(null);
-  const label = STAGE_LABELS[stage] || stage;
+  const label = stageLabel(stage) || stage;
 
   if (!devMode) return null;
+  if (!BACKEND_STAGE_ORDER.includes(stage)) return null;
 
   const onClick = async () => {
     if (running || disabled) return;
@@ -40,29 +34,23 @@ export function RerunButton({ sessionId, stage, devMode, disabled }) {
     try {
       await rerunStage(sessionId, stage, OFFICER_ID);
     } catch (e) {
-      setError(e.message);
+      setError(e.message ?? String(e));
     } finally {
       setRunning(false);
     }
   };
 
-  const cls = devMode
-    ? 'text-[11px] px-3 py-1.5 rounded-[6px] bg-status-gold/15 border border-status-gold text-status-gold hover:bg-status-gold/25 disabled:opacity-50 disabled:cursor-not-allowed'
-    : 'text-[11px] px-3 py-1.5 rounded-[6px] border border-line text-muted hover:text-navy-1 hover:bg-slate2 disabled:opacity-50 disabled:cursor-not-allowed';
-
   return (
-    <>
+    <span className="inline-flex items-center gap-1">
       <button
         onClick={onClick}
         disabled={running || disabled}
-        title={`Re-run pipeline from ${label} stage onwards`}
-        className={cls}
+        title={`DEV: re-run from ${label}`}
+        className="text-[10px] font-mono uppercase tracking-wider px-2 py-1 rounded border border-status-gold/50 text-status-gold hover:bg-status-gold/10 disabled:opacity-40"
       >
-        {running ? '↻ requesting…' : `↻ re-run from ${label}`}
+        {running ? '↻ running…' : `↻ ${label}`}
       </button>
-      {error && (
-        <span className="text-[10px] text-status-red font-mono">{error}</span>
-      )}
-    </>
+      {error && <span className="text-[10px] text-status-red">{error}</span>}
+    </span>
   );
 }

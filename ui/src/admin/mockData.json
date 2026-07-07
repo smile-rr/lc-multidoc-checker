@@ -45,7 +45,7 @@
       "isbp_refs": [],
       "check_type": "PROGRAMMATIC",
       "prompt_path": null,
-      "expression": "T(com.lc.v2.checker.stage.examine.MultiDocHelpers).docDatesValid(#docs, T(java.time.LocalDate).parse(#presentationDate))",
+      "expression": "T(com.lc.v2.checker.stage.compliance.MultiDocHelpers).docDatesValid(#docs, T(java.time.LocalDate).parse(#presentationDate))",
       "output_schema": "{\"verdict\":\"PASS|FAIL|DOUBTS\",\"explanation\":\"<one sentence>\",\"confidence\":0.0-1.0}",
       "health_signals": {
         "eval_pass_rate": 0.99,
@@ -194,7 +194,7 @@
       "isbp_refs": [],
       "check_type": "PROGRAMMATIC",
       "prompt_path": null,
-      "expression": "T(com.lc.v2.checker.stage.examine.MultiDocHelpers).shipmentNotLate(#docs['BOL'], #lc['latest_shipment_date'])",
+      "expression": "T(com.lc.v2.checker.stage.compliance.MultiDocHelpers).shipmentNotLate(#docs['BOL'], #lc['latest_shipment_date'])",
       "output_schema": "{\"verdict\":\"PASS|FAIL|DOUBTS\",\"explanation\":\"<one sentence>\",\"confidence\":0.0-1.0}",
       "health_signals": {
         "eval_pass_rate": 0.97,
@@ -351,7 +351,7 @@
       "isbp_refs": [],
       "check_type": "PROGRAMMATIC",
       "prompt_path": null,
-      "expression": "T(com.lc.v2.checker.stage.examine.MultiDocHelpers).amountsEqual(#docs['BOE']?.get('draft_amount'), #docs['INV']?.get('invoice_total'))",
+      "expression": "T(com.lc.v2.checker.stage.compliance.MultiDocHelpers).amountsEqual(#docs['BOE']?.get('draft_amount'), #docs['INV']?.get('invoice_total'))",
       "output_schema": "{\"verdict\":\"PASS|FAIL|DOUBTS\",\"explanation\":\"<one sentence>\",\"confidence\":0.0-1.0}",
       "health_signals": {
         "eval_pass_rate": 0.98,
@@ -489,7 +489,7 @@
       "isbp_refs": [],
       "check_type": "PROGRAMMATIC",
       "prompt_path": null,
-      "expression": "T(com.lc.v2.checker.stage.examine.MultiDocHelpers).fullSetPresented(#docs['BOL'])",
+      "expression": "T(com.lc.v2.checker.stage.compliance.MultiDocHelpers).fullSetPresented(#docs['BOL'])",
       "output_schema": "{\"verdict\":\"PASS|FAIL|DOUBTS\",\"explanation\":\"<one sentence>\",\"confidence\":0.0-1.0}",
       "health_signals": {
         "eval_pass_rate": 0.99,
@@ -637,7 +637,7 @@
       "isbp_refs": [],
       "check_type": "PROGRAMMATIC",
       "prompt_path": null,
-      "expression": "T(com.lc.v2.checker.stage.examine.MultiDocHelpers).bolOnBoardCheck(#docs['BOL'])",
+      "expression": "T(com.lc.v2.checker.stage.compliance.MultiDocHelpers).bolOnBoardCheck(#docs['BOL'])",
       "output_schema": "{\"verdict\":\"PASS|FAIL|DOUBTS\",\"explanation\":\"<one sentence>\",\"confidence\":0.0-1.0}",
       "health_signals": {
         "eval_pass_rate": 0.98,
@@ -1098,7 +1098,7 @@
       ],
       "check_type": "PROGRAMMATIC",
       "prompt_path": null,
-      "expression": "T(com.lc.v2.checker.stage.examine.MultiDocHelpers).quantitiesConsistent(#docs['INV'], #docs['PKL'])",
+      "expression": "T(com.lc.v2.checker.stage.compliance.MultiDocHelpers).quantitiesConsistent(#docs['INV'], #docs['PKL'])",
       "output_schema": "{\"verdict\":\"PASS|FAIL|DOUBTS\",\"explanation\":\"<one sentence>\",\"confidence\":0.0-1.0}",
       "health_signals": {
         "eval_pass_rate": 0.95,

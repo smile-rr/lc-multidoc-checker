@@ -4,7 +4,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Read-only context for trigger evaluation. Built once per session at the top of ExamineStage.
+ * Read-only context for trigger evaluation. Built once per session at the top of ComplianceCheckStage.
  *
  * @param lcFields            ctx.lc.envelope().fields() — flat key-value LC envelope
  * @param lcDerived           snake_cased LcDerived snapshot (incoterms_class, tenor_class, …)

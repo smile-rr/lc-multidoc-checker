@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { openStream } from '../api';
+import { BACKEND_STAGE_ORDER } from '../constants/pipelineStages';
 
 /**
  * Subscribe to the SSE stream for a session.
@@ -176,9 +177,11 @@ export function useSse(sessionId) {
   };
 }
 
-const STAGE_ORDER = ['intake', 'parse', 'reconcile', 'examine', 'signoff'];
 function downstreamFrom(stage) {
-  const i = STAGE_ORDER.indexOf(stage);
-  if (i < 0) return [];
-  return STAGE_ORDER.slice(i);
+  const i = BACKEND_STAGE_ORDER.indexOf(stage);
+  if (i < 0) {
+    if (stage === 'reconcile') return BACKEND_STAGE_ORDER.slice(BACKEND_STAGE_ORDER.indexOf('parse'));
+    return [];
+  }
+  return BACKEND_STAGE_ORDER.slice(i);
 }

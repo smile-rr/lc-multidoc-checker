@@ -26,10 +26,10 @@ import org.springframework.stereotype.Component;
  * differences?" — it does NOT make UCP/ISBP rule judgements. Tolerance per
  * UCP 30(b) is the only domain rule applied here. Goods-description
  * correspondence (ISBP C3) and other soft semantic compliance lives in
- * ExamineStage as AGENT rules, not here.</p>
+ * ComplianceCheckStage as AGENT rules, not here.</p>
  *
  * <p>Per-cell verdicts feed the matrix UI; row-level verdict (worst-of)
- * remains in {@code status} so ExamineStage's NOT_APPLICABLE shortcut still
+ * remains in {@code status} so ComplianceCheckStage's NOT_APPLICABLE shortcut still
  * works without change.</p>
  */
 @Component

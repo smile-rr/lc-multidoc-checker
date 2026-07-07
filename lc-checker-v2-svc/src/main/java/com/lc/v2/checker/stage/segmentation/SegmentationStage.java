@@ -1,4 +1,4 @@
-package com.lc.v2.checker.stage.intake;
+package com.lc.v2.checker.stage.segmentation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lc.v2.checker.domain.common.DocType;
@@ -6,6 +6,7 @@ import com.lc.v2.checker.domain.lc.LcParseResult;
 import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.infra.storage.PdfBytesCache;
 import com.lc.v2.checker.infra.storage.S3FileStore;
+import com.lc.v2.checker.pipeline.PipelineStageId;
 import com.lc.v2.checker.pipeline.Stage;
 import com.lc.v2.checker.pipeline.StageContext;
 import com.lc.v2.checker.stage.parse.LcParseException;
@@ -19,25 +20,25 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Stage 0 — Intake.
+ * Segmentation — first pipeline stage after Upload.
  *
  * <p>Three jobs:</p>
  * <ol>
  *   <li>Classify uploaded docs and persist a documents row per file</li>
  *   <li>Persist bytes to S3 (MinIO) + hot-cache for in-process reads</li>
  *   <li>Run the deterministic MT700 parser so {@code ctx.lc} is populated
- *       before the intake gate. The Parse stage's LC view depends on this.</li>
+ *       before the segmentation gate. The Parse stage's LC view depends on this.</li>
  * </ol>
  *
  * <p>UNKNOWN docs emit a warning but do not block the pipeline (POC).
  * MT700 parse is mandatory: a missing/blank LC text fails the pipeline because
- * downstream stages (reconcile, examine, the :46A: required-doc gate) cannot
+ * downstream stages (reconcile, compliance check, the :46A: required-doc gate) cannot
  * proceed without an LC reference.</p>
  */
 @Component
-public class IntakeStage implements Stage {
+public class SegmentationStage implements Stage {
 
-    private static final Logger log = LoggerFactory.getLogger(IntakeStage.class);
+    private static final Logger log = LoggerFactory.getLogger(SegmentationStage.class);
 
     private final SessionStore sessionStore;
     private final PdfBytesCache pdfCache;
@@ -45,7 +46,7 @@ public class IntakeStage implements Stage {
     private final Mt700Parser mt700Parser;
     private final ObjectMapper objectMapper;
 
-    public IntakeStage(SessionStore sessionStore, PdfBytesCache pdfCache, S3FileStore s3Store,
+    public SegmentationStage(SessionStore sessionStore, PdfBytesCache pdfCache, S3FileStore s3Store,
                         Mt700Parser mt700Parser, ObjectMapper objectMapper) {
         this.sessionStore = sessionStore;
         this.pdfCache = pdfCache;
@@ -54,13 +55,15 @@ public class IntakeStage implements Stage {
         this.objectMapper = objectMapper;
     }
 
+    private static final String STAGE = PipelineStageId.SEGMENTATION.id();
+
     @Override
-    public String name() { return "intake"; }
+    public String name() { return STAGE; }
 
     @Override
     public void execute(StageContext ctx) {
-        log.info("[{}] IntakeStage: {} docs", ctx.sessionId, ctx.uploadedDocBytes.size());
-        ctx.eventBus.stageStarted(ctx.sessionId, "intake");
+        log.info("[{}] Segmentation: {} docs", ctx.sessionId, ctx.uploadedDocBytes.size());
+        ctx.eventBus.stageStarted(ctx.sessionId, STAGE);
 
         int unknownCount = 0;
         for (var entry : ctx.uploadedDocNames.entrySet()) {
@@ -79,11 +82,11 @@ public class IntakeStage implements Stage {
 
             if (docType == DocType.UNKNOWN) {
                 unknownCount++;
-                ctx.eventBus.extractionProgress(ctx.sessionId, "UNKNOWN", "intake",
+                ctx.eventBus.extractionProgress(ctx.sessionId, "UNKNOWN", STAGE,
                         filename + " → UNKNOWN (needs type confirmation)");
                 log.warn("[{}] UNKNOWN doc: {}", ctx.sessionId, filename);
             } else {
-                ctx.eventBus.extractionProgress(ctx.sessionId, docType.name(), "intake",
+                ctx.eventBus.extractionProgress(ctx.sessionId, docType.name(), STAGE,
                         filename + " → " + docType.name());
             }
 
@@ -93,9 +96,9 @@ public class IntakeStage implements Stage {
             }
         }
 
-        // MT700 parse — runs at intake so ctx.lc is populated before the
-        // intake gate. The Parse stage's LC viewer + :46A: required-doc gate
-        // both depend on this being done by the time the officer sees Intake.
+        // MT700 parse — runs at segmentation so ctx.lc is populated before the
+        // segmentation gate. The Parse stage's LC viewer + :46A: required-doc gate
+        // both depend on this being done by the time the officer sees Segmentation.
         if (ctx.lcText != null && !ctx.lcText.isBlank()) {
             try {
                 ctx.eventBus.extractionProgress(ctx.sessionId, "LC", "mt700_parser", "parsing");
@@ -105,7 +108,7 @@ public class IntakeStage implements Stage {
                 int warnings = result.consistencyWarnings().size();
                 ctx.eventBus.extractionProgress(ctx.sessionId, "LC", "mt700_parser",
                         "complete #" + result.getLcNumber() + (warnings > 0 ? " warnings=" + warnings : ""));
-                log.info("[{}] LC parsed at intake: #{}, warnings={}",
+                log.info("[{}] LC parsed at segmentation: #{}, warnings={}",
                         ctx.sessionId, result.getLcNumber(), warnings);
             } catch (LcParseException e) {
                 log.error("[{}] MT700 parse failed: {}", ctx.sessionId, e.getMessage());
@@ -117,10 +120,10 @@ public class IntakeStage implements Stage {
             throw new IllegalStateException("LC (MT700) text is missing — required for the pipeline");
         }
 
-        log.info("[{}] IntakeStage complete: {} total, {} UNKNOWN, confirmed={}, s3Enabled={}, lc={}",
+        log.info("[{}] Segmentation complete: {} total, {} UNKNOWN, confirmed={}, s3Enabled={}, lc={}",
                 ctx.sessionId, ctx.uploadedDocBytes.size(), unknownCount,
                 ctx.confirmedDocTypes, s3Store.enabled(), ctx.lc != null);
-        ctx.eventBus.stageCompleted(ctx.sessionId, "intake",
+        ctx.eventBus.stageCompleted(ctx.sessionId, STAGE,
                 "docs=" + ctx.uploadedDocBytes.size() + " unknown=" + unknownCount + " lc=parsed");
     }
 
@@ -134,7 +137,7 @@ public class IntakeStage implements Stage {
     }
 
     /**
-     * Persist the MT700 parse result to pipeline_steps(intake/lc_parse).
+     * Persist the MT700 parse result to pipeline_steps(segmentation/lc_parse).
      * Survives JVM restarts via {@code v_lc_parse}. Without this, ctx.lc is
      * in-memory only and downstream stages see null after any container
      * restart, causing every field-dependent rule to return NOT_APPLICABLE.
@@ -150,7 +153,7 @@ public class IntakeStage implements Stage {
         snapshot.put("warnings", lc.consistencyWarnings());
 
         try {
-            sessionStore.upsertPipelineStep(ctx.sessionId, "intake", "lc_parse",
+            sessionStore.upsertPipelineStep(ctx.sessionId, STAGE, "lc_parse",
                     "SUCCESS", objectMapper.writeValueAsString(snapshot), null, null);
         } catch (Exception e) {
             log.warn("[{}] LC persistence failed (non-fatal): {}", ctx.sessionId, e.getMessage());

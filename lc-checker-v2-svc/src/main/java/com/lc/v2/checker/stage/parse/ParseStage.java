@@ -19,7 +19,7 @@ import org.springframework.stereotype.Component;
 /**
  * Stage 1 — Parse.
  *
- * <p>Vision extraction only — MT700 parse moved to IntakeStage so the LC fields
+ * <p>Vision extraction only — MT700 parse moved to SegmentationStage so the LC fields
  * are populated before the intake gate. By the time the officer reaches Parse,
  * the LC view shows real data; Continue triggers only the vision extraction.</p>
  *

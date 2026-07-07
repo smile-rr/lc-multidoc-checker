@@ -20,7 +20,7 @@ import { EmptyState } from '../ui/EmptyState';
 import { DevShortcutButton } from '../ui/Button';
 
 /**
- * Stage 0 — Intake. Tiles + LC required-doc checklist + officer type confirmation.
+ * Stage 1 — Segmentation. Tiles + LC required-doc checklist + officer type confirmation.
  * Continue gate: LC present + all UNKNOWN/unconfirmed handled + required docs all present.
  * DEV MODE bypasses the gate and exposes "Confirm all suggested" button.
  */
@@ -33,15 +33,15 @@ export function IntakePanel({ session, stagesCompleted, events, refresh, onConti
   const { setType, confirm } = useDocActions(sessionId);
   const { data: required, refresh: refreshRequired } = useLcRequiredDocs(sessionId);
 
-  // Stage is actively running iff backend status is INTAKE.
+  // Stage is actively running iff backend status is SEGMENTATION.
   // Pre-stage / post-stage / awaiting-officer all show static state, no spinner.
-  const running = session?.status === 'INTAKE';
-  const intakeDone = stagesCompleted?.has('intake') || session?.next_stage === 'parse';
-  const progress = useStageProgress(events, 'intake', session?.status, intakeDone);
+  const running = session?.status === 'SEGMENTATION';
+  const segmentationDone = stagesCompleted?.has('segmentation') || session?.next_stage === 'parse';
+  const progress = useStageProgress(events, 'segmentation', session?.status, segmentationDone);
 
-  // When intake completes, the LC :46A: required-doc list becomes available.
+  // When segmentation completes, the LC :46A: required-doc list becomes available.
   // Pull it without requiring the officer to interact with anything.
-  useEffect(() => { if (intakeDone) refreshRequired?.(); }, [intakeDone, refreshRequired]);
+  useEffect(() => { if (segmentationDone) refreshRequired?.(); }, [segmentationDone, refreshRequired]);
 
   const reviewNeeded = useMemo(() =>
     sortByDocType(docs.filter(d => d.doc_type === 'UNKNOWN' || d.confirmed_by_officer === false)), [docs]);
@@ -90,7 +90,7 @@ export function IntakePanel({ session, stagesCompleted, events, refresh, onConti
   return (
     <StagePage>
       <StageToolbar
-        title="Document Intake"
+        title="Document Segmentation"
         meta={running ? (
           <StageProgressMeter
             {...progress}
@@ -107,7 +107,7 @@ export function IntakePanel({ session, stagesCompleted, events, refresh, onConti
               <DevShortcutButton onClick={handleConfirmAll}>⚡ Confirm all suggested</DevShortcutButton>
             )}
             <StageNavButtons
-              stage="intake"
+              stage="segmentation"
               onContinue={onContinue}
               canContinue={canContinue}
               blockers={blockers}
@@ -183,7 +183,7 @@ export function IntakePanel({ session, stagesCompleted, events, refresh, onConti
                     {blockers.map((b, i) => <li key={i}>{b}</li>)}
                   </ul>
                 </div>
-                {intakeDone && (
+                {segmentationDone && (
                   <button
                     onClick={handleReupload}
                     className="shrink-0 text-[11px] font-medium px-2.5 py-1 rounded border border-status-gold/60 text-status-gold hover:bg-status-gold hover:text-white transition-colors whitespace-nowrap"

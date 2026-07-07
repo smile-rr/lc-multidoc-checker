@@ -31,7 +31,7 @@ const SEV_RANK = { CRITICAL: 4, MAJOR: 3, MINOR: 2, OBSERVATION: 1 };
 const STATUS_RANK = { FAIL: 0, DOUBTS: 1, PASS: 2, NOT_APPLICABLE: 3 };
 
 /**
- * Stage 3 — Examine. Filter rail + sortable worklist + rule drawer with overrides.
+ * Stage 3 — Compliance Check. Filter rail + sortable worklist + rule drawer with overrides.
  */
 export function ExaminePanel({ session, stagesCompleted, events, onContinue, onBack }) {
   const { enabled: devMode } = useDevMode();
@@ -285,7 +285,7 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
     await reset(ruleId, OFFICER_ID);
   };
 
-  const examineDone = stagesCompleted?.has('examine');
+  const complianceDone = stagesCompleted?.has('compliance-check');
 
   // Sign-off gate — every system-flagged rule (raw verdict FAIL or DOUBTS) must
   // have an officer override recorded before Continue enables. PASS / N/A /
@@ -301,12 +301,12 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
   const gateBlockers = unaddressed.length > 0
     ? [`${unaddressed.length} rule${unaddressed.length === 1 ? '' : 's'} need officer override (FAIL / DOUBTS)`]
     : [];
-  const canContinue = devMode || (examineDone && unaddressed.length === 0);
+  const canContinue = devMode || (complianceDone && unaddressed.length === 0);
 
   // Two-state toolbar meta — mirrors Parse stage's "extracting M/N" → "M/N reviewed" pattern.
   // While running: per-phase progress meter consuming SSE events.
   // While complete: a calm verdict snapshot in monospace, status-coloured.
-  const examineProgress = useStageProgress(events, 'examine', sessionStatus, examineDone);
+  const examineProgress = useStageProgress(events, 'compliance-check', sessionStatus, complianceDone);
   const planned = rules.filter(r => !isOutOfScope(r));
   const completedCount = planned.filter(r => (r.verdict || r.effectiveVerdict) !== 'PENDING').length;
   const verdictTally = useMemo(() => {
@@ -347,7 +347,7 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
         <span className="text-status-green">· all clear</span>
       )}
       {verdictTally.na > 0 && <span className="text-muted">· {verdictTally.na} n/a</span>}
-      {examineDone && unaddressed.length > 0 && !devMode && (
+      {complianceDone && unaddressed.length > 0 && !devMode && (
         <span className="ml-2 px-1.5 py-0.5 rounded bg-status-goldSoft text-status-gold font-semibold tracking-wider">
           ⚐ {unaddressed.length} need officer override
         </span>
@@ -367,7 +367,7 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
           title row owns the entire width — like Parse — so the FilterRail
           drops below it. */}
       <StageToolbar
-        title="Examine"
+        title="Compliance Check"
         meta={meta}
         actions={
           <>
@@ -377,9 +377,9 @@ export function ExaminePanel({ session, stagesCompleted, events, onContinue, onB
             >
               📖 reference
             </GhostButton>
-            <RerunButton sessionId={sessionId} stage="examine" devMode={devMode} />
+            <RerunButton sessionId={sessionId} stage="compliance-check" devMode={devMode} />
             <StageNavButtons
-              stage="examine"
+              stage="compliance-check"
               onBack={onBack}
               onContinue={onContinue}
               canContinue={canContinue}

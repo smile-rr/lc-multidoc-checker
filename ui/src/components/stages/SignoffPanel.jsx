@@ -38,9 +38,9 @@ export function SignoffPanel({ session, stagesCompleted, events, onBack }) {
 
   // SSE-driven refresh: pull signoff state when examine completes (so the
   // signoff CTA can appear) and when another tab signs off (multi-tab sync).
-  const examineDoneFromEvents = stagesCompleted?.has('examine');
-  useEffect(() => { if (examineDoneFromEvents) refreshSignoff(); },
-    [examineDoneFromEvents, refreshSignoff]);
+  const complianceDoneFromEvents = stagesCompleted?.has('compliance-check');
+  useEffect(() => { if (complianceDoneFromEvents) refreshSignoff(); },
+    [complianceDoneFromEvents, refreshSignoff]);
   const signedOffEventCount = useMemo(
     () => (events || []).filter(e => e?.type === 'SignedOff').length,
     [events]

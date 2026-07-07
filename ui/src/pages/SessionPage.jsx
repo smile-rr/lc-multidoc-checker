@@ -1,25 +1,29 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useSession } from '../hooks/useSession';
 import { useSse } from '../hooks/useSse';
-import { useReconcile } from '../hooks/useReconcile';
 import { useSignoff } from '../hooks/useSignoff';
 import { useSessionStatus } from '../context/SessionStatusContext';
 import { useDevMode } from '../context/DevModeContext';
+import { useConfirm } from '../hooks/useConfirm';
 import { SessionStatusBar } from '../components/shell/SessionStatusBar';
 import { IntakePanel }    from '../components/stages/IntakePanel';
 import { ParsePanel }     from '../components/stages/ParsePanel';
-import { ReconcilePanel } from '../components/stages/ReconcilePanel';
 import { ExaminePanel }   from '../components/stages/ExaminePanel';
 import { SignoffPanel }   from '../components/stages/SignoffPanel';
 import { Spinner } from '../components/shared/Spinner';
 import { runStage } from '../api';
 import { OFFICER_ID } from '../lib/officer';
-
-const STAGE_ORDER = ['intake', 'parse', 'reconcile', 'examine', 'signoff'];
+import {
+  BACKEND_STAGE_ORDER,
+  landingStageForNext,
+  stageLabel,
+} from '../constants/pipelineStages';
 
 export function SessionPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const { confirm, Dialog } = useConfirm();
   const { session, loading, error, refresh } = useSession(id);
   const {
     events, stagesCompleted, ruleResults, sessionCompleted,
@@ -28,8 +32,6 @@ export function SessionPage() {
   const { setRunningInfo, setEventCount } = useSessionStatus();
   const { enabled: devMode } = useDevMode();
 
-  // Reconcile + signoff state for gate computation
-  const { data: reconcileData } = useReconcile(id);
   const { data: signoffData } = useSignoff(id);
 
   const [activeStage, setActiveStage] = useState(null);
@@ -48,11 +50,6 @@ export function SessionPage() {
     return () => { setRunningInfo(null); setEventCount(0); };
   }, [id, session?.status, session?.doc_count, sessionCompleted, events.length, setRunningInfo, setEventCount]);
 
-  // Refetch session when SSE signals progress (or after a rerun resets state).
-  // Listening to a StageStarted count too — without it, the session.status
-  // stays at the previous AWAITING_OFFICER value after the officer clicks
-  // Continue, so per-stage hooks (useRules' EXAMINE polling, ExaminePanel's
-  // showPhaseStrip) never kick in until something else triggers a refresh.
   const stagesStartedCount = useMemo(
     () => events.filter(e => e?.type === 'StageStarted').length,
     [events]
@@ -65,10 +62,6 @@ export function SessionPage() {
   }, [stagesStartedCount, stagesCompleted.size, sessionCompleted, officerActions.length,
       signedOff, cancelled, stagesRerun, refresh]);
 
-  // Per-doc parse completion: refresh session as soon as each doc's consensus
-  // event arrives, so DocRail tile badges flip to EXTRACTED/FAILED immediately
-  // instead of waiting for the whole stage to finish. Backend writes
-  // documents.parse_status before emitting the consensus event.
   const docConsensusCount = useMemo(
     () => events.filter(e =>
       e?.type === 'ExtractionProgress'
@@ -85,29 +78,25 @@ export function SessionPage() {
   const docs = session?.documents ?? [];
   const lcPresent = docs.some(d => d.doc_type === 'LC');
   const allConfirmed = docs.every(d => d.doc_type !== 'UNKNOWN' && d.confirmed_by_officer !== false);
-  const intakeGate = lcPresent && allConfirmed;
+  const segmentationGate = lcPresent && allConfirmed;
 
   const parseDocs = docs.filter(d => d.doc_type !== 'UNKNOWN' && d.doc_type !== 'LC');
   const allReviewed = parseDocs.length > 0 && parseDocs.every(d => d.parse_status === 'REVIEWED');
   const parseGate = allReviewed;
 
-  const locked = !!reconcileData?.locked;
-  const reconcileGate = locked;
-
-  const examineGate = !!stagesCompleted?.has('examine');
+  const complianceGate = !!stagesCompleted?.has('compliance-check');
   const signoffGate = !!signoffData?.signed;
 
-  // SSE only carries StageCompleted for live sessions — its ring buffer doesn't
-  // reach back to a session signed hours ago. Merge the persisted
-  // session.stage_completed_at map (and the signoff record) so the breadcrumb
-  // ticks survive a page reload.
   const effectiveCompleted = useMemo(() => {
     const out = new Set(stagesCompleted);
+    out.add('upload');
     const raw = session?.stage_completed_at;
     if (raw) {
       try {
         const m = typeof raw === 'string' ? JSON.parse(raw) : raw;
-        for (const k of Object.keys(m || {})) out.add(k);
+        for (const k of Object.keys(m || {})) {
+          if (k !== 'reconcile') out.add(k);
+        }
       } catch { /* ignore malformed */ }
     }
     if (signoffGate) out.add('signoff');
@@ -115,48 +104,27 @@ export function SessionPage() {
   }, [stagesCompleted, session?.stage_completed_at, signoffGate]);
 
   const reachable = useMemo(() => {
-    if (devMode) return new Set(STAGE_ORDER);
-    // Once signed, the session is an immutable record — every stage opens for
-    // read-only review. Without this, a page-reload on an old signed session
-    // gets `examineGate=false` (StageCompleted SSE events aren't in the ring
-    // buffer anymore) and the breadcrumb locks the officer out of the audit
-    // trail they just signed.
-    if (signoffGate) return new Set(STAGE_ORDER);
-    const r = new Set(['intake']);
-    if (intakeGate) r.add('parse');
-    if (intakeGate && parseGate) r.add('reconcile');
-    if (intakeGate && parseGate && reconcileGate) r.add('examine');
-    if (intakeGate && parseGate && reconcileGate && examineGate) r.add('signoff');
+    const all = new Set(['upload', ...BACKEND_STAGE_ORDER]);
+    if (devMode) return all;
+    if (signoffGate) return all;
+    const r = new Set(['upload', 'segmentation']);
+    if (segmentationGate) r.add('parse');
+    if (segmentationGate && parseGate) r.add('compliance-check');
+    if (segmentationGate && parseGate && complianceGate) r.add('signoff');
     return r;
-  }, [devMode, signoffGate, intakeGate, parseGate, reconcileGate, examineGate]);
+  }, [devMode, signoffGate, segmentationGate, parseGate, complianceGate]);
 
-  // Initialize active stage on first load.
-  //
-  // Land on the stage that the officer must currently review — i.e. the
-  // just-completed stage waiting for Continue, not the next one. Backend
-  // semantics: when a stage finishes it sets awaiting_officer=true and
-  // next_stage=<the one to run next>. So the predecessor of next_stage is
-  // what the officer should be looking at. Without this, intake auto-confirms
-  // happy-path docs, the intake gate flips true on first render, and the
-  // officer gets dumped onto Parse without ever seeing the Intake tab.
   const landingTarget = useMemo(() => {
     if (signoffData?.signed) return 'signoff';
     if (session?.awaiting_officer && session?.next_stage) {
-      const nextIdx = STAGE_ORDER.indexOf(String(session.next_stage).toLowerCase());
-      if (nextIdx > 0) return STAGE_ORDER[nextIdx - 1];
-      return STAGE_ORDER[0];
+      return landingStageForNext(session.next_stage);
     }
     const s = String(session?.status || '').toLowerCase();
-    if (STAGE_ORDER.includes(s)) return s;
-    return 'intake';
+    if (s === 'reconcile') return 'parse';
+    if (BACKEND_STAGE_ORDER.includes(s)) return s;
+    return 'segmentation';
   }, [session?.awaiting_officer, session?.next_stage, session?.status, signoffData?.signed]);
 
-  // Defer initial landing until BOTH session and signoff have resolved.
-  // Without waiting on signoffData, a fresh page-load on a signed session
-  // computes landingTarget on the first render (signoffData still null →
-  // falls back to gate logic → lands on reconcile). By the time signoffData
-  // arrives a tick later, activeStage is already pinned and the recomputed
-  // 'signoff' target is ignored.
   useEffect(() => {
     if (activeStage !== null) return;
     if (!session) return;
@@ -164,31 +132,18 @@ export function SessionPage() {
     setActiveStage(landingTarget);
   }, [activeStage, session, signoffData, landingTarget]);
 
-  // goNext: officer trigger to advance the pipeline by one stage.
-  //
-  // Race window we have to handle: the user can click Continue while the
-  // current stage is still finishing async on the backend (intake→parse is
-  // the most common — vision LLM hasn't started, but the LC parsed quickly
-  // so the gate looks open). In that window `session.awaiting_officer` is
-  // still false, `session.next_stage` is still null. The previous version
-  // silently skipped the runStage call here and just navigated, which left
-  // the user on a panel for a stage that was never triggered. Going back
-  // and clicking Continue worked because by then the backend had caught up.
-  //
-  // Now: poll session state up to ~5s waiting for the backend to enter
-  // awaiting_officer{next_stage=next}, then trigger. Surface failure to the
-  // user instead of silently navigating into a dead panel.
   const goNext = async () => {
-    const i = STAGE_ORDER.indexOf(activeStage);
-    if (i >= STAGE_ORDER.length - 1) return;
-    const next = STAGE_ORDER[i + 1];
+    const i = BACKEND_STAGE_ORDER.indexOf(activeStage);
+    if (i < 0 || i >= BACKEND_STAGE_ORDER.length - 1) return;
+    const next = BACKEND_STAGE_ORDER[i + 1];
 
-    // If next stage already ran (back-nav case), just navigate.
     if (stagesCompleted?.has?.(next)) { setActiveStage(next); return; }
 
     let s = session;
-    const isReady = (x) =>
-        x?.awaiting_officer && x?.next_stage?.toLowerCase() === next;
+    const isReady = (x) => {
+      const ns = x?.next_stage?.toLowerCase();
+      return x?.awaiting_officer && ns === next;
+    };
     for (let attempt = 0; attempt < 12 && !isReady(s); attempt++) {
       await new Promise(r => setTimeout(r, 500));
       s = await refresh();
@@ -197,26 +152,40 @@ export function SessionPage() {
     if (!isReady(s)) {
       console.warn('goNext: backend not awaiting', next, 'after 6s', s);
       alert(
-          `Cannot advance to ${next}: the previous stage is still running or ` +
+          `Cannot advance to ${stageLabel(next)}: the previous stage is still running or ` +
           `has not yet emitted its completion event. Wait a moment and try again.`);
       return;
     }
 
     try {
       await runStage(id, next, OFFICER_ID);
-      // Pull the fresh session state so child panels (ExaminePanel etc.)
-      // see status='EXAMINE' immediately and start polling/streaming —
-      // otherwise we land on the next tab with stale 'AWAITING_OFFICER'.
       await refresh();
       setActiveStage(next);
     } catch (e) {
       console.error('runStage failed', e);
-      alert(`Failed to start ${next}: ${e.message ?? e}`);
+      alert(`Failed to start ${stageLabel(next)}: ${e.message ?? e}`);
     }
   };
+
   const goBack = () => {
-    const i = STAGE_ORDER.indexOf(activeStage);
-    if (i > 0) setActiveStage(STAGE_ORDER[i - 1]);
+    const i = BACKEND_STAGE_ORDER.indexOf(activeStage);
+    if (i > 0) setActiveStage(BACKEND_STAGE_ORDER[i - 1]);
+  };
+
+  const handleStageSelect = async (key) => {
+    if (key === 'upload') {
+      const ok = await confirm({
+        title: 'Return to upload?',
+        message:
+          'You are viewing a compliance check session. Returning to the upload page will hide it from view.\n\n' +
+          'The session stays in History — you can reopen it at any time.',
+        confirmLabel: 'Go to upload',
+        cancelLabel: 'Stay here',
+      });
+      if (ok) navigate('/');
+      return;
+    }
+    setActiveStage(key);
   };
 
   if (loading) {
@@ -260,12 +229,13 @@ export function SessionPage() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
+      {Dialog}
 
       <SessionStatusBar
         activeStage={activeStage}
         completedStages={effectiveCompleted}
         reachable={reachable}
-        onSelect={setActiveStage}
+        onSelect={handleStageSelect}
         events={events}
         sessionId={id}
         docCount={session?.doc_count}
@@ -274,13 +244,11 @@ export function SessionPage() {
       />
 
       <div className="flex-1 min-h-0 overflow-hidden">
-        {activeStage === 'intake'    && <IntakePanel    {...props} onContinue={goNext} />}
-        {activeStage === 'parse'     && <ParsePanel     {...props} onContinue={goNext} />}
-        {activeStage === 'reconcile' && <ReconcilePanel {...props} onContinue={goNext} onBackToParse={goBack} />}
-        {activeStage === 'examine'   && <ExaminePanel   {...props} onContinue={goNext} onBack={goBack} />}
-        {activeStage === 'signoff'   && <SignoffPanel   {...props} onBack={goBack} />}
+        {activeStage === 'segmentation'     && <IntakePanel  {...props} onContinue={goNext} />}
+        {activeStage === 'parse'            && <ParsePanel   {...props} onContinue={goNext} />}
+        {activeStage === 'compliance-check' && <ExaminePanel {...props} onContinue={goNext} onBack={goBack} />}
+        {activeStage === 'signoff' && <SignoffPanel {...props} onBack={goBack} />}
       </div>
     </div>
   );
 }
-

@@ -85,7 +85,7 @@ rules:
     isbp_refs: []
     field_keys: [invoice_date, bl_date, pkl_date, boe_date, bc_date, wc_date, document_date]
     expression: |
-      T(com.lc.v2.checker.stage.examine.MultiDocHelpers).docDatesValid(
+      T(com.lc.v2.checker.stage.compliance.MultiDocHelpers).docDatesValid(
         #docs, T(java.time.LocalDate).parse(#presentationDate))
     enabled: true
 
@@ -134,7 +134,7 @@ rules:
     isbp_refs: []
     field_keys: [shipment_date, bl_date, latest_shipment_date]
     expression: |
-      T(com.lc.v2.checker.stage.examine.MultiDocHelpers).shipmentNotLate(
+      T(com.lc.v2.checker.stage.compliance.MultiDocHelpers).shipmentNotLate(
         #docs['BOL'], #lc['latest_shipment_date'])
     enabled: true
 
@@ -193,7 +193,7 @@ rules:
     isbp_refs: []
     field_keys: [draft_amount, invoice_total]
     expression: |
-      T(com.lc.v2.checker.stage.examine.MultiDocHelpers).amountsEqual(
+      T(com.lc.v2.checker.stage.compliance.MultiDocHelpers).amountsEqual(
         #docs['BOE']?.get('draft_amount'), #docs['INV']?.get('invoice_total'))
     enabled: true
 
@@ -241,7 +241,7 @@ rules:
     isbp_refs: []
     field_keys: [originals_required, originals_presented]
     expression: |
-      T(com.lc.v2.checker.stage.examine.MultiDocHelpers).fullSetPresented(#docs['BOL'])
+      T(com.lc.v2.checker.stage.compliance.MultiDocHelpers).fullSetPresented(#docs['BOL'])
     enabled: true
 
   # ---------------------------------------------------------------------------
@@ -288,7 +288,7 @@ rules:
     isbp_refs: []
     field_keys: [onboard_notation, bl_date, shipment_date]
     expression: |
-      T(com.lc.v2.checker.stage.examine.MultiDocHelpers).bolOnBoardCheck(#docs['BOL'])
+      T(com.lc.v2.checker.stage.compliance.MultiDocHelpers).bolOnBoardCheck(#docs['BOL'])
     enabled: true
 
   # ---------------------------------------------------------------------------
@@ -445,7 +445,7 @@ rules:
     isbp_refs: [ISBP-C2]
     field_keys: [quantity, total_packages, total_net_weight, total_gross_weight, shipping_marks]
     expression: |
-      T(com.lc.v2.checker.stage.examine.MultiDocHelpers).quantitiesConsistent(
+      T(com.lc.v2.checker.stage.compliance.MultiDocHelpers).quantitiesConsistent(
         #docs['INV'], #docs['PKL'], #docs['BOL'])
     enabled: true
 

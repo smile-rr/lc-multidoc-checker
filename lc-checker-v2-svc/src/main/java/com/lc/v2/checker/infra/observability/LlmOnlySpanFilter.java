@@ -2,6 +2,7 @@ package com.lc.v2.checker.infra.observability;
 
 import io.micrometer.tracing.exporter.FinishedSpan;
 import io.micrometer.tracing.exporter.SpanExportingPredicate;
+import com.lc.v2.checker.pipeline.PipelineStageId;
 import java.util.Set;
 import org.springframework.stereotype.Component;
 
@@ -17,7 +18,9 @@ import org.springframework.stereotype.Component;
 @Component
 public class LlmOnlySpanFilter implements SpanExportingPredicate {
 
-    private static final Set<String> ALLOWED_NAMES = Set.of("parse", "examine");
+    private static final Set<String> ALLOWED_NAMES = Set.of(
+            PipelineStageId.PARSE.id(),
+            PipelineStageId.COMPLIANCE_CHECK.id());
 
     @Override
     public boolean isExportable(FinishedSpan span) {

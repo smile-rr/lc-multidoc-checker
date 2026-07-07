@@ -27,7 +27,7 @@ import org.springframework.stereotype.Service;
 /**
  * Orchestrates session lifecycle for the officer-paced pipeline.
  *
- *   createSession()    — creates DB row, runs the FIRST stage (Intake) async
+ *   createSession()    — Upload ingest: creates DB row, runs Segmentation (pipeline id intake) async
  *   runStage(sessionId, stage)
  *                      — runs the requested stage async (must match next_stage
  *                        unless rerun, in which case use rerunFromStage)
@@ -41,6 +41,9 @@ import org.springframework.stereotype.Service;
 public class PipelineService {
 
     private static final Logger log = LoggerFactory.getLogger(PipelineService.class);
+
+    /** Reconcile is retained in code but removed from the officer-paced flow (v3). */
+    private static final String SKIPPED_STAGE = PipelineStageId.RECONCILE.id();
 
     private final LcV2Pipeline pipeline;
     private final PipelineEventBus eventBus;
@@ -74,7 +77,7 @@ public class PipelineService {
     }
 
     /**
-     * Create a session and run the first stage (Intake). After Intake completes,
+     * Create a session and run Segmentation. After it completes,
      * the session is marked AWAITING_OFFICER and waits for the officer to trigger
      * Parse via POST /sessions/{id}/stages/parse/run.
      */
@@ -102,7 +105,7 @@ public class PipelineService {
         // SessionTraceRegistry — pipeline code never touches a Tracer.
         traceRegistry.open(sessionId, Map.of("doc_count", String.valueOf(docCount)));
 
-        // Kick off Intake. Subsequent stages require explicit officer triggers.
+        // Kick off Segmentation. Subsequent stages require explicit officer triggers.
         self.runStageAsync(sessionId, ctx, 0);
         return sessionId;
     }
@@ -171,7 +174,7 @@ public class PipelineService {
         // span automatically when Stage.execute is annotated with @PipelineStage.
         traceRegistry.runInSession(sessionId, () -> {
             try {
-                sessionStore.updateStatus(sessionId, stageName.toUpperCase());
+                sessionStore.updateStatus(sessionId, PipelineStageId.statusForId(stageName));
                 boolean ok = pipeline.runOne(ctx, idx);
                 if (!ok) {
                     if (ctx.hasFatalError()) {
@@ -188,7 +191,7 @@ public class PipelineService {
                 }
 
                 // Hard gate: pause and wait for officer.
-                String nextStage = pipeline.nameAt(idx + 1);
+                String nextStage = nextStageAfter(idx);
                 sessionStore.markAwaitingOfficer(sessionId, stageName, nextStage);
                 eventBus.awaitingOfficer(sessionId, nextStage);
                 log.info("[{}] stage={} complete; awaiting officer to trigger {}",
@@ -199,6 +202,17 @@ public class PipelineService {
                 traceRegistry.end(sessionId, e.getMessage());
             }
         });
+    }
+
+    /** Next officer-triggered stage, skipping {@link #SKIPPED_STAGE}. */
+    private String nextStageAfter(int completedIdx) {
+        for (int i = completedIdx + 1; i < pipeline.stageCount(); i++) {
+            String name = pipeline.nameAt(i);
+            if (name != null && !SKIPPED_STAGE.equalsIgnoreCase(name)) {
+                return name;
+            }
+        }
+        return null;
     }
 
     private void finalize(String sessionId, StageContext ctx) {
@@ -355,12 +369,17 @@ public class PipelineService {
         if (ctx == null) return false;
         String s = fromStage == null ? "" : fromStage.toLowerCase();
         return switch (s) {
-            case "reconcile", "examine", "signoff" -> ctx.lc != null && !ctx.extracts.isEmpty();
-            case "parse" -> ctx.lc != null
+            case String reconcile when PipelineStageId.RECONCILE.id().equals(reconcile) ->
+                    ctx.lc != null && !ctx.extracts.isEmpty();
+            case String compliance when PipelineStageId.COMPLIANCE_CHECK.id().equals(compliance) ->
+                    ctx.lc != null && !ctx.extracts.isEmpty();
+            case String signoff when PipelineStageId.SIGNOFF.id().equals(signoff) ->
+                    ctx.lc != null && !ctx.extracts.isEmpty();
+            case String parse when PipelineStageId.PARSE.id().equals(parse) -> ctx.lc != null
                     && ctx.docIds.keySet().stream()
                             .filter(dt -> dt != DocType.LC)
                             .allMatch(dt -> ctx.uploadedDocBytes.get(dt) != null);
-            default -> false; // intake still needs raw PDF bytes + classification reset
+            default -> false;
         };
     }
 
@@ -407,20 +426,24 @@ public class PipelineService {
 
     private void resetContextForStage(StageContext ctx, String fromStage) {
         String stage = fromStage == null ? "" : fromStage.toLowerCase();
-        if (stage.equals("intake")) {
+        String seg = PipelineStageId.SEGMENTATION.id();
+        String parse = PipelineStageId.PARSE.id();
+        String reconcile = PipelineStageId.RECONCILE.id();
+        String compliance = PipelineStageId.COMPLIANCE_CHECK.id();
+        if (stage.equals(seg)) {
             pdfCache.evictSession(new java.util.ArrayList<>(ctx.docIds.values()));
             ctx.docIds.clear();
             ctx.confirmedDocTypes.clear();
         }
-        if (stage.equals("intake") || stage.equals("parse")) {
+        if (stage.equals(seg) || stage.equals(parse)) {
             ctx.lc = null;
             ctx.extracts.clear();
         }
-        if (stage.equals("intake") || stage.equals("parse") || stage.equals("reconcile")) {
+        if (stage.equals(seg) || stage.equals(parse) || stage.equals(reconcile)) {
             ctx.reconFields = null;
             ctx.reconLocked = false;
         }
-        if (stage.equals("intake") || stage.equals("parse") || stage.equals("reconcile") || stage.equals("examine")) {
+        if (stage.equals(seg) || stage.equals(parse) || stage.equals(reconcile) || stage.equals(compliance)) {
             ctx.checkResults.clear();
         }
         ctx.finalReport = null;

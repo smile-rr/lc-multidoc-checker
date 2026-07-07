@@ -1,4 +1,4 @@
-package com.lc.v2.checker.stage.examine;
+package com.lc.v2.checker.stage.compliance;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lc.v2.checker.domain.common.DocType;
@@ -11,6 +11,7 @@ import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.infra.rules.RuleCatalogRegistry;
 import com.lc.v2.checker.infra.rules.RuleTriggerEvaluator;
 import com.lc.v2.checker.infra.rules.RuleTriggerEvaluator.TriggerDecision;
+import com.lc.v2.checker.pipeline.PipelineStageId;
 import com.lc.v2.checker.pipeline.Stage;
 import com.lc.v2.checker.pipeline.StageContext;
 import io.micrometer.tracing.Span;
@@ -26,7 +27,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Stage 3 — Examine.
+ * Compliance Check — UCP/ISBP rule evaluation stage.
  *
  * Each catalog rule is evaluated through {@link RuleTriggerEvaluator}:
  *   FIRE           → dispatch to SpelEvaluator (PROGRAMMATIC) or AgentRuleExecutor (AGENT/AGENT_TOOL/AGENTIC)
@@ -38,9 +39,9 @@ import org.springframework.stereotype.Component;
  *   SKIP           → emit NOT_APPLICABLE marked OUT_OF_SCOPE.
  */
 @Component
-public class ExamineStage implements Stage {
+public class ComplianceCheckStage implements Stage {
 
-    private static final Logger log = LoggerFactory.getLogger(ExamineStage.class);
+    private static final Logger log = LoggerFactory.getLogger(ComplianceCheckStage.class);
 
     private final RuleCatalogRegistry catalog;
     private final SpelEvaluator spelEvaluator;
@@ -54,7 +55,7 @@ public class ExamineStage implements Stage {
     private final Map<String, List<String>> traces = new LinkedHashMap<>();
     private final Map<String, Long> ruleStartMs = new LinkedHashMap<>();
 
-    public ExamineStage(RuleCatalogRegistry catalog,
+    public ComplianceCheckStage(RuleCatalogRegistry catalog,
                         SpelEvaluator spelEvaluator,
                         AgentRuleExecutor agentExecutor,
                         SessionStore sessionStore,
@@ -72,14 +73,16 @@ public class ExamineStage implements Stage {
         this.tracer = tracer;
     }
 
+    private static final String STAGE = PipelineStageId.COMPLIANCE_CHECK.id();
+
     @Override
-    public String name() { return "examine"; }
+    public String name() { return STAGE; }
 
     @Override
     @PipelineStage
     public void execute(StageContext ctx) {
         long start = System.currentTimeMillis();
-        ctx.eventBus.stageStarted(ctx.sessionId, "examine");
+        ctx.eventBus.stageStarted(ctx.sessionId, STAGE);
         traces.clear();
 
         // Step 0a: rehydrate ctx.lc from v_lc_parse if the in-memory copy was lost
@@ -89,11 +92,11 @@ public class ExamineStage implements Stage {
             try {
                 ctx.lc = rehydrateLc(ctx.sessionId);
                 if (ctx.lc != null) {
-                    log.info("[{}] Examine rehydrated LC from v_lc_parse: #{} ",
+                    log.info("[{}] Compliance Check rehydrated LC from v_lc_parse: #{} ",
                             ctx.sessionId, ctx.lc.getLcNumber());
                 }
             } catch (Exception e) {
-                log.warn("[{}] Examine LC rehydrate failed: {}", ctx.sessionId, e.getMessage());
+                log.warn("[{}] Compliance Check LC rehydrate failed: {}", ctx.sessionId, e.getMessage());
             }
         }
 
@@ -105,21 +108,21 @@ public class ExamineStage implements Stage {
                         com.lc.v2.checker.stage.parse.Mt700Parser.deriveFromRaw(
                                 ctx.lc.rawFields(), ctx.lc.envelope());
                 ctx.lc = ctx.lc.withDerived(fresh);
-                log.info("[{}] Examine re-derived LC: incoterms={} tolerance={}/{} tenor={}",
+                log.info("[{}] Compliance Check re-derived LC: incoterms={} tolerance={}/{} tenor={}",
                         ctx.sessionId, fresh.incotermsClass(),
                         fresh.effectiveTolerance().pct(), fresh.effectiveTolerance().mode(),
                         fresh.tenorClass());
             } catch (Exception e) {
-                log.warn("[{}] Examine re-derive failed: {}", ctx.sessionId, e.getMessage());
+                log.warn("[{}] Compliance Check re-derive failed: {}", ctx.sessionId, e.getMessage());
             }
         } else {
-            log.warn("[{}] Examine: ctx.lc still null after rehydrate attempt — "
+            log.warn("[{}] Compliance Check: ctx.lc still null after rehydrate attempt — "
                     + "field-dependent rules will return NOT_APPLICABLE", ctx.sessionId);
         }
 
         // Step 1: build trigger-evaluation context.
         ExamineContext ec = buildContext(ctx);
-        log.info("[{}] Examine context: presentedDocs={}, lcFields={}, derivedKeys={}, consistencyMarks={}",
+        log.info("[{}] Compliance Check context: presentedDocs={}, lcFields={}, derivedKeys={}, consistencyMarks={}",
                 ctx.sessionId, ec.presentedDocTypes(),
                 ec.lcFields() == null ? 0 : ec.lcFields().size(),
                 ec.lcDerived() == null ? 0 : ec.lcDerived().size(),
@@ -155,7 +158,7 @@ public class ExamineStage implements Stage {
         // Pre-insert PENDING rows so the worklist materialises immediately.
         for (Classified c : classified) upsertPendingRow(ctx, c.rule());
 
-        // The @PipelineStage aspect opened the "examine" span and attached
+        // The @PipelineStage aspect opened the compliance-check span and attached
         // session tags; child rule.* observations from AgentRuleExecutor
         // (and their gen_ai.* grandchildren from Spring AI) nest correctly
         // because tracer.withSpan is the active scope. We only add a dynamic
@@ -179,7 +182,7 @@ public class ExamineStage implements Stage {
 
         long fireCount = classified.stream().filter(c -> c.outcome() == RuleTriggerEvaluator.Outcome.FIRE).count();
         long naCount = classified.stream().filter(c -> c.outcome() == RuleTriggerEvaluator.Outcome.NOT_APPLICABLE).count();
-        log.info("[{}] Examine: {} fire, {} NA, {} skipped",
+        log.info("[{}] Compliance Check: {} fire, {} NA, {} skipped",
                 ctx.sessionId, fireCount, naCount, skipList.size());
 
         // :47A: handling — replaced by COND-47A AGENTIC rule (single LLM call
@@ -187,8 +190,8 @@ public class ExamineStage implements Stage {
 
         persistResults(ctx);
 
-        ctx.eventBus.stageCompleted(ctx.sessionId, "examine", System.currentTimeMillis() - start);
-        log.info("[{}] Examine complete: {} results, {}ms",
+        ctx.eventBus.stageCompleted(ctx.sessionId, STAGE, System.currentTimeMillis() - start);
+        log.info("[{}] Compliance Check complete: {} results, {}ms",
                 ctx.sessionId, ctx.checkResults.size(), System.currentTimeMillis() - start);
     }
 
@@ -269,11 +272,11 @@ public class ExamineStage implements Stage {
             if (r.conditionResults() != null && !r.conditionResults().isEmpty()) {
                 stepResult.put("condition_results", r.conditionResults());
             }
-            sessionStore.upsertPipelineStep(ctx.sessionId, "examine", r.ruleId(),
+            sessionStore.upsertPipelineStep(ctx.sessionId, STAGE, r.ruleId(),
                     r.verdict().name(), objectMapper.writeValueAsString(stepResult),
                     durationMs, null);
         } catch (Exception e) {
-            log.error("[{}] persist examine row failed for {}: {}",
+            log.error("[{}] persist compliance-check row failed for {}: {}",
                     ctx.sessionId, r.ruleId(), e.getMessage(), e);
             ctx.eventBus.ruleChecked(ctx.sessionId, r.ruleId(),
                     "FAILED", 0.0, "CATALOG", "PERSIST_ERROR",
@@ -292,7 +295,7 @@ public class ExamineStage implements Stage {
             stepResult.put("check_type", rule.checkType());
             stepResult.put("explanation", "");
             stepResult.put("confidence", null);
-            sessionStore.upsertPipelineStep(ctx.sessionId, "examine", rule.ruleId(),
+            sessionStore.upsertPipelineStep(ctx.sessionId, STAGE, rule.ruleId(),
                     "PENDING", objectMapper.writeValueAsString(stepResult),
                     null, null);
         } catch (Exception e) {
@@ -300,7 +303,7 @@ public class ExamineStage implements Stage {
                     ctx.sessionId, rule.ruleId(), e.getMessage(), e);
             throw new IllegalStateException(
                     "Cannot pre-insert PENDING row for " + rule.ruleId()
-                            + " — examine cannot proceed: " + e.getMessage(), e);
+                            + " — compliance check cannot proceed: " + e.getMessage(), e);
         }
     }
 
@@ -391,10 +394,10 @@ public class ExamineStage implements Stage {
             if (ctx.lc != null && !ctx.lc.consistencyWarnings().isEmpty()) {
                 meta.put("consistency", ctx.lc.consistencyWarnings());
             }
-            sessionStore.upsertPipelineStep(ctx.sessionId, "examine", "meta",
+            sessionStore.upsertPipelineStep(ctx.sessionId, STAGE, "meta",
                     "SUCCESS", objectMapper.writeValueAsString(meta), null, null);
         } catch (Exception e) {
-            log.warn("[{}] examine persistence failed: {}", ctx.sessionId, e.getMessage());
+            log.warn("[{}] compliance check persistence failed: {}", ctx.sessionId, e.getMessage());
         }
     }
 }

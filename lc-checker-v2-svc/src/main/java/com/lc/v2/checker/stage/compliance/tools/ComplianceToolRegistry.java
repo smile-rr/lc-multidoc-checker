@@ -1,4 +1,4 @@
-package com.lc.v2.checker.stage.examine.tools;
+package com.lc.v2.checker.stage.compliance.tools;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -26,9 +26,9 @@ import org.springframework.stereotype.Component;
  * model toward the right call site, so the wording matters.
  */
 @Component
-public class ExamineToolRegistry {
+public class ComplianceToolRegistry {
 
-    private static final Logger log = LoggerFactory.getLogger(ExamineToolRegistry.class);
+    private static final Logger log = LoggerFactory.getLogger(ComplianceToolRegistry.class);
 
     private final SessionStore sessionStore;
     private final ObjectMapper objectMapper;
@@ -37,7 +37,7 @@ public class ExamineToolRegistry {
      *  with a fresh list before invoking the ChatClient and reads it after. */
     private static final ThreadLocal<List<Map<String, Object>>> CAPTURE = new ThreadLocal<>();
 
-    public ExamineToolRegistry(SessionStore sessionStore, ObjectMapper objectMapper) {
+    public ComplianceToolRegistry(SessionStore sessionStore, ObjectMapper objectMapper) {
         this.sessionStore = sessionStore;
         this.objectMapper = objectMapper;
     }

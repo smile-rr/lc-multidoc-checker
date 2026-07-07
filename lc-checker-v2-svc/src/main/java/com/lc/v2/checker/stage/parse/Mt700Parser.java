@@ -175,7 +175,7 @@ public class Mt700Parser {
 
     /**
      * Re-derive LC envelope from raw MT700 tags + structured fields.
-     * Public so ExamineStage can refresh derived values at re-run time without
+     * Public so ComplianceCheckStage can refresh derived values at re-run time without
      * needing to replay the full MT700 parse.
      */
     public static LcDerived deriveFromRaw(Map<String, String> raw,

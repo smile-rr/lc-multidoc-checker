@@ -20,18 +20,18 @@ export function useRules(sessionId, sessionStatus, examineMeta) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // Status-driven polling: while EXAMINE is running, poll every 2s; on transition
-  // away from EXAMINE, do one final fetch and stop.
+  // Status-driven polling: while COMPLIANCE_CHECK is running, poll every 2s; on transition
+  // away from COMPLIANCE_CHECK, do one final fetch and stop.
   const prevStatusRef = useRef(sessionStatus);
   useEffect(() => {
     if (!sessionId) return undefined;
-    const isExamining = sessionStatus === 'EXAMINE';
+    const isExamining = sessionStatus === 'COMPLIANCE_CHECK';
     if (isExamining) {
       const t = setInterval(refresh, POLL_MS);
       prevStatusRef.current = sessionStatus;
       return () => clearInterval(t);
     }
-    if (prevStatusRef.current === 'EXAMINE') {
+    if (prevStatusRef.current === 'COMPLIANCE_CHECK') {
       refresh();
     }
     prevStatusRef.current = sessionStatus;

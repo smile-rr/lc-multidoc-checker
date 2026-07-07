@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { stageLabel as pipelineStageLabel } from '../constants/pipelineStages';
 
 /**
  * Stage progress derivation.
@@ -18,8 +19,8 @@ import { useEffect, useMemo, useState } from 'react';
  *
  * Inputs:
  *   events          — array of raw SSE event objects: { type, ts, data, ... }
- *   stage           — 'intake' | 'parse' | 'reconcile' | 'examine' | 'signoff'
- *   sessionStatus   — backend status string (matches stage in upper-case while running)
+ *   stage           — pipeline stage id (segmentation, parse, compliance-check, signoff, …)
+ *   sessionStatus   — backend status string (SEGMENTATION, COMPLIANCE_CHECK, …)
  *   stageCompleted  — boolean (from stagesCompleted Set)
  */
 export function useStageProgress(events, stage, sessionStatus, stageCompleted) {
@@ -52,14 +53,17 @@ export function useStageProgress(events, stage, sessionStatus, stageCompleted) {
   };
 }
 
+/** Map pipeline stage id to check_sessions.status form (hyphens → underscores). */
+function statusForStage(stage) {
+  return String(stage || '').toUpperCase().replace(/-/g, '_');
+}
+
 // ─── stage → phase ────────────────────────────────────────────────────────
 function derivePhase(stage, sessionStatus, stageCompleted, info) {
   if (stageCompleted) return 'complete';
 
   const status = (sessionStatus || '').toUpperCase();
-  const stageUpper = stage.toUpperCase();
-
-  if (status === stageUpper) return 'running';
+  if (status === statusForStage(stage)) return 'running';
 
   // Parse stage has a special case: the latest ExtractionProgress may still be
   // non-terminal even though the session has moved on momentarily. Treat any
@@ -78,7 +82,7 @@ function deriveStageInfo(events, stage) {
   let lastTs = null;
   let info = { kind: null, lastTs: null };
 
-  if (stage === 'examine') {
+  if (stage === 'compliance-check') {
     // RuleStarted gives us the live counter. RuleChecked tells us how many
     // are done. We pair the latest RuleStarted with the count of RuleCheckeds
     // that share its run.
@@ -91,7 +95,7 @@ function deriveStageInfo(events, stage) {
         lastTs = parseTs(e.ts);
       }
       if (e.type === 'RuleChecked') checkedCount++;
-      if (started && e.type === 'StageStarted' && e.data?.stageName === 'examine') break;
+      if (started && e.type === 'StageStarted' && e.data?.stageName === 'compliance-check') break;
     }
     if (started) {
       const d = started.data || {};
@@ -99,7 +103,7 @@ function deriveStageInfo(events, stage) {
       const total = d.total;
       info = {
         kind: 'rule',
-        label: 'Examine',
+        label: pipelineStageLabel('compliance-check'),
         sub: `${d.ruleId}${d.checkType ? ` (${d.checkType})` : ''}`,
         idx,
         total,
@@ -112,12 +116,12 @@ function deriveStageInfo(events, stage) {
   if (stage === 'parse') {
     // Two passes over the events:
     //   1. Walk forward to find the boundary index of StageStarted{stageName:'parse'}.
-    //      Events before this boundary belong to Intake (e.g. its mt700_parser
+    //      Events before this boundary belong to Segmentation (e.g. its mt700_parser
     //      ExtractionProgress) and must NOT drive the "current task" sub display
-    //      — otherwise a stale Intake event leaks into the Parse meter.
+    //      — otherwise a stale Segmentation event leaks into the Parse meter.
     //   2. Count totalDocs/completeDocs from ALL ExtractionProgress events so
     //      the denominator reflects every uploaded doc (including the LC, which
-    //      Intake already finished). Intake's per-doc events seed the totals so
+    //      Segmentation already finished). Segmentation's per-doc events seed the totals so
     //      progress reads e.g. 1/7 immediately when Parse opens, then advances
     //      as vision extracts complete.
     let parseStart = -1;
@@ -130,7 +134,7 @@ function deriveStageInfo(events, stage) {
     let last = null;
     let totalDocs = new Set();
     let completeDocs = new Set();
-    // Seed: LC is always part of the parse universe (parsed in Intake) so the
+    // Seed: LC is always part of the parse universe (parsed in Segmentation) so the
     // meter starts at 1/N the moment the officer reaches Parse, and the
     // denominator covers LC + every uploaded vision doc.
     totalDocs.add('LC');
@@ -141,7 +145,7 @@ function deriveStageInfo(events, stage) {
       const d = e.data || {};
       if (d.docType && d.docType !== 'UNKNOWN') totalDocs.add(d.docType);
       // A doc is "done" when:
-      //   - its mt700_parser intake event fires "complete #LC..." (LC), or
+      //   - its mt700_parser segmentation event fires "complete #LC..." (LC), or
       //   - any vision slot returns "complete", or
       //   - its consensus event arrives with HIGH/MED/LOW (success) or
       //     failed_all_slots / failed:<msg> (terminal failure).
@@ -176,7 +180,7 @@ function deriveStageInfo(events, stage) {
     return info;
   }
 
-  if (stage === 'intake' || stage === 'reconcile' || stage === 'signoff') {
+  if (stage === 'segmentation' || stage === 'reconcile' || stage === 'signoff') {
     // No fine-grained per-step events today. Use StageStarted's ts so the
     // pulse dot has a heartbeat; staleness then signals "still no progress".
     for (let i = events.length - 1; i >= 0; i--) {
@@ -188,7 +192,7 @@ function deriveStageInfo(events, stage) {
     }
     info = {
       kind: 'stage',
-      label: stageLabel(stage),
+      label: pipelineStageLabel(stage),
       sub: stageFallbackSub(stage),
       lastTs,
     };
@@ -199,27 +203,15 @@ function deriveStageInfo(events, stage) {
 }
 
 function defaultLabel(stage, phase) {
-  if (phase === 'pending') return stageLabel(stage);
-  return stageLabel(stage);
-}
-
-function stageLabel(stage) {
-  switch (stage) {
-    case 'intake':    return 'Intake';
-    case 'parse':     return 'Parse';
-    case 'reconcile': return 'Reconcile';
-    case 'examine':   return 'Examine';
-    case 'signoff':   return 'Sign-off';
-    default:          return stage;
-  }
+  if (phase === 'pending') return pipelineStageLabel(stage);
+  return pipelineStageLabel(stage);
 }
 
 function stageFallbackSub(stage) {
   switch (stage) {
-    case 'intake':    return 'classifying…';
-    case 'reconcile': return 'normalising…';
-    case 'signoff':   return 'finalising…';
-    default:          return null;
+    case 'segmentation': return 'classifying…';
+    case 'signoff':      return 'finalising…';
+    default:             return null;
   }
 }
 

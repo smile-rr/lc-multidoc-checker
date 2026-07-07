@@ -4,6 +4,7 @@ import { SessionStatusProvider } from './context/SessionStatusContext';
 import { DevModeProvider } from './context/DevModeContext';
 import { UploadDraftProvider } from './context/UploadDraftContext';
 import { TopNav } from './components/shell/TopNav';
+import { PipelineChrome } from './components/shell/PipelineChrome';
 import { DevModeBanner } from './components/shell/DevModeBanner';
 import { ApiErrorToast } from './components/shell/ApiErrorToast';
 import { HomePage } from './pages/HomePage';
@@ -22,6 +23,7 @@ export function App() {
       <SessionStatusProvider>
         <div className="h-dvh flex flex-col overflow-hidden">
           <TopNav />
+          <PipelineChrome />
           <DevModeBanner />
           <ApiErrorToast />
           <main className="flex-1 min-h-0 overflow-hidden">

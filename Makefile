@@ -110,6 +110,16 @@ db-down:  ## stop Postgres container
 	   docker stop $(DB_CONTAINER) && echo "✓ postgres stopped"; \
 	 else echo "  (postgres container not found)"; fi
 
+db-sessions-clean: _ensure-docker db-wait  ## wipe lc_v3 sessions; keep vision_extract_cache
+	@_db_user=$$(grep '^DB_USERNAME=' $(ENV_FILE) 2>/dev/null | cut -d= -f2-); \
+	 _db_name=$$(grep '^DB_NAME=' $(ENV_FILE) 2>/dev/null | cut -d= -f2-); \
+	 _db_user=$${_db_user:-$(DB_USERNAME)}; \
+	 _db_name=$${_db_name:-$(DB_NAME)}; \
+	 echo "→ wiping lc_v3 sessions (preserving vision_extract_cache)…"; \
+	 docker exec -i $(DB_CONTAINER) psql -U "$$_db_user" -d "$$_db_name" \
+	   -f - < infra/postgres/migrations/03-wipe-sessions-keep-vision-cache.sql; \
+	 echo "✓ sessions cleared"
+
 # ---------------------------------------------------------------------------
 # svc — Spring Boot (dev)
 # ---------------------------------------------------------------------------
@@ -314,7 +324,7 @@ langfuse-auth:  ## derive LANGFUSE_AUTH_BASIC from .env keys and write it back
 	 echo "✓ LANGFUSE_AUTH_BASIC updated in $(ENV_FILE)"
 
 .PHONY: help \
-        _ensure-docker db db-wait db-down db-reinit \
+        _ensure-docker db db-wait db-down db-reinit db-sessions-clean \
         svc svc-watch svc-down svc-wait \
         ui ui-down _ui-install \
         all all-down down \

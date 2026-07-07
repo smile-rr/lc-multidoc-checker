@@ -1,9 +1,9 @@
 package com.lc.v2.checker.pipeline;
 
-import com.lc.v2.checker.stage.examine.ExamineStage;
-import com.lc.v2.checker.stage.intake.IntakeStage;
+import com.lc.v2.checker.stage.compliance.ComplianceCheckStage;
 import com.lc.v2.checker.stage.parse.ParseStage;
 import com.lc.v2.checker.stage.reconcile.ReconcileStage;
+import com.lc.v2.checker.stage.segmentation.SegmentationStage;
 import com.lc.v2.checker.stage.signoff.SignoffStage;
 import java.util.List;
 import org.slf4j.Logger;
@@ -11,17 +11,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Orchestrates the 5-stage v2 pipeline: Intake → Parse → Reconcile → Examine → Sign-off.
+ * Officer-paced pipeline: Upload (pre-stage) → Segmentation → Parse → Compliance Check → Sign-off.
+ * Reconcile is registered but skipped in {@link PipelineService} orchestration (v3).
  *
- * Each stage is hard-gated: the pipeline runs ONE stage per invocation, then
- * returns. The officer triggers the next stage explicitly via
- * POST /sessions/{id}/stages/{stage}/run. This decouples pipeline throughput
- * from officer cadence and matches LC-checking workflow where officers control
- * progression and may go back to a prior stage to correct data.
- *
- * Two entry points:
- *   runOne(ctx, idx)       — run a single stage at the given index
- *   runFrom(ctx, idx)      — DEV/legacy: run all stages from idx onwards (no gates)
+ * Pipeline API ids: {@link com.lc.v2.checker.pipeline.PipelineStageId}.
  */
 @Component
 public class LcV2Pipeline {
@@ -32,19 +25,19 @@ public class LcV2Pipeline {
     private final PipelineEventBus eventBus;
 
     public LcV2Pipeline(
-            IntakeStage intake,
+            SegmentationStage segmentation,
             ParseStage parse,
             ReconcileStage reconcile,
-            ExamineStage examine,
+            ComplianceCheckStage complianceCheck,
             SignoffStage signoff,
             PipelineEventBus eventBus) {
-        this.stages = List.of(intake, parse, reconcile, examine, signoff);
+        this.stages = List.of(segmentation, parse, reconcile, complianceCheck, signoff);
         this.eventBus = eventBus;
     }
 
     public List<Stage> stages() { return stages; }
 
-    /** Find a stage's position by name; -1 if not found. */
+    /** Find a stage's position by pipeline id; -1 if not found. */
     public int indexOf(String stageName) {
         for (int i = 0; i < stages.size(); i++) {
             if (stages.get(i).name().equalsIgnoreCase(stageName)) return i;
@@ -52,7 +45,7 @@ public class LcV2Pipeline {
         return -1;
     }
 
-    /** Stage name at the given index, or null. */
+    /** Pipeline id at the given index, or null. */
     public String nameAt(int idx) {
         return (idx >= 0 && idx < stages.size()) ? stages.get(idx).name() : null;
     }

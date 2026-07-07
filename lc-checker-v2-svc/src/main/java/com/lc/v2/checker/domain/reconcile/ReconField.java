@@ -13,7 +13,7 @@ import java.util.Map;
  *         present DocType (LC + each presented doc)</li>
  *   </ul>
  *
- * Backward compat: ExamineStage continues to read {@code status} +
+ * Backward compat: ComplianceCheckStage continues to read {@code status} +
  * {@code valueByDocType} only — added cell-level fields don't affect it.
  */
 public record ReconField(

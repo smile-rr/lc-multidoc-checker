@@ -1,4 +1,4 @@
-package com.lc.v2.checker.stage.examine;
+package com.lc.v2.checker.stage.compliance;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -11,7 +11,7 @@ import java.util.StringJoiner;
  * Static helpers callable from SpEL expressions for multi-doc programmatic checks.
  *
  * SpEL invocation pattern:
- *   T(com.lc.v2.checker.stage.examine.MultiDocHelpers).currencyConsistent(#docs, #lc['credit_currency'])
+ *   T(com.lc.v2.checker.stage.compliance.MultiDocHelpers).currencyConsistent(#docs, #lc['credit_currency'])
  *
  * Each helper returns a structured result Map that {@link SpelEvaluator} converts to a
  * {@link com.lc.v2.checker.domain.result.CheckResult}:
