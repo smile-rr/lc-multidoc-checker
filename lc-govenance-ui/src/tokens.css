@@ -1,0 +1,92 @@
+/* ===========================================================================
+   Memara Enterprise — design tokens (ported from the claude.ai/design system
+   "memara-enterprise-design-system"). Colours, type, spacing, effects.
+   ===========================================================================*/
+:root {
+  /* ---- Core brand solids ---- */
+  --me-green: #38d200;
+  --me-blue: #0473ea;
+  --me-grey: #525355;
+
+  /* ---- Blue-gradient stops ---- */
+  --me-navy: #2c3a87;
+  --me-blue-deep: #0061c7;
+  --me-blue-royal: #254498;
+
+  /* ---- Memara Green tints ---- */
+  --me-green-70: #74df4c;
+  --me-green-50: #92e773;
+  --me-green-20: #cdf4bf;
+
+  /* ---- Memara Blue tints ---- */
+  --me-blue-70: #4f9df0;
+  --me-blue-50: #7bb6f5;
+  --me-blue-20: #c3defa;
+
+  /* ---- Memara Grey tints (neutral ramp) ---- */
+  --me-grey-70: #868788;
+  --me-grey-50: #a8a9aa;
+  --me-grey-20: #d4d4d4;
+  --me-grey-15: #e5e5e5;
+  --me-grey-08: #f2f2f2;
+
+  /* ---- Absolutes ---- */
+  --me-white: #ffffff;
+  --me-ink: #1b1c1e;
+
+  /* ---- Semantic aliases ---- */
+  --color-brand: var(--me-blue);
+  --color-brand-accent: var(--me-green);
+  --text-strong: var(--me-ink);
+  --text-body: var(--me-grey);
+  --text-muted: var(--me-grey-70);
+  --text-on-brand: var(--me-white);
+  --text-link: var(--me-blue);
+  --text-link-hover: var(--me-blue-deep);
+  --surface-page: var(--me-white);
+  --surface-card: var(--me-white);
+  --surface-subtle: var(--me-grey-08);
+  --surface-sunken: var(--me-grey-15);
+  --surface-brand: var(--me-blue);
+  --surface-brand-gradient: linear-gradient(120deg, var(--me-navy) 0%, var(--me-blue-deep) 52%, var(--me-blue) 100%);
+  --surface-green-wash: var(--me-green-20);
+  --surface-blue-wash: var(--me-blue-20);
+  --border-subtle: var(--me-grey-15);
+  --border-default: var(--me-grey-20);
+  --border-strong: var(--me-grey-50);
+  --border-brand: var(--me-blue);
+
+  /* ---- Status ---- */
+  --status-success: #1f9d3b;
+  --status-warning: #e8a200;
+  --status-error: #d0201a;
+  --status-info: var(--me-blue);
+  --focus-ring: var(--me-blue);
+
+  /* ---- Typography ---- */
+  --font-sans: 'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Hanken Grotesk', system-ui, sans-serif;
+  --font-mono: 'Roboto Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+  /* ---- Radii ---- */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-pill: 999px;
+
+  /* ---- Shadows ---- */
+  --shadow-xs: 0 1px 2px rgba(27, 28, 30, 0.06);
+  --shadow-sm: 0 2px 8px rgba(27, 28, 30, 0.08);
+  --shadow-md: 0 8px 24px rgba(27, 28, 30, 0.1);
+  --shadow-lg: 0 16px 48px rgba(44, 58, 135, 0.16);
+  --shadow-brand: 0 12px 32px rgba(4, 115, 234, 0.24);
+
+  /* ---- Motion ---- */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+}
