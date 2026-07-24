@@ -25,10 +25,14 @@ public final class StageContext {
     public IngestMode ingestMode = IngestMode.LEGACY_MULTI_FILE;
     /** Preset deal number (e.g. "01") when {@link #ingestMode} is DEAL_BUNDLE. */
     public String dealNo;
+    /** SHA-256 of merged deal-NN.pdf (deal bundle only). */
+    public String dealPdfSha;
     public String lcText;
     public final Map<DocType, byte[]> uploadedDocBytes = new LinkedHashMap<>();
     public final Map<DocType, String> uploadedDocNames = new LinkedHashMap<>();
     public final Map<DocType, String> docIds = new LinkedHashMap<>(); // docType → DB documents.id
+    /** SHA-256 of source PDF for vision cache (merged deal PDF or uploaded file). */
+    public final Map<DocType, String> cacheContentSha = new LinkedHashMap<>();
     public final List<DocType> confirmedDocTypes = new ArrayList<>(); // officer-confirmed set
 
     // Stage 1 — Parse

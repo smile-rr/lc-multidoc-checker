@@ -10,6 +10,10 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { EyebrowLabel } from '../components/ui/EyebrowLabel';
 import { PrimaryButton, GhostButton } from '../components/ui/Button';
 import { useUploadDraft } from '../context/UploadDraftContext';
+import { UploadFileRail } from '../components/upload/UploadFileRail';
+import { UploadLocalPreview } from '../components/upload/UploadLocalPreview';
+import { UploadFileRow } from '../components/upload/UploadFileRow';
+import { isUploadPreviewable, uploadPreviewKind } from '../components/upload/uploadPreview';
 
 /**
  * Stage 0 — landing page. Single job: start a check.
@@ -33,6 +37,7 @@ export function HomePage() {
   const [presetsRetryKey, setPresetsRetryKey] = useState(0);
   const [presetLoadingId, setPresetLoadingId] = useState(null);
   const [dragOver, setDragOver] = useState(false);
+  const [previewIdx, setPreviewIdx] = useState(null);
   const fileInputRef = useRef();
   const { registerDraft } = useUploadDraft();
 
@@ -109,8 +114,42 @@ export function HomePage() {
     addFiles(e.dataTransfer.files);
   }, [addFiles]);
 
-  const removeFile = (idx) => setFiles(prev => prev.filter((_, i) => i !== idx));
-  const clearAll = () => setFiles([]);
+  const removeFile = (idx) => {
+    setFiles(prev => prev.filter((_, i) => i !== idx));
+    setPreviewIdx((cur) => {
+      if (cur === null) return null;
+      if (cur === idx) return null;
+      if (cur > idx) return cur - 1;
+      return cur;
+    });
+  };
+  const clearAll = () => {
+    setFiles([]);
+    setPreviewIdx(null);
+  };
+
+  const openPreview = useCallback((idx) => {
+    if (!files[idx] || !isUploadPreviewable(files[idx])) return;
+    setPreviewIdx(idx);
+  }, [files]);
+
+  const closePreview = useCallback(() => setPreviewIdx(null), []);
+
+  useEffect(() => {
+    if (previewIdx !== null && !files[previewIdx]) setPreviewIdx(null);
+  }, [files, previewIdx]);
+
+  useEffect(() => {
+    if (previewIdx === null) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closePreview();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [previewIdx, closePreview]);
 
   // Preset click stages files into the same drop-zone list as a manual upload —
   // officer reviews the file list and clicks "Upload →" to start the run. The
@@ -170,6 +209,9 @@ export function HomePage() {
   };
 
   const hasFiles = files.length > 0;
+  const previewOpen = previewIdx !== null && files[previewIdx];
+  const previewItem = previewOpen ? files[previewIdx] : null;
+  const previewKind = previewItem ? uploadPreviewKind(previewItem) : null;
 
   return (
     <div className="h-full overflow-y-auto">
@@ -276,25 +318,41 @@ export function HomePage() {
               </PrimaryButton>
             </div>
             <div className="space-y-1">
-              {files
+              {previewOpen ? (
+                <div className="flex gap-4 min-h-[min(56vh,520px)]">
+                  <UploadFileRail
+                    files={files}
+                    selectedIdx={previewIdx}
+                    onSelect={openPreview}
+                    onRemove={removeFile}
+                  />
+                  <UploadLocalPreview
+                    file={previewItem.file}
+                    kind={previewKind}
+                    onClose={closePreview}
+                  />
+                </div>
+              ) : (
+                files
                 .map((item, idx) => ({ item, idx }))
                 .sort((a, b) => {
-                  // Order by LC review priority (LC → INV → BOL → PKL → BOE → BC → WC → rest)
                   const c = compareDocType(a.item.detectedType, b.item.detectedType);
                   if (c !== 0) return c;
-                  return a.idx - b.idx; // stable within same type
+                  return a.idx - b.idx;
                 })
-                .map(({ item, idx }) => (
-                <div key={idx} className="flex items-center gap-2 bg-paper rounded border border-line px-3 py-2">
-                  <TypeBadge type={item.detectedType} />
-                  <span className="text-[11px] text-navy-1 flex-1 truncate font-mono">{item.file.name}</span>
-                  <span className="text-[10px] text-[#a1a1a6]">{(item.file.size / 1024).toFixed(0)} KB</span>
-                  <button
-                    onClick={e => { e.stopPropagation(); removeFile(idx); }}
-                    className="text-[#a1a1a6] hover:text-status-red text-[10px]"
-                  >✕</button>
-                </div>
-              ))}
+                .map(({ item, idx }) => {
+                  const canPreview = isUploadPreviewable(item);
+                  return (
+                    <UploadFileRow
+                      key={idx}
+                      item={item}
+                      showViewHint={canPreview}
+                      onActivate={canPreview ? () => openPreview(idx) : undefined}
+                      onRemove={() => removeFile(idx)}
+                    />
+                  );
+                })
+              )}
             </div>
           </div>
         )}
@@ -313,21 +371,6 @@ export function HomePage() {
 
       </PageContainer>
     </div>
-  );
-}
-
-function TypeBadge({ type }) {
-  const isLC = type === 'LC';
-  const isUnknown = type === 'UNKNOWN' || type === 'OTHER' || type === 'TXT';
-  const cls = isLC
-    ? 'bg-teal-1/15 text-teal-1'
-    : isUnknown
-      ? 'bg-status-goldSoft text-status-gold'
-      : 'bg-status-blueSoft text-status-blue';
-  return (
-    <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 font-mono ${cls}`}>
-      {type}
-    </span>
   );
 }
 

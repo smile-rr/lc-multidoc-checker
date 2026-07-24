@@ -9,6 +9,7 @@ import com.lc.v2.checker.domain.common.FieldValue;
 import com.lc.v2.checker.domain.document.DocumentExtract;
 import com.lc.v2.checker.domain.document.OffSchemaItem;
 import com.lc.v2.checker.infra.cache.CacheKey;
+import com.lc.v2.checker.infra.cache.VisionCacheIdentity;
 import com.lc.v2.checker.infra.cache.VisionExtractCache;
 import com.lc.v2.checker.infra.config.ExtractorSlotConfig;
 import com.lc.v2.checker.infra.config.ExtractorSlotConfig.SlotEntry;
@@ -97,6 +98,12 @@ public class VisionExtractService {
      */
     public DocumentExtract extract(DocType docType, byte[] pdfBytes, String filename,
                                     String sessionId, PipelineEventBus eventBus) {
+        return extract(docType, pdfBytes, filename, sessionId, eventBus, null);
+    }
+
+    public DocumentExtract extract(DocType docType, byte[] pdfBytes, String filename,
+                                    String sessionId, PipelineEventBus eventBus,
+                                    VisionCacheIdentity cacheIdentity) {
         var entryOpt = docTypeRegistry.byDocType(docType);
         if (entryOpt.isEmpty() || entryOpt.get().extractionPrompt() == null) {
             log.warn("[VisionExtract] No extraction prompt for docType={}", docType);
@@ -116,7 +123,13 @@ public class VisionExtractService {
             return DocumentExtract.empty(docType, filename);
         }
 
-        String pdfSha256 = CacheKey.sha256Hex(pdfBytes);
+        VisionCacheIdentity identity = cacheIdentity != null ? cacheIdentity
+                : new VisionCacheIdentity(CacheKey.sha256Hex(pdfBytes), "1", filename);
+        String pdfSha = (identity.pdfSha256() != null && !identity.pdfSha256().isBlank())
+                ? identity.pdfSha256()
+                : CacheKey.sha256Hex(pdfBytes);
+        String pageFp = identity.pageFingerprint();
+        String cacheFilename = identity.filename() != null ? identity.filename() : filename;
         String promptSha256 = CacheKey.sha256Hex(promptText);
 
         // Precompute per-slot cache key + lookup. If all slots hit, skip PDF render entirely.
@@ -124,7 +137,7 @@ public class VisionExtractService {
         Map<String, VisionExtractCache.Hit> slotHit = new LinkedHashMap<>();
         for (SlotEntry slot : slots) {
             ExtractorSlotProperties p = slot.props();
-            String key = CacheKey.compose(pdfSha256, promptSha256, p.getModel(), p.getBaseUrl(),
+            String key = CacheKey.compose(pdfSha, pageFp, promptSha256, p.getModel(), p.getBaseUrl(),
                     p.getRenderDpi(), p.getMaxPages(), p.getMaxLongEdgePx(), requestShapeVersion);
             slotKey.put(slot.sourceName(), key);
             if (cacheEnabled) {
@@ -138,8 +151,8 @@ public class VisionExtractService {
         List<String> base64Pages;
         int renderedPages;
         if (allHit) {
-            log.info("[VisionExtract] all {} slot(s) cache-hit for {}; skipping render+HTTP",
-                    slots.size(), filename);
+            log.info("[VisionExtract] all {} slot(s) cache-hit for {} (pages {}); skipping render+HTTP",
+                    slots.size(), cacheFilename, pageFp);
             base64Pages = List.of();
             renderedPages = 0;
         } else {
@@ -173,7 +186,7 @@ public class VisionExtractService {
             emit(sessionId, eventBus, docType.name(), sourceName, "calling_" + slot.props().getModel());
             futures.put(sourceName, tracingAsync.supplyAsync(
                     () -> self.runSlot(sourceName, slot.props(), base64Pages, promptText, docType,
-                            sessionId, eventBus, filename, pdfSha256, promptSha256, key)));
+                            sessionId, eventBus, cacheFilename, pdfSha, pageFp, promptSha256, key)));
         }
 
         // Collect results; per-slot timeout from config
@@ -210,7 +223,7 @@ public class VisionExtractService {
 
     /** Backwards-compatible overload (no progress emission). */
     public DocumentExtract extract(DocType docType, byte[] pdfBytes, String filename) {
-        return extract(docType, pdfBytes, filename, null, null);
+        return extract(docType, pdfBytes, filename, null, null, null);
     }
 
     private static void emit(String sessionId, PipelineEventBus bus, String docType, String slot, String status) {
@@ -227,7 +240,7 @@ public class VisionExtractService {
     public FieldEnvelope runSlot(String sourceName, ExtractorSlotProperties slot,
                            List<String> base64Pages, String promptText, DocType docType,
                            String sessionId, PipelineEventBus eventBus, String docName,
-                           String pdfSha256, String promptSha256, String cacheKey) {
+                           String pdfSha256, String pageFingerprint, String promptSha256, String cacheKey) {
         // The @TracedCall aspect has opened the span and attached it as the
         // current scope. Set dynamic tags via tracer.currentSpan() — values
         // depending on per-slot args / response can't live on the annotation.
@@ -256,7 +269,7 @@ public class VisionExtractService {
             if (span != null) tagUsageAndOutput(span, responseJson);
             FieldEnvelope env = parseResponse(responseJson);
             if (cacheEnabled && cacheKey != null && !env.fields().isEmpty()) {
-                storeInCache(cacheKey, pdfSha256, promptSha256, slot, responseJson, env);
+                storeInCache(cacheKey, pdfSha256, pageFingerprint, docName, promptSha256, slot, responseJson, env);
             }
             return env;
         } catch (Exception e) {
@@ -370,7 +383,8 @@ public class VisionExtractService {
         return model != null && model.toLowerCase().startsWith("qwen");
     }
 
-    private void storeInCache(String cacheKey, String pdfSha256, String promptSha256,
+    private void storeInCache(String cacheKey, String pdfSha256, String pageFingerprint, String filename,
+                              String promptSha256,
                               ExtractorSlotProperties slot, String responseJson, FieldEnvelope env) {
         try {
             Map<String, Object> envMap = new LinkedHashMap<>();
@@ -390,7 +404,7 @@ public class VisionExtractService {
                 }
             } catch (Exception ignore) {}
 
-            cache.put(cacheKey, pdfSha256, promptSha256, slot.getModel(), slot.getBaseUrl(),
+            cache.put(cacheKey, pdfSha256, pageFingerprint, filename, promptSha256, slot.getModel(), slot.getBaseUrl(),
                     slot.getRenderDpi(), slot.getMaxPages(), slot.getMaxLongEdgePx(),
                     requestShapeVersion, responseJson, parsedEnvelopeJson, offSchemaJson,
                     pt, ct, tt);

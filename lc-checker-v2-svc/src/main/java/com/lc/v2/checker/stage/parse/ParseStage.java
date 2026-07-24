@@ -5,6 +5,8 @@ import com.lc.v2.checker.domain.common.DocType;
 import com.lc.v2.checker.domain.common.FieldEnvelope;
 import com.lc.v2.checker.domain.common.FieldValue;
 import com.lc.v2.checker.domain.document.DocumentExtract;
+import com.lc.v2.checker.infra.cache.CacheKey;
+import com.lc.v2.checker.infra.cache.VisionCacheIdentity;
 import com.lc.v2.checker.infra.observability.PipelineStage;
 import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.pipeline.Stage;
@@ -86,8 +88,9 @@ public class ParseStage implements Stage {
 
             ctx.eventBus.extractionProgress(ctx.sessionId, dt.name(), "primary", "queued");
             try {
+                VisionCacheIdentity cacheId = resolveCacheIdentity(ctx, dt, pdfBytes, filename);
                 DocumentExtract extract = visionExtractService.extract(
-                        dt, pdfBytes, filename, ctx.sessionId, ctx.eventBus);
+                        dt, pdfBytes, filename, ctx.sessionId, ctx.eventBus, cacheId);
                 if (extract.bySlot().isEmpty()) {
                     // Total failure — every enabled slot returned null
                     sessionStore.updateDocumentStatusByType(ctx.sessionId, dt.name(), "FAILED");
@@ -110,6 +113,31 @@ public class ParseStage implements Stage {
                 log.error("[{}] Extraction failed for {}: {}", ctx.sessionId, dt, e.getMessage(), e);
             }
         }
+    }
+
+    private VisionCacheIdentity resolveCacheIdentity(StageContext ctx, DocType dt,
+                                                       byte[] pdfBytes, String filename) {
+        String pdfSha = ctx.cacheContentSha.get(dt);
+        if (pdfSha == null || pdfSha.isBlank()) {
+            pdfSha = sessionStore.getFileSha256ForDocType(ctx.sessionId, dt.name());
+        }
+
+        List<Integer> dealPages = sessionStore.getDealPagesForDocType(ctx.sessionId, dt.name());
+        String pageFp;
+        if (!dealPages.isEmpty()) {
+            pageFp = CacheKey.pageFingerprint(dealPages);
+            if (ctx.dealPdfSha != null && !ctx.dealPdfSha.isBlank()) {
+                pdfSha = ctx.dealPdfSha;
+            }
+        } else {
+            Integer pageCount = sessionStore.getPageCountForDocType(ctx.sessionId, dt.name());
+            pageFp = CacheKey.pageFingerprintForPageCount(pageCount != null && pageCount > 0 ? pageCount : 1);
+        }
+
+        if (pdfSha == null || pdfSha.isBlank()) {
+            pdfSha = CacheKey.sha256Hex(pdfBytes);
+        }
+        return new VisionCacheIdentity(pdfSha, pageFp, filename);
     }
 
     private static String truncate(String s) {

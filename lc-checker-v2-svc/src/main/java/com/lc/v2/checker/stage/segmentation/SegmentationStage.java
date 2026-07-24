@@ -3,6 +3,7 @@ package com.lc.v2.checker.stage.segmentation;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lc.v2.checker.domain.common.DocType;
 import com.lc.v2.checker.domain.lc.LcParseResult;
+import com.lc.v2.checker.infra.cache.CacheKey;
 import com.lc.v2.checker.infra.fields.DocTypeRegistry;
 import com.lc.v2.checker.infra.persistence.SessionStore;
 import com.lc.v2.checker.infra.storage.DealPdfStore;
@@ -99,9 +100,12 @@ public class SegmentationStage implements Stage {
             byte[] bytes = ctx.uploadedDocBytes.get(docType);
 
             int pageCount = countPages(bytes);
+            String contentSha = (bytes != null && bytes.length > 0) ? CacheKey.sha256Hex(bytes) : null;
             String docId = sessionStore.createDocument(
-                    ctx.sessionId, docType, filename, pageCount, null, docTypeRegistry.descFor(docType));
+                    ctx.sessionId, docType, filename, pageCount, null,
+                    docTypeRegistry.descFor(docType), contentSha);
             ctx.docIds.put(docType, docId);
+            if (contentSha != null) ctx.cacheContentSha.put(docType, contentSha);
 
             // Persist to S3 first, then hot-cache (S3FileStore.put handles both).
             if (bytes != null && bytes.length > 0) {
@@ -149,6 +153,9 @@ public class SegmentationStage implements Stage {
 
         dealPdfStore.put(ctx.sessionId, dealPdf);
 
+        String dealPdfSha = CacheKey.sha256Hex(dealPdf);
+        ctx.dealPdfSha = dealPdfSha;
+
         int pages;
         try {
             pages = dealPdfSplitter.pageCount(dealPdf);
@@ -160,6 +167,7 @@ public class SegmentationStage implements Stage {
             Map<String, Object> meta = new LinkedHashMap<>();
             meta.put("pageCount", pages);
             meta.put("filename", dealFilename);
+            meta.put("sha256", dealPdfSha);
             meta.put("kind", "pdf");
             sessionStore.upsertPipelineStep(ctx.sessionId, STAGE, "deal_pdf",
                     "SUCCESS", objectMapper.writeValueAsString(meta), null, null);
@@ -197,9 +205,11 @@ public class SegmentationStage implements Stage {
             int pageCount = countPages(pdf);
             String desc = seg.desc() != null && !seg.desc().isBlank()
                     ? seg.desc() : docTypeRegistry.descFor(docType);
+            String contentSha = dealPdfSha;
             String docId = sessionStore.createDocument(
-                    ctx.sessionId, docType, filename, pageCount, List.copyOf(seg.pages()), desc);
+                    ctx.sessionId, docType, filename, pageCount, List.copyOf(seg.pages()), desc, contentSha);
             ctx.docIds.put(docType, docId);
+            ctx.cacheContentSha.put(docType, contentSha);
             ctx.uploadedDocBytes.put(docType, pdf);
             ctx.uploadedDocNames.put(docType, filename);
             s3Store.put(docId, pdf);

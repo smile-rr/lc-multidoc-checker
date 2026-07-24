@@ -336,6 +336,10 @@ public class PipelineService {
             if (idObj != null) ctx.docIds.put(dt, idObj.toString());
             Object name = d.get("original_filename");
             if (name != null) ctx.uploadedDocNames.put(dt, name.toString());
+            Object sha = d.get("file_sha256");
+            if (sha != null && !sha.toString().isBlank()) {
+                ctx.cacheContentSha.put(dt, sha.toString());
+            }
             if (Boolean.TRUE.equals(d.get("confirmed_by_officer"))) {
                 ctx.confirmedDocTypes.add(dt);
             }
@@ -349,6 +353,19 @@ public class PipelineService {
                     log.warn("[{}] PDF re-load for doc {} failed: {}",
                             sessionId, idObj, e.getMessage());
                 }
+            }
+        }
+        String dealPdfJson = sessionStore.getPipelineStepResult(sessionId, "segmentation", "deal_pdf");
+        if (dealPdfJson != null && !dealPdfJson.isBlank()) {
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> dealMeta = objectMapper.readValue(dealPdfJson, Map.class);
+                Object sha = dealMeta.get("sha256");
+                if (sha != null && !sha.toString().isBlank()) {
+                    ctx.dealPdfSha = sha.toString();
+                }
+            } catch (Exception e) {
+                log.warn("[{}] deal PDF sha rehydration failed: {}", sessionId, e.getMessage());
             }
         }
         Map<String, Object> lcRow = sessionStore.getLcParse(sessionId);

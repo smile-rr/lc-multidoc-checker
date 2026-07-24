@@ -12,9 +12,9 @@ import org.springframework.stereotype.Component;
  * JDBC repo for {@code lc_v3.vision_extract_cache}. Stores per-slot raw VLM responses
  * keyed by the deterministic input hash composed in {@link CacheKey}.
  *
- * <p>Self-heals on startup: runs idempotent CREATE TABLE / ADD COLUMN / CREATE INDEX
- * so a fresh DB or one missing the latest column boots up correctly without an
- * out-of-band migration step.
+ * <p>Human-readable columns {@code filename} and {@code page_numbers} sit next to
+ * {@code pdf_sha256} for SQL inspection; only pdf_sha256 + page_numbers (with prompt/model/render)
+ * participate in {@code cache_key}.</p>
  */
 @Component
 public class VisionExtractCache {
@@ -36,6 +36,8 @@ public class VisionExtractCache {
                     CREATE TABLE IF NOT EXISTS lc_v3.vision_extract_cache (
                       cache_key         TEXT PRIMARY KEY,
                       pdf_sha256        TEXT NOT NULL,
+                      filename          TEXT,
+                      page_numbers      TEXT,
                       prompt_sha256     TEXT NOT NULL,
                       model             TEXT NOT NULL,
                       base_url          TEXT NOT NULL,
@@ -60,8 +62,31 @@ public class VisionExtractCache {
                       ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ
                     """);
             jdbc.execute("""
+                    ALTER TABLE lc_v3.vision_extract_cache
+                      ADD COLUMN IF NOT EXISTS filename TEXT
+                    """);
+            jdbc.execute("""
+                    ALTER TABLE lc_v3.vision_extract_cache
+                      ADD COLUMN IF NOT EXISTS page_numbers TEXT
+                    """);
+            // Legacy deploys used page_fingerprint — copy once if present.
+            try {
+                jdbc.execute("""
+                        UPDATE lc_v3.vision_extract_cache
+                        SET page_numbers = page_fingerprint
+                        WHERE page_numbers IS NULL
+                          AND page_fingerprint IS NOT NULL
+                        """);
+            } catch (Exception ignored) {
+                // page_fingerprint column may not exist
+            }
+            jdbc.execute("""
                     CREATE INDEX IF NOT EXISTS ix_vec_pdf_model
                       ON lc_v3.vision_extract_cache (pdf_sha256, model)
+                    """);
+            jdbc.execute("""
+                    CREATE INDEX IF NOT EXISTS ix_vec_pdf_pages
+                      ON lc_v3.vision_extract_cache (pdf_sha256, page_numbers)
                     """);
             jdbc.execute("""
                     CREATE INDEX IF NOT EXISTS ix_vec_expires_at
@@ -98,7 +123,8 @@ public class VisionExtractCache {
     }
 
     public void put(String cacheKey,
-                    String pdfSha256, String promptSha256,
+                    String pdfSha256, String pageFingerprint, String filename,
+                    String promptSha256,
                     String model, String baseUrl,
                     int renderDpi, int maxPages, Integer maxLongEdge,
                     int requestShapeVersion,
@@ -110,14 +136,17 @@ public class VisionExtractCache {
                     : "NULL";
             String sql = """
                     INSERT INTO lc_v3.vision_extract_cache
-                      (cache_key, pdf_sha256, prompt_sha256, model, base_url,
-                       render_dpi, max_pages, max_long_edge, request_shape_v,
+                      (cache_key, pdf_sha256, filename, page_numbers, prompt_sha256,
+                       model, base_url, render_dpi, max_pages, max_long_edge, request_shape_v,
                        raw_response, parsed_envelope, off_schema_raw,
                        prompt_tokens, completion_tokens, total_tokens,
                        created_at, expires_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb, ?, ?, ?,
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb, ?, ?, ?,
                             NOW(), %s)
                     ON CONFLICT (cache_key) DO UPDATE SET
+                      pdf_sha256        = EXCLUDED.pdf_sha256,
+                      filename          = EXCLUDED.filename,
+                      page_numbers      = EXCLUDED.page_numbers,
                       raw_response    = EXCLUDED.raw_response,
                       parsed_envelope = EXCLUDED.parsed_envelope,
                       off_schema_raw  = EXCLUDED.off_schema_raw,
@@ -129,15 +158,15 @@ public class VisionExtractCache {
 
             if (ttlDays > 0) {
                 jdbc.update(sql,
-                        cacheKey, pdfSha256, promptSha256, model, baseUrl,
-                        renderDpi, maxPages, maxLongEdge, requestShapeVersion,
+                        cacheKey, pdfSha256, pageFingerprint, filename, promptSha256,
+                        model, baseUrl, renderDpi, maxPages, maxLongEdge, requestShapeVersion,
                         rawResponseJson, parsedEnvelopeJson, offSchemaJson,
                         promptTokens, completionTokens, totalTokens,
                         String.valueOf(ttlDays));
             } else {
                 jdbc.update(sql,
-                        cacheKey, pdfSha256, promptSha256, model, baseUrl,
-                        renderDpi, maxPages, maxLongEdge, requestShapeVersion,
+                        cacheKey, pdfSha256, pageFingerprint, filename, promptSha256,
+                        model, baseUrl, renderDpi, maxPages, maxLongEdge, requestShapeVersion,
                         rawResponseJson, parsedEnvelopeJson, offSchemaJson,
                         promptTokens, completionTokens, totalTokens);
             }

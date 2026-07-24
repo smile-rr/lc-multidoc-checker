@@ -6,6 +6,7 @@ import com.lc.v2.checker.domain.common.DocType;
 import com.lc.v2.checker.pipeline.PipelineStageId;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -190,17 +191,81 @@ public class SessionStore {
     public String createDocument(String sessionId, DocType docType,
                                   String originalFilename, int pageCount,
                                   List<Integer> dealTiffPages, String docTypeDesc) {
+        return createDocument(sessionId, docType, originalFilename, pageCount,
+                dealTiffPages, docTypeDesc, null);
+    }
+
+    /**
+     * @param fileSha256 vision-cache content identity (see {@link com.lc.v2.checker.infra.cache.CacheKey})
+     */
+    public String createDocument(String sessionId, DocType docType,
+                                  String originalFilename, int pageCount,
+                                  List<Integer> dealTiffPages, String docTypeDesc,
+                                  String fileSha256) {
         String docId = UUID.randomUUID().toString();
         boolean autoConfirmed = docType != DocType.UNKNOWN;
         String pagesJson = toJsonIntList(dealTiffPages);
         jdbc.update("""
                 INSERT INTO lc_v3.documents
-                  (id, session_id, doc_type, original_filename, page_count, deal_tiff_pages,
-                   doc_type_desc, parse_status, confirmed_by_officer, created_at)
-                VALUES (?::uuid, ?::uuid, ?, ?, ?, ?::jsonb, ?, 'PENDING', ?, NOW())
-                """, docId, sessionId, docType.name(), originalFilename, pageCount, pagesJson,
+                  (id, session_id, doc_type, original_filename, file_sha256, page_count,
+                   deal_tiff_pages, doc_type_desc, parse_status, confirmed_by_officer, created_at)
+                VALUES (?::uuid, ?::uuid, ?, ?, ?, ?, ?::jsonb, ?, 'PENDING', ?, NOW())
+                """, docId, sessionId, docType.name(), originalFilename, fileSha256, pageCount, pagesJson,
                 docTypeDesc, autoConfirmed);
         return docId;
+    }
+
+    public String getFileSha256ForDocType(String sessionId, String docType) {
+        try {
+            return jdbc.queryForObject("""
+                    SELECT file_sha256 FROM lc_v3.documents
+                    WHERE session_id = ?::uuid AND doc_type = ?
+                    """, String.class, sessionId, docType);
+        } catch (org.springframework.dao.EmptyResultDataAccessException e) {
+            return null;
+        }
+    }
+
+    public Integer getPageCountForDocType(String sessionId, String docType) {
+        try {
+            return jdbc.queryForObject("""
+                    SELECT page_count FROM lc_v3.documents
+                    WHERE session_id = ?::uuid AND doc_type = ?
+                    """, Integer.class, sessionId, docType);
+        } catch (org.springframework.dao.EmptyResultDataAccessException e) {
+            return null;
+        }
+    }
+
+    /** 1-based bundle page list for deal segments; empty for legacy uploads. */
+    public List<Integer> getDealPagesForDocType(String sessionId, String docType) {
+        try {
+            String json = jdbc.queryForObject("""
+                    SELECT deal_tiff_pages::text FROM lc_v3.documents
+                    WHERE session_id = ?::uuid AND doc_type = ?
+                    """, String.class, sessionId, docType);
+            return parseIntListJson(json);
+        } catch (org.springframework.dao.EmptyResultDataAccessException e) {
+            return List.of();
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
+    private static List<Integer> parseIntListJson(String json) {
+        if (json == null || json.isBlank() || "null".equals(json)) return List.of();
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.JsonNode node = om.readTree(json);
+            if (!node.isArray()) return List.of();
+            List<Integer> out = new ArrayList<>();
+            for (com.fasterxml.jackson.databind.JsonNode n : node) {
+                if (n.isNumber()) out.add(n.intValue());
+            }
+            return List.copyOf(out);
+        } catch (Exception e) {
+            return List.of();
+        }
     }
 
     public void updateDocumentStatusByType(String sessionId, String docType, String parseStatus) {
@@ -217,8 +282,8 @@ public class SessionStore {
 
     public List<Map<String, Object>> getDocuments(String sessionId) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
-                SELECT id, doc_type, doc_type_desc, original_filename, parse_status, page_count,
-                       deal_tiff_pages, confirmed_by_officer, created_at
+                SELECT id, doc_type, doc_type_desc, original_filename, file_sha256, parse_status,
+                       page_count, deal_tiff_pages, confirmed_by_officer, created_at
                 FROM   lc_v3.documents WHERE session_id = ?::uuid ORDER BY created_at
                 """, sessionId);
         rows.forEach(this::normalizeDocumentRow);

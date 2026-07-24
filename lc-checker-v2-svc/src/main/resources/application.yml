@@ -131,14 +131,15 @@ extractor:
   confidence-threshold: 0.80
 
 # --- Vision-extract result cache ---------------------------------------------
-# Skips PDF render + VLM HTTP when same (pdf, prompt, model, base-url, render
-# params) repeats. Bump request-shape-version when callVlm body shape changes.
-# Schema is auto-created on startup (CREATE TABLE IF NOT EXISTS).
-# ttl-days: lifetime of new entries (≤ 0 = never expire). Lookup ignores expired rows.
+# Skips PDF render + VLM HTTP when same (pdf_sha + page_fingerprint + prompt + model
+# + base-url + render params) repeats. Bump request-shape-version when key shape changes.
+# pdf_sha: merged deal-NN.pdf (deal bundle) or uploaded file (legacy).
+# page_numbers: bundle page(s) e.g. 1, 2-3; legacy whole file 1 or 1-N.
+# filename: stored for human SQL inspection only (not in cache_key).
 vision:
   cache:
     enabled: true
-    request-shape-version: 1
+    request-shape-version: 2
     ttl-days: 90
 
 # --- File storage (MinIO — shared with v1, separate bucket/prefix) -----------
