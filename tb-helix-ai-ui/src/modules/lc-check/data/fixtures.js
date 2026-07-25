@@ -1128,34 +1128,41 @@ export const INTAKE_SLOTS = [
 ]
 
 /**
- * How the pre-check is performing.
+ * How the automated examination is performing.
  *
- * Framed entirely from the system's own side. There is deliberately no
- * comparison against examiners here: this is a pre-check assistant, it decides
- * nothing, and a panel that scores it against the people who sign the work would
- * be both wrong about what it does and unusable in the room where it is shown.
+ * Framed from the system's own side — no comparison against examiners. This is an
+ * assistant that decides nothing, and scoring it against the people who sign the
+ * work would misdescribe it.
  *
- * So value is stated as what the assistant delivers and what it avoids spending:
+ * ON MEASURING ACCURACY
+ * ---------------------
+ * A discrepancy checker is a detector, so it has the four outcomes a detector
+ * has. Three of them are worth counting:
  *
- *   · TURNAROUND — how quickly a case reaches a state someone can review, and
- *     how much room is left in the five banking days UCP 600 art. 14(b) allows.
- *     Speed matters up to a comfortable window and not after, so the figure is
- *     headroom rather than raw speed.
+ *   truePositive   we raised it, review agreed it was real
+ *   falsePositive  we raised it, review set it aside — costs attention
+ *   falseNegative  it was real and we did not raise it — costs money
  *
- *   · REUSE — work the system did not have to redo. The vision extract cache
- *     serves a document that has been read before without re-rendering or
- *     re-calling the model, and prompt caching discounts repeated context. Both
- *     are real money not spent, measurable without reference to anyone's time.
+ * The fourth, the true negative, is every check that correctly found nothing.
+ * There are thousands, and including them is how you get a meaningless "99.8%
+ * accurate": plain accuracy is dominated by the outcome nobody cares about. So
+ * the panel reports precision and recall instead, and never the word accuracy.
  *
- *   · QUALITY — split by direction. A false alarm costs review effort. A miss is
- *     the expensive one: under UCP 600 art. 16(f) a bank that fails to give
- *     notice of refusal in time is precluded from calling the documents
- *     non-compliant. One number averaging the two would hide it.
+ *   precision = TP / (TP + FP)   of what we raised, how much stood
+ *   recall    = TP / (TP + FN)   of what was real, how much we caught
  *
- * These come from the service in production; the shape is what matters here.
+ * The two are not equally important here, and the panel says which. A false
+ * positive costs an officer a few minutes. A false negative can cost the value of
+ * the drawing: under UCP 600 art. 16(f) a bank that fails to give notice of
+ * refusal in time is precluded from claiming the documents are non-compliant. So
+ * recall is the number to defend, and precision is the number to improve.
+ *
+ * Previous period is carried so movement is visible. A single month's precision
+ * says nothing about whether the rulebook is getting better.
  */
 export const AI_PERFORMANCE = {
   period: 'Last 30 days',
+  previousPeriod: 'previous 30 days',
 
   // Turnaround, against the art. 14(b) window.
   examinationWindowDays: 5,
@@ -1166,14 +1173,36 @@ export const AI_PERFORMANCE = {
   documentsReused: 37,
   documentsRead: 61,
 
-  // Quality, by direction.
-  findingsReviewed: 417,
-  upheld: 383,
-  overturned: 34,
-  missed: 3,
-  missedNote: 'two insurance cover, one charter-party wording',
-  overturnedTopCause: 'insurance cover',
-  conditionsCoveredPct: 86,
+  // Detector outcomes, this period and last.
+  quality: {
+    current: {
+      truePositive: 383,
+      falsePositive: 34,
+      falseNegative: 3,
+      conditionsCoveredPct: 86,
+      falseNegativeNote: 'two insurance cover, one charter-party wording',
+      falsePositiveTopCause: 'insurance cover',
+    },
+    previous: {
+      truePositive: 341,
+      falsePositive: 47,
+      falseNegative: 6,
+      conditionsCoveredPct: 79,
+    },
+  },
+}
+
+/** precision, recall and F1 from a period's counts. */
+export function qualityRates({ truePositive: tp, falsePositive: fp, falseNegative: fn }) {
+  const precision = tp + fp ? tp / (tp + fp) : 0
+  const recall = tp + fn ? tp / (tp + fn) : 0
+  return {
+    precision,
+    recall,
+    f1: precision + recall ? (2 * precision * recall) / (precision + recall) : 0,
+    raised: tp + fp,
+    actual: tp + fn,
+  }
 }
 
 export const ASK_SUGGESTIONS = [

@@ -520,10 +520,35 @@ So value is stated from the system's own side:
   model, and prompt caching discounts repeated context. `costAvoided` is derived
   from the same usage as the spend, so the two reconcile — an avoided figure
   nobody can check is worth nothing.
-- **Quality stays split by direction.** A false alarm costs attention. A miss is
-  the expensive one: under art. 16(f) a refusal window missed is a refusal right
-  lost. One averaged number would hide it, so misses keep their own line, colour
-  and emphasis.
+- **Quality is measured as a detector, and never as "accuracy".** A discrepancy
+  checker has the four outcomes a detector has, and three are worth counting:
+  true positives (raised, upheld), false positives (raised, set aside) and false
+  negatives (real, missed). The fourth — every check that correctly found
+  nothing — numbers in the thousands, so plain accuracy is dominated by the
+  outcome nobody cares about and would read **99%** while three real
+  discrepancies went out the door. So the panel reports:
+
+  ```
+  precision = TP / (TP + FP)   92%  +4.0 pts   of what we raised, what stood
+  recall    = TP / (TP + FN)   99%  +1.0 pts   of what was real, what we caught
+  ```
+
+  The two are not equally important and the panel says so: a false positive
+  costs an officer minutes, a false negative can cost the drawing, because
+  art. 16(f) turns a missed refusal window into a lost refusal right. Recall is
+  the number to defend; precision is the number to improve.
+
+- **Every figure carries the previous period.** One month's precision says
+  nothing about whether the rulebook is improving. `Delta` inverts its colour for
+  lower-is-better measures — a falling false-positive count is good news and a
+  falling recall is not, and getting that backwards would be worse than showing
+  no trend at all.
+
+- **Every value has a tooltip explaining what it measures.** An unexplained
+  metric in a governance panel is worse than no metric: someone will quote it in
+  a meeting having guessed at the definition. *Presentation to decision*, for
+  instance, is elapsed end-to-end time including queueing and review — not
+  machine time — and only the tooltip can say that.
 
 ### Deleting a check is usually the wrong answer
 
