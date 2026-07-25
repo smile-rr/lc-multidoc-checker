@@ -1,5 +1,8 @@
-# LC Checker v3 — E2E Flow
+# LC Check — Product Design
 
+> The first product on the Helix AI Solution. Platform design in [`README.md`](README.md);
+> everything below is LC-specific — the rules, the tiers, the rollout.
+>
 > **Agents**: start with [`AGENTS.md`](AGENTS.md) · **Humans**: [`Local-Startup.md`](Local-Startup.md)
 
 ## Quick Start (Mac Dev)
