@@ -25,7 +25,7 @@ gates — a service that needs no orchestration should not inherit one.
 ---
 
 ![What each service declares](docs/diagrams/helix-ai-svc.png)
-https://claude.ai/share/3e621f0a-0c18-4fd2-90b8-2503c3fe9a06
+
 With the Core carrying the loop, the context and the routing, a service is a flow, a set of agents,
 and the shapes it returns.
 
