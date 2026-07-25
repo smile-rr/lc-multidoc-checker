@@ -1,0 +1,98 @@
+@import './tokens.css';
+
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  height: 100%;
+}
+
+/* Reserve the scrollbar's gutter at all times.
+   Without this, anything that grows the page — expanding a decision row, a run
+   returning findings, a facts strip rewrapping — makes the scrollbar appear, the
+   viewport narrow by its width, and every column shift sideways. Reserving the
+   space means content never moves because of a scrollbar. */
+html {
+  scrollbar-gutter: stable;
+}
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--me-ink);
+  background: var(--me-grey-08);
+}
+a {
+  color: var(--me-blue);
+  text-decoration: none;
+}
+a:hover {
+  color: var(--me-blue-deep);
+}
+.lucide {
+  stroke-width: 1.75;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--me-grey-20);
+  border-radius: 6px;
+}
+textarea,
+input,
+select,
+button {
+  font-family: inherit;
+}
+button {
+  font-family: var(--font-sans);
+}
+
+/* Inline-editable text: looks like plain text, reveals it's editable on hover,
+   and shows a light field on focus. Used across the Dictionary. */
+.inline-edit {
+  border: 1px solid transparent;
+  background: transparent;
+  outline: none;
+  border-radius: 6px;
+  transition: background 0.12s, border-color 0.12s;
+}
+.inline-edit:hover {
+  background: var(--me-grey-08);
+}
+.inline-edit:focus {
+  background: #fff;
+  border-color: var(--me-grey-20);
+}
+.inline-edit::placeholder {
+  color: var(--me-grey-50);
+}
+
+/* Shared motion. Screens fade-and-rise on entry so a step change reads as a
+   move rather than a repaint; the spinner is the only looping animation. */
+@keyframes helix-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes helix-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.helix-screen {
+  animation: helix-in 260ms var(--ease-standard);
+}
+@media (prefers-reduced-motion: reduce) {
+  .helix-screen {
+    animation: none;
+  }
+}

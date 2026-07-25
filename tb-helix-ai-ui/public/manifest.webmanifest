@@ -1,0 +1,14 @@
+{
+  "name": "TB Helix AI",
+  "short_name": "Helix",
+  "description": "Trade-finance AI workbench — letter of credit examination and check governance.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f2f2f2",
+  "theme_color": "#1b1c1e",
+  "icons": [
+    { "src": "/favicon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any" },
+    { "src": "/icon-192.png", "type": "image/png", "sizes": "192x192" },
+    { "src": "/icon-512.png", "type": "image/png", "sizes": "512x512" }
+  ]
+}

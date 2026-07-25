@@ -4,13 +4,15 @@
 #   make db                    Postgres in Docker (Colima) on :5432
 #   make svc                   Spring Boot on :9082 (foreground)
 #   make ui                    Vite dev server on :5173 (foreground)
+#   make helix                 TB Helix AI UI on :5174 (foreground)
 #   make all                   db + svc + ui in background
 #
 # Stop:
 #   make db-down               stop Postgres container
 #   make svc-down              kill :9082
 #   make ui-down               kill :5173
-#   make all-down              stop svc + ui (keeps db running)
+#   make helix-down            kill :5174
+#   make all-down              stop svc + ui + helix (keeps db running)
 #   make down                  stop everything (svc + ui + db)
 #
 # Docker production (Ubuntu only — infra/docker-compose.yml):
@@ -25,6 +27,7 @@
 # | db               | make db           | make db-down     |  5432 | postgres://localhost:5432   |
 # | svc (dev)        | make svc          | make svc-down    |  9082 | http://127.0.0.1:9082       |
 # | ui  (dev)        | make ui           | make ui-down     |  5173 | http://127.0.0.1:5173       |
+# | helix (dev)      | make helix        | make helix-down  |  5174 | http://127.0.0.1:5174       |
 # +------------------+-------------------+------------------+-------+-----------------------------+
 
 SHELL    := /bin/bash
@@ -33,10 +36,12 @@ COMPOSE  := docker compose --project-directory . -f infra/docker-compose.yml
 
 SVC_DIR  := lc-checker-v2-svc
 UI_DIR   := ui
+HELIX_DIR  := tb-helix-ai-ui
 LOG_DIR  := /tmp/lc-checker-v2
 
 SVC_PORT     := 9082
 UI_DEV_PORT  := 5173
+HELIX_PORT   := 5174
 DB_CONTAINER := lc-checker-postgres
 DB_IMAGE     := postgres:16-alpine
 DB_PORT      := 5432
@@ -186,6 +191,33 @@ _ui-install:
 	 fi
 
 # ---------------------------------------------------------------------------
+# helix — TB Helix AI UI: platform shell + lc-check + governance modules
+# ---------------------------------------------------------------------------
+helix: _helix-install  ## start TB Helix AI UI (foreground) — http://127.0.0.1:5174
+	@echo "→ helix on :$(HELIX_PORT) → http://127.0.0.1:$(HELIX_PORT)   (Ctrl-C to stop)"
+	@cd $(HELIX_DIR) && npm run dev
+
+helix-bg: $(LOG_DIR) _helix-install  ## start TB Helix AI UI in background (log → /tmp/lc-checker-v2/helix.log)
+	@$(MAKE) --no-print-directory helix-down 2>/dev/null || true
+	@(cd $(HELIX_DIR) && nohup npm run dev > $(LOG_DIR)/helix.log 2>&1 &) \
+	  && echo "✓ helix bg → http://127.0.0.1:$(HELIX_PORT)    (log: $(LOG_DIR)/helix.log)"
+
+helix-down:  ## stop TB Helix AI UI (kills :5174)
+	@pid=$$(lsof -ti tcp:$(HELIX_PORT) 2>/dev/null); \
+	  if [ -n "$$pid" ]; then kill $$pid && echo "✓ helix stopped (pid $$pid)"; \
+	  else echo "  (helix not running on :$(HELIX_PORT))"; fi
+
+helix-build: _helix-install  ## production build → tb-helix-ai-ui/dist
+	@cd $(HELIX_DIR) && npm run build
+
+_helix-install:
+	@if [ ! -d $(HELIX_DIR)/node_modules ]; then \
+	   echo "→ installing $(HELIX_DIR) dependencies…"; \
+	   cd $(HELIX_DIR) && npm install --silent; \
+	   echo "✓ $(HELIX_DIR) ready"; \
+	 fi
+
+# ---------------------------------------------------------------------------
 # all / all-down — both dev servers in background
 # ---------------------------------------------------------------------------
 $(LOG_DIR):
@@ -204,9 +236,10 @@ all: db $(LOG_DIR) _ui-install  ## start db + svc + ui in background (logs → /
 	@echo "  stop:    make all-down   (keeps db)  |  make down   (stop all incl. db)"
 	@echo "  status:  make status"
 
-all-down:  ## stop svc + ui (postgres container left running)
+all-down:  ## stop svc + ui + helix (postgres container left running)
 	@$(MAKE) --no-print-directory svc-down
 	@$(MAKE) --no-print-directory ui-down
+	@$(MAKE) --no-print-directory helix-down
 
 down: all-down db-down  ## stop everything — svc + ui + postgres
 
@@ -301,7 +334,8 @@ status:  ## show port-listen status for db + svc + ui
 	 if command -v nc >/dev/null 2>&1 && nc -z -w 2 "$$db_host" "$$db_port" 2>/dev/null; then db_state="✓ up"; else db_state="·"; fi; \
 	 printf '  %-12s %-20s %-8s %s\n' "postgres" "$$db_host:$$db_port" "$$db_state" "postgres://$$db_host:$$db_port"; \
 	 for entry in "svc:$(SVC_PORT):http://127.0.0.1:$(SVC_PORT)" \
-	              "ui:$(UI_DEV_PORT):http://127.0.0.1:$(UI_DEV_PORT)"; do \
+	              "ui:$(UI_DEV_PORT):http://127.0.0.1:$(UI_DEV_PORT)" \
+	              "helix:$(HELIX_PORT):http://127.0.0.1:$(HELIX_PORT)"; do \
 	   name=$$(echo "$$entry" | cut -d: -f1); \
 	   port=$$(echo "$$entry" | cut -d: -f2); \
 	   url=$$(echo "$$entry"  | cut -d: -f3-); \
@@ -336,6 +370,7 @@ langfuse-auth:  ## derive LANGFUSE_AUTH_BASIC from .env keys and write it back
         _ensure-docker db db-wait db-down db-reinit db-sessions-clean \
         svc svc-watch svc-down svc-wait \
         ui ui-down _ui-install \
+        helix helix-bg helix-down helix-build _helix-install \
         all all-down down \
         dep-svc dep-svc-wait dep-ui dep-ui-wait dep-all dep-svc-down dep-ui-down \
         status health pull langfuse-auth
