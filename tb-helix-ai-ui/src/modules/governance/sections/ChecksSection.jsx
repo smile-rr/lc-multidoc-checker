@@ -29,7 +29,7 @@ export default function ChecksSection({ v }) {
       {v.isChecksList ? (
         <div style={listWrap}>
           <div style={{ ...CHECKS_COLS, ...listHead }}>
-            <span /><span>ID</span><span>Check</span><span>Severity</span><span>In agent</span><span />
+            <span /><span>ID</span><span>Check</span><span>Severity</span><span>In Agent</span><span />
           </div>
           {v.libChecks.map((check) => (
             <CheckRow key={check.id} check={check} />

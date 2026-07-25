@@ -20,19 +20,19 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
     <Drawer
       open={open}
       onClose={onClose}
-      title="Run cost"
+      title="Run Cost"
       subtitle={finished ? `Complete · ${stepCount} steps` : started ? `Running · ${completedCount} of ${stepCount} steps` : 'Not started'}
       width={560}
     >
       {!started ? (
-        <Section name="Not started">
+        <Section name="Not Started">
           <Empty>Nothing has run on this case yet. Start the review and the cost appears here as each step returns.</Empty>
         </Section>
       ) : (
         <>
           <Section name="Totals">
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-              <Metric label="Wall clock" value={duration(cost.wallClock)} note={`${duration(cost.seconds)} of agent time, 1.8× parallel`} />
+              <Metric label="Wall Clock" value={duration(cost.wallClock)} note={`${duration(cost.seconds)} of agent time, 1.8× parallel`} />
               <Metric label="Tokens" value={thousands(cost.tokens, 1)} note={`${thousands(cost.tokensIn)} in · ${thousands(cost.tokensOut, 1)} out`} />
               <Metric label="Cost" value={usd(cost.cost)} note={finished ? `${usd(cost.costPerPage)} per page` : 'so far'} />
             </div>
@@ -50,7 +50,7 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
 
           {cost.byModel.length ? (
             <Section
-              name="By model"
+              name="By Model"
               note="GPT-4o reads the pages, Qwen plans and routes, Sonnet applies the rules. Their prices differ by an order of magnitude, so the total on its own says little."
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -61,12 +61,12 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
             </Section>
           ) : null}
 
-          <Section name="By step" note="Every step of the run, in order.">
+          <Section name="By Step" note="Every step of the run, in order.">
             <StepList cost={cost} completedCount={completedCount} />
           </Section>
 
           {modelSummary ? (
-            <Section name="Run detail" last>
+            <Section name="Run Detail" last>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)', lineHeight: 1.7 }}>{modelSummary}</span>
               <div style={{ marginTop: 8, fontSize: 12, color: 'var(--me-grey-70)' }}>Charged to the trade-finance AI budget.</div>
             </Section>

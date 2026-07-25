@@ -14,12 +14,12 @@ import lc03 from './lc-03.txt?raw'
 
 /** Doc-type codes used by the manifests, with display metadata. */
 export const DOC_TYPES = {
-  INV: { docType: 'Commercial invoice', abbr: 'IN', icon: 'receipt' },
-  BOL: { docType: 'Bill of lading', abbr: 'BL', icon: 'ship' },
-  PKL: { docType: 'Packing list', abbr: 'PL', icon: 'package' },
-  BOE: { docType: 'Bill of exchange', abbr: 'BE', icon: 'banknote' },
-  BC: { docType: "Beneficiary's certificate", abbr: 'BC', icon: 'pen-line' },
-  WC: { docType: 'Warranty certificate', abbr: 'WC', icon: 'shield-check' },
+  INV: { docType: 'Commercial Invoice', abbr: 'IN', icon: 'receipt' },
+  BOL: { docType: 'Bill of Lading', abbr: 'BL', icon: 'ship' },
+  PKL: { docType: 'Packing List', abbr: 'PL', icon: 'package' },
+  BOE: { docType: 'Bill of Exchange', abbr: 'BE', icon: 'banknote' },
+  BC: { docType: "Beneficiary's Certificate", abbr: 'BC', icon: 'pen-line' },
+  WC: { docType: 'Warranty Certificate', abbr: 'WC', icon: 'shield-check' },
 }
 
 /** Segment order is the physical page order in the bundle. */

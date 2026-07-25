@@ -25,11 +25,11 @@ import { checkSpec, buildExecutionPlan } from './checkSpecs.js'
 
 const AREAS = [
   { id: 'a1', name: 'Requirements', kind: 'domain', wave: 1, purpose: 'Settles what the credit calls for. Everything else is measured against this.' },
-  { id: 'a2', name: 'Presentation & completeness', kind: 'domain', wave: 2, purpose: 'Every required document there, in the right originals, signed.' },
-  { id: 'a3', name: 'Dates & shipment', kind: 'domain', wave: 2, purpose: 'On-board date, presentation period, expiry.' },
-  { id: 'a4', name: 'Goods, amounts & tolerance', kind: 'domain', wave: 2, purpose: 'Description, quantity, price and drawn amount against the credit.' },
-  { id: 'a5', name: 'General review', kind: 'main', wave: 3, purpose: 'Reads the whole set together the way a checker would — anything no single area owns.' },
-  { id: 'a6', name: 'Sanctions & parties', kind: 'policy', wave: 2, purpose: 'Screens parties, vessel and ports. Run again at payment.' },
+  { id: 'a2', name: 'Presentation & Completeness', kind: 'domain', wave: 2, purpose: 'Every required document there, in the right originals, signed.' },
+  { id: 'a3', name: 'Dates & Shipment', kind: 'domain', wave: 2, purpose: 'On-board date, presentation period, expiry.' },
+  { id: 'a4', name: 'Goods, Amounts & Tolerance', kind: 'domain', wave: 2, purpose: 'Description, quantity, price and drawn amount against the credit.' },
+  { id: 'a5', name: 'General Review', kind: 'main', wave: 3, purpose: 'Reads the whole set together the way a checker would — anything no single area owns.' },
+  { id: 'a6', name: 'Sanctions & Parties', kind: 'policy', wave: 2, purpose: 'Screens parties, vessel and ports. Run again at payment.' },
 ]
 
 // ---- Check catalogue -------------------------------------------------------
@@ -121,11 +121,11 @@ const RUN_STEPS = [
   { id: 'r2', name: 'Plan the review', role: 'planner · picks areas & order', model: 'qwen3-32b', calls: 1, seconds: 7.5, tokensIn: 11000, tokensOut: 1700, cachePct: 0, retries: 0 },
   { id: 'r3', name: 'Run the plan', role: 'driver · sequencing, retries, merge', model: 'qwen3-32b', calls: 3, seconds: 6.2, tokensIn: 14000, tokensOut: 2200, cachePct: 71, retries: 0 },
   { id: 'r4', name: 'Requirements', role: 'review agent', model: 'claude-sonnet-4-6', calls: 3, seconds: 21, tokensIn: 26000, tokensOut: 3200, cachePct: 14, retries: 0 },
-  { id: 'r5', name: 'Presentation & completeness', role: 'review agent', model: 'claude-sonnet-4-6', calls: 4, seconds: 47, tokensIn: 51000, tokensOut: 5400, cachePct: 46, retries: 1 },
-  { id: 'r6', name: 'Dates & shipment', role: 'review agent', model: 'claude-sonnet-4-6', calls: 3, seconds: 25, tokensIn: 21000, tokensOut: 2100, cachePct: 63, retries: 0 },
-  { id: 'r7', name: 'Goods, amounts & tolerance', role: 'review agent', model: 'claude-sonnet-4-6', calls: 3, seconds: 33, tokensIn: 33000, tokensOut: 3600, cachePct: 55, retries: 0 },
-  { id: 'r8', name: 'General review', role: 'review agent · agentic on :47A:', model: 'claude-sonnet-4-6', calls: 6, seconds: 96, tokensIn: 96000, tokensOut: 9700, cachePct: 42, retries: 1 },
-  { id: 'r9', name: 'Sanctions & parties', role: 'review agent', model: 'qwen3-32b', calls: 1, seconds: 9, tokensIn: 12000, tokensOut: 800, cachePct: 68, retries: 0 },
+  { id: 'r5', name: 'Presentation & Completeness', role: 'review agent', model: 'claude-sonnet-4-6', calls: 4, seconds: 47, tokensIn: 51000, tokensOut: 5400, cachePct: 46, retries: 1 },
+  { id: 'r6', name: 'Dates & Shipment', role: 'review agent', model: 'claude-sonnet-4-6', calls: 3, seconds: 25, tokensIn: 21000, tokensOut: 2100, cachePct: 63, retries: 0 },
+  { id: 'r7', name: 'Goods, Amounts & Tolerance', role: 'review agent', model: 'claude-sonnet-4-6', calls: 3, seconds: 33, tokensIn: 33000, tokensOut: 3600, cachePct: 55, retries: 0 },
+  { id: 'r8', name: 'General Review', role: 'review agent · agentic on :47A:', model: 'claude-sonnet-4-6', calls: 6, seconds: 96, tokensIn: 96000, tokensOut: 9700, cachePct: 42, retries: 1 },
+  { id: 'r9', name: 'Sanctions & Parties', role: 'review agent', model: 'qwen3-32b', calls: 1, seconds: 9, tokensIn: 12000, tokensOut: 800, cachePct: 68, retries: 0 },
 ]
 
 const ALL_AREA_IDS = AREAS.map((a) => a.id)
@@ -263,7 +263,7 @@ const CASE_01 = {
         ],
         confidence: 'HIGH',
       },
-      trace: [{ key: 'read by', value: 'Dates & shipment review' }, { key: 'source', value: 'bundle p.2' }, { key: 'basis', value: 'UCP600 art.14(c), field 44C' }],
+      trace: [{ key: 'read by', value: 'Dates & Shipment review' }, { key: 'source', value: 'bundle p.2' }, { key: 'basis', value: 'UCP600 art.14(c), field 44C' }],
     },
     {
       id: 'f-cond', severity: 'discrepancy', area: 'Additional conditions', areaId: 'a5', checkId: 'COND-47A',
@@ -307,7 +307,7 @@ const CASE_01 = {
         ],
         confidence: 'MED',
       },
-      trace: [{ key: 'read by', value: 'General review' }, { key: 'source', value: 'bundle p.2' }, { key: 'basis', value: 'UCP600 art.20(c); field 43T' }],
+      trace: [{ key: 'read by', value: 'General Review' }, { key: 'source', value: 'bundle p.2' }, { key: 'basis', value: 'UCP600 art.20(c); field 43T' }],
     },
     {
       id: 'f-cert', severity: 'possible', area: 'Certificates', areaId: 'a2', checkId: 'DOCSET-14A',
@@ -329,7 +329,7 @@ const CASE_01 = {
         ],
         confidence: 'MED',
       },
-      trace: [{ key: 'read by', value: 'Presentation & completeness review' }, { key: 'source', value: 'bundle p.5' }, { key: 'basis', value: 'UCP600 art.14(f); field 46A' }],
+      trace: [{ key: 'read by', value: 'Presentation & Completeness review' }, { key: 'source', value: 'bundle p.5' }, { key: 'basis', value: 'UCP600 art.14(f); field 46A' }],
     },
     {
       id: 'f-extra', severity: 'possible', area: 'Document set', areaId: 'a2', checkId: 'DOCSET-A31',
@@ -351,7 +351,7 @@ const CASE_01 = {
         ],
         confidence: 'HIGH',
       },
-      trace: [{ key: 'read by', value: 'Presentation & completeness review' }, { key: 'source', value: 'bundle p.6' }, { key: 'basis', value: 'ISBP821 A31' }],
+      trace: [{ key: 'read by', value: 'Presentation & Completeness review' }, { key: 'source', value: 'bundle p.6' }, { key: 'basis', value: 'ISBP821 A31' }],
     },
     {
       id: 'f-qty', severity: 'possible', area: 'Consistency', areaId: 'a5', checkId: 'XD-A23',
@@ -373,7 +373,7 @@ const CASE_01 = {
         ],
         confidence: 'MED',
       },
-      trace: [{ key: 'read by', value: 'General review' }, { key: 'source', value: 'bundle p.1, p.3' }, { key: 'basis', value: 'ISBP821 A23' }],
+      trace: [{ key: 'read by', value: 'General Review' }, { key: 'source', value: 'bundle p.1, p.3' }, { key: 'basis', value: 'ISBP821 A23' }],
     },
     {
       id: 'f-amt', severity: 'clean', area: 'Amount', areaId: 'a4', checkId: 'AMT-30A',
@@ -385,7 +385,7 @@ const CASE_01 = {
       quote: 'Total: USD 56,000.00',
       quoteSource: 'Commercial invoice, p.1',
       reason: 'UCP 600 article 30(a) — the drawn amount is inside the stated tolerance.',
-      trace: [{ key: 'read by', value: 'Goods, amounts & tolerance review' }, { key: 'basis', value: 'UCP600 art.30(a)' }],
+      trace: [{ key: 'read by', value: 'Goods, Amounts & Tolerance review' }, { key: 'basis', value: 'UCP600 art.30(a)' }],
     },
     {
       id: 'f-goods', severity: 'clean', area: 'Goods description', areaId: 'a4', checkId: 'GOODS-18C',
@@ -397,7 +397,7 @@ const CASE_01 = {
       quote: 'INDUSTRIAL WIDGETS MODEL IW-2024\n500 UNITS AT USD 112.00 / UNIT\nFOB PORT KLANG',
       quoteSource: 'Commercial invoice, p.1',
       reason: 'UCP 600 article 18(c) — the description in the invoice corresponds with that in the credit.',
-      trace: [{ key: 'read by', value: 'Goods, amounts & tolerance review' }, { key: 'basis', value: 'UCP600 art.18(c)' }],
+      trace: [{ key: 'read by', value: 'Goods, Amounts & Tolerance review' }, { key: 'basis', value: 'UCP600 art.18(c)' }],
     },
     {
       id: 'f-pres', severity: 'clean', area: 'Presentation', areaId: 'a3', checkId: 'DATE-48',
@@ -409,7 +409,7 @@ const CASE_01 = {
       quote: 'Presented 28 JAN 2025 (day 14)',
       quoteSource: 'Presentation record',
       reason: 'UCP 600 articles 6(d) and 14(c) — within both the presentation period and the expiry date.',
-      trace: [{ key: 'read by', value: 'Dates & shipment review' }, { key: 'basis', value: 'UCP600 art.6(d), 14(c)' }],
+      trace: [{ key: 'read by', value: 'Dates & Shipment review' }, { key: 'basis', value: 'UCP600 art.6(d), 14(c)' }],
     },
     {
       id: 'f-orig', severity: 'clean', area: 'Document set', areaId: 'a2', checkId: 'DOCSET-17',
@@ -421,7 +421,7 @@ const CASE_01 = {
       quote: 'Invoice 1/3 — original plus three copies',
       quoteSource: 'Commercial invoice, p.1',
       reason: 'UCP 600 article 17 — originals and copies as stipulated.',
-      trace: [{ key: 'read by', value: 'Presentation & completeness review' }, { key: 'basis', value: 'UCP600 art.17' }],
+      trace: [{ key: 'read by', value: 'Presentation & Completeness review' }, { key: 'basis', value: 'UCP600 art.17' }],
     },
     {
       id: 'f-party', severity: 'clean', area: 'Parties', areaId: 'a6', checkId: 'PARTY-FC04',
@@ -433,7 +433,7 @@ const CASE_01 = {
       quote: 'No matches — screened 28 JAN 2025',
       quoteSource: 'Screening record',
       reason: 'Internal financial-crime policy. Re-screened at the point of payment as well.',
-      trace: [{ key: 'read by', value: 'Sanctions & parties screening' }, { key: 'lists', value: 'refreshed 28 JAN 2025 06:00 SGT' }],
+      trace: [{ key: 'read by', value: 'Sanctions & Parties screening' }, { key: 'lists', value: 'refreshed 28 JAN 2025 06:00 SGT' }],
     },
     {
       id: 'm-lang', severity: 'manual', area: 'No rule yet', areaId: null, checkId: null,
@@ -565,7 +565,7 @@ const CASE_02 = {
       quote: 'Cotton 100 PCT with silk trim\non collar',
       quoteSource: "Beneficiary's certificate, p.5",
       reason: 'UCP 600 article 14(d) — data in a document must not conflict with data in the credit. "Cotton 100%" and "with silk trim" cannot both be true of the same garment.',
-      trace: [{ key: 'read by', value: 'Goods, amounts & tolerance review' }, { key: 'source', value: 'bundle p.5' }, { key: 'basis', value: 'UCP600 art.14(d)' }],
+      trace: [{ key: 'read by', value: 'Goods, Amounts & Tolerance review' }, { key: 'source', value: 'bundle p.5' }, { key: 'basis', value: 'UCP600 art.14(d)' }],
     },
     {
       id: 'f-extra2', severity: 'possible', area: 'Document set', areaId: 'a2', checkId: 'DOCSET-A31',
@@ -577,7 +577,7 @@ const CASE_02 = {
       quote: 'WARRANTY CERTIFICATE WC-25-1187',
       quoteSource: 'Warranty certificate, p.6',
       reason: 'ISBP 821 paragraph A31 — a document presented but not required by the credit may be disregarded.',
-      trace: [{ key: 'read by', value: 'Presentation & completeness review' }, { key: 'basis', value: 'ISBP821 A31' }],
+      trace: [{ key: 'read by', value: 'Presentation & Completeness review' }, { key: 'basis', value: 'ISBP821 A31' }],
     },
     {
       id: 'f-amt2', severity: 'clean', area: 'Amount', areaId: 'a4', checkId: 'AMT-30A',
@@ -589,7 +589,7 @@ const CASE_02 = {
       quote: 'Total: USD 50,000.00',
       quoteSource: 'Commercial invoice, p.1',
       reason: 'UCP 600 article 30(a) — drawn amount inside the stated tolerance.',
-      trace: [{ key: 'read by', value: 'Goods, amounts & tolerance review' }, { key: 'basis', value: 'UCP600 art.30(a)' }],
+      trace: [{ key: 'read by', value: 'Goods, Amounts & Tolerance review' }, { key: 'basis', value: 'UCP600 art.30(a)' }],
     },
     {
       id: 'f-pres2', severity: 'clean', area: 'Presentation', areaId: 'a3', checkId: 'DATE-48',
@@ -601,7 +601,7 @@ const CASE_02 = {
       quote: 'Presented 18 NOV 2025 (day 10)',
       quoteSource: 'Presentation record',
       reason: 'UCP 600 articles 6(d) and 14(c) — within the presentation period and before expiry.',
-      trace: [{ key: 'read by', value: 'Dates & shipment review' }, { key: 'basis', value: 'UCP600 art.6(d), 14(c)' }],
+      trace: [{ key: 'read by', value: 'Dates & Shipment review' }, { key: 'basis', value: 'UCP600 art.6(d), 14(c)' }],
     },
     {
       id: 'f-cons2', severity: 'clean', area: 'Consistency', areaId: 'a5', checkId: 'XD-A23',
@@ -613,7 +613,7 @@ const CASE_02 = {
       quote: 'Packing list: 250 cartons,\n20 units each',
       quoteSource: 'Packing list, p.3',
       reason: 'ISBP 821 paragraph A23 — no conflict between the documents.',
-      trace: [{ key: 'read by', value: 'General review' }, { key: 'basis', value: 'ISBP821 A23' }],
+      trace: [{ key: 'read by', value: 'General Review' }, { key: 'basis', value: 'ISBP821 A23' }],
     },
     {
       id: 'f-party2', severity: 'clean', area: 'Parties', areaId: 'a6', checkId: 'PARTY-FC04',
@@ -625,7 +625,7 @@ const CASE_02 = {
       quote: 'No matches — screened 18 NOV 2025',
       quoteSource: 'Screening record',
       reason: 'Internal financial-crime policy.',
-      trace: [{ key: 'read by', value: 'Sanctions & parties screening' }],
+      trace: [{ key: 'read by', value: 'Sanctions & Parties screening' }],
     },
     {
       id: 'm-lang2', severity: 'manual', area: 'No rule yet', areaId: null, checkId: null,
@@ -686,7 +686,7 @@ const CASE_03 = {
       detail: 'Invoice total GBP 100.00 against a credit amount of GBP 100.00.',
       expected: ':32B: GBP100,00', quote: 'Total: GBP 100.00', quoteSource: 'Commercial invoice, p.1',
       reason: 'UCP 600 article 30(a) — drawn amount inside the stated tolerance.',
-      trace: [{ key: 'read by', value: 'Goods, amounts & tolerance review' }, { key: 'basis', value: 'UCP600 art.30(a)' }],
+      trace: [{ key: 'read by', value: 'Goods, Amounts & Tolerance review' }, { key: 'basis', value: 'UCP600 art.30(a)' }],
     },
     {
       id: 'f-goods3', severity: 'clean', area: 'Goods description', areaId: 'a4', checkId: 'GOODS-18C',
@@ -698,7 +698,7 @@ const CASE_03 = {
       quote: 'Original oil painting "Stick Figure"\nby Cesca Falato, 30x20cm — DDP Miami',
       quoteSource: 'Commercial invoice, p.1',
       reason: 'UCP 600 article 18(c) — the description corresponds with that in the credit.',
-      trace: [{ key: 'read by', value: 'Goods, amounts & tolerance review' }, { key: 'basis', value: 'UCP600 art.18(c)' }],
+      trace: [{ key: 'read by', value: 'Goods, Amounts & Tolerance review' }, { key: 'basis', value: 'UCP600 art.18(c)' }],
     },
     {
       id: 'f-pres3', severity: 'clean', area: 'Presentation', areaId: 'a3', checkId: 'DATE-48',
@@ -709,7 +709,7 @@ const CASE_03 = {
       expected: ':48: 21/DAYS\n:31D: 220731LONDON',
       quote: 'Presented 20 JUN 2022 (day 4)', quoteSource: 'Presentation record',
       reason: 'UCP 600 articles 6(d) and 14(c) — within the presentation period and before expiry.',
-      trace: [{ key: 'read by', value: 'Dates & shipment review' }, { key: 'basis', value: 'UCP600 art.6(d), 14(c)' }],
+      trace: [{ key: 'read by', value: 'Dates & Shipment review' }, { key: 'basis', value: 'UCP600 art.6(d), 14(c)' }],
     },
     {
       id: 'f-cons3', severity: 'clean', area: 'Consistency', areaId: 'a5', checkId: 'XD-A23',
@@ -720,7 +720,7 @@ const CASE_03 = {
       expected: 'Commercial invoice: 1 piece',
       quote: 'Packing list: 1 crate, 1 piece', quoteSource: 'Packing list, p.3',
       reason: 'ISBP 821 paragraph A23 — no conflict across the documents.',
-      trace: [{ key: 'read by', value: 'General review' }, { key: 'basis', value: 'ISBP821 A23' }],
+      trace: [{ key: 'read by', value: 'General Review' }, { key: 'basis', value: 'ISBP821 A23' }],
     },
     {
       id: 'f-party3', severity: 'clean', area: 'Parties', areaId: 'a6', checkId: 'PARTY-FC04',
@@ -731,7 +731,7 @@ const CASE_03 = {
       expected: 'Sanctions & parties screening',
       quote: 'No matches — screened 20 JUN 2022', quoteSource: 'Screening record',
       reason: 'Internal financial-crime policy.',
-      trace: [{ key: 'read by', value: 'Sanctions & parties screening' }],
+      trace: [{ key: 'read by', value: 'Sanctions & Parties screening' }],
     },
     {
       id: 'm-nodate3', severity: 'manual', area: 'No rule yet', areaId: null, checkId: null,
@@ -757,7 +757,7 @@ function buildDocuments(def, lines) {
   const credit = {
     id: 'mt700',
     role: 'credit',
-    docType: 'Letter of credit',
+    docType: 'Letter of Credit',
     abbr: 'LC',
     fileName: `MT700_${tagValue(lines, '20') || def.sample}.txt`,
     reference: tagValue(lines, '20') || '',
@@ -904,7 +904,7 @@ function buildChecks(def, lines, credit, documents) {
     })
 
   const fromPlanner = (def.plannerChecks ?? []).map((c) => {
-    const spec = { agent: 'General review', severity: c.severity, refs: c.refs, rule: c.rule }
+    const spec = { agent: 'General Review', severity: c.severity, refs: c.refs, rule: c.rule }
     const check = {
       id: c.id,
       name: c.name,
@@ -1105,9 +1105,9 @@ export const CASE_LIST = Object.entries(CASE_INDEX).map(([id, e]) => {
     pageCount: detail.totalPages,
     status: e.status,
     statusLabel:
-      e.status === 'awaiting_check' ? 'Awaiting check'
+      e.status === 'awaiting_check' ? 'Awaiting Check'
         : e.status === 'clean' ? 'Clean'
-          : e.status === 'with_authoriser' ? 'With authoriser'
+          : e.status === 'with_authoriser' ? 'With Authoriser'
             : discrepancies ? `${discrepancies} discrepanc${discrepancies === 1 ? 'y' : 'ies'}`
               : `${toDecide} to decide`,
     replyDueDays: e.replyDueDays,
@@ -1123,8 +1123,8 @@ export function caseDetailFor(id) {
 
 // The two files an officer drops to open a case.
 export const INTAKE_SLOTS = [
-  { id: 'credit', role: 'Letter of credit', icon: 'file-text', fileName: 'lc.txt', meta: 'MT700 · 1 KB' },
-  { id: 'bundle', role: 'Presented documents', icon: 'file-stack', fileName: 'deal-01.pdf', meta: '6 pages · 482 KB' },
+  { id: 'credit', role: 'Letter of Credit', icon: 'file-text', fileName: 'lc.txt', meta: 'MT700 · 1 KB' },
+  { id: 'bundle', role: 'Presented Documents', icon: 'file-stack', fileName: 'deal-01.pdf', meta: '6 pages · 482 KB' },
 ]
 
 /**

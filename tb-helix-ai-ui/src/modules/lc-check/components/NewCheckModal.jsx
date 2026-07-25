@@ -40,7 +40,7 @@ export default function NewCheckModal({ open, onClose, onCreated }) {
     <Modal
       open={open}
       onClose={onClose}
-      title="New check"
+      title="New Check"
       subtitle="Drop the credit and the presentation. We do the rest."
       footer={
         <>

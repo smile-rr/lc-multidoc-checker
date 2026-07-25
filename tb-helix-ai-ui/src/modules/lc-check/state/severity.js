@@ -4,8 +4,8 @@ import { toneOf } from '@shared/lib/tone'
 // place the mapping lives.
 const MAP = {
   discrepancy: { label: 'Discrepancy', tone: 'error', rank: 0 },
-  possible: { label: 'Possible discrepancy', tone: 'warning', rank: 1 },
-  manual: { label: 'Needs your review', tone: 'info', rank: 2 },
+  possible: { label: 'Possible Discrepancy', tone: 'warning', rank: 1 },
+  manual: { label: 'Needs Your Review', tone: 'info', rank: 2 },
   clean: { label: 'Clean', tone: 'success', rank: 3 },
 }
 

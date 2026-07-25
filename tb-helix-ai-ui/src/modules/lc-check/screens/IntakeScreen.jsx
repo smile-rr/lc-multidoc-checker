@@ -86,7 +86,7 @@ export default function IntakeScreen() {
             header={
               <>
                 <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)' }}>
-                  {isCredit ? 'Letter of credit' : 'Presented documents'}
+                  {isCredit ? 'Letter of Credit' : 'Presented Documents'}
                 </span>
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {isCredit ? credit.fileName : slots[1].fileName}

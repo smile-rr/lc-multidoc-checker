@@ -111,8 +111,8 @@ function WorkbenchBody() {
   const status = run.finished
     ? { tone: 'error', label: `${plural(visible.attention.filter((f) => f.severity === 'discrepancy').length, 'discrepancy', 'discrepancies')} · reply due` }
     : run.started
-      ? { tone: 'blue', label: 'Review running' }
-      : { tone: 'neutral', label: 'Awaiting check' }
+      ? { tone: 'blue', label: 'Review Running' }
+      : { tone: 'neutral', label: 'Awaiting Check' }
 
   return (
     <>

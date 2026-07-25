@@ -36,7 +36,7 @@ export default function CaseHeader({
     { k: 'Applicant', v: c.applicant },
     { k: 'Documents', v: `${detail.documents.filter((d) => d.role === 'presented').length} of ${detail.bundlePages.length} pages` },
     { k: 'Expiry', v: c.expiry },
-    { k: 'Reply due', v: dueLabel(detail.replyDueDays) ?? '—', weight: 600, urgent: true },
+    { k: 'Reply Due', v: dueLabel(detail.replyDueDays) ?? '—', weight: 600, urgent: true },
   ]
 
   const costPill = `${durationShort(cost.wallClock)} · ${thousands(cost.tokens)} · ${usd(cost.cost)}`

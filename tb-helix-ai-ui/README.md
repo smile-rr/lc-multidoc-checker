@@ -449,6 +449,22 @@ an uncovered condition must not borrow one.
 They are not three sizes of the same text. The statement is the line an officer
 has to defend, so it is what the decision list is scanned by.
 
+### Title Case for names, sentence case for everything else
+
+Anything that **names** a region of the interface is Title Case: panel and section
+headings, drawer and dialog titles, tab labels, column headers, group labels,
+status and severity labels, review-area names and document type names. So
+**LC Check**, **AI Performance**, **Bill of Lading**, **Presentation to Decision**.
+
+Proper title case, which means minor words stay lowercase — *Letter of Credit*,
+not *Letter Of Credit*; *Kept off the Bill*, not *Kept Off The Bill*.
+
+Sentence case stays for everything that is not a name: helper text, tooltip prose,
+unit captions under a figure (*pages read*, *per case*), tooltips and aria-labels
+(*Previous page*, *Copy markdown*), and action labels phrased as sentences
+(*Start the review*, *Not one*). Those are instructions or values, not titles, and
+title-casing them makes an interface shout.
+
 ### Naming panels
 
 A panel, section or drawer title is a **short noun phrase** — the name of the

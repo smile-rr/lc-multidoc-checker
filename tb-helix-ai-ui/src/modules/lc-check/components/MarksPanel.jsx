@@ -11,7 +11,7 @@ export default function MarksPanel({ marks }) {
   return (
     <div style={{ background: '#fff', border: '1px solid var(--me-grey-15)', borderRadius: 12, overflow: 'hidden' }}>
       <div style={{ padding: '11px 14px', borderBottom: '1px solid var(--me-grey-15)', fontSize: 12.5, fontWeight: 600, color: 'var(--me-ink)' }}>
-        Signatures &amp; stamps
+        Signatures &amp; Stamps
       </div>
       {marks.map((m, i) => (
         <div key={i} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '9px 14px', borderBottom: '1px solid var(--me-grey-08)' }}>

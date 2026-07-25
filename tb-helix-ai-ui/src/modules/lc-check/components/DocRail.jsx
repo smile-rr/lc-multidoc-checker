@@ -17,13 +17,13 @@ export default function DocRail({ documents, selectedId, onSelect, segmented, se
 
   return (
     <div style={{ background: '#fff', border: '1px solid var(--me-grey-15)', borderRadius: 12, overflow: 'hidden' }}>
-      <Group label="Letter of credit" count={`${credit.length}`}>
+      <Group label="Letter of Credit" count={`${credit.length}`}>
         {credit.map((d) => (
           <Row key={d.id} doc={d} sub={`MT700 · ${d.reference}`} on={d.id === selectedId} onClick={() => onSelect(d.id)} />
         ))}
       </Group>
 
-      <Group label="Presented documents" count={`${segmented} of ${segmentTotal}`}>
+      <Group label="Presented Documents" count={`${segmented} of ${segmentTotal}`}>
         {found.map((d) => (
           <Row
             key={d.id}

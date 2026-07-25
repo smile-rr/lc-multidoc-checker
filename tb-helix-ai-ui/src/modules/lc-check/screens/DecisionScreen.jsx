@@ -183,7 +183,7 @@ export default function DecisionScreen({ onOpenFinding }) {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4, borderTop: '1px solid var(--me-grey-08)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--me-ink)' }}>Review note</span>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--me-ink)' }}>Review Note</span>
               <span
                 title="Notes you left on individual findings are collected here. Edit or add anything else in your own words — it travels with the case."
                 style={{ display: 'flex', color: 'var(--me-grey-70)', cursor: 'help' }}

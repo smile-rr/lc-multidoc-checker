@@ -54,7 +54,7 @@ Fields to look at: {31D}, {44C}, {48}, {39A}`,
 Fields to look at: {40E}`,
   },
   'DOCSET-14A': {
-    agent: 'Presentation & completeness',
+    agent: 'Presentation & Completeness',
     severity: 'CRITICAL',
     refs: ['UCP600 Art.14'],
     rule: `Every document named in {46A} must be present in the presentation.
@@ -64,7 +64,7 @@ Where the credit requires a document to *state* something, that statement must a
 Fields to look at: {46A}`,
   },
   'DOCSET-17': {
-    agent: 'Presentation & completeness',
+    agent: 'Presentation & Completeness',
     severity: 'MAJOR',
     refs: ['UCP600 Art.17'],
     rule: `Originals and copies must match what {46A} calls for. Confirm the count of each, and that anything described as an original is an original within the meaning of UCP 600 article 17.
@@ -72,7 +72,7 @@ Fields to look at: {46A}`,
 Fields to look at: {46A}`,
   },
   'DOCSET-03': {
-    agent: 'Presentation & completeness',
+    agent: 'Presentation & Completeness',
     severity: 'MAJOR',
     refs: ['UCP600 Art.3', 'UCP600 Art.18'],
     rule: `A document must be signed where the credit or the rules require a signature.
@@ -82,7 +82,7 @@ If the signature is present but cannot be read, do not raise a discrepancy — r
 Fields to look at: {46A}`,
   },
   'DOCSET-A31': {
-    agent: 'Presentation & completeness',
+    agent: 'Presentation & Completeness',
     severity: 'MINOR',
     refs: ['ISBP821 A31'],
     rule: `A document presented but not called for by {46A} may be disregarded and returned to the presenter.
@@ -92,7 +92,7 @@ Surface it so the officer knows it arrived, but do not examine it as though it w
 Fields to look at: {46A}`,
   },
   'DATE-44C': {
-    agent: 'Dates & shipment',
+    agent: 'Dates & Shipment',
     severity: 'CRITICAL',
     refs: ['UCP600 Art.14'],
     rule: `Shipment must not be later than {44C}.
@@ -102,7 +102,7 @@ Read the on-board date from the transport document — the on-board notation gov
 Fields to look at: {44C}, {DOC.OBD} (on-board date)`,
   },
   'DATE-48': {
-    agent: 'Dates & shipment',
+    agent: 'Dates & Shipment',
     severity: 'CRITICAL',
     refs: ['UCP600 Art.14'],
     rule: `Documents must be presented within the period {48} allows, counted from the date of shipment.
@@ -110,7 +110,7 @@ Fields to look at: {44C}, {DOC.OBD} (on-board date)`,
 Fields to look at: {48}, {DOC.OBD}, {CALC.PRES} (presentation date)`,
   },
   'DATE-31D': {
-    agent: 'Dates & shipment',
+    agent: 'Dates & Shipment',
     severity: 'CRITICAL',
     refs: ['UCP600 Art.6'],
     rule: `Presentation must be on or before the expiry date in {31D}, at the place {31D} names.
@@ -118,7 +118,7 @@ Fields to look at: {48}, {DOC.OBD}, {CALC.PRES} (presentation date)`,
 Fields to look at: {31D}, {CALC.PRES}`,
   },
   'GOODS-18C': {
-    agent: 'Goods, amounts & tolerance',
+    agent: 'Goods, Amounts & Tolerance',
     severity: 'CRITICAL',
     refs: ['UCP600 Art.18', 'ISBP821 C3'],
     rule: `The goods description on the commercial invoice must correspond with {45A}.
@@ -128,7 +128,7 @@ Correspond does not mean identical: reordered wording is acceptable. A missing e
 Fields to look at: {45A}`,
   },
   'AMT-30A': {
-    agent: 'Goods, amounts & tolerance',
+    agent: 'Goods, Amounts & Tolerance',
     severity: 'CRITICAL',
     refs: ['UCP600 Art.30'],
     rule: `The amount drawn must fall within {32B} as varied by the tolerance in {39A}.
@@ -138,7 +138,7 @@ Compute the permitted range and state it. Where {39A} is absent, no tolerance ap
 Fields to look at: {32B}, {39A}`,
   },
   'AMT-C6': {
-    agent: 'Goods, amounts & tolerance',
+    agent: 'Goods, Amounts & Tolerance',
     severity: 'MAJOR',
     refs: ['ISBP821 C6'],
     rule: `Quantity and unit price on the invoice must agree with {45A}, and must multiply out to the invoice total.
@@ -146,7 +146,7 @@ Fields to look at: {32B}, {39A}`,
 Fields to look at: {45A}, {32B}`,
   },
   'TRANS-20': {
-    agent: 'General review',
+    agent: 'General Review',
     severity: 'CRITICAL',
     refs: ['UCP600 Art.20'],
     rule: `Examine the transport document for form, consignee, endorsement and freight notation as {46A} requires.
@@ -156,7 +156,7 @@ Where a bill of lading is to order, the required endorsement must appear.
 Fields to look at: {46A}`,
   },
   'TRANS-43P': {
-    agent: 'General review',
+    agent: 'General Review',
     severity: 'MAJOR',
     refs: ['UCP600 Art.31'],
     rule: `When {43P} reads NOT ALLOWED, the presentation must not show partial shipment.
@@ -164,7 +164,7 @@ Fields to look at: {46A}`,
 Fields to look at: {43P}`,
   },
   'TRANS-43T': {
-    agent: 'General review',
+    agent: 'General Review',
     severity: 'CRITICAL',
     refs: ['UCP600 Art.20'],
     rule: `When {43T} reads NOT ALLOWED, a transport document indicating that transhipment will or may take place is discrepant.
@@ -174,7 +174,7 @@ The exception is goods shipped in a container where the transport document cover
 Fields to look at: {43T}, {44E}, {44F}`,
   },
   'COND-47A': {
-    agent: 'General review',
+    agent: 'General Review',
     severity: 'CRITICAL',
     refs: ['UCP600 Art.14'],
     rule: `Each condition in {47A} must be satisfied by the documents presented.
@@ -184,7 +184,7 @@ Treat every clause separately. Where a condition requires a document to quote a 
 Fields to look at: {47A}`,
   },
   'XD-A23': {
-    agent: 'General review',
+    agent: 'General Review',
     severity: 'MAJOR',
     refs: ['ISBP821 A23'],
     rule: `Data in one document need not repeat another exactly, but must not conflict with it, with the credit, or with international standard banking practice.
@@ -192,7 +192,7 @@ Fields to look at: {47A}`,
 Compare quantities, weights, marks, dates and party names across the whole set.`,
   },
   'GEN-01': {
-    agent: 'General review',
+    agent: 'General Review',
     severity: 'MINOR',
     refs: [],
     rule: `Read the presentation as an experienced checker would and raise anything the other areas do not own.
@@ -200,7 +200,7 @@ Compare quantities, weights, marks, dates and party names across the whole set.`
 Only report something you can point at in a document. Do not speculate.`,
   },
   'PARTY-FC04': {
-    agent: 'Sanctions & parties',
+    agent: 'Sanctions & Parties',
     severity: 'CRITICAL',
     refs: [],
     rule: `Screen every named party, the vessel and both ports against the current restricted-party lists.
@@ -210,7 +210,7 @@ Re-run at the point of payment — a clear screening at examination does not car
 Fields to look at: {50}, {59}, {44E}, {44F}, {EXT.SANCTIONS}`,
   },
   'TRANS-22': {
-    agent: 'General review',
+    agent: 'General Review',
     severity: 'MAJOR',
     refs: ['UCP600 Art.22'],
     rule: `Where the credit calls for a charter-party bill of lading, examine it under UCP 600 article 22 rather than article 20.
@@ -218,7 +218,7 @@ Fields to look at: {50}, {59}, {44E}, {44F}, {EXT.SANCTIONS}`,
 Fields to look at: {46A}`,
   },
   'CERT-28': {
-    agent: 'General review',
+    agent: 'General Review',
     severity: 'MAJOR',
     refs: ['UCP600 Art.28'],
     rule: `Insurance cover must be for at least the percentage of invoice value the credit requires, in the currency of the credit, and claims payable where the credit says.
@@ -228,7 +228,7 @@ Fields to look at: {46A}, {32B}`,
 }
 
 export const checkSpec = (id) =>
-  CHECK_SPECS[id] ?? { agent: 'General review', severity: 'MAJOR', refs: [], rule: '' }
+  CHECK_SPECS[id] ?? { agent: 'General Review', severity: 'MAJOR', refs: [], rule: '' }
 
 /**
  * Render the request that will be sent to the model for one check on one credit.

@@ -3,7 +3,7 @@
     {
       "id": "expiry",
       "name": "Expiry & Availability Review",
-      "cat": "Time & availability",
+      "cat": "Time & Availability",
       "status": "Active",
       "statusTone": "green",
       "cov": "Well covered",
@@ -174,7 +174,7 @@
     {
       "id": "invoice",
       "name": "Commercial Invoice & Goods",
-      "cat": "Goods & pricing",
+      "cat": "Goods & Pricing",
       "status": "Active",
       "statusTone": "green",
       "cov": "Adequate",
@@ -304,7 +304,7 @@
     {
       "id": "beneficiary",
       "name": "Beneficiary & Applicant Details",
-      "cat": "Party details",
+      "cat": "Party Details",
       "status": "Active",
       "statusTone": "green",
       "cov": "Adequate",
@@ -762,19 +762,19 @@
     "32B": "Amount"
   },
   "docTypeBook": [
-    "Covering schedule",
-    "Draft / bill of exchange",
-    "Commercial invoice",
-    "Bill of lading",
-    "Air waybill",
-    "Multimodal transport doc",
+    "Covering Schedule",
+    "Draft / Bill of Exchange",
+    "Commercial Invoice",
+    "Bill of Lading",
+    "Air Waybill",
+    "Multimodal Transport Doc",
     "Charter-party B/L",
-    "Insurance document",
-    "Packing list",
-    "Certificate of origin",
-    "Inspection certificate",
-    "Beneficiary certificate",
-    "Transport document"
+    "Insurance Document",
+    "Packing List",
+    "Certificate of Origin",
+    "Inspection Certificate",
+    "Beneficiary Certificate",
+    "Transport Document"
   ],
   "checkDefaults": {
     "REQ-41A": {

@@ -6,7 +6,7 @@ import { qualityRates } from '../data/fixtures.js'
 
 // How the automated examination is performing, across the queue.
 //
-// Titled "AI performance" and nothing cleverer. A draft called it the
+// Titled "AI Performance" and nothing cleverer. A draft called it the
 // "pre-check", which is a coinage: it needs a sentence of explanation before the
 // panel can be read, and a title that has to be explained has failed. Every other
 // word here is already in the product or in UCP 600.
@@ -49,13 +49,13 @@ export default function SpendPanel({ spend }) {
         }}
       >
         <Icon name={open ? 'chevron-down' : 'chevron-right'} size={15} color="var(--me-grey-50)" />
-        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)' }}>AI performance</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)' }}>AI Performance</span>
         <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>{b.period}</span>
         {!open ? (
           <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 14, fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--me-grey)' }}>
             <span>{durationShort(spend.medianWallClock)} to findings</span>
             <span>{usd(spend.avgCostPerCase)} / case</span>
-            <span style={{ color: q.falseNegative ? 'var(--status-warning)' : 'var(--me-grey)' }}>{q.falseNegative} missed</span>
+            <span style={{ color: q.falseNegative ? 'var(--status-error)' : 'var(--me-grey)' }}>{q.falseNegative} missed</span>
           </span>
         ) : null}
       </button>
@@ -78,7 +78,7 @@ export default function SpendPanel({ spend }) {
 
             <Rule />
             <Line
-              label="Presentation to decision"
+              label="Presentation to Decision"
               value={`${b.medianHoursToDecision} h`}
               tip="Elapsed time from documents arriving at the counter to the officer's decision being recorded. This is the whole process — queueing, examination and review — not machine time. It is here because UCP 600 art. 14(b) allows five banking days and a missed window forfeits the right to refuse."
               note={`median. Slowest ${b.slowestHoursToDecision} h against the ${b.examinationWindowDays}-banking-day limit in art. 14(b) — ${percent(headroom)} of the window still free.`}
@@ -125,7 +125,7 @@ export default function SpendPanel({ spend }) {
 
             <Rule />
             <Line
-              label="Kept off the bill"
+              label="Kept off the Bill"
               value={usd(spend.costAvoided)}
               tone="var(--status-success)"
               tip="Money not spent because work was reused: documents already read are served from the extract cache without re-rendering or re-calling the model, and repeated prompt context is billed at a fraction of full rate. Derived from the same usage as the spend above, so the two reconcile."
@@ -162,7 +162,7 @@ export default function SpendPanel({ spend }) {
             <Rule />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <Count
-                label="Raised, not upheld"
+                label="Raised, Not Upheld"
                 tip="False positives. We flagged it, review set it aside. Costs an officer attention but nothing else."
                 value={q.falsePositive}
                 previous={p.falsePositive}
@@ -180,7 +180,7 @@ export default function SpendPanel({ spend }) {
                 note={q.falseNegativeNote}
               />
               <Count
-                label="Conditions covered"
+                label="Conditions Covered"
                 tip="Share of the conditions in these credits that a rule in the dictionary was able to test. The remainder were surfaced as open questions for a person — never passed silently."
                 value={q.conditionsCoveredPct}
                 previous={p.conditionsCoveredPct}
@@ -220,6 +220,10 @@ function Bar({ models }) {
  * `lowerIsBetter` inverts the colour, because a falling false-positive count is
  * good news and a falling recall is not. Getting that backwards would be worse
  * than showing no trend at all.
+ *
+ * A regression is red, not amber. Amber reads as "look at this"; a quality
+ * measure that went the wrong way is not a caution, it is worse than last month,
+ * and it should carry the same weight as the discrepancy colours elsewhere.
  */
 function Delta({ value, unit = '', lowerIsBetter = false, decimals = 0 }) {
   if (value == null || Math.abs(value) < 0.05) {
@@ -229,7 +233,7 @@ function Delta({ value, unit = '', lowerIsBetter = false, decimals = 0 }) {
   const good = lowerIsBetter ? !up : up
   return (
     <span
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 10.5, fontWeight: 600, whiteSpace: 'nowrap', color: good ? 'var(--status-success)' : 'var(--status-warning)' }}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 10.5, fontWeight: 600, whiteSpace: 'nowrap', color: good ? 'var(--status-success)' : 'var(--status-error)' }}
     >
       <Icon name={up ? 'arrow-up-right' : 'arrow-down-right'} size={11} />
       {Math.abs(value).toFixed(decimals)}{unit}

@@ -44,7 +44,7 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToRead }) {
             .filter((g) => g.items.length)
 
     return [
-      ...(manual.length ? [{ label: 'Not covered', items: manual }] : []),
+      ...(manual.length ? [{ label: 'Not Covered', items: manual }] : []),
       ...body,
     ]
   }, [visible.attention, grouping, data.documents, data.areas])
@@ -165,7 +165,7 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToRead }) {
             {/* The statement that would go out in the refusal advice. */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <span style={{ fontSize: 10.5, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--me-grey-70)' }}>
-                {selected.severity === 'clean' ? 'Result statement' : 'Discrepancy statement'}
+                {selected.severity === 'clean' ? 'Result Statement' : 'Discrepancy Statement'}
               </span>
               <DiscrepancyStatement text={selected.statement} tone={sev.accent} />
             </div>
@@ -189,7 +189,7 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToRead }) {
             onChange={setTab}
             items={[
               { id: 'analysis', label: 'Finding' },
-              { id: 'source', label: 'Source pages' },
+              { id: 'source', label: 'Source Pages' },
             ]}
           />
 
@@ -212,7 +212,7 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToRead }) {
 
           {tab === 'source' ? (
             <div style={{ padding: '16px 20px 20px', background: 'var(--me-grey-08)', display: 'grid', gridTemplateColumns: isCreditFinding ? 'minmax(0,1fr)' : '1fr 1fr', gap: 14 }}>
-              <SourcePane title="Letter of credit" meta="parsed by tag">
+              <SourcePane title="Letter of Credit" meta="parsed by tag">
                 <div style={{ height: '100%', overflow: 'auto', padding: '16px 14px', fontFamily: 'var(--font-mono)', fontSize: 11.5, lineHeight: 1.85, color: 'var(--me-ink)' }}>
                   {credit.lines.map((l) => (
                     <div

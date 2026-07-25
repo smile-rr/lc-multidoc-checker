@@ -77,7 +77,7 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
         onChange={setTab}
         items={[
           { id: 'rule', label: 'Rule' },
-          { id: 'plan', label: 'Execution plan' },
+          { id: 'plan', label: 'Execution Plan' },
           { id: 'result', label: 'Result' },
         ]}
       />
@@ -110,7 +110,7 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
             </span>
             <MarkdownDoc
               text={check.executionPlan}
-              label="Model request"
+              label="Model Request"
               meta={`markdown · ${check.executionPlan.split('\n').length} lines`}
               maxHeight={520}
             />

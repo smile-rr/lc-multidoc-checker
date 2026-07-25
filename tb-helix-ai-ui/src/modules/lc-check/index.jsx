@@ -21,7 +21,7 @@ function LcCheckRoutes() {
 // screen. A module with one nav item renders as a plain rail row.
 export const lcCheckModule = {
   id: 'lc-check',
-  label: 'LC check',
+  label: 'LC Check',
   icon: 'file-check',
   basePath: BASE,
   navItems: [{ id: 'cases', label: 'Cases', icon: 'folder-open', path: `${BASE}/cases` }],

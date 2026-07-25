@@ -58,7 +58,7 @@ export default function ChecksScreen({ onOpenFinding }) {
       : []),
     {
       key: 'skipped',
-      label: 'Not applicable',
+      label: 'Not Applicable',
       note: 'This credit does not bring them into play.',
       checks: allChecks.filter((c) => !c.areaId && !c.addedByOfficer && !c.plannedByLlm),
     },
@@ -77,7 +77,7 @@ export default function ChecksScreen({ onOpenFinding }) {
       <div style={{ background: '#fff', border: '1px solid var(--me-grey-15)', borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - var(--case-header-h, 240px) - 64px)' }}>
         <div style={{ padding: '13px 15px', borderBottom: '1px solid var(--me-grey-15)', display: 'flex', flexDirection: 'column', gap: 9, flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)' }}>Check plan</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)' }}>Check Plan</span>
             <button
               onClick={actions.addCheck}
               title="Add a check the credit does not call for — it runs with the rest and is recorded against your name"

@@ -19,7 +19,7 @@ const STATUS_TONE = {
 const FILTERS = [
   { id: 'all', label: 'All' },
   { id: 'mine', label: 'Mine' },
-  { id: 'due', label: 'Due today' },
+  { id: 'due', label: 'Due Today' },
 ]
 
 const COLS = '148px 108px minmax(200px,1fr) 148px 96px 132px 104px'
@@ -94,7 +94,7 @@ export default function CasesScreen() {
           <span style={{ textAlign: 'right' }}>Amount</span>
           <span style={{ textAlign: 'right' }}>Pages</span>
           <span>Status</span>
-          <span style={{ textAlign: 'right' }}>Reply due</span>
+          <span style={{ textAlign: 'right' }}>Reply Due</span>
         </div>
 
         {rows === null ? (
