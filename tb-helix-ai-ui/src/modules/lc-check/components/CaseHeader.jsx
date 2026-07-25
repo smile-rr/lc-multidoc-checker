@@ -4,6 +4,7 @@ import Button from '@shared/ds/Button'
 import Icon from '@shared/ds/Icon'
 import SegmentedControl from '@shared/ds/SegmentedControl'
 import { money, durationShort, thousands, usd, dueLabel } from '@shared/lib/format'
+import { RUN_MODES } from '../state/severity'
 
 // The case header — breadcrumb, identity, the facts an officer keeps re-reading,
 // and the stage tabs.
@@ -26,6 +27,7 @@ export default function CaseHeader({
   onToggleAsk,
   askOpen,
   actionLabel,
+  actionDisabled,
   onAction,
   headerRef,
 }) {
@@ -86,15 +88,7 @@ export default function CaseHeader({
             <span style={{ fontSize: 12.5, color: 'var(--me-grey)' }}>Ask</span>
           </PillButton>
 
-          <SegmentedControl
-            size="sm"
-            value={runMode}
-            onChange={onRunMode}
-            items={[
-              { id: 'auto', label: 'Auto', tip: 'Run every review area straight through, then open the report' },
-              { id: 'step', label: 'Step', tip: 'Pause after each review area so you can read it before the next one runs' },
-            ]}
-          />
+          <SegmentedControl size="sm" value={runMode} onChange={onRunMode} items={RUN_MODES} />
 
           <div style={{ width: 32, height: 32, borderRadius: 999, background: 'var(--me-blue-20)', color: 'var(--me-blue-deep)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12.5, fontWeight: 600 }}>
             MK
@@ -146,7 +140,7 @@ export default function CaseHeader({
         })}
         {actionLabel ? (
           <div style={{ marginLeft: 'auto', paddingBottom: 8 }}>
-            <Button size="sm" onClick={onAction}>{actionLabel}</Button>
+            <Button size="sm" disabled={actionDisabled} onClick={onAction}>{actionLabel}</Button>
           </div>
         ) : null}
       </div>

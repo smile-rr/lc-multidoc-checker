@@ -19,7 +19,7 @@ import { useCase } from '../state/CaseContext'
 // Findings the engine could not cover come first, under their own heading. That
 // ordering is the point: an officer must not be able to work top-to-bottom and
 // come away thinking everything was checked. What we didn't check leads.
-export default function ReviewScreen({ selectedId, onSelect, onJumpToRead }) {
+export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }) {
   const { data, visible, officer, actions } = useCase()
   const [grouping, setGrouping] = useState('area')
   const [tab, setTab] = useState('analysis')
@@ -235,10 +235,10 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToRead }) {
               )}
 
               <button
-                onClick={() => onJumpToRead(selected)}
+                onClick={() => onJumpToInterpret(selected)}
                 style={{ gridColumn: '1 / -1', fontSize: 12.5, color: 'var(--me-blue)', cursor: 'pointer', background: 'none', border: 'none', padding: 0, textAlign: 'left' }}
               >
-                Open the full document in Read →
+                Open the full document in Interpret →
               </button>
             </div>
           ) : null}

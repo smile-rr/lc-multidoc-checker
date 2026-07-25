@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useLayoutEffect } from 'react'
+import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Toast from '@shared/ds/Toast'
 import { plural } from '@shared/lib/format'
@@ -6,13 +6,13 @@ import CaseHeader from '../components/CaseHeader'
 import AskDrawer from '../components/AskDrawer'
 import CostDrawer from '../components/CostDrawer'
 import IntakeScreen from './IntakeScreen'
-import ReadScreen from './ReadScreen'
+import InterpretScreen from './InterpretScreen'
 import ChecksScreen from './ChecksScreen'
 import ReviewScreen from './ReviewScreen'
 import DecisionScreen from './DecisionScreen'
 import { CaseProvider, useCase } from '../state/CaseContext'
 import { summariseRun } from '../state/runCost'
-import { STAGES, stageIndex } from '../state/severity'
+import { STAGES, PIPELINE_STEPS, stepMeta, stepAfter } from '../state/severity'
 
 // The case workbench. The stage lives in the URL (`/lc-check/cases/:id/:stage`)
 // so a stage is linkable and the back button steps through the review the way
@@ -32,7 +32,7 @@ function WorkbenchBody() {
   const navigate = useNavigate()
   const [selectedFindingId, setSelectedFindingId] = useState(null)
 
-  // Read is a full-height three-pane layout, so it needs to know how tall the
+  // Interpret is a full-height three-pane layout, so it needs to know how tall the
   // header is. Published as a CSS variable and kept current with a
   // ResizeObserver — the facts strip wraps at narrow widths.
   const headerRef = useRef(null)
@@ -50,18 +50,39 @@ function WorkbenchBody() {
   const activeStage = STAGES.some((s) => s.id === stage) ? stage : 'intake'
   const goStage = (id) => navigate(`/lc-check/cases/${caseId}/${id}`)
 
+  // The stage tabs follow the run, so a person who starts it and looks away is
+  // not left on a stage that finished a minute ago. Following stops the moment
+  // the officer picks a tab themselves — a run that yanks the view out from
+  // under someone reading is worse than one that sits still.
+  useEffect(() => {
+    if (!run.live || !run.following) return
+    if (run.activeStep) {
+      const target = stepMeta(run.activeStep)?.stage
+      if (target && target !== activeStage) navigate(`/lc-check/cases/${caseId}/${target}`, { replace: true })
+    } else if (run.finished && run.mode === 'auto' && activeStage !== 'review') {
+      // Auto ends at the report. Step waits to be asked.
+      navigate(`/lc-check/cases/${caseId}/review`, { replace: true })
+    }
+  }, [run.live, run.following, run.activeStep, run.finished, run.mode, activeStage, caseId, navigate])
+
   // The cost pill and the drawer read the same summary, so they cannot disagree.
-  // One run step precedes the areas (intake) and one follows the plan (the
-  // driver), hence the +2 when mapping completed areas onto completed steps.
+  // The fixture's run steps are one for reading, one for planning, one for the
+  // driver, then one per review area — which is exactly what the pipeline steps
+  // now report, so this is a mapping rather than an estimate.
   const cost = useMemo(() => {
     if (!data) return null
+    const executing = run.activeStep === 'execute' || run.done.includes('execute')
     const completedSteps = run.finished
       ? data.runSteps.length
-      : run.started
-        ? Math.min(run.completedAreaIds.length + 2, data.runSteps.length)
-        : 0
+      : Math.min(
+          (run.done.includes('interpret') ? 1 : 0) +
+            (run.done.includes('plan') ? 1 : 0) +
+            (executing ? 1 : 0) +
+            run.completedAreaIds.length,
+          data.runSteps.length,
+        )
     return summariseRun(data.runSteps, completedSteps, data.bundlePages.length)
-  }, [data, run.finished, run.started, run.completedAreaIds.length])
+  }, [data, run.finished, run.done, run.activeStep, run.completedAreaIds.length])
 
   if (loading) {
     return <div style={{ padding: '26px 32px', fontSize: 13, color: 'var(--me-grey-70)' }}>Opening {caseId}…</div>
@@ -80,39 +101,44 @@ function WorkbenchBody() {
     goStage('review')
   }
 
-  const jumpToRead = () => goStage('read')
+  const jumpToInterpret = () => goStage('interpret')
 
-  // The primary button is for advancing the *run*, not for moving between stages —
-  // the stage tabs already do that, and in auto mode the run drives itself, so a
-  // "Next" button was offering to do nothing the officer needed. It therefore
-  // appears only when there is genuinely a pipeline action to take.
-  const stepMode = run.mode === 'step'
+  // The primary button advances the *run*, never the tabs — the tabs already do
+  // that, and a "Next" button that only changed the view would be offering to do
+  // nothing. It says what pressing it will run, so the cost of pressing it is
+  // legible before it is pressed.
+  const stepping = run.mode === 'step'
+  const nextStep = stepAfter(run.done)
   const action = (() => {
+    if (run.activeStep) {
+      // Named rather than hidden: a button that vanishes mid-run reads as a
+      // finished run. Disabled, so it cannot be pressed twice.
+      return { label: stepMeta(run.activeStep)?.running ?? 'Running…', disabled: true }
+    }
+    if (run.finished) {
+      return stepping && activeStage !== 'review' ? { label: 'Open the report', run: () => goStage('review') } : null
+    }
     if (!run.started) {
       return {
-        label: 'Start the review',
+        label: stepping ? nextStep?.action ?? 'Start the review' : 'Start the review',
         run: () => {
-          actions.startRun(run.mode)
-          actions.flash(
-            stepMode
-              ? 'Step mode — we pause after each area so you can look.'
-              : 'Review started — checks run while you look at what we read.',
-          )
-          goStage(stepMode ? 'checks' : 'read')
+          actions.runNext()
+          if (!stepping) actions.flash('Started — it runs to the report without stopping.')
         },
       }
     }
-    if (stepMode && !run.finished) {
-      return { label: 'Run the next area', run: () => { actions.advanceRun(); goStage('checks') } }
-    }
-    return null
+    // Started and idle only happens in Step; Auto is already reaching for the
+    // next step.
+    return stepping && nextStep ? { label: nextStep.action, run: actions.runNext } : null
   })()
 
   const status = run.finished
     ? { tone: 'error', label: `${plural(visible.attention.filter((f) => f.severity === 'discrepancy').length, 'discrepancy', 'discrepancies')} · reply due` }
-    : run.started
-      ? { tone: 'blue', label: 'Review Running' }
-      : { tone: 'neutral', label: 'Awaiting Check' }
+    : run.activeStep
+      ? { tone: 'blue', label: stepMeta(run.activeStep)?.badge ?? 'Review Running' }
+      : run.started
+        ? { tone: 'blue', label: `Paused · ${run.done.length} of ${PIPELINE_STEPS.length} Steps` }
+        : { tone: 'neutral', label: 'Awaiting Check' }
 
   return (
     <>
@@ -123,7 +149,7 @@ function WorkbenchBody() {
         status={status}
         stages={STAGES}
         activeStage={activeStage}
-        onStage={goStage}
+        onStage={(id) => { actions.dispatch({ type: 'unfollow' }); goStage(id) }}
         runMode={run.mode}
         onRunMode={(mode) => actions.dispatch({ type: 'run_mode', mode })}
         cost={cost}
@@ -132,14 +158,15 @@ function WorkbenchBody() {
         askOpen={ui.askOpen}
         onToggleAsk={() => actions.dispatch({ type: 'toggle_ask' })}
         actionLabel={action?.label}
+        actionDisabled={action?.disabled}
         onAction={action?.run}
       />
 
       {activeStage === 'intake' ? <IntakeScreen /> : null}
-      {activeStage === 'read' ? <ReadScreen /> : null}
+      {activeStage === 'interpret' ? <InterpretScreen /> : null}
       {activeStage === 'checks' ? <ChecksScreen onOpenFinding={openFinding} /> : null}
       {activeStage === 'review' ? (
-        <ReviewScreen selectedId={selectedFindingId} onSelect={setSelectedFindingId} onJumpToRead={jumpToRead} />
+        <ReviewScreen selectedId={selectedFindingId} onSelect={setSelectedFindingId} onJumpToInterpret={jumpToInterpret} />
       ) : null}
       {activeStage === 'decide' ? <DecisionScreen onOpenFinding={openFinding} /> : null}
 

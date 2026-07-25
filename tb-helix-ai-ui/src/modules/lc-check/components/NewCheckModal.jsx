@@ -8,6 +8,12 @@ import * as api from '../api/lcCheckApi'
 // Opening a case. Two slots — the credit and the presentation — because the
 // credit is what everything else gets measured against, so it goes in first and
 // tells us who and what before the officer has typed anything.
+//
+// Creating a case does not start reading it. This dialog shows filenames and
+// what the credit says; the bundle — the thing most likely to be wrong — is not
+// visible until Intake. Starting a run from here would commit the spend on the
+// strength of a filename, and would make Intake a receipt rather than the last
+// free chance to catch the wrong presentation.
 export default function NewCheckModal({ open, onClose, onCreated }) {
   const [dropped, setDropped] = useState({})
   const [identity, setIdentity] = useState(null)
@@ -41,7 +47,7 @@ export default function NewCheckModal({ open, onClose, onCreated }) {
       open={open}
       onClose={onClose}
       title="New Check"
-      subtitle="Drop the credit and the presentation. We do the rest."
+      subtitle="Drop the credit and the presentation. You start the review on the next screen."
       footer={
         <>
           <span style={{ fontSize: 12.5, color: 'var(--me-grey-70)' }}>{hint}</span>

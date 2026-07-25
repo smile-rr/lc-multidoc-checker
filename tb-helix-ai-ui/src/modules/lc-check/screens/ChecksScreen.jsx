@@ -27,9 +27,15 @@ export default function ChecksScreen({ onOpenFinding }) {
   const allChecks = useMemo(() => [...data.checks, ...officer.addedChecks], [data.checks, officer.addedChecks])
   const [selectedId, setSelectedId] = useState(null)
 
+  // Nothing here is running until the execute step is. Planning is its own step,
+  // so between the two the plan sits complete and untouched — which is the whole
+  // point of separating them.
+  const executing = run.activeStep === 'execute' || run.done.includes('execute')
+  const planned = run.done.includes('plan')
+
   const statusOf = (check) => {
-    if (!check.areaId) return check.addedByOfficer ? (run.finished ? 'done' : run.started ? 'running' : 'planned') : 'skipped'
-    if (!run.started) return 'planned'
+    if (!check.areaId) return check.addedByOfficer ? (run.finished ? 'done' : executing ? 'running' : 'planned') : 'skipped'
+    if (!executing) return 'planned'
     if (run.completedAreaIds.includes(check.areaId)) return 'done'
     if (run.activeAreaId === check.areaId) return 'running'
     return 'queued'
@@ -78,18 +84,26 @@ export default function ChecksScreen({ onOpenFinding }) {
         <div style={{ padding: '13px 15px', borderBottom: '1px solid var(--me-grey-15)', display: 'flex', flexDirection: 'column', gap: 9, flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)' }}>Check Plan</span>
-            <button
-              onClick={actions.addCheck}
-              title="Add a check the credit does not call for — it runs with the rest and is recorded against your name"
-              style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--me-blue)', cursor: 'pointer', background: 'none', border: 'none', padding: 0, whiteSpace: 'nowrap' }}
-            >
-              <Icon name="plus" size={14} />
-              Add a check
-            </button>
+            {executing ? null : (
+              <button
+                onClick={actions.addCheck}
+                title="Add a check the credit does not call for — it runs with the rest and is recorded against your name"
+                style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--me-blue)', cursor: 'pointer', background: 'none', border: 'none', padding: 0, whiteSpace: 'nowrap' }}
+              >
+                <Icon name="plus" size={14} />
+                Add a check
+              </button>
+            )}
           </div>
 
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>
-            {run.finished ? 'complete' : run.started ? `${doneCount} of ${areaCount} areas` : 'not started'}
+            {run.finished
+              ? 'complete'
+              : executing
+                ? `${doneCount} of ${areaCount} areas`
+                : planned
+                  ? 'planned — not run'
+                  : 'not planned yet'}
             {' · '}{willRun} to run{wontRun ? ` · ${wontRun} not applicable` : ''}
           </span>
 

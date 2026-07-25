@@ -10,15 +10,19 @@ import Mt700TextViewer from '../components/Mt700TextViewer'
 import FactsPanel from '../components/FactsPanel'
 import { useCase } from '../state/CaseContext'
 
-// Stage 2 — what we read.
+// Stage 2 — what we made of it.
 //
 // Rail │ source │ extraction, following the v3 examination UI's parse stage, with
 // a draggable divider because officers size the fields panel to their screen.
 //
+// Source and extraction sit side by side because this stage is a claim, not a
+// transcript: every fact on the right is something we decided the document says,
+// and the page that produced it is one glance away for the disagreeing.
+//
 // The middle pane swaps by document kind, and so does what provenance means:
 //   · the credit is text  → tag viewer; hovering a fact highlights its line
 //   · a presented doc is a scan → PDF; selecting a fact turns to its page
-export default function ReadScreen() {
+export default function InterpretScreen() {
   const { data, run } = useCase()
 
   const [selectedId, setSelectedId] = useState('mt700')

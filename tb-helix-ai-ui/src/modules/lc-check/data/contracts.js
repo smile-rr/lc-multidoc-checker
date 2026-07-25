@@ -191,7 +191,7 @@
  */
 
 /**
- * @typedef {'intake'|'read'|'checks'|'review'|'decide'} Stage
+ * @typedef {'intake'|'interpret'|'checks'|'review'|'decide'} Stage
  * The officer-paced pipeline. Only intake is automatic; every later stage waits
  * for the officer to start it.
  */

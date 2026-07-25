@@ -117,7 +117,7 @@ export const TOKEN_RATES = { inPerMillion: 3.0, outPerMillion: 15.0 }
 // The animated run on screen is deliberately faster — nobody demos a three-minute
 // spinner — but every number reported anywhere comes from this table.
 const RUN_STEPS = [
-  { id: 'r1', name: 'Read & segment the file', role: 'intake · OCR + layout', model: 'gpt-4o', calls: 6, seconds: 108, tokensIn: 38000, tokensOut: 3100, cachePct: 0, retries: 0 },
+  { id: 'r1', name: 'Interpret & segment the file', role: 'interpret · OCR + layout', model: 'gpt-4o', calls: 6, seconds: 108, tokensIn: 38000, tokensOut: 3100, cachePct: 0, retries: 0 },
   { id: 'r2', name: 'Plan the review', role: 'planner · picks areas & order', model: 'qwen3-32b', calls: 1, seconds: 7.5, tokensIn: 11000, tokensOut: 1700, cachePct: 0, retries: 0 },
   { id: 'r3', name: 'Run the plan', role: 'driver · sequencing, retries, merge', model: 'qwen3-32b', calls: 3, seconds: 6.2, tokensIn: 14000, tokensOut: 2200, cachePct: 71, retries: 0 },
   { id: 'r4', name: 'Requirements', role: 'review agent', model: 'claude-sonnet-4-6', calls: 3, seconds: 21, tokensIn: 26000, tokensOut: 3200, cachePct: 14, retries: 0 },

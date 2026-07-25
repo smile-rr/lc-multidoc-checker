@@ -22,8 +22,8 @@
 // only place that changes.
 //
 // Stage progress arrives over SSE in the real service (`/sessions/{id}/stream`).
-// `subscribeToRun` below has the same callback shape an EventSource wrapper will
-// have, so the run engine does not care which is behind it.
+// `runPipelineStep` below has the same callback shape an EventSource wrapper
+// will have, so the run engine does not care which is behind it.
 // ===========================================================================
 
 import { CASE_LIST, caseDetailFor, ASK_SUGGESTIONS, AI_PERFORMANCE, RUN_STEPS } from '../data/fixtures.js'
@@ -179,42 +179,50 @@ export async function ask(caseId, question) {
 // ---- Run progress ----------------------------------------------------------
 
 /**
- * Drives a review run, emitting progress the same way the service's SSE stream
- * will. Returns an unsubscribe function; call it to stop a run in flight.
+ * Runs one pipeline step, emitting progress the same way the service's SSE
+ * stream will. Returns an unsubscribe function; call it to stop a step in
+ * flight.
  *
- * Events, in order:
- *   { type: 'segment', done, total }     intake carving the bundle into documents
- *   { type: 'area_started', areaId }
- *   { type: 'area_done', areaId }
- *   { type: 'finished' }
+ * This knows nothing about run mode. Whether the officer is running straight
+ * through or a stage at a time is a decision about who asks for the next step,
+ * and belongs to the caller — putting it here once meant the transport decided
+ * how much of the pipeline ran, which is not the transport's business.
+ *
+ * Events:
+ *   interpret  { type: 'segment', done, total } ×n, then { type: 'step_done' }
+ *   plan       { type: 'step_done' }
+ *   execute    { type: 'area_started'|'area_done', areaId } ×n, then { type: 'step_done' }
  *
  * @param {string} caseId
- * @param {{ areas: import('../data/contracts.js').CheckArea[], mode: 'auto'|'step', segmentTotal: number }} plan
+ * @param {'interpret'|'plan'|'execute'} stepId
+ * @param {{ areas: import('../data/contracts.js').CheckArea[], segmentTotal: number }} plan
  * @param {(event: object) => void} onEvent
  * @returns {() => void} unsubscribe
  */
-export function subscribeToRun(caseId, { areas, mode, segmentTotal = 6 }, onEvent) {
+export function runPipelineStep(caseId, stepId, { areas = [], segmentTotal = 6 }, onEvent) {
   void caseId
   const timers = []
   const at = (ms, fn) => timers.push(setTimeout(fn, ms))
+  const done = (ms) => at(ms, () => onEvent({ type: 'step_done', stepId }))
 
+  // Paced so a run reads as work happening without making a demo wait.
   const SEGMENT_EVERY = 130
-  // Paced so a full run reads as work happening without making a demo wait.
   const AREA_EVERY = 800
+  const PLAN_MS = 900
 
-  for (let i = 1; i <= segmentTotal; i += 1) {
-    at(i * SEGMENT_EVERY, () => onEvent({ type: 'segment', done: i, total: segmentTotal }))
-  }
-
-  // In step mode the caller advances one area at a time, so only segmentation is
-  // scheduled up front.
-  if (mode === 'auto') {
-    const offset = segmentTotal * SEGMENT_EVERY
+  if (stepId === 'interpret') {
+    for (let i = 1; i <= segmentTotal; i += 1) {
+      at(i * SEGMENT_EVERY, () => onEvent({ type: 'segment', done: i, total: segmentTotal }))
+    }
+    done(segmentTotal * SEGMENT_EVERY + 160)
+  } else if (stepId === 'plan') {
+    done(PLAN_MS)
+  } else if (stepId === 'execute') {
     areas.forEach((area, i) => {
-      at(offset + i * AREA_EVERY + 120, () => onEvent({ type: 'area_started', areaId: area.id }))
-      at(offset + (i + 1) * AREA_EVERY, () => onEvent({ type: 'area_done', areaId: area.id }))
+      at(i * AREA_EVERY + 120, () => onEvent({ type: 'area_started', areaId: area.id }))
+      at((i + 1) * AREA_EVERY, () => onEvent({ type: 'area_done', areaId: area.id }))
     })
-    at(offset + areas.length * AREA_EVERY + 160, () => onEvent({ type: 'finished' }))
+    done(areas.length * AREA_EVERY + 160)
   }
 
   return () => timers.forEach(clearTimeout)

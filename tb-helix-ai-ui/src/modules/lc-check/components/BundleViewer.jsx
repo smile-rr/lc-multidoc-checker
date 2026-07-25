@@ -1,6 +1,6 @@
 import { Suspense, lazy } from 'react'
 
-// Code-split: react-pdf + the pdfjs worker are ~500 KB, and only the Read stage
+// Code-split: react-pdf + the pdfjs worker are ~500 KB, and only the Interpret stage
 // needs them. Same reasoning as ui/src/components/stages/parse/ParseViewer.jsx.
 const PdfViewer = lazy(() => import('@shared/ds/PdfViewer'))
 

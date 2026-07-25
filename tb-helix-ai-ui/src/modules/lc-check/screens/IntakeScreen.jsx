@@ -14,7 +14,7 @@ import { useCase } from '../state/CaseContext'
 // a conclusion. It exists so a wrong or incomplete presentation is caught now,
 // rather than after a run has spent twenty seconds reading the wrong bundle.
 //
-// Both render inside the same DocumentSurface as the Read stage, so switching
+// Both render inside the same DocumentSurface as the Interpret stage, so switching
 // file — or stage — never resizes the reading column.
 export default function IntakeScreen() {
   const { data } = useCase()
@@ -74,8 +74,9 @@ export default function IntakeScreen() {
           </div>
 
           <p style={{ margin: 0, padding: '0 2px', fontSize: 11.5, lineHeight: 1.5, color: 'var(--me-grey-70)' }}>
-            Nothing has been read yet. The presentation is split into documents when
-            you start the review.
+            Nothing has been read yet, and nothing has been spent. Check both files
+            are the right ones, then start the review from the button above — the
+            presentation is split into documents at that point, not before.
           </p>
         </div>
 
