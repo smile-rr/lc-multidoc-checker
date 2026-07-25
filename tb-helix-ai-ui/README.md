@@ -469,21 +469,26 @@ The same class of bug inside a row: the disposition label changes from *Open* to
 under the cursor mid-click. That column is fixed-width, as is the expand/collapse
 control whose word also changes.
 
-### Pre-check performance on the cases list
+### AI performance on the cases list
 
 The per-case drawer answers *what did this one cost*. The cases list makes the
 value argument, in the order that convinces: **what you get · what it costs · how
 good it is**.
 
 ```
-TURNAROUND              SPEND                    QUALITY
-16.5 s                  $4.28                    92%
-median to findings      4 cases · 24 pages       383 of 417 upheld
-24 pages · 82 checks    $1.07/case $0.178/page   34  raised, not upheld
-41 findings evidenced   ▉▉▉▉▉ 97% Sonnet          3  MISSED
-6.2 h to decision       kept off the bill $1.09  86% conditions covered
-74% of window free      39% input reused
+TURNAROUND              SPEND                     QUALITY
+3 min 12 s              $4.28                     92%
+median to findings      total for the period      383 of 417 upheld
+24 pages · 82 checks    $1.07/case  $0.18/page    34  raised, not upheld
+41 findings evidenced   $107 per 100 cases         3  MISSED
+6.2 h to decision       ▉▉▉▉▉ 97% Sonnet          86% conditions covered
+74% of window free      kept off the bill $1.09
 ```
+
+The title is **AI performance** and nothing cleverer. A draft called it the
+*pre-check*, which is a coinage — it needs a sentence of explanation before the
+panel can be read, and a title that has to be explained has failed. Every other
+word in the panel is already in the product or in UCP 600.
 
 **There is no comparison against examiners anywhere in this panel, deliberately.**
 An earlier version scored the assistant against 45 minutes of unaided
@@ -498,6 +503,15 @@ So value is stated from the system's own side:
 - **Turnaround leads**, because being decision-ready before a case is opened is
   the thing the assistant actually delivers. The supporting numbers are work
   completed — pages read, checks run, findings evidenced.
+- **The run takes minutes, and says so.** Step durations describe the work: a
+  vision model reading six scanned pages is over a minute on its own, and the
+  `:47A:` conditions run an agentic loop. Six pages and twenty-odd checks come to
+  ~6 min of agent time, ~3 min on the clock. The animated run on screen is faster
+  — nobody demos a three-minute spinner — but every reported number comes from the
+  step table. `duration()` picks its own unit, so nothing reports `192.0s`.
+- **The total is labelled as a total**, because that is the number a budget holder
+  gets asked for. Unit costs sit beneath it, since a total only ever rises and so
+  cannot show a regression, plus a per-100-cases rate to forecast with.
 - **Headroom, not raw speed.** UCP 600 art. 14(b) allows five banking days; pace
   stops being worth anything once the window is comfortable, so the figure is how
   much of it the slowest case left free.

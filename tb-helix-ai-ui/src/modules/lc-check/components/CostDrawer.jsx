@@ -1,6 +1,6 @@
 import Drawer from '@shared/ds/Drawer'
 import Badge from '@shared/ds/Badge'
-import { seconds, thousands, usd, percent } from '@shared/lib/format'
+import { duration, durationShort, thousands, usd, percent } from '@shared/lib/format'
 
 // Run cost — what the review spent, in time and money, and where it went.
 //
@@ -32,7 +32,7 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
         <>
           <Section name="Totals">
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-              <Metric label="Wall clock" value={seconds(cost.wallClock)} note={`${seconds(cost.seconds)} of agent time, 1.8× parallel`} />
+              <Metric label="Wall clock" value={duration(cost.wallClock)} note={`${duration(cost.seconds)} of agent time, 1.8× parallel`} />
               <Metric label="Tokens" value={thousands(cost.tokens, 1)} note={`${thousands(cost.tokensIn)} in · ${thousands(cost.tokensOut, 1)} out`} />
               <Metric label="Cost" value={usd(cost.cost)} note={finished ? `${usd(cost.costPerPage)} per page` : 'so far'} />
             </div>
@@ -135,7 +135,7 @@ function ModelRow({ model: m }) {
         <span>{m.calls} calls</span>
         <span>{thousands(m.tokensIn)} / {thousands(m.tokensOut, 1)} tok</span>
         <span>{m.cacheHitPct ? `${percent(m.cacheHitPct)} cached` : 'uncached'}</span>
-        <span>{seconds(m.seconds)}</span>
+        <span>{durationShort(m.seconds)}</span>
         <span>${m.inPerMillion} / ${m.outPerMillion} per M</span>
       </div>
     </div>
@@ -165,7 +165,7 @@ function StepList({ cost, completedCount }) {
             </span>
             {done ? (
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)', whiteSpace: 'nowrap' }}>
-                {seconds(r.seconds)} · {usd(r.cost)}
+                {durationShort(r.seconds)} · {usd(r.cost)}
               </span>
             ) : (
               <Badge tone={running ? 'blue' : 'neutral'}>{running ? 'running' : 'queued'}</Badge>

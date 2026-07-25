@@ -3,7 +3,7 @@ import Badge from '@shared/ds/Badge'
 import Button from '@shared/ds/Button'
 import Icon from '@shared/ds/Icon'
 import SegmentedControl from '@shared/ds/SegmentedControl'
-import { money, seconds, thousands, usd, dueLabel } from '@shared/lib/format'
+import { money, durationShort, thousands, usd, dueLabel } from '@shared/lib/format'
 
 // The case header — breadcrumb, identity, the facts an officer keeps re-reading,
 // and the stage tabs.
@@ -39,7 +39,7 @@ export default function CaseHeader({
     { k: 'Reply due', v: dueLabel(detail.replyDueDays) ?? '—', weight: 600, urgent: true },
   ]
 
-  const costPill = `${seconds(cost.wallClock)} · ${thousands(cost.tokens)} · ${usd(cost.cost)}`
+  const costPill = `${durationShort(cost.wallClock)} · ${thousands(cost.tokens)} · ${usd(cost.cost)}`
 
   return (
     <header

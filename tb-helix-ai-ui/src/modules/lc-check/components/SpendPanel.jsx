@@ -1,15 +1,20 @@
 import Icon from '@shared/ds/Icon'
 import { usePersistedState } from '@shared/lib/usePersistedState'
-import { seconds, usd, percent, plural } from '@shared/lib/format'
+import { duration, durationShort, usd, percent, plural } from '@shared/lib/format'
 
-// How the pre-check is performing, across the queue.
+// How the automated examination is performing, across the queue.
+//
+// Titled "AI performance" and nothing cleverer. An earlier draft called it the
+// "pre-check", which is a coinage: it needs a sentence of explanation before
+// anyone can read the panel, and a title that has to be explained is a title that
+// has failed. Every other word here is already in the product or in UCP 600.
 //
 // Told entirely from the system's side. There is deliberately no comparison
-// against examiners anywhere in this panel: this is an assistant that decides
-// nothing, and scoring it against the people who sign the work would be both
-// wrong about what it does and unusable in the room where it gets shown. It also
-// rested on an estimate of how long review takes, which is the least reliable
-// number available and was carrying the entire claim.
+// against examiners anywhere: this is an assistant that decides nothing, and
+// scoring it against the people who sign the work would be both wrong about what
+// it does and unusable in the room where it gets shown. It also rested on an
+// estimate of how long review takes, which is the least reliable number
+// available and was carrying the entire claim.
 //
 // So the argument runs in the order it convinces: what you get, what it costs,
 // how good it is.
@@ -17,8 +22,10 @@ import { seconds, usd, percent, plural } from '@shared/lib/format'
 //   1 TURNAROUND — a case is decision-ready before anyone opens it, and there is
 //     room left in the five banking days art. 14(b) allows. Headroom, not raw
 //     speed: pace stops being worth anything once the window is comfortable.
-//   2 SPEND — total and unit cost, where it goes, and what reuse kept off the
-//     bill. Both derived from the same usage, so they reconcile.
+//   2 SPEND — the total leads and is labelled as one, because that is the number
+//     a budget holder is asked for. Unit costs sit under it so a change is
+//     visible (a total only ever rises), and a per-100-cases rate makes it
+//     scale-free enough to forecast with.
 //   3 QUALITY — split by direction, because a false alarm costs effort and a miss
 //     can cost the drawing.
 export default function SpendPanel({ spend }) {
@@ -45,11 +52,11 @@ export default function SpendPanel({ spend }) {
         }}
       >
         <Icon name={open ? 'chevron-down' : 'chevron-right'} size={15} color="var(--me-grey-50)" />
-        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)' }}>Pre-check performance</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)' }}>AI performance</span>
         <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>{b.period}</span>
         {!open ? (
           <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 14, fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--me-grey)' }}>
-            <span>{seconds(spend.medianWallClock)} to findings</span>
+            <span>{durationShort(spend.medianWallClock)} to findings</span>
             <span>{usd(spend.avgCostPerCase)} / case</span>
             <span style={{ color: b.missed ? 'var(--status-warning)' : 'var(--me-grey)' }}>{b.missed} missed</span>
           </span>
@@ -61,8 +68,8 @@ export default function SpendPanel({ spend }) {
           {/* ---- 1. What you get ---------------------------------------- */}
           <Cell>
             <Eyebrow>Turnaround</Eyebrow>
-            <Big>{seconds(spend.medianWallClock)}</Big>
-            <Note>median to findings — a case is decision-ready before it is opened</Note>
+            <Big>{duration(spend.medianWallClock)}</Big>
+            <Note>median time to findings — a case is decision-ready before it is opened</Note>
 
             <Split>
               <Unit label="pages read" value={String(spend.totalPages)} />
@@ -88,11 +95,15 @@ export default function SpendPanel({ spend }) {
           <Cell>
             <Eyebrow>Spend</Eyebrow>
             <Big>{usd(spend.totalCost)}</Big>
-            <Note>{plural(spend.casesExamined, 'case')} pre-checked · {spend.totalPages} pages</Note>
+            <Note>total for the period · {plural(spend.casesExamined, 'case')} checked · {spend.totalPages} pages</Note>
 
+            {/* Unit costs sit under the total because a total only ever rises and
+                so cannot show a regression; and a per-100 rate because that is
+                what a budget conversation is actually held in. */}
             <Split>
               <Unit label="per case" value={usd(spend.avgCostPerCase)} />
               <Unit label="per page" value={usd(spend.avgCostPerPage)} />
+              <Unit label="per 100 cases" value={usd(spend.avgCostPerCase * 100)} />
             </Split>
 
             <Bar models={spend.byModel} />
@@ -135,8 +146,8 @@ export default function SpendPanel({ spend }) {
                 emphasise
                 note={
                   b.missed
-                    ? `surfaced downstream rather than by the pre-check — ${b.missedNote}. This is the direction that costs money: under art. 16(f) a refusal window missed is a refusal right lost.`
-                    : 'nothing surfaced downstream that the pre-check did not raise.'
+                    ? `surfaced downstream rather than by the check run — ${b.missedNote}. This is the direction that costs money: under art. 16(f) a refusal window missed is a refusal right lost.`
+                    : 'nothing surfaced downstream that the check run did not raise.'
                 }
               />
             </div>
