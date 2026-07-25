@@ -1120,53 +1120,51 @@ export const INTAKE_SLOTS = [
 ]
 
 /**
- * What the spend is judged against.
+ * How the pre-check is performing.
  *
- * Three deliberate choices here, because the obvious framing is misleading:
+ * Framed entirely from the system's own side. There is deliberately no
+ * comparison against examiners here: this is a pre-check assistant, it decides
+ * nothing, and a panel that scores it against the people who sign the work would
+ * be both wrong about what it does and unusable in the room where it is shown.
  *
- * 1. HANDLING TIME, NOT MACHINE TIME. "45 minutes by hand versus 16 seconds" is
- *    a ratio nobody can bank. This is an officer-paced pipeline: the machine
- *    proposes, a person reads every finding and signs. The comparison that
- *    schedules capacity is unaided examination against machine time PLUS the
- *    officer review that remains. That is a real saving, and a much smaller one.
+ * So value is stated as what the assistant delivers and what it avoids spending:
  *
- * 2. TWO FAILURE DIRECTIONS, NOT ONE ACCURACY NUMBER. A false alarm costs an
- *    officer a few minutes. A miss can cost the value of the drawing: under UCP
- *    600 article 16(f) a bank that fails to give notice of refusal in time is
- *    *precluded* from claiming the documents are non-compliant — it must pay.
- *    Averaging those into one percentage hides the only one that can hurt you.
+ *   · TURNAROUND — how quickly a case reaches a state someone can review, and
+ *     how much room is left in the five banking days UCP 600 art. 14(b) allows.
+ *     Speed matters up to a comfortable window and not after, so the figure is
+ *     headroom rather than raw speed.
  *
- * 3. TURNAROUND AGAINST THE RULE, NOT AGAINST ZERO. UCP 600 article 14(b) gives
- *    the bank five banking days after presentation to examine and decide. Speed
- *    matters up to the point where the window is comfortable and not after, so
- *    the useful figure is headroom against that limit.
+ *   · REUSE — work the system did not have to redo. The vision extract cache
+ *     serves a document that has been read before without re-rendering or
+ *     re-calling the model, and prompt caching discounts repeated context. Both
+ *     are real money not spent, measurable without reference to anyone's time.
  *
- * These come from the bank's own records rather than from usage, so in
- * production they arrive from the service alongside the spend.
+ *   · QUALITY — split by direction. A false alarm costs review effort. A miss is
+ *     the expensive one: under UCP 600 art. 16(f) a bank that fails to give
+ *     notice of refusal in time is precluded from calling the documents
+ *     non-compliant. One number averaging the two would hide it.
+ *
+ * These come from the service in production; the shape is what matters here.
  */
-export const SPEND_BENCHMARK = {
+export const AI_PERFORMANCE = {
   period: 'Last 30 days',
 
-  // Time, in minutes per case.
-  manualMinutesPerCase: 45,      // unaided examination, measured before rollout
-  officerMinutesPerCase: 11,     // reading findings and deciding — this remains
-  casesPerExaminerDayBefore: 9,
-  casesPerExaminerDayAfter: 26,
-
-  // Turnaround against UCP 600 art. 14(b).
+  // Turnaround, against the art. 14(b) window.
   examinationWindowDays: 5,
-  medianDecisionHours: 6.2,
-  slowestDecisionHours: 31,
+  medianHoursToDecision: 6.2,
+  slowestHoursToDecision: 31,
 
-  // Quality, split by direction.
+  // Reuse: work not repeated.
+  documentsReused: 37,
+  documentsRead: 61,
+
+  // Quality, by direction.
   findingsReviewed: 417,
-  upheld: 383,                   // checker agreed
-  overturned: 34,                // we raised it, checker disagreed — costs time
-  missed: 3,                     // found downstream — costs money
+  upheld: 383,
+  overturned: 34,
+  missed: 3,
   missedNote: 'two insurance cover, one charter-party wording',
   overturnedTopCause: 'insurance cover',
-
-  // What the rulebook actually reached.
   conditionsCoveredPct: 86,
 }
 

@@ -2,29 +2,25 @@ import Icon from '@shared/ds/Icon'
 import { usePersistedState } from '@shared/lib/usePersistedState'
 import { seconds, usd, percent, plural } from '@shared/lib/format'
 
-// What the AI is costing, saving and getting right, across the queue.
+// How the pre-check is performing, across the queue.
 //
-// The per-case drawer answers "what did this one cost". This answers what a team
-// lead has to defend: is it worth it. Three columns, three questions — money,
-// time, quality — because they are separate arguments and a reader needs to be
-// able to lose one and keep the others.
+// Told entirely from the system's side. There is deliberately no comparison
+// against examiners anywhere in this panel: this is an assistant that decides
+// nothing, and scoring it against the people who sign the work would be both
+// wrong about what it does and unusable in the room where it gets shown. It also
+// rested on an estimate of how long review takes, which is the least reliable
+// number available and was carrying the entire claim.
 //
-// Framing decisions that matter more than the layout:
+// So the argument runs in the order it convinces: what you get, what it costs,
+// how good it is.
 //
-//   · **Handling time, not machine time.** "45 minutes by hand versus 16 seconds"
-//     is a ratio nobody can staff against. The officer still reads every finding
-//     and signs; what changed is the *total* per case. Machine time is shown, but
-//     as a component, not as the headline.
-//
-//   · **Two failure directions, never one accuracy number.** A false alarm costs
-//     minutes. A miss can cost the drawing — UCP 600 art. 16(f) precludes a bank
-//     that misses its refusal window from calling the documents non-compliant.
-//     Averaging them hides the only one that can hurt you, so misses get their
-//     own line and their own colour.
-//
-//   · **Turnaround against the rule.** Art. 14(b) allows five banking days. Speed
-//     is worth something up to the point the window is comfortable and nothing
-//     after, so the figure is headroom, not raw speed.
+//   1 TURNAROUND — a case is decision-ready before anyone opens it, and there is
+//     room left in the five banking days art. 14(b) allows. Headroom, not raw
+//     speed: pace stops being worth anything once the window is comfortable.
+//   2 SPEND — total and unit cost, where it goes, and what reuse kept off the
+//     bill. Both derived from the same usage, so they reconcile.
+//   3 QUALITY — split by direction, because a false alarm costs effort and a miss
+//     can cost the drawing.
 export default function SpendPanel({ spend }) {
   const [open, setOpen] = usePersistedState('lcCheck.spendPanel', true)
 
@@ -33,12 +29,9 @@ export default function SpendPanel({ spend }) {
   }
 
   const b = spend.benchmark
-  const machineMinutes = spend.medianWallClock / 60
-  const afterMinutes = b.officerMinutesPerCase + machineMinutes
-  const savedMinutes = b.manualMinutesPerCase - afterMinutes
-  const savedPct = (savedMinutes / b.manualMinutesPerCase) * 100
-  const hoursSaved = (savedMinutes * spend.casesExamined) / 60
   const windowHours = b.examinationWindowDays * 24
+  const headroom = (1 - b.slowestHoursToDecision / windowHours) * 100
+  const reusePct = b.documentsRead ? (b.documentsReused / b.documentsRead) * 100 : 0
 
   return (
     <div style={shell}>
@@ -52,12 +45,12 @@ export default function SpendPanel({ spend }) {
         }}
       >
         <Icon name={open ? 'chevron-down' : 'chevron-right'} size={15} color="var(--me-grey-50)" />
-        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)' }}>AI performance</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)' }}>Pre-check performance</span>
         <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>{b.period}</span>
         {!open ? (
           <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 14, fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--me-grey)' }}>
+            <span>{seconds(spend.medianWallClock)} to findings</span>
             <span>{usd(spend.avgCostPerCase)} / case</span>
-            <span>{afterMinutes.toFixed(0)} min / case</span>
             <span style={{ color: b.missed ? 'var(--status-warning)' : 'var(--me-grey)' }}>{b.missed} missed</span>
           </span>
         ) : null}
@@ -65,15 +58,43 @@ export default function SpendPanel({ spend }) {
 
       {open ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(240px, 1fr))', gap: 1, background: 'var(--me-grey-15)' }}>
-          {/* ---- Money ------------------------------------------------- */}
+          {/* ---- 1. What you get ---------------------------------------- */}
+          <Cell>
+            <Eyebrow>Turnaround</Eyebrow>
+            <Big>{seconds(spend.medianWallClock)}</Big>
+            <Note>median to findings — a case is decision-ready before it is opened</Note>
+
+            <Split>
+              <Unit label="pages read" value={String(spend.totalPages)} />
+              <Unit label="checks run" value={String(spend.checksRun)} />
+              <Unit label="findings evidenced" value={String(spend.findingsRaised)} />
+            </Split>
+
+            <Rule />
+            <Line
+              label="Presentation to decision"
+              value={`${b.medianHoursToDecision} h`}
+              note={`median. Slowest ${b.slowestHoursToDecision} h against the ${b.examinationWindowDays}-banking-day limit in UCP 600 art. 14(b) — ${percent(headroom)} of the window still free.`}
+            />
+            <div style={{ display: 'flex', height: 6, borderRadius: 999, overflow: 'hidden', background: 'var(--me-grey-15)', marginTop: 8 }}>
+              <div title={`Slowest case used ${b.slowestHoursToDecision} h`} style={{ width: `${(b.slowestHoursToDecision / windowHours) * 100}%`, background: 'var(--me-blue)' }} />
+            </div>
+            <span style={{ fontSize: 10.5, color: 'var(--me-grey-70)', marginTop: 4 }}>
+              slowest case against the {b.examinationWindowDays}-day window
+            </span>
+          </Cell>
+
+          {/* ---- 2. What it costs --------------------------------------- */}
           <Cell>
             <Eyebrow>Spend</Eyebrow>
             <Big>{usd(spend.totalCost)}</Big>
-            <Note>{plural(spend.casesExamined, 'case')} examined · {spend.totalPages} pages</Note>
+            <Note>{plural(spend.casesExamined, 'case')} pre-checked · {spend.totalPages} pages</Note>
+
             <Split>
               <Unit label="per case" value={usd(spend.avgCostPerCase)} />
               <Unit label="per page" value={usd(spend.avgCostPerPage)} />
             </Split>
+
             <Bar models={spend.byModel} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 6 }}>
               {spend.byModel.map((m) => (
@@ -84,52 +105,28 @@ export default function SpendPanel({ spend }) {
                 </div>
               ))}
             </div>
-          </Cell>
-
-          {/* ---- Time. The officer is in the number, deliberately. ------ */}
-          <Cell>
-            <Eyebrow>Time per case</Eyebrow>
-            <Big>{afterMinutes.toFixed(0)} min</Big>
-            <Note>
-              was {b.manualMinutesPerCase} min unaided — {savedMinutes.toFixed(0)} min saved, {percent(savedPct)} less
-            </Note>
-
-            {/* The bar shows what the time is made of, so nobody reads the
-                saving as the machine having replaced the examiner. */}
-            <div style={{ display: 'flex', height: 8, borderRadius: 999, overflow: 'hidden', background: 'var(--me-grey-15)', marginTop: 10 }}>
-              <div title={`Officer review ${b.officerMinutesPerCase} min`} style={{ width: `${(b.officerMinutesPerCase / b.manualMinutesPerCase) * 100}%`, background: 'var(--me-blue)' }} />
-              <div title={`Machine ${seconds(spend.medianWallClock)}`} style={{ width: `${Math.max(1.5, (machineMinutes / b.manualMinutesPerCase) * 100)}%`, background: 'var(--me-green)' }} />
-            </div>
-            <div style={{ display: 'flex', gap: 12, marginTop: 5, fontSize: 11, color: 'var(--me-grey-70)' }}>
-              <Legend colour="var(--me-blue)">officer {b.officerMinutesPerCase} min</Legend>
-              <Legend colour="var(--me-green)">machine {seconds(spend.medianWallClock)}</Legend>
-            </div>
-
-            <Split>
-              <Unit label="cases / examiner-day" value={`${b.casesPerExaminerDayBefore} → ${b.casesPerExaminerDayAfter}`} />
-              <Unit label="examiner-hours saved" value={`${hoursSaved.toFixed(0)} h`} />
-            </Split>
 
             <Rule />
             <Line
-              label="Decision turnaround"
-              value={`${b.medianDecisionHours} h`}
-              note={`median, against the ${b.examinationWindowDays}-banking-day limit in UCP 600 art. 14(b). Slowest ${b.slowestDecisionHours} h — ${percent((1 - b.slowestDecisionHours / windowHours) * 100)} headroom.`}
+              label="Kept off the bill"
+              value={usd(spend.costAvoided)}
+              tone="var(--status-success)"
+              note={`${b.documentsReused} of ${b.documentsRead} documents served from the extract cache without re-reading, and ${percent(spend.cachedInputPct)} of input tokens reused — ${percent(reusePct)} of the work was not repeated.`}
             />
           </Cell>
 
-          {/* ---- Quality. Split by direction; a miss is not a false alarm. */}
+          {/* ---- 3. How good it is -------------------------------------- */}
           <Cell>
             <Eyebrow>Quality</Eyebrow>
             <Big>{percent((b.upheld / b.findingsReviewed) * 100)}</Big>
-            <Note>{b.upheld} of {b.findingsReviewed} findings upheld by a checker</Note>
+            <Note>{b.upheld} of {b.findingsReviewed} findings upheld on review</Note>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 11 }}>
               <Line
-                label="False alarms"
+                label="Raised, not upheld"
                 value={String(b.overturned)}
                 tone="var(--status-warning)"
-                note={`raised, checker disagreed — costs review time. Most often ${b.overturnedTopCause}.`}
+                note={`flagged and then set aside on review — costs attention. Most often ${b.overturnedTopCause}.`}
               />
               <Line
                 label="Missed"
@@ -138,8 +135,8 @@ export default function SpendPanel({ spend }) {
                 emphasise
                 note={
                   b.missed
-                    ? `found downstream, not by us — ${b.missedNote}. This is the direction that costs money: under art. 16(f) a bank that misses its refusal window must pay.`
-                    : 'nothing found downstream that we did not raise.'
+                    ? `surfaced downstream rather than by the pre-check — ${b.missedNote}. This is the direction that costs money: under art. 16(f) a refusal window missed is a refusal right lost.`
+                    : 'nothing surfaced downstream that the pre-check did not raise.'
                 }
               />
             </div>
@@ -148,7 +145,7 @@ export default function SpendPanel({ spend }) {
             <Line
               label="Conditions covered"
               value={`${b.conditionsCoveredPct}%`}
-              note={`a rule existed for ${b.conditionsCoveredPct}% of the conditions in these credits. The rest were surfaced for a person, not passed.`}
+              note={`a rule existed for ${b.conditionsCoveredPct}% of the conditions in these credits. The remainder were surfaced as open questions, never passed silently.`}
             />
           </Cell>
         </div>
@@ -194,7 +191,7 @@ const Note = ({ children }) => (
 )
 
 const Split = ({ children }) => (
-  <div style={{ display: 'flex', gap: 18, marginTop: 10, paddingTop: 9, borderTop: '1px solid var(--me-grey-08)' }}>{children}</div>
+  <div style={{ display: 'flex', gap: 16, marginTop: 10, paddingTop: 9, borderTop: '1px solid var(--me-grey-08)' }}>{children}</div>
 )
 
 const Rule = () => <div style={{ marginTop: 10, paddingTop: 9, borderTop: '1px solid var(--me-grey-08)' }} />
@@ -204,13 +201,6 @@ const Unit = ({ label, value }) => (
     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13.5, color: 'var(--me-ink)', whiteSpace: 'nowrap' }}>{value}</span>
     <span style={{ fontSize: 11, color: 'var(--me-grey-70)' }}>{label}</span>
   </div>
-)
-
-const Legend = ({ colour, children }) => (
-  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-    <span style={{ width: 7, height: 7, borderRadius: 2, background: colour }} />
-    {children}
-  </span>
 )
 
 const Line = ({ label, value, note, tone, emphasise }) => (

@@ -469,49 +469,47 @@ The same class of bug inside a row: the disposition label changes from *Open* to
 under the cursor mid-click. That column is fixed-width, as is the expand/collapse
 control whose word also changes.
 
-### AI performance on the cases list
+### Pre-check performance on the cases list
 
-The per-case drawer answers *what did this one cost*. The cases list answers what
-a team lead has to defend: **is it worth it**. Three columns, three separate
-arguments — money, time, quality — so a reader can lose one and keep the others.
-
-Three framing decisions matter more than the layout, because the obvious version
-of this panel is quietly dishonest:
-
-**Handling time, not machine time.** *"45 minutes by hand versus 16 seconds"* is a
-ratio nobody can staff against. This is an officer-paced pipeline — the officer
-still reads every finding and signs. What changed is the *total* per case:
+The per-case drawer answers *what did this one cost*. The cases list makes the
+value argument, in the order that convinces: **what you get · what it costs · how
+good it is**.
 
 ```
-was  45 min unaided
-now  11.3 min  =  officer 11 min  +  machine 16.5 s
-                  ████████████████▌                    75% less
+TURNAROUND              SPEND                    QUALITY
+16.5 s                  $4.28                    92%
+median to findings      4 cases · 24 pages       383 of 417 upheld
+24 pages · 82 checks    $1.07/case $0.178/page   34  raised, not upheld
+41 findings evidenced   ▉▉▉▉▉ 97% Sonnet          3  MISSED
+6.2 h to decision       kept off the bill $1.09  86% conditions covered
+74% of window free      39% input reused
 ```
 
-Machine time appears as a component of that bar, never as the headline, so the
-saving cannot be misread as the machine having replaced the examiner. The
-capacity figure is cases per examiner-day (9 → 26), which is the number that
-actually schedules people.
+**There is no comparison against examiners anywhere in this panel, deliberately.**
+An earlier version scored the assistant against 45 minutes of unaided
+examination. Two things were wrong with that. It is wrong about the product — this
+is a pre-check that decides nothing, and framing it as displacing the people who
+sign the work makes it unusable in the room where it gets shown. And it was
+resting on an estimate of how long review takes, which was the least reliable
+number available and was carrying the entire claim.
 
-**Two failure directions, never one accuracy number.** A false alarm costs an
-officer minutes. A miss can cost the drawing: under UCP 600 article 16(f) a bank
-that fails to give notice of refusal in time is *precluded* from claiming the
-documents are non-compliant — it must pay. Averaging those into "92% accurate"
-hides the only one that can hurt you, so **misses get their own line, their own
-colour and the emphasis**, and the panel says why.
+So value is stated from the system's own side:
 
-**Turnaround against the rule, not against zero.** Article 14(b) allows five
-banking days to examine and decide. Speed is worth something up to the point the
-window is comfortable and nothing after, so the figure is headroom (slowest 31 h
-of 120 h) rather than raw speed.
-
-A fourth line, **conditions covered** (86%), keeps the governance backlog visible:
-the remainder were surfaced for a person, not passed.
-
-`summariseSpend()` derives the money from the same step and model tables as the
-per-case figure, scaled by page count, so the two can never disagree. The
-benchmark half comes from the bank's own records — it is not derivable from usage
-and in production arrives from the service.
+- **Turnaround leads**, because being decision-ready before a case is opened is
+  the thing the assistant actually delivers. The supporting numbers are work
+  completed — pages read, checks run, findings evidenced.
+- **Headroom, not raw speed.** UCP 600 art. 14(b) allows five banking days; pace
+  stops being worth anything once the window is comfortable, so the figure is how
+  much of it the slowest case left free.
+- **Savings are real money not spent, not time attributed to anyone.** The extract
+  cache serves a document already read without re-rendering or re-calling the
+  model, and prompt caching discounts repeated context. `costAvoided` is derived
+  from the same usage as the spend, so the two reconcile — an avoided figure
+  nobody can check is worth nothing.
+- **Quality stays split by direction.** A false alarm costs attention. A miss is
+  the expensive one: under art. 16(f) a refusal window missed is a refusal right
+  lost. One averaged number would hide it, so misses keep their own line, colour
+  and emphasis.
 
 ### Deleting a check is usually the wrong answer
 

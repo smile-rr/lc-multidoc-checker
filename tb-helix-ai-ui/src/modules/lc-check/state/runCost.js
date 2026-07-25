@@ -126,14 +126,28 @@ export function summariseSpend(cases, steps, baselinePages = 6) {
     }
   })
 
+  // What caching kept off the bill. Cached input is billed at roughly a tenth of
+  // full rate, so the avoided share is the cached fraction less that. Derived
+  // from the same usage as the spend — an "avoided" number nobody can reconcile
+  // is worth nothing.
+  const CACHE_DISCOUNT = 0.9
+  const avoidedPerBaseline = steps.reduce((acc, st) => {
+    const r = rateFor(st.model)
+    return acc + (st.tokensIn * (st.cachePct / 100) * CACHE_DISCOUNT * r.inPerMillion) / 1e6
+  }, 0)
+
   const totalCost = scaled.reduce((a, c) => a + c.cost, 0)
   const totalPages = scaled.reduce((a, c) => a + c.pages, 0)
   const totalTokens = scaled.reduce((a, c) => a + c.tokens, 0)
   const times = scaled.map((c) => c.seconds).sort((a, b) => a - b)
   const median = times.length ? times[Math.floor(times.length / 2)] : 0
 
+  const pageFactor = examined.reduce((a, c) => a + c.pageCount / baselinePages, 0)
+
   return {
     casesExamined: examined.length,
+    costAvoided: avoidedPerBaseline * pageFactor,
+    cachedInputPct: base.cacheHitPct,
     casesTotal: cases.length,
     totalPages,
     totalTokens,

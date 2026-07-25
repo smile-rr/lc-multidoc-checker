@@ -26,7 +26,7 @@
 // have, so the run engine does not care which is behind it.
 // ===========================================================================
 
-import { CASE_LIST, caseDetailFor, ASK_SUGGESTIONS, SPEND_BENCHMARK, RUN_STEPS } from '../data/fixtures.js'
+import { CASE_LIST, caseDetailFor, ASK_SUGGESTIONS, AI_PERFORMANCE, RUN_STEPS } from '../data/fixtures.js'
 import { summariseSpend } from '../state/runCost.js'
 
 /** Simulated service latency, ms. Kept visible so loading states get exercised. */
@@ -106,7 +106,17 @@ export async function getSpendSummary() {
     // Only examined cases have spent anything.
     examined: c.status !== 'awaiting_check',
   }))
-  return { ...summariseSpend(cases, RUN_STEPS), benchmark: SPEND_BENCHMARK }
+  // Work completed ahead of review — the concrete output of the pre-check.
+  const done = cases.filter((c) => c.examined).map((c) => caseDetailFor(c.id))
+  const checksRun = done.reduce((a, d) => a + d.checks.filter((c) => c.areaId).length, 0)
+  const findingsRaised = done.reduce((a, d) => a + d.findings.length, 0)
+
+  return {
+    ...summariseSpend(cases, RUN_STEPS),
+    checksRun,
+    findingsRaised,
+    benchmark: AI_PERFORMANCE,
+  }
 }
 
 /**
