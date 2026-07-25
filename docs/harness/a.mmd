@@ -1,0 +1,36 @@
+flowchart TB
+    subgraph HARNESS[Harness Core - Generic Capability Registry]
+        REG_API[Execution API: Tier0 to Tier3]
+        REG_ORCH[Orchestration Engine: Plan and DAG runner]
+        REG_PARSE[Parser: message and text format]
+        REG_SEG[Document Segmenter: page split]
+        REG_CLASSIFY[Doc Type Classifier - VLM based]
+        REG_OCR[OCR: printed text extraction]
+        REG_TABLE[Table Extractor]
+        REG_SIG[Signature and Handwriting Detector]
+        REG_FACTS[Facts Extractor: structures raw text into fields]
+        REG_AGENT[Governed Check Agent primitive]
+        REG_RECON[Reconcile Engine: dedupe and conflict resolution]
+        REG_REPORT[Report Builder: memo generator]
+        REG_MODEL[Model Router]
+        REG_TOOLS[Tool and Extractor Registry]
+        REG_AUDIT[Execution and Evidence Audit Log]
+    end
+
+    REG_API --> REG_ORCH
+    REG_ORCH --> REG_PARSE
+    REG_ORCH --> REG_SEG
+    REG_SEG --> REG_CLASSIFY
+    REG_CLASSIFY --> REG_OCR
+    REG_CLASSIFY --> REG_TABLE
+    REG_CLASSIFY --> REG_SIG
+    REG_PARSE --> REG_FACTS
+    REG_OCR --> REG_FACTS
+    REG_TABLE --> REG_FACTS
+    REG_SIG --> REG_FACTS
+    REG_FACTS --> REG_AGENT
+    REG_AGENT --> REG_MODEL
+    REG_AGENT --> REG_TOOLS
+    REG_AGENT --> REG_RECON
+    REG_RECON --> REG_REPORT
+    REG_ORCH --> REG_AUDIT
