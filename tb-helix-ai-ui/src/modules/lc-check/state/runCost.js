@@ -155,11 +155,11 @@ export function summariseSpend(cases, steps, baselinePages = 6) {
     avgCostPerCase: examined.length ? totalCost / examined.length : 0,
     avgCostPerPage: totalPages ? totalCost / totalPages : 0,
     medianWallClock: median,
+    // Spread rather than pick: dropping the rate and host fields here left them
+    // undefined for any caller that later wanted to show them, which is a silent
+    // bug waiting to be written. Only the cost is rescaled to the period.
     byModel: base.byModel.map((m) => ({
-      modelId: m.modelId,
-      label: m.label,
-      role: m.role,
-      costShare: m.costShare,
+      ...m,
       cost: m.cost * (totalCost / (base.cost || 1)),
     })),
   }

@@ -1,4 +1,5 @@
 import Icon from '@shared/ds/Icon'
+import InfoTip from '@shared/ds/InfoTip'
 import { usePersistedState } from '@shared/lib/usePersistedState'
 import { duration, durationShort, usd, percent, plural } from '@shared/lib/format'
 import { qualityRates } from '../data/fixtures.js'
@@ -64,7 +65,7 @@ export default function SpendPanel({ spend }) {
           {/* ---- 1. What you get ---------------------------------------- */}
           <Cell>
             <Eyebrow>Turnaround</Eyebrow>
-            <Big tip="Wall-clock time for the automated examination itself: from the file being accepted to every check having returned. Machine time only — it does not include anyone reading the result.">
+            <Big title="Time to findings" tip="Wall-clock time for the automated examination itself: from the file being accepted to every check having returned. Machine time only — it does not include anyone reading the result.">
               {duration(spend.medianWallClock)}
             </Big>
             <Note>median time to findings — a case is decision-ready before it is opened</Note>
@@ -96,7 +97,7 @@ export default function SpendPanel({ spend }) {
           {/* ---- 2. What it costs --------------------------------------- */}
           <Cell>
             <Eyebrow>Spend</Eyebrow>
-            <Big tip="Total model spend for every case examined this period, priced per model at its own input and output rates.">
+            <Big title="Spend" tip="Total model spend for every case examined this period, priced per model at its own input and output rates.">
               {usd(spend.totalCost)}
             </Big>
             <Note>total for the period · {plural(spend.casesExamined, 'case')} checked · {spend.totalPages} pages</Note>
@@ -245,9 +246,9 @@ function Rate({ label, tip, value, previous, detail, emphasise }) {
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: emphasise ? 20 : 18, fontWeight: 500, color: 'var(--me-ink)', lineHeight: 1.15 }}>
           {percent(value * 100)}
         </span>
-        <Tip text={tip}>
-          <span style={{ fontSize: 12, fontWeight: emphasise ? 600 : 400, color: 'var(--me-ink)' }}>{label}</span>
-        </Tip>
+        <span style={{ fontSize: 12, fontWeight: emphasise ? 600 : 400, color: 'var(--me-ink)' }}>
+          <InfoTip label={label} title={label}>{tip}</InfoTip>
+        </span>
         <span style={{ marginLeft: 'auto' }}><Delta value={pts} unit=" pts" decimals={1} /></span>
       </div>
       <span style={{ fontSize: 11, color: 'var(--me-grey-70)', lineHeight: 1.4 }}>{detail}</span>
@@ -263,28 +264,15 @@ function Count({ label, tip, value, previous, suffix = '', lowerIsBetter, tone, 
         {value}{suffix}
       </span>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0, flex: 1 }}>
-        <Tip text={tip}>
-          <span style={{ fontSize: 12, fontWeight: emphasise ? 600 : 400, color: 'var(--me-ink)' }}>{label}</span>
-        </Tip>
+        <span style={{ fontSize: 12, fontWeight: emphasise ? 600 : 400, color: 'var(--me-ink)' }}>
+          <InfoTip label={label} title={label}>{tip}</InfoTip>
+        </span>
         {note ? <span style={{ fontSize: 10.5, color: 'var(--me-grey-70)', lineHeight: 1.4 }}>{note}</span> : null}
       </div>
       <Delta value={value - previous} unit={suffix ? ' pts' : ''} lowerIsBetter={lowerIsBetter} />
     </div>
   )
 }
-
-/**
- * Marks a label as having an explanation behind it.
- *
- * A dotted underline rather than a row of (i) icons: in a grid this dense, twelve
- * icons would be more chrome than data, and the underline signals "there is more
- * here" without occupying a column.
- */
-const Tip = ({ text, children }) => (
-  <span title={text} style={{ cursor: 'help', borderBottom: '1px dotted var(--me-grey-50)' }}>
-    {children}
-  </span>
-)
 
 const shell = { background: '#fff', border: '1px solid var(--me-grey-15)', borderRadius: 12, overflow: 'hidden' }
 
@@ -296,9 +284,12 @@ const Eyebrow = ({ children }) => (
   <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--me-grey-70)' }}>{children}</span>
 )
 
-const Big = ({ tip, children }) => (
-  <span title={tip} style={{ fontFamily: 'var(--font-mono)', fontSize: 22, fontWeight: 500, color: 'var(--me-ink)', lineHeight: 1.2, marginTop: 4, cursor: tip ? 'help' : 'default', alignSelf: 'flex-start' }}>
-    {children}
+const Big = ({ tip, title, children }) => (
+  <span style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 5, marginTop: 4 }}>
+    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 22, fontWeight: 500, color: 'var(--me-ink)', lineHeight: 1.2 }}>
+      {children}
+    </span>
+    {tip ? <span style={{ marginTop: 3 }}><InfoTip trigger="icon" title={title}>{tip}</InfoTip></span> : null}
   </span>
 )
 
@@ -315,9 +306,9 @@ const Rule = () => <div style={{ marginTop: 10, paddingTop: 9, borderTop: '1px s
 const Unit = ({ label, value, tip }) => (
   <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13.5, color: 'var(--me-ink)', whiteSpace: 'nowrap' }}>{value}</span>
-    <Tip text={tip}>
-      <span style={{ fontSize: 11, color: 'var(--me-grey-70)' }}>{label}</span>
-    </Tip>
+    <span style={{ fontSize: 11, color: 'var(--me-grey-70)' }}>
+      <InfoTip label={label} title={label}>{tip}</InfoTip>
+    </span>
   </div>
 )
 
@@ -325,9 +316,9 @@ const Line = ({ label, value, note, tip, tone }) => (
   <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13.5, color: tone || 'var(--me-ink)', flex: '0 0 46px' }}>{value}</span>
     <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
-      <Tip text={tip}>
-        <span style={{ fontSize: 12, color: 'var(--me-ink)' }}>{label}</span>
-      </Tip>
+      <span style={{ fontSize: 12, color: 'var(--me-ink)' }}>
+        <InfoTip label={label} title={label}>{tip}</InfoTip>
+      </span>
       <span style={{ fontSize: 11, color: 'var(--me-grey-70)', lineHeight: 1.45 }}>{note}</span>
     </div>
   </div>

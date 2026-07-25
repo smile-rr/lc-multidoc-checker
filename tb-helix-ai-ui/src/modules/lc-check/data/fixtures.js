@@ -79,13 +79,13 @@ const CHECK_CATALOG = [
 // Mirrors the v3 service's split: a VLM reads the pages, a cheap text model
 // plans and routes, the main model executes the rules.
 export const MODELS = {
-  'qwen3-vl-8b': {
-    id: 'qwen3-vl-8b',
-    label: 'Qwen3-VL 8B',
+  'gpt-4o': {
+    id: 'gpt-4o',
+    label: 'GPT-4o',
     role: 'Vision · page extraction',
-    inPerMillion: 0.18,
-    outPerMillion: 0.72,
-    host: 'Ollama · on-premise',
+    inPerMillion: 2.5,
+    outPerMillion: 10.0,
+    host: 'Azure OpenAI',
   },
   'qwen3-32b': {
     id: 'qwen3-32b',
@@ -95,9 +95,9 @@ export const MODELS = {
     outPerMillion: 1.2,
     host: 'DashScope',
   },
-  'claude-sonnet-4-5': {
-    id: 'claude-sonnet-4-5',
-    label: 'Claude Sonnet 4.5',
+  'claude-sonnet-4-6': {
+    id: 'claude-sonnet-4-6',
+    label: 'Claude Sonnet 4.6',
     role: 'Main · rule execution',
     inPerMillion: 3.0,
     outPerMillion: 15.0,
@@ -117,14 +117,14 @@ export const TOKEN_RATES = { inPerMillion: 3.0, outPerMillion: 15.0 }
 // The animated run on screen is deliberately faster — nobody demos a three-minute
 // spinner — but every number reported anywhere comes from this table.
 const RUN_STEPS = [
-  { id: 'r1', name: 'Read & segment the file', role: 'intake · OCR + layout', model: 'qwen3-vl-8b', calls: 6, seconds: 108, tokensIn: 38000, tokensOut: 3100, cachePct: 0, retries: 0 },
+  { id: 'r1', name: 'Read & segment the file', role: 'intake · OCR + layout', model: 'gpt-4o', calls: 6, seconds: 108, tokensIn: 38000, tokensOut: 3100, cachePct: 0, retries: 0 },
   { id: 'r2', name: 'Plan the review', role: 'planner · picks areas & order', model: 'qwen3-32b', calls: 1, seconds: 7.5, tokensIn: 11000, tokensOut: 1700, cachePct: 0, retries: 0 },
   { id: 'r3', name: 'Run the plan', role: 'driver · sequencing, retries, merge', model: 'qwen3-32b', calls: 3, seconds: 6.2, tokensIn: 14000, tokensOut: 2200, cachePct: 71, retries: 0 },
-  { id: 'r4', name: 'Requirements', role: 'review agent', model: 'claude-sonnet-4-5', calls: 3, seconds: 21, tokensIn: 26000, tokensOut: 3200, cachePct: 14, retries: 0 },
-  { id: 'r5', name: 'Presentation & completeness', role: 'review agent', model: 'claude-sonnet-4-5', calls: 4, seconds: 47, tokensIn: 51000, tokensOut: 5400, cachePct: 46, retries: 1 },
-  { id: 'r6', name: 'Dates & shipment', role: 'review agent', model: 'claude-sonnet-4-5', calls: 3, seconds: 25, tokensIn: 21000, tokensOut: 2100, cachePct: 63, retries: 0 },
-  { id: 'r7', name: 'Goods, amounts & tolerance', role: 'review agent', model: 'claude-sonnet-4-5', calls: 3, seconds: 33, tokensIn: 33000, tokensOut: 3600, cachePct: 55, retries: 0 },
-  { id: 'r8', name: 'General review', role: 'review agent · agentic on :47A:', model: 'claude-sonnet-4-5', calls: 6, seconds: 96, tokensIn: 96000, tokensOut: 9700, cachePct: 42, retries: 1 },
+  { id: 'r4', name: 'Requirements', role: 'review agent', model: 'claude-sonnet-4-6', calls: 3, seconds: 21, tokensIn: 26000, tokensOut: 3200, cachePct: 14, retries: 0 },
+  { id: 'r5', name: 'Presentation & completeness', role: 'review agent', model: 'claude-sonnet-4-6', calls: 4, seconds: 47, tokensIn: 51000, tokensOut: 5400, cachePct: 46, retries: 1 },
+  { id: 'r6', name: 'Dates & shipment', role: 'review agent', model: 'claude-sonnet-4-6', calls: 3, seconds: 25, tokensIn: 21000, tokensOut: 2100, cachePct: 63, retries: 0 },
+  { id: 'r7', name: 'Goods, amounts & tolerance', role: 'review agent', model: 'claude-sonnet-4-6', calls: 3, seconds: 33, tokensIn: 33000, tokensOut: 3600, cachePct: 55, retries: 0 },
+  { id: 'r8', name: 'General review', role: 'review agent · agentic on :47A:', model: 'claude-sonnet-4-6', calls: 6, seconds: 96, tokensIn: 96000, tokensOut: 9700, cachePct: 42, retries: 1 },
   { id: 'r9', name: 'Sanctions & parties', role: 'review agent', model: 'qwen3-32b', calls: 1, seconds: 9, tokensIn: 12000, tokensOut: 800, cachePct: 68, retries: 0 },
 ]
 
@@ -1071,7 +1071,7 @@ function buildCase(defKey, overrides) {
     checks: buildChecks(def, lines, creditTerms, documents),
     findings: buildFindings(def),
     runSteps: RUN_STEPS,
-    runModelSummary: '3 models · 30 calls · 2 repairs · 6 pages read · prompt cache 43%',
+    runModelSummary: 'GPT-4o · Qwen3 32B · Claude Sonnet 4.6 — 30 calls, 2 repairs, 6 pages read, prompt cache 43%',
     // The run state the case is already in when it loads. A finished case needs
     // no run before Review and Decision have something to show.
     runState: overrides.runState,

@@ -51,7 +51,7 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
           {cost.byModel.length ? (
             <Section
               name="By model"
-              note="A vision model reads the pages, a small model plans, the main model applies the rules. Their prices differ by an order of magnitude, so the total on its own says little."
+              note="GPT-4o reads the pages, Qwen plans and routes, Sonnet applies the rules. Their prices differ by an order of magnitude, so the total on its own says little."
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 {cost.byModel.map((m) => (

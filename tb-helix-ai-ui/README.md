@@ -368,6 +368,35 @@ examination* already means a human checking documents without AI. Labelling a
 pacing control "Manual" would collide with the one distinction the product exists
 to make clear.
 
+### Explaining a term: one component, three triggers
+
+`InfoTip` is the only way this app explains a metric or a term. Two decisions in
+it are worth keeping.
+
+**Not `title=""`.** Native tooltips look free and are not: roughly a second of
+delay, no styling, long text truncated by the platform, nothing at all on touch,
+and inconsistent screen-reader behaviour. These explanations run to two or three
+sentences and cite UCP articles — that is popover content.
+
+**Not hover-only, and not click-only.** Neither serves everyone. Hover is fastest
+when scanning a dense grid with a mouse; a touch user has no hover and a keyboard
+user never reaches it. Click works everywhere but is slow when checking six
+definitions in a row. So it opens on **all three**, which costs nothing:
+
+| Gesture | Behaviour |
+|---|---|
+| hover | opens after 120 ms, closes on leave |
+| focus | opens — keyboard reaches it by Tab |
+| click / tap | *pins* it open, so it survives the mouse leaving while you read |
+| Esc, outside click, second click | closes |
+
+Two presentations, chosen by density: `trigger="underline"` makes the label
+itself the trigger (dense grids, where a column of `?` icons would be more chrome
+than data), `trigger="icon"` renders a `?` (a heading, or anywhere with no
+natural word to underline). Positioned `fixed` from the trigger's rect, because
+these live inside panels with `overflow: hidden` that would clip an absolutely
+positioned bubble.
+
 ### Cost is attributed per model
 
 A run is not one model: a vision model reads the pages, a cheap text model plans
@@ -376,9 +405,9 @@ apart. A blended total hides the only thing worth knowing. `runCost.js` prices
 each step against its own model's rates and rolls up per model; the cost drawer
 tabs into **Summary / By model / By step**.
 
-On the worked case that reads: Sonnet 4.5 is 97% of spend across 19 of 30 calls,
-while the vision model that read all six pages is 1%. That is a decision you can
-act on; `$1.07` on its own is not.
+On the worked case that reads: Claude Sonnet 4.6 is 88% of spend, GPT-4o reading
+six scanned pages is 11%, and Qwen3 32B planning and routing is 2%. That is a
+decision you can act on; `$1.19` on its own is not.
 
 ### Check references
 
