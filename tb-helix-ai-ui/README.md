@@ -583,11 +583,31 @@ So value is stated from the system's own side:
   art. 16(f) turns a missed refusal window into a lost refusal right. Recall is
   the number to defend; precision is the number to improve.
 
-- **Every figure carries the previous period.** One month's precision says
-  nothing about whether the rulebook is improving. `Delta` inverts its colour for
-  lower-is-better measures — a falling false-positive count is good news and a
-  falling recall is not, and getting that backwards would be worse than showing
-  no trend at all.
+- **Every figure carries the previous period**, because one month's precision
+  says nothing about whether the rulebook is improving.
+
+  **The arrow points up when the measure improved** — never at the raw number's
+  direction — and the colour says the same thing. Up is better, green is better,
+  always. An earlier version pointed the arrow at the raw movement and coloured
+  it by whether that movement was good, so a falling false-positive count showed
+  a green *down*-arrow beside rising precision's green *up*-arrow. Both were good
+  news and they looked like opposites; the reader had to identify the metric
+  before the arrow meant anything. Two encodings fighting each other.
+
+  Nothing is lost by it: the magnitude reads "13 fewer" or "2 more", the previous
+  value is printed inline (*was 47*), and the column header states the convention
+  once — `↑ better vs previous 30 days`.
+
+  `lowerIsBetter` is declared per call site rather than inferred from the label,
+  because getting it wrong is silent and reverses the meaning of the panel.
+
+- **Recall is listed before precision**, against the usual convention, because it
+  is the one to defend here. Ordering by convention would have put the less
+  important number on top.
+
+- **F1 is computed and deliberately not shown.** It is the harmonic mean of the
+  two rates, which collapses them into one number — the same mistake as accuracy,
+  for the same reason.
 
 - **Every value has a tooltip explaining what it measures.** An unexplained
   metric in a governance panel is worse than no metric: someone will quote it in

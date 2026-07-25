@@ -137,38 +137,34 @@ export default function SpendPanel({ spend }) {
           <Cell>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
               <Eyebrow>Quality</Eyebrow>
-              <span style={{ fontSize: 10.5, color: 'var(--me-grey-50)' }}>vs {b.previousPeriod}</span>
+              {/* The convention, stated once, so no arrow has to be decoded. */}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, color: 'var(--me-grey-50)', whiteSpace: 'nowrap' }}>
+                <Icon name="arrow-up" size={9} color="var(--status-success)" />
+                better vs {b.previousPeriod}
+              </span>
             </div>
 
-            {/* Precision and recall, not "accuracy". Accuracy would include every
-                check that correctly found nothing — thousands of them — and read
-                99.8% while missing three real discrepancies. */}
-            <Rate
-              label="Precision"
-              tip="Of the findings we raised, the share that stood on review. Precision = true positives ÷ everything raised. Low precision means wasted attention."
-              value={now.precision}
-              previous={then.precision}
-              detail={`${q.truePositive} of ${now.raised} raised stood`}
-            />
+            {/* Recall first, not precision, because it is the one to defend: a
+                miss can cost the drawing, a false alarm costs minutes. Ordering
+                by convention would have put the less important number on top. */}
             <Rate
               label="Recall"
-              tip="Of the discrepancies that were really there, the share we caught. Recall = true positives ÷ all real discrepancies. This is the number to defend: a miss can cost the drawing, a false alarm costs minutes."
+              tip="Of the discrepancies that were really there, the share we caught. Recall = true positives ÷ all real discrepancies. This is the number to defend — a miss can cost the drawing, a false alarm costs minutes."
               value={now.recall}
               previous={then.recall}
               detail={`${q.truePositive} of ${now.actual} real discrepancies caught`}
               emphasise
             />
+            <Rate
+              label="Precision"
+              tip="Of the findings we raised, the share that stood on review. Precision = true positives ÷ everything raised. Low precision means wasted attention, not missed risk."
+              value={now.precision}
+              previous={then.precision}
+              detail={`${q.truePositive} of ${now.raised} raised stood`}
+            />
 
             <Rule />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <Count
-                label="Raised, Not Upheld"
-                tip="False positives. We flagged it, review set it aside. Costs an officer attention but nothing else."
-                value={q.falsePositive}
-                previous={p.falsePositive}
-                lowerIsBetter
-                note={`most often ${q.falsePositiveTopCause}`}
-              />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <Count
                 label="Missed"
                 tip="False negatives — a real discrepancy we did not raise, found downstream. The expensive direction: under UCP 600 art. 16(f) a bank that fails to give notice of refusal in time is precluded from calling the documents non-compliant."
@@ -178,6 +174,14 @@ export default function SpendPanel({ spend }) {
                 tone={q.falseNegative ? 'var(--status-error)' : 'var(--status-success)'}
                 emphasise
                 note={q.falseNegativeNote}
+              />
+              <Count
+                label="Raised, Not Upheld"
+                tip="False positives. We flagged it, review set it aside. Costs an officer attention but nothing else."
+                value={q.falsePositive}
+                previous={p.falsePositive}
+                lowerIsBetter
+                note={`most often ${q.falsePositiveTopCause}`}
               />
               <Count
                 label="Conditions Covered"
@@ -217,33 +221,57 @@ function Bar({ models }) {
 /**
  * Movement against the previous period.
  *
- * `lowerIsBetter` inverts the colour, because a falling false-positive count is
- * good news and a falling recall is not. Getting that backwards would be worse
- * than showing no trend at all.
+ * ONE MEANING PER CHANNEL. The arrow points **up when the measure improved** and
+ * down when it got worse — never at the raw number's direction — and the colour
+ * says the same thing. An earlier version pointed the arrow at the raw movement
+ * and coloured it by whether that movement was good, so a falling false-positive
+ * count showed a green down-arrow while rising precision showed a green
+ * up-arrow. Both were good news and they looked like opposites; the reader had to
+ * work out which metric it was before the arrow meant anything.
  *
- * A regression is red, not amber. Amber reads as "look at this"; a quality
- * measure that went the wrong way is not a caution, it is worse than last month,
- * and it should carry the same weight as the discrepancy colours elsewhere.
+ * Up is better. Green is better. Always. The raw direction is not lost — the
+ * magnitude says "13 fewer" or "2 more", and the previous value is printed
+ * beside the current one.
+ *
+ * `lowerIsBetter` is declared per call site rather than guessed from the label,
+ * because getting it wrong is silent and this is the one component where a
+ * mistake reverses the meaning of the whole panel.
  */
-function Delta({ value, unit = '', lowerIsBetter = false, decimals = 0 }) {
-  if (value == null || Math.abs(value) < 0.05) {
+function Trend({ current, previous, lowerIsBetter = false, kind = 'count', suffix = '' }) {
+  if (previous == null) return null
+  const diff = current - previous
+  const flat = kind === 'rate' ? Math.abs(diff) < 0.0005 : Math.abs(diff) < 0.5
+  if (flat) {
     return <span style={{ fontSize: 10.5, color: 'var(--me-grey-50)', whiteSpace: 'nowrap' }}>no change</span>
   }
-  const up = value > 0
-  const good = lowerIsBetter ? !up : up
+
+  const improved = lowerIsBetter ? diff < 0 : diff > 0
+  // A percentage already expressed as a whole number moves in points, not in
+  // "fewer" — "7% fewer" would read as a relative change it is not.
+  const magnitude =
+    kind === 'rate'
+      ? `${Math.abs(diff * 100).toFixed(1)} pts`
+      : kind === 'countPct'
+        ? `${Math.abs(diff)} pts`
+        : `${Math.abs(diff)}${suffix} ${diff < 0 ? 'fewer' : 'more'}`
+
   return (
     <span
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 10.5, fontWeight: 600, whiteSpace: 'nowrap', color: good ? 'var(--status-success)' : 'var(--status-error)' }}
+      title={improved ? 'Better than the previous period' : 'Worse than the previous period'}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 2,
+        fontSize: 10.5, fontWeight: 600, whiteSpace: 'nowrap',
+        color: improved ? 'var(--status-success)' : 'var(--status-error)',
+      }}
     >
-      <Icon name={up ? 'arrow-up-right' : 'arrow-down-right'} size={11} />
-      {Math.abs(value).toFixed(decimals)}{unit}
+      <Icon name={improved ? 'arrow-up' : 'arrow-down'} size={11} />
+      {magnitude}
     </span>
   )
 }
 
-/** A rate shown as a percentage, with its movement in percentage points. */
+/** A rate, shown as a percentage with its movement in percentage points. */
 function Rate({ label, tip, value, previous, detail, emphasise }) {
-  const pts = (value - previous) * 100
   return (
     <div style={{ marginTop: 10 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
@@ -253,14 +281,18 @@ function Rate({ label, tip, value, previous, detail, emphasise }) {
         <span style={{ fontSize: 12, fontWeight: emphasise ? 600 : 400, color: 'var(--me-ink)' }}>
           <InfoTip label={label} title={label}>{tip}</InfoTip>
         </span>
-        <span style={{ marginLeft: 'auto' }}><Delta value={pts} unit=" pts" decimals={1} /></span>
+        <span style={{ marginLeft: 'auto' }}>
+          <Trend current={value} previous={previous} kind="rate" />
+        </span>
       </div>
-      <span style={{ fontSize: 11, color: 'var(--me-grey-70)', lineHeight: 1.4 }}>{detail}</span>
+      <span style={{ fontSize: 11, color: 'var(--me-grey-70)', lineHeight: 1.4 }}>
+        {detail} · was {percent(previous * 100)}
+      </span>
     </div>
   )
 }
 
-/** A count, with its movement as an absolute change. */
+/** A count, with its movement stated as "fewer" or "more". */
 function Count({ label, tip, value, previous, suffix = '', lowerIsBetter, tone, emphasise, note }) {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 9 }}>
@@ -271,9 +303,11 @@ function Count({ label, tip, value, previous, suffix = '', lowerIsBetter, tone, 
         <span style={{ fontSize: 12, fontWeight: emphasise ? 600 : 400, color: 'var(--me-ink)' }}>
           <InfoTip label={label} title={label}>{tip}</InfoTip>
         </span>
-        {note ? <span style={{ fontSize: 10.5, color: 'var(--me-grey-70)', lineHeight: 1.4 }}>{note}</span> : null}
+        <span style={{ fontSize: 10.5, color: 'var(--me-grey-70)', lineHeight: 1.4 }}>
+          was {previous}{suffix}{note ? ` · ${note}` : ''}
+        </span>
       </div>
-      <Delta value={value - previous} unit={suffix ? ' pts' : ''} lowerIsBetter={lowerIsBetter} />
+      <Trend current={value} previous={previous} lowerIsBetter={lowerIsBetter} kind={suffix === '%' ? 'countPct' : 'count'} suffix={suffix} />
     </div>
   )
 }

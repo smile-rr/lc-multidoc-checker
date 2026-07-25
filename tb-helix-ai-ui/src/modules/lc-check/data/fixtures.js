@@ -1192,7 +1192,15 @@ export const AI_PERFORMANCE = {
   },
 }
 
-/** precision, recall and F1 from a period's counts. */
+/**
+ * Precision, recall and F1 from a period's counts.
+ *
+ * F1 is computed but deliberately not displayed. It is the harmonic mean of the
+ * two rates, which collapses them into one number — the same mistake as
+ * reporting accuracy, for the same reason: it hides that a miss and a false alarm
+ * cost wildly different amounts. Kept here because it is a standard measure
+ * someone may legitimately want for a report; it should not go on the panel.
+ */
 export function qualityRates({ truePositive: tp, falsePositive: fp, falseNegative: fn }) {
   const precision = tp + fp ? tp / (tp + fp) : 0
   const recall = tp + fn ? tp / (tp + fn) : 0
