@@ -72,9 +72,9 @@ export default function AgentDetail({ v }) {
                       </>
                     )}
                     <span style={{ position: 'relative', display: 'inline-flex' }}>
-                      <button onClick={group.onAdd} title="Add a check to this group" style={groupIconBtn}><Icon name="plus" size={16} /></button>
+                      <button onClick={group.onAdd} title="Add a check to this group" style={addCheckBtn}><Icon name="plus" size={15} />Add check</button>
                       {group.addOpen && (
-                        <div style={{ position: 'absolute', top: 30, right: 0, zIndex: Z.popover, width: 300, maxHeight: 300, overflow: 'auto', background: '#fff', border: '1px solid var(--me-grey-20)', borderRadius: 10, boxShadow: '0 12px 30px rgba(27,28,30,.16)', padding: 6 }}>
+                        <div style={{ position: 'absolute', top: 34, right: 0, zIndex: Z.popover, width: 300, maxHeight: 300, overflow: 'auto', background: '#fff', border: '1px solid var(--me-grey-20)', borderRadius: 10, boxShadow: '0 12px 30px rgba(27,28,30,.16)', padding: 6 }}>
                           <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--me-grey-70)', padding: '6px 8px 4px' }}>Add a check to this group</div>
                           {group.addable.map((ac, i) => (
                             <button key={i} onClick={ac.onAdd} style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 11px', background: 'none', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
@@ -87,10 +87,6 @@ export default function AgentDetail({ v }) {
                         </div>
                       )}
                     </span>
-                    <button onClick={group.onComment} style={groupCommentBtn}>
-                      <Icon name="message-square" size={14} />
-                      {group.hasComments && <span>{group.commentCount}</span>}
-                    </button>
                     <button onClick={group.onDelete} title="Delete group" style={groupIconBtn}><Icon name="trash-2" size={14} /></button>
                   </div>
                   <div
@@ -183,7 +179,7 @@ function ConfigTab({ v }) {
 }
 
 const tabBtn = { padding: '11px 4px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14.5 }
-const groupCommentBtn = { display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid var(--me-grey-15)', borderRadius: 8, padding: '5px 10px', cursor: 'pointer', fontSize: 12, color: 'var(--me-grey-70)' }
+const addCheckBtn = { display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, height: 28, padding: '0 11px', borderRadius: 8, border: '1px solid var(--me-grey-20)', background: '#fff', color: 'var(--me-grey)', cursor: 'pointer', fontSize: 12.5, fontWeight: 600 }
 const seqBadge = { flexShrink: 0, width: 20, height: 20, borderRadius: 6, background: 'var(--me-grey-15)', color: 'var(--me-grey-70)', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }
 const groupNameInput = { flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, color: 'var(--me-ink)', padding: '3px 6px' }
 const pickerLabel = { fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--me-grey-70)' }

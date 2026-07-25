@@ -344,7 +344,7 @@ export function deriveVals(state, setState) {
       onFocus: () => startEdit(),
       onChangeTitle: (e) => write('title', e.target.value),
       onChangeBody: (val) => write('body', val), // RuleEditor (CodeMirror) passes the value string directly
-      onSave: () => setState((s) => { const es = { ...s.editSnap }; delete es[c.id]; return { editingId: null, refsOpenId: null, helpOpenId: null, editSnap: es } }),
+      onSave: () => setState((s) => { const es = { ...s.editSnap }; delete es[c.id]; const base = s.overrides[c.id] || snapNow; return { editingId: null, refsOpenId: null, helpOpenId: null, editSnap: es, overrides: { ...s.overrides, [c.id]: { ...base, title: (title || '').trim(), body: (body || '').trim() } } } }),
       onCancel: () => setState((s) => { const snap = s.editSnap[c.id]; const ov = { ...s.overrides }; if (snap === undefined) delete ov[c.id]; else ov[c.id] = snap; const es = { ...s.editSnap }; delete es[c.id]; return { editingId: null, refsOpenId: null, helpOpenId: null, overrides: ov, editSnap: es } }),
       onOpen: () => setState((s) => ({ activeCheckId: c.id, editingId: null, panel: null, checkFrom: { section: s.section, view: s.view, activeAgentId: s.activeAgentId } })),
       onComment: (e) => { if (e && e.stopPropagation) e.stopPropagation(); toggleReview(c.id, e) },
@@ -472,7 +472,8 @@ export function deriveVals(state, setState) {
       onChangeCode: (e) => patch('code', e.target.value),
       onChangeTitle: (e) => patch('title', e.target.value),
       onChangeRead: (e) => patch('read', e.target.value),
-      onSave: () => setState({ artEditingId: null }), onCancel: () => setState({ artEditingId: null }),
+      onSave: () => { setBooks((bs) => bs.map((b) => (b.id === bookId ? { ...b, articles: b.articles.map((x) => (aidOf(x) === aid ? { ...x, code: (x.code || '').trim(), title: (x.title || '').trim(), read: (x.read || '').trim() } : x)) } : b))); setState({ artEditingId: null }) },
+      onCancel: () => setState({ artEditingId: null }),
       onDelete: () => requestConfirm({ title: 'Delete article?', message: `“${a.title}” will be removed from this book.`, confirmLabel: 'Delete article', onConfirm: () => deleteArticle(bookId, aid) }),
     }
   }
@@ -508,6 +509,7 @@ export function deriveVals(state, setState) {
     onChangeCode: (e) => { const v = e.target.value; setDF((fs) => fs.map((x) => (x.id === f.id ? { ...x, code: v } : x))) },
     onChangeName: (e) => { const v = e.target.value; setDF((fs) => fs.map((x) => (x.id === f.id ? { ...x, name: v } : x))) },
     onChangeDesc: (e) => { const v = e.target.value; setDF((fs) => fs.map((x) => (x.id === f.id ? { ...x, description: v } : x))) },
+    onBlurDesc: () => setDF((fs) => fs.map((x) => (x.id === f.id ? { ...x, description: (x.description || '').trim() } : x))),
     onRemove: () => requestConfirm({ title: 'Delete field?', message: `“${f.name || f.code || 'This field'}” will be removed from the dictionary.`, confirmLabel: 'Delete field', onConfirm: () => { setDF((fs) => fs.filter((x) => x.id !== f.id)); setState({ dictDetail: null }) } }),
     docChips: (f.docs || []).map((dn) => ({ name: dn, onRemove: () => setDF((fs) => fs.map((x) => (x.id === f.id ? { ...x, docs: x.docs.filter((y) => y !== dn) } : x))) })),
     pickerOpen: S.dictDocPickerId === f.id,
@@ -520,6 +522,7 @@ export function deriveVals(state, setState) {
     onChangeKey: (e) => { const v = e.target.value; setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, key: v } : x))) },
     onChangeName: (e) => { const v = e.target.value; setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, name: v } : x))) },
     onChangeDesc: (e) => { const v = e.target.value; setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, description: v } : x))) },
+    onBlurDesc: () => setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, description: (x.description || '').trim() } : x))),
     onRemove: () => requestConfirm({ title: 'Delete document type?', message: `“${d.name || d.key || 'This document type'}” will be removed from the dictionary.`, confirmLabel: 'Delete document type', onConfirm: () => { setDD((ds) => ds.filter((x) => x.id !== d.id)); setState({ dictDetail: null }) } }),
   })
   const fieldRows = dictFields.filter((f) => !dq || (f.code + ' ' + f.name + ' ' + (f.description || '') + ' ' + (f.type || '')).toLowerCase().includes(dq)).map(buildFieldRow)

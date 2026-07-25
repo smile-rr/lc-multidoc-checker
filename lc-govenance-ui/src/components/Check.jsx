@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import Icon from '../ds/Icon'
 import Button from '../ds/Button'
 import { Z } from '../ds/z'
@@ -8,6 +8,15 @@ import RuleEditor from './RuleEditor'
 // store.buildCheck(). Faithful port of Check.dc.html.
 export default function Check({ check }) {
   const [menuOpen, setMenuOpen] = useState(false)
+  // Syntax-help tooltip closes when you click outside it.
+  const helpRef = useRef(null)
+  useEffect(() => {
+    if (!check.helpOpen) return
+    const onDown = (e) => { if (helpRef.current && !helpRef.current.contains(e.target)) check.onToggleHelp() }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [check.helpOpen])
   return (
     <div
       data-review-card
@@ -191,17 +200,29 @@ export default function Check({ check }) {
       {check.showBody && (
         <>
           <div style={{ position: 'relative', marginTop: 12 }}>
-            <button onClick={check.onToggleHelp} title="Syntax help" style={{ position: 'absolute', top: 8, right: 8, zIndex: 6, width: 24, height: 24, borderRadius: 6, border: '1px solid var(--me-grey-15)', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--me-grey-70)', fontSize: 13, fontWeight: 700 }}>?</button>
-            {check.helpOpen && (
-              <div style={{ ...popover, top: 36, right: 8, width: 300, padding: '13px 15px' }}>
-                <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 9 }}>Writing a check</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 9, fontSize: 12, lineHeight: 1.5, color: 'var(--me-grey)' }}>
-                  <div style={{ display: 'flex', gap: 9 }}><span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-blue-deep)', background: 'var(--me-blue-20)', borderRadius: 4, padding: '1px 5px', flexShrink: 0 }}>{'{41A}'}</span><span>Wrap an LC field code in braces to mark it for extraction — the name is recognised automatically.</span></div>
-                  <div style={{ display: 'flex', gap: 9 }}><span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-blue-deep)', flexShrink: 0, paddingTop: 1 }}>UCP600 Art.6</span><span>References highlight on their own — or add them from the book.</span></div>
-                  <div style={{ display: 'flex', gap: 9 }}><span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey)', flexShrink: 0, paddingTop: 1 }}>- …</span><span>Everything else is plain guidance; a dash line reads as one condition.</span></div>
+            <span ref={helpRef} style={{ position: 'absolute', top: 8, right: 8, zIndex: Z.popover }}>
+              <button onClick={check.onToggleHelp} title="Syntax help" style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid var(--me-grey-15)', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--me-grey-70)', fontSize: 13, fontWeight: 700 }}>?</button>
+              {check.helpOpen && (
+                <div style={{ position: 'absolute', top: 30, right: 0, zIndex: Z.popover, width: 322, background: '#fff', border: '1px solid var(--me-grey-20)', borderRadius: 10, boxShadow: '0 12px 30px rgba(27,28,30,.16)', padding: '12px 14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: 9 }}>
+                    <div style={{ flex: 1, fontSize: 12.5, fontWeight: 700 }}>Writing a check</div>
+                    <button onClick={check.onToggleHelp} title="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--me-grey-50)', display: 'flex', padding: 2, marginRight: -2 }}><Icon name="x" size={15} /></button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 9, fontSize: 12, lineHeight: 1.5, color: 'var(--me-grey)' }}>
+                    <div style={{ display: 'flex', gap: 9 }}><span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-blue-deep)', background: 'var(--me-blue-20)', borderRadius: 4, padding: '1px 5px', flexShrink: 0 }}>{'{41A}'}</span><span>Wrap an LC field code in braces to mark it for extraction — the name is recognised automatically.</span></div>
+                    <div style={{ display: 'flex', gap: 9 }}><span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-blue-deep)', flexShrink: 0, paddingTop: 1 }}>UCP600 Art.6</span><span>References highlight on their own — or add them from the book.</span></div>
+                    <div style={{ display: 'flex', gap: 9 }}><span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey)', flexShrink: 0, paddingTop: 1 }}>- …</span><span>Everything else is plain guidance; a dash line reads as one condition.</span></div>
+                  </div>
+                  <div style={{ marginTop: 11, paddingTop: 10, borderTop: '1px solid var(--me-grey-08)' }}>
+                    <div style={{ fontSize: 11.5, color: 'var(--me-grey-70)', marginBottom: 7 }}>Logic words are optional — write freely; these just get highlighted so the reasoning reads clearly:</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      {['WHEN', 'IF', 'UNLESS', 'THEN', 'AND', 'OR', 'NOT', 'BEFORE', 'AFTER', 'WITHIN', 'AT LEAST'].map((k) => <span key={k} style={kwChipStruct}>{k}</span>)}
+                      {['MUST', 'SHOULD', 'MAY'].map((k) => <span key={k} style={kwChipModal}>{k}</span>)}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </span>
             <RuleEditor value={check.body} onChange={check.onChangeBody} onFocus={check.onFocus} fields={check.dictFields} />
           </div>
           {check.editing && (
@@ -248,4 +269,6 @@ const chipX = { border: 'none', background: 'none', cursor: 'pointer', color: 'v
 const popover = { position: 'absolute', zIndex: Z.popover, background: '#fff', border: '1px solid var(--me-grey-20)', borderRadius: 10, boxShadow: '0 12px 30px rgba(27,28,30,.16)', padding: 6 }
 const popHeader = { fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--me-grey-70)', padding: '6px 8px 4px' }
 const menuItem = { width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 9, padding: '9px 10px', background: 'none', border: 'none', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: 'var(--me-ink)' }
+const kwChipStruct = { fontSize: 10.5, fontWeight: 600, color: 'var(--me-navy)', background: 'rgba(44,58,135,.10)', borderRadius: 4, padding: '2px 6px' }
+const kwChipModal = { fontSize: 10.5, fontWeight: 700, color: '#946400', background: '#FBEFCF', borderRadius: 4, padding: '2px 6px' }
 const popItem = { width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', padding: '8px 9px', background: 'none', border: 'none', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }

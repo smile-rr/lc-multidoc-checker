@@ -1,6 +1,7 @@
 import Icon from '../ds/Icon'
 import Button from '../ds/Button'
 import Page from '../ds/Page'
+import AutoTextarea from '../ds/AutoTextarea'
 import DetailBack from '../ds/DetailBack'
 import Toolbar from '../ds/Toolbar'
 import SearchBar from '../ds/SearchBar'
@@ -80,7 +81,7 @@ export default function Dictionary({ v }) {
             <div key={d.id} onClick={d.onOpen} style={{ ...docGrid, ...listRow, cursor: 'pointer' }}>
               <span style={ellip(12, 600, 'var(--me-blue-deep)', 'var(--font-mono)')}>{d.key || '—'}</span>
               <span style={ellip(13.5, 500, 'var(--me-ink)')}>{d.name}</span>
-              <span style={ellip(12, 400, 'var(--me-grey-70)')}>{d.description || '—'}</span>
+              <span style={clamp(12, 400, 'var(--me-grey-70)', 2)}>{d.description || '—'}</span>
               <span style={{ fontSize: 12, color: 'var(--me-grey-70)' }}>{d.usedLabel}</span>
               <Icon name="chevron-right" size={16} color="var(--me-grey-50)" />
             </div>
@@ -111,7 +112,7 @@ function FieldCard({ f }) {
         <input className="inline-edit" value={f.name} onChange={f.onChangeName} placeholder="Field name" style={nameInput} />
         <button onClick={f.onRemove} title="Remove" style={trashBtn}><Icon name="trash-2" size={15} /></button>
       </div>
-      <input className="inline-edit" value={f.description} onChange={f.onChangeDesc} placeholder="Short description of what this field holds…" style={descInput} />
+      <AutoTextarea className="inline-edit" value={f.description} onChange={f.onChangeDesc} onBlur={f.onBlurDesc} placeholder="Short description of what this field holds…" maxLength={DESC_MAX} style={descArea} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 8, paddingLeft: 6 }}>
         <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--me-grey-70)' }}>Appears on</span>
         {f.docChips.map((dc, i) => (
@@ -143,16 +144,21 @@ function DocCard({ d }) {
         <input className="inline-edit" value={d.name} onChange={d.onChangeName} placeholder="Document name" style={nameInput} />
         <button onClick={d.onRemove} title="Remove" style={trashBtn}><Icon name="trash-2" size={15} /></button>
       </div>
-      <input className="inline-edit" value={d.description} onChange={d.onChangeDesc} placeholder="Short description of this document type…" style={descInput} />
+      <AutoTextarea className="inline-edit" value={d.description} onChange={d.onChangeDesc} onBlur={d.onBlurDesc} placeholder="Short description of this document type…" maxLength={DESC_MAX} style={descArea} />
     </div>
   )
 }
 
+// A description is a one-breath definition — this cap keeps it concise (and keeps
+// the auto-growing field a few lines tall at most, no scrollbar needed).
+const DESC_MAX = 240
+
 const ellip = (fs, fw, color, family) => ({ fontSize: fs, fontWeight: fw, color, fontFamily: family, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })
+const clamp = (fs, fw, color, lines) => ({ fontSize: fs, fontWeight: fw, color, display: '-webkit-box', WebkitLineClamp: lines, WebkitBoxOrient: 'vertical', overflow: 'hidden' })
 const tab = { padding: '8px 16px', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600 }
 const card = { background: '#fff', border: '1px solid var(--me-grey-15)', borderRadius: 12, boxShadow: '0 1px 4px rgba(27,28,30,.05)', padding: '14px 16px' }
 const nameInput = { flex: 1, minWidth: 0, fontSize: 15, fontWeight: 600, color: 'var(--me-ink)', padding: '4px 6px' }
-const descInput = { width: '100%', fontSize: 13, color: 'var(--me-grey)', padding: '6px 6px', marginTop: 2 }
+const descArea = { display: 'block', width: '100%', fontSize: 13, lineHeight: 1.55, color: 'var(--me-grey)', padding: '6px 6px', marginTop: 2, fontFamily: 'inherit' }
 const trashBtn = { width: 28, height: 28, borderRadius: 7, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--me-grey-50)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }
 const dashChip = { display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px dashed var(--me-grey-20)', background: 'none', borderRadius: 999, padding: '3px 10px', cursor: 'pointer', fontSize: 11.5, color: 'var(--me-grey-70)' }
 const popover = { position: 'absolute', zIndex: Z.popover, background: '#fff', border: '1px solid var(--me-grey-20)', borderRadius: 10, boxShadow: '0 12px 30px rgba(27,28,30,.16)', padding: 6 }

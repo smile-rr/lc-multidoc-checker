@@ -1,7 +1,12 @@
 import Icon from '../ds/Icon'
 import Button from '../ds/Button'
 import Page from '../ds/Page'
+import AutoTextarea from '../ds/AutoTextarea'
 import { Z } from '../ds/z'
+
+// Reference articles can hold a full UCP/ISBP clause; the cap keeps a single
+// article from running unbounded while still fitting real reference text.
+const ARTICLE_MAX = 3000
 
 // Reference library — one page: a horizontal strip of all books (first open by
 // default, horizontal-scroll on overflow) above the reader for the active book.
@@ -103,7 +108,7 @@ export default function Library({ v }) {
                         <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>{art.usedByLabel}</span>
                         <button onClick={(e) => { e.stopPropagation(); art.onDelete() }} title="Delete article" style={artTrash}><Icon name="trash-2" size={14} /></button>
                       </div>
-                      <div style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--me-grey)' }}>{art.read}</div>
+                      <div style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--me-grey)', whiteSpace: 'pre-wrap' }}>{art.read}</div>
                     </div>
                   ) : (
                     <div>
@@ -111,7 +116,7 @@ export default function Library({ v }) {
                         <input value={art.code} onChange={art.onChangeCode} placeholder="Code" style={{ width: 150, flexShrink: 0, border: '1px solid var(--me-grey-20)', borderRadius: 8, padding: '8px 10px', fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: 'var(--me-blue-deep)', outline: 'none' }} />
                         <input value={art.title} onChange={art.onChangeTitle} placeholder="Article title" style={{ flex: 1, minWidth: 0, border: '1px solid var(--me-grey-20)', borderRadius: 8, padding: '8px 10px', fontSize: 16.5, fontWeight: 700, color: 'var(--me-ink)', outline: 'none' }} />
                       </div>
-                      <textarea value={art.read} onChange={art.onChangeRead} placeholder="Reading text…" style={{ width: '100%', minHeight: 120, border: '1px solid var(--me-grey-20)', borderRadius: 8, padding: '10px 12px', fontSize: 14, lineHeight: 1.65, color: 'var(--me-grey)', outline: 'none', resize: 'vertical', fontFamily: 'inherit' }} />
+                      <AutoTextarea value={art.read} onChange={art.onChangeRead} placeholder="Reading text…" maxLength={ARTICLE_MAX} style={{ width: '100%', minHeight: 120, border: '1px solid var(--me-grey-20)', borderRadius: 8, padding: '10px 12px', fontSize: 14, lineHeight: 1.7, color: 'var(--me-grey)', outline: 'none', fontFamily: 'inherit' }} />
                       <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
                         <Button variant="primary" size="sm" onClick={art.onSave}>Save</Button>
                         <button onClick={art.onCancel} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--me-grey-70)', fontWeight: 600 }}>Cancel</button>
@@ -129,7 +134,7 @@ export default function Library({ v }) {
   )
 }
 
-const menuItem = { width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 9, padding: '9px 10px', background: 'none', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 13, color: 'var(--me-ink)' }
+const menuItem ={ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 9, padding: '9px 10px', background: 'none', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 13, color: 'var(--me-ink)' }
 const booksBar = { position: 'sticky', top: 'var(--nav-h, 56px)', zIndex: Z.toolbar, background: 'var(--me-grey-08)', display: 'flex', alignItems: 'stretch', gap: 12, paddingTop: 14, paddingBottom: 10 }
 const bookAction = { width: 40, height: 40, alignSelf: 'center', borderRadius: 10, border: '1px solid var(--me-grey-20)', background: '#fff', cursor: 'pointer', color: 'var(--me-grey-70)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }
 const cardTrash = { position: 'absolute', top: 8, right: 8, width: 24, height: 24, borderRadius: 6, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--me-grey-50)', display: 'flex', alignItems: 'center', justifyContent: 'center' }
