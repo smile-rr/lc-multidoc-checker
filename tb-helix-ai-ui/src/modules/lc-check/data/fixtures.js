@@ -1120,21 +1120,54 @@ export const INTAKE_SLOTS = [
 ]
 
 /**
- * The benchmark the spend is judged against.
+ * What the spend is judged against.
  *
- * Cost on its own is not a decision. These are the numbers that make it one: what
- * the same work costs done by hand, and how often a checker agreed with us — the
- * second matters more than the first, because a cheap review that gets overturned
- * is not cheap. Sourced from the bank's own records, not from usage, so they
- * arrive from the service rather than being computed here.
+ * Three deliberate choices here, because the obvious framing is misleading:
+ *
+ * 1. HANDLING TIME, NOT MACHINE TIME. "45 minutes by hand versus 16 seconds" is
+ *    a ratio nobody can bank. This is an officer-paced pipeline: the machine
+ *    proposes, a person reads every finding and signs. The comparison that
+ *    schedules capacity is unaided examination against machine time PLUS the
+ *    officer review that remains. That is a real saving, and a much smaller one.
+ *
+ * 2. TWO FAILURE DIRECTIONS, NOT ONE ACCURACY NUMBER. A false alarm costs an
+ *    officer a few minutes. A miss can cost the value of the drawing: under UCP
+ *    600 article 16(f) a bank that fails to give notice of refusal in time is
+ *    *precluded* from claiming the documents are non-compliant — it must pay.
+ *    Averaging those into one percentage hides the only one that can hurt you.
+ *
+ * 3. TURNAROUND AGAINST THE RULE, NOT AGAINST ZERO. UCP 600 article 14(b) gives
+ *    the bank five banking days after presentation to examine and decide. Speed
+ *    matters up to the point where the window is comfortable and not after, so
+ *    the useful figure is headroom against that limit.
+ *
+ * These come from the bank's own records rather than from usage, so in
+ * production they arrive from the service alongside the spend.
  */
 export const SPEND_BENCHMARK = {
   period: 'Last 30 days',
-  manualMinutesPerCase: 45,
-  checkerAgreementPct: 92,
+
+  // Time, in minutes per case.
+  manualMinutesPerCase: 45,      // unaided examination, measured before rollout
+  officerMinutesPerCase: 11,     // reading findings and deciding — this remains
+  casesPerExaminerDayBefore: 9,
+  casesPerExaminerDayAfter: 26,
+
+  // Turnaround against UCP 600 art. 14(b).
+  examinationWindowDays: 5,
+  medianDecisionHours: 6.2,
+  slowestDecisionHours: 31,
+
+  // Quality, split by direction.
   findingsReviewed: 417,
-  overturned: 34,
+  upheld: 383,                   // checker agreed
+  overturned: 34,                // we raised it, checker disagreed — costs time
+  missed: 3,                     // found downstream — costs money
+  missedNote: 'two insurance cover, one charter-party wording',
   overturnedTopCause: 'insurance cover',
+
+  // What the rulebook actually reached.
+  conditionsCoveredPct: 86,
 }
 
 export const ASK_SUGGESTIONS = [

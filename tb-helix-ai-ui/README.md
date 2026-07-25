@@ -469,24 +469,49 @@ The same class of bug inside a row: the disposition label changes from *Open* to
 under the cursor mid-click. That column is fixed-width, as is the expand/collapse
 control whose word also changes.
 
-### AI spend on the cases list
+### AI performance on the cases list
 
-The per-case drawer answers *what did this one cost*. The cases list answers the
-different question a team lead has: what is this costing us, is it stable, where
-does it go, and is it worth it. Three decisions:
+The per-case drawer answers *what did this one cost*. The cases list answers what
+a team lead has to defend: **is it worth it**. Three columns, three separate
+arguments — money, time, quality — so a reader can lose one and keep the others.
 
-- **Per case and per page, not just a total.** A total only ever rises, so it
-  cannot show a regression. The unit costs can.
-- **The benchmark sits on the same row as the cost.** `$4.28` is not a decision
-  until it is next to the 45 minutes of examiner time it replaced and the 92% of
-  the time a checker agreed with us. The agreement rate matters more than the
-  money — a cheap review that gets overturned is not cheap.
-- **Collapsed is remembered**, and the collapsed bar still shows total and
-  per-case. An examiner working a queue does not need this daily; the lead who
-  does wants it on every visit.
+Three framing decisions matter more than the layout, because the obvious version
+of this panel is quietly dishonest:
 
-`summariseSpend()` derives it from the same step and model tables as the per-case
-figure, scaled by page count, so the two can never disagree.
+**Handling time, not machine time.** *"45 minutes by hand versus 16 seconds"* is a
+ratio nobody can staff against. This is an officer-paced pipeline — the officer
+still reads every finding and signs. What changed is the *total* per case:
+
+```
+was  45 min unaided
+now  11.3 min  =  officer 11 min  +  machine 16.5 s
+                  ████████████████▌                    75% less
+```
+
+Machine time appears as a component of that bar, never as the headline, so the
+saving cannot be misread as the machine having replaced the examiner. The
+capacity figure is cases per examiner-day (9 → 26), which is the number that
+actually schedules people.
+
+**Two failure directions, never one accuracy number.** A false alarm costs an
+officer minutes. A miss can cost the drawing: under UCP 600 article 16(f) a bank
+that fails to give notice of refusal in time is *precluded* from claiming the
+documents are non-compliant — it must pay. Averaging those into "92% accurate"
+hides the only one that can hurt you, so **misses get their own line, their own
+colour and the emphasis**, and the panel says why.
+
+**Turnaround against the rule, not against zero.** Article 14(b) allows five
+banking days to examine and decide. Speed is worth something up to the point the
+window is comfortable and nothing after, so the figure is headroom (slowest 31 h
+of 120 h) rather than raw speed.
+
+A fourth line, **conditions covered** (86%), keeps the governance backlog visible:
+the remainder were surfaced for a person, not passed.
+
+`summariseSpend()` derives the money from the same step and model tables as the
+per-case figure, scaled by page count, so the two can never disagree. The
+benchmark half comes from the bank's own records — it is not derivable from usage
+and in production arrives from the service.
 
 ### Deleting a check is usually the wrong answer
 
