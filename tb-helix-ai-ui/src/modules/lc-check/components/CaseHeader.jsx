@@ -3,7 +3,7 @@ import Badge from '@shared/ds/Badge'
 import Button from '@shared/ds/Button'
 import Icon from '@shared/ds/Icon'
 import SegmentedControl from '@shared/ds/SegmentedControl'
-import { money, durationShort, thousands, usd, dueLabel } from '@shared/lib/format'
+import { money, durationShort, usd, dueLabel } from '@shared/lib/format'
 import { RUN_MODES } from '../state/severity'
 
 // The case header — breadcrumb, identity, the facts an officer keeps re-reading,
@@ -41,7 +41,14 @@ export default function CaseHeader({
     { k: 'Reply Due', v: dueLabel(detail.replyDueDays) ?? '—', weight: 600, urgent: true },
   ]
 
-  const costPill = `${durationShort(cost.wallClock)} · ${thousands(cost.tokens)} · ${usd(cost.cost)}`
+  // Time and money, not tokens. An officer acts on both of these and on neither
+  // token count; and tokens beside a price is the same fact twice in two units,
+  // the second of which needs a rate card to read. Worse, they do not track each
+  // other — 38k tokens on GPT-4o and 38k on Qwen3 are an order of magnitude
+  // apart in cost — so showing them adjacent invites exactly the wrong inference.
+  // Tokens still earn their place in the drawer, where they explain a number
+  // rather than restate it: per step, split in/out, next to cache and retries.
+  const costPill = `${durationShort(cost.wallClock)} · ${usd(cost.cost)}`
 
   return (
     <header
@@ -78,8 +85,8 @@ export default function CaseHeader({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, paddingTop: 4 }}>
-          <PillButton title="Time, tokens and cost for this case" active={costOpen} onClick={onToggleCost}>
-            <Icon name="gauge" size={15} color={cost.tokens ? 'var(--me-blue)' : 'var(--me-grey-70)'} />
+          <PillButton title="Time and cost for this case — open for the per-step breakdown" active={costOpen} onClick={onToggleCost}>
+            <Icon name="gauge" size={15} color={cost.cost ? 'var(--me-blue)' : 'var(--me-grey-70)'} />
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--me-grey)' }}>{costPill}</span>
           </PillButton>
 
