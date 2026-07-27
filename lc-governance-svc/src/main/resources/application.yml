@@ -1,0 +1,92 @@
+# lc-governance-svc — runtime configuration
+#
+# Same philosophy as lc-checker-v2-svc: operational config is hardcoded here and
+# changed by rebuilding. Only secrets and Mac-local overrides come from ../.env.
+
+spring:
+  config:
+    import:
+      - optional:file:../.env[.properties]
+  application:
+    name: lc-governance-svc
+  profiles:
+    active: default
+  devtools:
+    restart:
+      log-condition-evaluation-delta: false
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+
+  ai:
+    openai:
+      api-key: ${LLM_API_KEY:}
+      base-url: https://api.minimaxi.com/v1
+      chat:
+        completions-path: /chat/completions
+        options:
+          model: MiniMax-M2.7-highspeed
+          temperature: 0.0
+          max-tokens: 8000
+          additional-model-request-fields:
+            enable_thinking: false
+
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema.sql
+
+  datasource:
+    # Shares the lc_checker database with lc_v3 (LC Check) — different schema.
+    url: jdbc:postgresql://${DB_HOST:192.168.31.214}:${DB_PORT:5436}/${DB_NAME:lc_checker}
+    username: ${DB_USERNAME:lcuser}
+    password: ${DB_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 6
+      minimum-idle: 1
+      idle-timeout: 30000
+      connection-timeout: 20000
+      connection-test-query: SELECT 1
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: 9083
+
+# --- Governance knobs ---------------------------------------------------------
+governance:
+  seed:
+    # Reseed the vocabulary (dictionary, doc types, reference books) on every
+    # boot. Idempotent upsert; hand-authored rows (seeded = false) are never
+    # touched. Set false once the dictionary is edited in the UI more often
+    # than it is edited in YAML.
+    enabled: true
+    field-pool:   classpath:/seed/field-pool.yaml
+    doc-types:    classpath:/seed/doc-type-registry.yaml
+    books:
+      - { id: UCP600,  name: "UCP 600",  edition: "2007 revision", path: 'classpath:/seed/ucp600.yaml' }
+      - { id: ISBP821, name: "ISBP 821", edition: "2013",          path: 'classpath:/seed/isbp821.yaml' }
+
+  difference:
+    # Field-overlap candidates: two checks of the same comparison_nature whose
+    # field sets overlap. Jaccard over field_refs; below this they are not
+    # proposed at all. Deliberately generous — an author dismissing a weak
+    # candidate is cheap, a missed duplicate is not.
+    min-field-jaccard: 0.34
+    # Candidates proposed per check on a scan. Not a quality bound — a cap on
+    # how much review queue one save can create.
+    max-candidates-per-check: 8
+
+logging:
+  level:
+    com.lc.gov: INFO
