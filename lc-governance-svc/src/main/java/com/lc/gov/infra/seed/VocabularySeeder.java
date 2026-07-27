@@ -25,8 +25,11 @@ import org.springframework.stereotype.Component;
  * until the catalog cutover, at which point these become the single source and
  * the checker reads a published release instead.
  *
- * <p>Idempotent: every write is an upsert, and a row a human has taken over
- * ({@code seeded = false}) is never overwritten.
+ * <p><b>Bootstrap only.</b> Each table is seeded when it is empty and never
+ * again. Seeding on every boot cannot coexist with the replace-all upload: the
+ * upsert's INSERT is unguarded, so a row deleted by an upload would reappear on
+ * the next restart and the YAML would silently win. Once a table has content,
+ * the spreadsheet (or the PDF import) owns it.
  */
 @Component
 public class VocabularySeeder implements ApplicationRunner {
@@ -54,11 +57,22 @@ public class VocabularySeeder implements ApplicationRunner {
             return;
         }
         try {
-            int docTypes = seedDocTypes();
-            int fields = seedFields();
-            int articles = seedBooks();
-            log.info("Vocabulary seeded — {} doc types, {} dictionary fields, {} articles",
-                    docTypes, fields, articles);
+            // Each table is checked independently: a database that has a
+            // dictionary but no library still gets its books.
+            int docTypes = dictionary.listDocTypes().isEmpty() ? seedDocTypes() : -1;
+            int fields = dictionary.countFields() == 0 ? seedFields() : -1;
+            int articles = refs.countArticles() == 0 ? seedBooks() : -1;
+
+            if (docTypes < 0 && fields < 0 && articles < 0) {
+                log.info("Vocabulary already present — {} doc types, {} fields, {} articles; "
+                                + "not reseeding (uploads own these tables now)",
+                        dictionary.listDocTypes().size(), dictionary.countFields(),
+                        refs.countArticles());
+            } else {
+                log.info("Vocabulary bootstrapped — doc types: {}, fields: {}, articles: {} "
+                                + "(-1 = already populated, left alone)",
+                        docTypes, fields, articles);
+            }
         } catch (IOException e) {
             // Fail loud: a check cannot be authored, validated or deduped without
             // the vocabulary, so booting without it is worse than not booting.

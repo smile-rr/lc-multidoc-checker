@@ -35,8 +35,10 @@ spring:
 
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 10MB
+      # Sized for a rulebook PDF, not a spreadsheet — UCP 600 with commentary
+      # runs to a few MB and an internal handbook can be larger.
+      max-file-size: 40MB
+      max-request-size: 40MB
 
   sql:
     init:
@@ -66,16 +68,29 @@ server:
 # --- Governance knobs ---------------------------------------------------------
 governance:
   seed:
-    # Reseed the vocabulary (dictionary, doc types, reference books) on every
-    # boot. Idempotent upsert; hand-authored rows (seeded = false) are never
-    # touched. Set false once the dictionary is edited in the UI more often
-    # than it is edited in YAML.
+    # BOOTSTRAP ONLY — each table is seeded when it is empty and never again.
+    #
+    # Seeding on every boot cannot coexist with the replace-all upload: the
+    # upsert's INSERT is unguarded, so a field deleted by an upload reappears on
+    # the next restart and the YAML silently wins. The spreadsheet is the
+    # ongoing source of truth; this just gets a fresh database off the ground.
     enabled: true
     field-pool:   classpath:/seed/field-pool.yaml
     doc-types:    classpath:/seed/doc-type-registry.yaml
     books:
       - { id: UCP600,  name: "UCP 600",  edition: "2007 revision", path: 'classpath:/seed/ucp600.yaml' }
       - { id: ISBP821, name: "ISBP 821", edition: "2013",          path: 'classpath:/seed/isbp821.yaml' }
+
+  library:
+    # A rulebook PDF must carry extractable text. Below either floor the upload
+    # is rejected as a scan rather than imported as a book of empty articles —
+    # OCR is out of scope for this service.
+    min-total-chars: 200
+    min-chars-per-page: 20
+    max-pages: 500
+    # How long a staged import (uploaded, split, awaiting confirm) is held in
+    # memory before it is dropped.
+    staged-ttl-minutes: 30
 
   difference:
     # Field-overlap candidates: two checks of the same comparison_nature whose

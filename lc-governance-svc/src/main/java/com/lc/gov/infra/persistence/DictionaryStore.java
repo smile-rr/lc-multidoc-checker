@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * The Dictionary — {@code lc_gov.dict_field} and {@code lc_gov.doc_type}.
@@ -67,6 +68,57 @@ public class DictionaryStore {
                 f.ruleRelevant(), f.description());
     }
 
+    /** Insert or update a single field, authored by hand or by the API.
+     *  Marked {@code seeded = false} so its provenance stays visible. */
+    public void upsert(DictField f) {
+        jdbc.update("""
+                INSERT INTO lc_gov.dict_field
+                    (key, name_en, name_zh, kind, value_type, field_group,
+                     source_tags, applies_to, rule_relevant, description, seeded)
+                VALUES (?, ?, ?, ?, ?, ?, ?::text[], ?::text[], ?, ?, FALSE)
+                ON CONFLICT (key) DO UPDATE SET
+                    name_en       = EXCLUDED.name_en,
+                    name_zh       = EXCLUDED.name_zh,
+                    kind          = EXCLUDED.kind,
+                    value_type    = EXCLUDED.value_type,
+                    field_group   = EXCLUDED.field_group,
+                    source_tags   = EXCLUDED.source_tags,
+                    applies_to    = EXCLUDED.applies_to,
+                    rule_relevant = EXCLUDED.rule_relevant,
+                    description   = EXCLUDED.description,
+                    seeded        = FALSE
+                """,
+                f.key(), f.nameEn(), f.nameZh(), f.kind(), f.valueType(), f.fieldGroup(),
+                PgArrays.literal(f.sourceTags()), PgArrays.literal(f.appliesTo()),
+                f.ruleRelevant(), f.description());
+    }
+
+    public boolean deleteField(String key) {
+        return jdbc.update("DELETE FROM lc_gov.dict_field WHERE key = ?", key) > 0;
+    }
+
+    public DictField findField(String key) {
+        List<DictField> found = jdbc.query(
+                "SELECT * FROM lc_gov.dict_field WHERE key = ?", FIELD_MAPPER, key);
+        return found.isEmpty() ? null : found.get(0);
+    }
+
+    /**
+     * Delete every field and insert the supplied set, in one transaction.
+     *
+     * <p>The spreadsheet is the whole dictionary — derived and external entries
+     * included, which is why the sheet carries a {@code kind} column. Nothing is
+     * preserved across a replace.
+     *
+     * @return how many rows were removed
+     */
+    @Transactional
+    public int replaceAllFields(List<DictField> fields) {
+        int removed = jdbc.update("DELETE FROM lc_gov.dict_field");
+        for (DictField f : fields) upsert(f);
+        return removed;
+    }
+
     public List<DictField> listFields() {
         return jdbc.query("""
                 SELECT * FROM lc_gov.dict_field
@@ -113,6 +165,24 @@ public class DictionaryStore {
                     ordinal     = EXCLUDED.ordinal
                 """,
                 d.code(), d.nameEn(), d.nameZh(), d.description(), d.ordinal());
+    }
+
+    public boolean deleteDocType(String code) {
+        return jdbc.update("DELETE FROM lc_gov.doc_type WHERE code = ?", code) > 0;
+    }
+
+    public DocTypeDef findDocType(String code) {
+        List<DocTypeDef> found = jdbc.query(
+                "SELECT * FROM lc_gov.doc_type WHERE code = ?", DOC_TYPE_MAPPER, code);
+        return found.isEmpty() ? null : found.get(0);
+    }
+
+    /** Delete every doc type and insert the supplied set, in one transaction. */
+    @Transactional
+    public int replaceAllDocTypes(List<DocTypeDef> docTypes) {
+        int removed = jdbc.update("DELETE FROM lc_gov.doc_type");
+        for (DocTypeDef d : docTypes) upsertDocType(d);
+        return removed;
     }
 
     public List<DocTypeDef> listDocTypes() {

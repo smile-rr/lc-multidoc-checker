@@ -5,9 +5,12 @@
 //   - Spring AI   1.1.4   (text LLM only — normalize + refine)
 //   - JDK 21 (Temurin)
 //
-// Deliberately absent, and they should stay absent: PDFBox, Prowide, MinIO,
-// OTLP. This service authors and publishes checks; it does not examine
-// presentations and it does not read PDFs.
+// Deliberately absent, and they should stay absent: Prowide, MinIO, OTLP. This
+// service authors and publishes checks; it does not examine presentations.
+//
+// PDFBox is here for one narrow job — pulling text out of a rulebook PDF so the
+// Library can be imported. Text extraction only: no rendering, no rasterising,
+// no vision. An image-only PDF is rejected rather than OCR'd.
 
 plugins {
     java
@@ -53,9 +56,12 @@ dependencies {
     // --- YAML (dictionary + reference-book seeds) --------------------------
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
 
-    // --- Spreadsheet / CSV import (the human checklist arrives as one) ------
+    // --- Spreadsheet / CSV import + export ----------------------------------
     implementation("org.apache.poi:poi-ooxml:5.4.1")
     implementation("org.apache.commons:commons-csv:1.14.0")
+
+    // --- PDF text extraction (Library import only — never rendering) --------
+    implementation("org.apache.pdfbox:pdfbox:3.0.7")
 
     // --- OpenAPI spec (/v3/api-docs) ----------------------------------------
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-api:2.8.11")

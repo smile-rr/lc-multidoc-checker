@@ -8,6 +8,7 @@ import java.util.Set;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 /** The Library — {@code lc_gov.book} and {@code lc_gov.article}. */
 @Component
@@ -57,6 +58,36 @@ public class RefsStore {
                     ordinal   = EXCLUDED.ordinal
                 """,
                 a.id(), a.bookId(), a.article(), a.paragraph(), a.heading(), a.body(), a.ordinal());
+    }
+
+    /**
+     * Replace a book and every article in it, in one transaction.
+     *
+     * <p>Article ids are citation keys — {@code check_def.clause_refs} stores
+     * them — so a re-import that renumbers silently breaks every check that
+     * cited the old ids. Ids are therefore derived deterministically from the
+     * parsed label rather than from position.
+     *
+     * @return how many articles were removed
+     */
+    @Transactional
+    public int replaceBook(String id, String name, String kind, String edition, List<Article> articles) {
+        upsertBook(id, name, kind, edition);
+        int removed = jdbc.update("DELETE FROM lc_gov.article WHERE book_id = ?", id);
+        for (Article a : articles) upsertArticle(a);
+        return removed;
+    }
+
+    /** Drops a book and, by cascade, its articles. */
+    @Transactional
+    public boolean deleteBook(String id) {
+        return jdbc.update("DELETE FROM lc_gov.book WHERE id = ?", id) > 0;
+    }
+
+    public boolean bookExists(String id) {
+        Integer n = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM lc_gov.book WHERE id = ?", Integer.class, id);
+        return n != null && n > 0;
     }
 
     public List<Book> listBooks() {
