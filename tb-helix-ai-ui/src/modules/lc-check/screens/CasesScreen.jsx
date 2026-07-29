@@ -1,3 +1,5 @@
+import { cardSurface } from '@shared/ds/Card'
+import { ellipsis } from '@shared/ds/text'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Badge from '@shared/ds/Badge'
@@ -86,7 +88,7 @@ export default function CasesScreen() {
 
       <SpendPanel spend={spend} />
 
-      <div style={{ background: '#fff', border: '1px solid var(--me-grey-15)', borderRadius: 12, overflowX: 'auto' }}>
+      <div style={{ ...cardSurface(12), boxShadow: 'none', overflowX: 'auto' }}>
         <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: '0 14px', padding: '10px 20px', background: 'var(--me-grey-08)', fontSize: 11.5, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--me-grey-70)', minWidth: 1000 }}>
           <span>Check</span>
           <span>Credit</span>
@@ -116,7 +118,7 @@ export default function CasesScreen() {
               >
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--me-ink)' }}>{r.id}</span>
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--me-grey-70)' }}>{r.creditRef}</span>
-                <span style={{ color: 'var(--me-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.beneficiary}</span>
+                <span style={{ color: 'var(--me-ink)', ...ellipsis }}>{r.beneficiary}</span>
                 <span style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 12.5, color: 'var(--me-ink)' }}>{money(r.currency, r.amount)}</span>
                 <span style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--me-grey-70)' }}>{r.pageCount}</span>
                 <span><Badge tone={STATUS_TONE[r.status] || 'neutral'}>{r.statusLabel}</Badge></span>

@@ -56,12 +56,7 @@ Three levels, and the dependency rule is one-directional: **modules may import
 ```
 src/
 ├── shared/                  no domain knowledge — reusable by any module
-│   ├── ds/                  design system (Button, Badge, Icon, Drawer, Modal,
-│   │                        Overlay, Tabs, SegmentedControl, Toast, Spinner,
-│   │                        Select, Switch, Checkbox, SearchBar, Toolbar, Page,
-│   │                        ConfirmDialog, ViewSwitch, PdfViewer, PageStrip,
-│   │                        ResizeHandle, DocumentSurface, RuleText,
-│   │                        MarkdownDoc + MarkdownSource, z-index ladder)
+│   ├── ds/                  design system — see "The design system" below
 │   ├── styles/              tokens.css (Memara tokens) + base.css
 │   └── lib/                 tone.js (one severity vocabulary), format.js,
 │                             ruleTokens.js (the rule-writing vocabulary)
@@ -98,7 +93,8 @@ src/
         ├── data/seed.json
         ├── sections/        ChecksSection, AgentsList, AgentDetail,
         │                    Dictionary, Library, CheckDetail
-        ├── components/      Check, CheckRow, AgentCheckRow, ReviewPanel, RuleEditor
+        ├── components/      Check (card shell), RuleCard, RequirementCard,
+        │                    CheckRow, AgentCheckRow, ReviewPanel, RuleEditor
         └── modals/          ImportModal, AddCaseModal, TestRunModal
 ```
 
@@ -351,10 +347,81 @@ The module keeps its single-state-object design (`store.js` `initialState` +
 the two are synced in `GovernanceModule`. Section is seeded from the URL on first
 render so a deep link renders its own section rather than flashing Checks first.
 
-Checks are the unit of work: a plain-language note with a severity, LC field
-codes (`{41A}`, highlighted live), document types and UCP/ISBP refs.
-`store.buildCheck()` turns a raw check into the props `Check.jsx` renders, and
-the same card is reused in the Checks library and inside an agent's groups.
+Checks are the unit of work, and there are two kinds of card:
+
+| | What it is | How it runs |
+|---|---|---|
+| **Rule card** | Rows comparing a field on one document with a field on another — `Invoice value @ Commercial invoice` *is at most* `Credit amount @ Letter of credit`, with an optional qualifier — plus the wording to raise when it fails | deterministic, no model in the loop |
+| **Requirement card** | Requirements in plain language, one per dash line, with dictionary field names braced (`{Expiry date}`, highlighted live) | read by the model, against a clause of the credit (46A, 47A) or the whole presentation |
+
+Everything that isn't explicitly a rule is a requirement — that is what a check
+is born as. `store.buildCheck()` turns a raw check into the props `Check.jsx`
+renders; `Check.jsx` is the shell (id, title, severity, refs, which agent it
+sits in) and fills its middle with `RuleCard` or `RequirementCard`. The same
+card is reused in the Checks library and inside an agent's groups.
+
+### The design system
+
+Everything visual belongs here, and a module reaches for the component before it
+writes a style object. The rule is narrow on purpose: **use the shared component
+unless the design deliberately differs, and say so in a comment where it does.**
+A one-off style is how a product ends up with four shadows and three radii on
+adjacent panels.
+
+| | What it is | Use it for |
+|---|---|---|
+| `Card` / `cardSurface(r)` | The white surface: one border, one shadow, two radii | Any panel, tile or list wrapper. `cardSurface` when it must be a `<button>` or carry its own layout |
+| `Chip` | A lowercase data tag — `tone`, `size`, `mono`, `dashed`, `onRemove` | Field names, document types, filters, counts. `dashed` is the "+ add one" that ends a row of them |
+| `Badge` | The uppercase **status** pill | One per row, saying what state a thing is in. Not a data tag — that's `Chip` |
+| `Eyebrow` | The uppercase micro-label above a value or section | Every `LABEL` caption. `size="sm"` inside a card or menu, `md` above a panel |
+| `IconButton` | A square button that is only an icon | Remove, close, expand, reorder. Always titled; `tone="danger"` reddens on hover only |
+| `Menu` + `MenuItem` | The dropdown surface, outside-click and Esc included | Picking from a list the data supplies |
+| `Select` | The native `<select>`, styled once | A short fixed list — it brings keyboard and typeahead with it |
+| `TextArea` | The multi-line field: `maxLines`, `maxLength`, counter | Every editable prose field |
+| `Button` | The pill button — `primary`/`secondary`/`ghost`/`danger`, `sm`/`md` | Any committed action |
+| `Page`, `Toolbar`, `listWrap/listHead/listRow` | Page width tiers, the sticky section toolbar, list-table chrome | Section layout |
+| `ellipsis`, `clampLines(n)` | Text-overflow styles | "This must not push the row wider" |
+
+Plus the domain-neutral heavies: `PdfViewer`, `PageStrip`, `DocumentSurface`,
+`Drawer`, `Modal`, `ConfirmDialog`, `Tabs`, `SegmentedControl`, `Switch`,
+`Checkbox`, `SearchBar`, `ViewSwitch`, `Toast`, `Spinner`, `InfoTip`,
+`RuleText`, `MarkdownDoc`, and the `Z` z-index ladder.
+
+### One menu, one select
+
+Every "pick one from a list" is `ds/Menu` — the surface, the outside-click and
+Esc, and a `MenuItem` that always reads from the left. They had each been
+hand-rolled, which is how they drifted; the shared item style set
+`alignItems: center` for vertical centring in a row, and every call site that
+stacked a label over a hint turned that into *horizontal* centring without
+meaning to. `ds/Select` is the other half: a native `<select>`, which is right
+for a short fixed list because it brings keyboard, typeahead and the platform's
+own popup with it. Two components, so a dropdown cannot drift again.
+
+### A rule card is a form, and it behaves like one
+
+Its structural controls (add a condition, add or remove a block) appear only
+while editing, so a saved rule reads as a statement. **Edit rule** in its header
+is the way in — before that, the only way to start editing was to click into a
+field, which left a finished rule with no way to add anything to it. On the way
+out: **Cancel** restores the conditions as well as the title, and **Save** is
+held back while the rule is missing something it cannot run without, with the
+reasons printed next to the button rather than a disabled control and no
+explanation. A block emptied of its conditions removes itself, and the last
+condition of the last block is replaced rather than deleted — a rule with
+nothing to compare is not a rule.
+
+### The dictionary names business fields, not LC tags
+
+A field is a plain business name — *Latest shipment date*, not `44C` — with a
+list of the documents it can be read from. Each of those bindings carries one
+note saying what the field is called on that document and how to read it
+(`Tag 44C, or derived from the 44D shipment period`; `Actual flight-date
+notation — not the issue date`). That note is the whole extraction instruction,
+and it is what makes the credit just one more document rather than a privileged
+vocabulary. Checks reference a field by its name, both in a braced token and as
+a rule operand, so renaming one is a dictionary edit with a usage count beside
+it rather than a hunt through the catalogue.
 
 ### Run modes, and why not "Manual"
 

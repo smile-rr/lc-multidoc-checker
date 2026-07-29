@@ -6,6 +6,10 @@ import Checkbox from '@shared/ds/Checkbox'
 import Page from '@shared/ds/Page'
 import DetailBack from '@shared/ds/DetailBack'
 import ViewSwitch from '@shared/ds/ViewSwitch'
+import Eyebrow from '@shared/ds/Eyebrow'
+import IconButton from '@shared/ds/IconButton'
+import { cardSurface } from '@shared/ds/Card'
+import { Menu, MenuItem, MenuHeader, MenuEmpty } from '@shared/ds/Menu'
 import { Z } from '@shared/ds/z'
 import Check from '../components/Check'
 import AgentCheckRow from '../components/AgentCheckRow'
@@ -67,27 +71,26 @@ export default function AgentDetail({ v }) {
                     <span style={{ fontSize: 12, color: 'var(--me-grey-70)', flexShrink: 0 }}>{group.count}</span>
                     {v.agentArrange && (
                       <>
-                        <button onClick={group.onMoveUp} disabled={!group.canMoveUp} title="Move up" style={{ ...groupIconBtn, opacity: group.canMoveUp ? 1 : 0.35, cursor: group.canMoveUp ? 'pointer' : 'default' }}><Icon name="chevron-up" size={15} /></button>
-                        <button onClick={group.onMoveDown} disabled={!group.canMoveDown} title="Move down" style={{ ...groupIconBtn, opacity: group.canMoveDown ? 1 : 0.35, cursor: group.canMoveDown ? 'pointer' : 'default' }}><Icon name="chevron-down" size={15} /></button>
+                        <IconButton icon="chevron-up" size="md" title="Move this group up" onClick={group.onMoveUp} disabled={!group.canMoveUp} />
+                        <IconButton icon="chevron-down" size="md" title="Move this group down" onClick={group.onMoveDown} disabled={!group.canMoveDown} />
                       </>
                     )}
-                    <span style={{ position: 'relative', display: 'inline-flex' }}>
-                      <button onClick={group.onAdd} title="Add a check to this group" style={addCheckBtn}><Icon name="plus" size={15} />Add check</button>
-                      {group.addOpen && (
-                        <div style={{ position: 'absolute', top: 34, right: 0, zIndex: Z.popover, width: 300, maxHeight: 300, overflow: 'auto', background: '#fff', border: '1px solid var(--me-grey-20)', borderRadius: 10, boxShadow: '0 12px 30px rgba(27,28,30,.16)', padding: 6 }}>
-                          <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--me-grey-70)', padding: '6px 8px 4px' }}>Add a check to this group</div>
-                          {group.addable.map((ac, i) => (
-                            <button key={i} onClick={ac.onAdd} style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 11px', background: 'none', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
-                              <span style={{ width: 8, height: 8, borderRadius: '50%', background: ac.sevColor, flexShrink: 0 }} />
-                              <span style={{ fontSize: 13, color: 'var(--me-ink)', fontWeight: 500 }}>{ac.title}</span>
-                              <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>{ac.domain}</span>
-                            </button>
-                          ))}
-                          {group.noAddable && <div style={{ fontSize: 12.5, color: 'var(--me-grey-70)', padding: '10px 11px' }}>Every check is already in this agent.</div>}
-                        </div>
-                      )}
-                    </span>
-                    <button onClick={group.onDelete} title="Delete group" style={groupIconBtn}><Icon name="trash-2" size={14} /></button>
+                    <Menu
+                      open={group.addOpen}
+                      onClose={group.onAdd}
+                      align="right"
+                      top={34}
+                      width={300}
+                      maxHeight={300}
+                      trigger={<button onClick={group.onAdd} title="Add a check to this group" style={addCheckBtn}><Icon name="plus" size={15} />Add check</button>}
+                    >
+                      <MenuHeader>Add a check to this group</MenuHeader>
+                      {group.addable.map((ac, i) => (
+                        <MenuItem key={i} icon={ac.kindIcon} label={ac.title} hint={ac.domain} onClick={ac.onAdd} />
+                      ))}
+                      {group.noAddable && <MenuEmpty>Every check is already in this agent.</MenuEmpty>}
+                    </Menu>
+                    <IconButton icon="trash-2" size="md" tone="danger" title="Delete this group" onClick={group.onDelete} />
                   </div>
                   <div
                     onDragOver={group.onDragOver}
@@ -116,18 +119,18 @@ export default function AgentDetail({ v }) {
 
 // White "workspace" card elevated on the grey page; inside, the group drop-zones
 // are grey insets so items read with depth — all neutral, no coloured tint.
-const agentPanel = { background: '#fff', border: '1px solid var(--me-grey-15)', borderRadius: 16, boxShadow: 'var(--shadow-sm)', padding: '18px 20px 22px' }
+const agentPanel = { ...cardSurface(16), padding: '18px 20px 22px' }
 
 function IconPicker({ v }) {
   return (
     <div style={{ position: 'absolute', top: 52, left: 0, zIndex: Z.popover, width: 264, background: '#fff', border: '1px solid var(--me-grey-20)', borderRadius: 12, boxShadow: '0 12px 30px rgba(27,28,30,.16)', padding: 12 }}>
-      <div style={pickerLabel}>Colour</div>
+      <Eyebrow size="sm">Colour</Eyebrow>
       <div style={{ display: 'flex', gap: 8, margin: '8px 0 12px' }}>
         {v.agentAccentOptions.map((c) => (
           <button key={c} onClick={() => v.pickAgentAccent(c)} title={c} style={{ width: 22, height: 22, borderRadius: '50%', background: c, border: c === v.agentAccent ? '2px solid var(--me-ink)' : '2px solid #fff', boxShadow: '0 0 0 1px var(--me-grey-20)', cursor: 'pointer', padding: 0 }} />
         ))}
       </div>
-      <div style={pickerLabel}>Icon</div>
+      <Eyebrow size="sm">Icon</Eyebrow>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 6, marginTop: 8 }}>
         {v.agentIconOptions.map((name) => (
           <button key={name} onClick={() => v.pickAgentIcon(name)} title={name} style={{ height: 34, borderRadius: 8, border: name === v.agentIcon ? `1px solid ${v.agentAccent}` : '1px solid var(--me-grey-15)', background: name === v.agentIcon ? v.agentAccentSoft : '#fff', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: name === v.agentIcon ? v.agentAccent : 'var(--me-grey)' }}>
@@ -182,7 +185,5 @@ const tabBtn = { padding: '11px 4px', background: 'none', border: 'none', cursor
 const addCheckBtn = { display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, height: 28, padding: '0 11px', borderRadius: 8, border: '1px solid var(--me-grey-20)', background: '#fff', color: 'var(--me-grey)', cursor: 'pointer', fontSize: 12.5, fontWeight: 600 }
 const seqBadge = { flexShrink: 0, width: 20, height: 20, borderRadius: 6, background: 'var(--me-grey-15)', color: 'var(--me-grey-70)', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }
 const groupNameInput = { flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, color: 'var(--me-ink)', padding: '3px 6px' }
-const pickerLabel = { fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--me-grey-70)' }
-const groupIconBtn = { width: 26, height: 26, flexShrink: 0, borderRadius: 7, border: 'none', background: 'none', color: 'var(--me-grey-50)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }
-const card = { background: '#fff', border: '1px solid var(--me-grey-15)', borderRadius: 14, boxShadow: 'var(--shadow-sm)', padding: '20px 22px' }
+const card = { ...cardSurface(14), padding: '20px 22px' }
 const cardH3 = { fontSize: 15, fontWeight: 700, margin: '0 0 12px' }

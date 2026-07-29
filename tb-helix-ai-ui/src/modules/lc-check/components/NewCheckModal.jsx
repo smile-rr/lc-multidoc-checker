@@ -1,3 +1,4 @@
+import Eyebrow from '@shared/ds/Eyebrow'
 import { useEffect, useState } from 'react'
 import Modal from '@shared/ds/Modal'
 import Button from '@shared/ds/Button'
@@ -76,7 +77,7 @@ export default function NewCheckModal({ open, onClose, onCreated }) {
             >
               <Icon name={slot.icon} size={18} color={done ? 'var(--me-blue)' : 'var(--me-grey-50)'} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
-                <span style={{ fontSize: 11.5, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--me-grey-70)' }}>{slot.role}</span>
+                <Eyebrow size="sm">{slot.role}</Eyebrow>
                 <span style={{ fontSize: 13.5, fontFamily: done ? 'var(--font-mono)' : 'var(--font-sans)', color: done ? 'var(--me-ink)' : 'var(--me-grey-70)' }}>
                   {done ? slot.fileName : 'Drop a file or browse'}
                 </span>
@@ -89,7 +90,7 @@ export default function NewCheckModal({ open, onClose, onCreated }) {
 
       {identity ? (
         <div style={{ marginTop: 14, padding: '14px 16px', borderRadius: 10, background: 'var(--me-grey-08)', display: 'flex', flexDirection: 'column', gap: 7 }}>
-          <span style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--me-grey-70)' }}>Read from the credit</span>
+          <Eyebrow size="sm">Read from the credit</Eyebrow>
           {identity.map((row) => (
             <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 14, fontSize: 13 }}>
               <span style={{ color: 'var(--me-grey-70)' }}>{row.label}</span>

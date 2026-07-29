@@ -1,3 +1,5 @@
+import { cardSurface } from '@shared/ds/Card'
+import Eyebrow from '@shared/ds/Eyebrow'
 import { useState } from 'react'
 
 // What the extractor read, laid out the way the v3 examination UI lays out its
@@ -23,12 +25,10 @@ export default function FactsPanel({
   const uncertain = facts.filter((f) => f.confidence && f.confidence !== 'HIGH').length
 
   return (
-    <div style={{ background: '#fff', border: '1px solid var(--me-grey-15)', borderRadius: 12, display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
+    <div style={{ ...cardSurface(12), boxShadow: 'none', display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
       <div style={{ padding: '11px 14px', borderBottom: '1px solid var(--me-grey-15)', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--me-grey-70)' }}>
-            Extracted Fields
-          </span>
+          <Eyebrow>Extracted fields</Eyebrow>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--me-grey-70)', whiteSpace: 'nowrap' }}>
             {facts.length} fields{uncertain ? ` · ${uncertain} unsure` : ''}
           </span>

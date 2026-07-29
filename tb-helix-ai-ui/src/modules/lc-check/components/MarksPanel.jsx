@@ -1,3 +1,4 @@
+import { cardSurface } from '@shared/ds/Card'
 import Icon from '@shared/ds/Icon'
 import { toneOf } from '@shared/lib/tone'
 
@@ -9,7 +10,7 @@ const ICON = { signature: 'pen-line', stamp: 'stamp', handwriting: 'pen-tool' }
 export default function MarksPanel({ marks }) {
   if (!marks.length) return null
   return (
-    <div style={{ background: '#fff', border: '1px solid var(--me-grey-15)', borderRadius: 12, overflow: 'hidden' }}>
+    <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden' }}>
       <div style={{ padding: '11px 14px', borderBottom: '1px solid var(--me-grey-15)', fontSize: 12.5, fontWeight: 600, color: 'var(--me-ink)' }}>
         Signatures &amp; Stamps
       </div>

@@ -1,3 +1,4 @@
+import Eyebrow from '@shared/ds/Eyebrow'
 import Drawer from '@shared/ds/Drawer'
 import Badge from '@shared/ds/Badge'
 import { duration, durationShort, thousands, usd, percent } from '@shared/lib/format'
@@ -81,9 +82,9 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
 function Section({ name, note, last, children }) {
   return (
     <section style={{ padding: '16px 22px 18px', borderBottom: last ? 'none' : '1px solid var(--me-grey-15)' }}>
-      <h3 style={{ margin: '0 0 2px', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--me-grey-70)' }}>
+      <Eyebrow as="h3" style={{ margin: '0 0 2px' }}>
         {name}
-      </h3>
+      </Eyebrow>
       {note ? (
         <p style={{ margin: '0 0 12px', fontSize: 11.5, lineHeight: 1.5, color: 'var(--me-grey-70)' }}>{note}</p>
       ) : (

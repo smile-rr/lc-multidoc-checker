@@ -1,3 +1,5 @@
+import { cardSurface } from '@shared/ds/Card'
+import Eyebrow from '@shared/ds/Eyebrow'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import MarkdownDoc from '@shared/ds/MarkdownDoc'
@@ -27,7 +29,7 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
   const sevTone = toneOf(SEVERITY_TONE[spec.severity] ?? 'neutral')
 
   return (
-    <div style={{ background: '#fff', border: '1px solid var(--me-grey-15)', borderRadius: 12, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+    <div style={{ ...cardSurface(12), boxShadow: 'none', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--me-grey-15)', display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--me-grey-70)' }}>{check.id}</span>
@@ -150,7 +152,7 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
 function Field({ label, children }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-      <span style={{ fontSize: 11, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--me-grey-70)' }}>{label}</span>
+      <Eyebrow size="sm">{label}</Eyebrow>
       {children}
     </div>
   )

@@ -1,8 +1,10 @@
+import Eyebrow from '@shared/ds/Eyebrow'
 import { Link } from 'react-router-dom'
 import Badge from '@shared/ds/Badge'
 import Button from '@shared/ds/Button'
 import Icon from '@shared/ds/Icon'
 import SegmentedControl from '@shared/ds/SegmentedControl'
+import { usePersistedState } from '@shared/lib/usePersistedState'
 import { money, durationShort, usd, dueLabel } from '@shared/lib/format'
 import { RUN_MODES } from '../state/severity'
 
@@ -31,7 +33,15 @@ export default function CaseHeader({
   onAction,
   headerRef,
 }) {
+  // The facts strip is the reference an officer re-reads while working, but it
+  // is also a band of chrome above every stage, and once the credit is in your
+  // head it is a band you scroll past on every screen. So it folds, and the
+  // choice persists: this is a habit, not a per-case decision. The reply
+  // deadline does not fold with it — see below.
+  const [factsOpen, setFactsOpen] = usePersistedState('lcCheck.caseFacts', true)
+
   const c = detail.credit
+  const dueUrgent = detail.replyDueDays != null && detail.replyDueDays <= 3
   const facts = [
     { k: 'Credit', v: c.creditRef, mono: true },
     { k: 'Amount', v: `${money(c.currency, c.amount)} ±${c.tolerancePct}%`, mono: true, weight: 500 },
@@ -62,29 +72,49 @@ export default function CaseHeader({
             <span>/</span>
             <span style={{ fontFamily: 'var(--font-mono)' }}>{caseId}</span>
             <Badge tone={status.tone}>{status.label}</Badge>
+            {/* Folded away, the deadline comes up here rather than going with
+                the rest. Everything else in the strip is reference; this one is
+                a clock, and it must not be possible to hide it. */}
+            {!factsOpen && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: dueUrgent ? 'var(--status-warning)' : 'var(--me-grey)' }}>
+                <span style={{ color: 'var(--me-grey-70)' }}>Reply due</span>
+                <strong style={{ fontWeight: 600 }}>{dueLabel(detail.replyDueDays) ?? '—'}</strong>
+              </span>
+            )}
           </div>
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--me-ink)' }}>{c.beneficiary}</h1>
 
-          <div style={{ display: 'flex', flexWrap: 'wrap', margin: '4px 0 14px', border: '1px solid var(--me-grey-15)', borderRadius: 8, background: 'var(--me-grey-08)', overflow: 'hidden', width: 'fit-content' }}>
-            {facts.map((f, i) => (
-              <div key={f.k} style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '8px 16px', borderRight: i < facts.length - 1 ? '1px solid var(--me-grey-15)' : 'none', whiteSpace: 'nowrap' }}>
-                <span style={{ fontSize: 11, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--me-grey-70)' }}>{f.k}</span>
-                <span
-                  style={{
-                    fontSize: 13.5,
-                    fontFamily: f.mono ? 'var(--font-mono)' : 'var(--font-sans)',
-                    fontWeight: f.weight || 400,
-                    color: f.urgent && detail.replyDueDays != null && detail.replyDueDays <= 3 ? 'var(--status-warning)' : 'var(--me-ink)',
-                  }}
-                >
-                  {f.v}
-                </span>
-              </div>
-            ))}
-          </div>
+          {factsOpen && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', margin: '4px 0 14px', border: '1px solid var(--me-grey-15)', borderRadius: 8, background: 'var(--me-grey-08)', overflow: 'hidden', width: 'fit-content' }}>
+              {facts.map((f, i) => (
+                <div key={f.k} style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '8px 16px', borderRight: i < facts.length - 1 ? '1px solid var(--me-grey-15)' : 'none', whiteSpace: 'nowrap' }}>
+                  <Eyebrow size="sm">{f.k}</Eyebrow>
+                  <span
+                    style={{
+                      fontSize: 13.5,
+                      fontFamily: f.mono ? 'var(--font-mono)' : 'var(--font-sans)',
+                      fontWeight: f.weight || 400,
+                      color: f.urgent && dueUrgent ? 'var(--status-warning)' : 'var(--me-ink)',
+                    }}
+                  >
+                    {f.v}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, paddingTop: 4 }}>
+          <PillButton
+            title={factsOpen ? 'Hide the credit details' : 'Show the credit details'}
+            active={!factsOpen}
+            onClick={() => setFactsOpen((o) => !o)}
+          >
+            <Icon name={factsOpen ? 'chevrons-down-up' : 'chevrons-up-down'} size={15} color="var(--me-grey-70)" />
+            <span style={{ fontSize: 12.5, color: 'var(--me-grey)' }}>Details</span>
+          </PillButton>
+
           <PillButton title="Time and cost for this case — open for the per-step breakdown" active={costOpen} onClick={onToggleCost}>
             <Icon name="gauge" size={15} color={cost.cost ? 'var(--me-blue)' : 'var(--me-grey-70)'} />
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--me-grey)' }}>{costPill}</span>

@@ -1,3 +1,4 @@
+import { ellipsis } from '@shared/ds/text'
 import DispositionChips from './DispositionChips'
 import { severityMeta, dispositionLabel } from '../state/severity'
 
@@ -33,7 +34,7 @@ export default function FindingCard({ finding, subtitle, selected, decision, onS
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ width: 7, height: 7, borderRadius: 999, background: sev.dot, flex: '0 0 7px' }} />
         <span style={{ fontSize: 12, fontWeight: 600, color: sev.text, whiteSpace: 'nowrap' }}>{sev.label}</span>
-        <span style={{ fontSize: 12, color: 'var(--me-grey-70)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: 12, color: 'var(--me-grey-70)', flex: 1, minWidth: 0, ...ellipsis }}>
           {subtitle}
         </span>
         {decision ? (

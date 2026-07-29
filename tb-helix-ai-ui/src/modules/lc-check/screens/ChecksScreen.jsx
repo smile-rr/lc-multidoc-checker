@@ -1,3 +1,4 @@
+import { cardSurface } from '@shared/ds/Card'
 import { useMemo, useState } from 'react'
 import Icon from '@shared/ds/Icon'
 import Spinner from '@shared/ds/Spinner'
@@ -80,7 +81,7 @@ export default function ChecksScreen({ onOpenFinding }) {
 
   return (
     <section className="helix-screen" style={{ padding: '16px 24px 28px', display: 'grid', gridTemplateColumns: 'minmax(330px,400px) minmax(460px,1fr)', gap: 16, alignItems: 'start' }}>
-      <div style={{ background: '#fff', border: '1px solid var(--me-grey-15)', borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - var(--case-header-h, 240px) - 64px)' }}>
+      <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - var(--case-header-h, 240px) - 64px)' }}>
         <div style={{ padding: '13px 15px', borderBottom: '1px solid var(--me-grey-15)', display: 'flex', flexDirection: 'column', gap: 9, flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)' }}>Check Plan</span>

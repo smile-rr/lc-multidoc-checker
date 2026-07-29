@@ -1,3 +1,5 @@
+import { cardSurface } from '@shared/ds/Card'
+import Eyebrow from '@shared/ds/Eyebrow'
 import Icon from '@shared/ds/Icon'
 import Button from '@shared/ds/Button'
 import Badge from '@shared/ds/Badge'
@@ -11,7 +13,7 @@ export default function TestRunModal({ v }) {
       <div onClick={v.stop} style={{ width: '100%', maxWidth: 720, background: 'var(--me-grey-08)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 24px 60px rgba(27,28,30,.35)' }}>
         <div style={{ background: '#fff', borderBottom: '1px solid var(--me-grey-15)', padding: '18px 22px', display: 'flex', alignItems: 'flex-start', gap: 16 }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--me-blue)' }}>Test run</div>
+            <Eyebrow as="div" color="var(--me-blue)">Test run</Eyebrow>
             <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.01em', marginTop: 3 }}>{v.agentName}</div>
             <div style={{ fontSize: 12.5, color: 'var(--me-grey-70)', marginTop: 3, fontFamily: 'var(--font-mono)' }}>Sample presentation · MT700 LC-2026-0453</div>
           </div>
@@ -19,11 +21,11 @@ export default function TestRunModal({ v }) {
         </div>
 
         <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={sectionLabel}>Phase-by-phase execution</div>
+          <Eyebrow as="div">Phase-by-phase execution</Eyebrow>
           {v.phases.map((ph, i) => (
-            <div key={i} style={{ background: '#fff', border: '1px solid var(--me-grey-15)', borderRadius: 12, padding: '14px 16px' }}>
+            <div key={i} style={{ ...cardSurface(12), boxShadow: 'none', padding: '14px 16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--me-grey-70)' }}>{ph.n}</span>
+                <Eyebrow size="sm">{ph.n}</Eyebrow>
                 <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--me-ink)' }}>{ph.title}</span>
               </div>
               {ph.detail && <div style={{ fontSize: 12.5, lineHeight: 1.5, color: 'var(--me-grey)' }}>{ph.detail}</div>}
@@ -38,8 +40,8 @@ export default function TestRunModal({ v }) {
             </div>
           ))}
 
-          <div style={{ ...sectionLabel, marginTop: 4 }}>Checker's memo</div>
-          <div style={{ background: '#fff', border: '1px solid var(--me-grey-15)', borderRadius: 12, padding: '18px 20px' }}>
+          <Eyebrow as="div" style={{ marginTop: 4 }}>Checker&rsquo;s memo</Eyebrow>
+          <div style={{ ...cardSurface(12), boxShadow: 'none', padding: '18px 20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBottom: 12, borderBottom: '1px solid var(--me-grey-15)', marginBottom: 12 }}>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, fontWeight: 600, color: 'var(--me-ink)' }}>LC-2026-0453</span>
               <Badge tone="error">2 discrepancies</Badge>
@@ -61,4 +63,3 @@ export default function TestRunModal({ v }) {
   )
 }
 
-const sectionLabel = { fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--me-grey-70)' }

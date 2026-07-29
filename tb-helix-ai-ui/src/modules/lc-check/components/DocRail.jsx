@@ -1,3 +1,5 @@
+import { cardSurface } from '@shared/ds/Card'
+import Eyebrow from '@shared/ds/Eyebrow'
 import { pageRange } from '@shared/lib/format'
 
 // The document rail: the credit at the top, then whatever intake carved out of
@@ -16,7 +18,7 @@ export default function DocRail({ documents, selectedId, onSelect, segmented, se
   const pending = Math.max(0, segmentTotal - segmented)
 
   return (
-    <div style={{ background: '#fff', border: '1px solid var(--me-grey-15)', borderRadius: 12, overflow: 'hidden' }}>
+    <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden' }}>
       <Group label="Letter of Credit" count={`${credit.length}`}>
         {credit.map((d) => (
           <Row key={d.id} doc={d} sub={`MT700 · ${d.reference}`} on={d.id === selectedId} onClick={() => onSelect(d.id)} />
@@ -54,7 +56,7 @@ function Group({ label, count, children }) {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 12px', background: 'var(--me-grey-08)', borderBottom: '1px solid var(--me-grey-15)' }}>
-        <span style={{ fontSize: 11, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--me-grey-70)' }}>{label}</span>
+        <Eyebrow size="sm">{label}</Eyebrow>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--me-grey-70)' }}>{count}</span>
       </div>
       {children}

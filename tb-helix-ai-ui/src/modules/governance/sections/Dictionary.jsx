@@ -1,15 +1,27 @@
+import { useState } from 'react'
 import Icon from '@shared/ds/Icon'
 import Button from '@shared/ds/Button'
 import Page from '@shared/ds/Page'
-import AutoTextarea from '@shared/ds/AutoTextarea'
+import TextArea from '@shared/ds/TextArea'
 import DetailBack from '@shared/ds/DetailBack'
 import Toolbar from '@shared/ds/Toolbar'
 import SearchBar from '@shared/ds/SearchBar'
 import ViewSwitch from '@shared/ds/ViewSwitch'
-import { Z } from '@shared/ds/z'
+import Card from '@shared/ds/Card'
+import Chip from '@shared/ds/Chip'
+import Eyebrow from '@shared/ds/Eyebrow'
+import IconButton from '@shared/ds/IconButton'
+import { Menu, MenuItem, MenuEmpty } from '@shared/ds/Menu'
+import { ellipsis, clampLines } from '@shared/ds/text'
 import { listWrap, listHead, listRow } from '@shared/ds/listStyles'
 
 // Dictionary — the shared vocabulary of fields and document types.
+//
+// A field is a plain business name, not a tag of the credit: nothing here is
+// reserved to the LC. Name the field, then list the documents it can be read
+// from; each source carries one note saying what it is called there and how to
+// read it. That note is the whole extraction instruction — the credit is just
+// one more document a field is bound to.
 export default function Dictionary({ v }) {
   // Item detail — a single editable card with a back link (like other sections).
   if (v.isDictDetail) {
@@ -17,7 +29,7 @@ export default function Dictionary({ v }) {
     return (
       <Page width="narrow">
         <DetailBack label="Back to dictionary" onBack={d.onBack} />
-        {d.kind === 'field' ? <FieldCard f={d.row} /> : <DocCard d={d.row} />}
+        {d.kind === 'field' ? <FieldCard f={d.row} defaultOpen /> : <DocCard d={d.row} />}
       </Page>
     )
   }
@@ -32,6 +44,7 @@ export default function Dictionary({ v }) {
               <button onClick={v.setDictDocsTab} style={{ ...tab, borderLeft: '1px solid var(--me-grey-20)', background: v.dictDocsBg, color: v.dictDocsFg }}>Document types</button>
             </div>
             <SearchBar value={v.dictSearch} onChange={v.setDictSearch} placeholder="Search the dictionary…" width={280} />
+            <span style={{ fontSize: 12.5, color: 'var(--me-grey-70)', whiteSpace: 'nowrap' }}>{v.dictCountLabel}</span>
           </>
         }
         right={
@@ -50,14 +63,13 @@ export default function Dictionary({ v }) {
       {v.dictIsFields && v.dictIsListView && (
         <div style={listWrap}>
           <div style={{ ...fieldGrid, ...listHead }}>
-            <span>Code</span><span>Type</span><span>Name</span><span>Appears on</span><span>Used by</span><span />
+            <span>Field</span><span>Description</span><span>Read from</span><span>Used by</span><span />
           </div>
           {v.fieldRows.map((f) => (
             <div key={f.id} onClick={f.onOpen} style={{ ...fieldGrid, ...listRow, cursor: 'pointer' }}>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--me-blue-deep)' }}>{f.code || '—'}</span>
-              <span><span style={{ fontSize: 11, fontWeight: 600, color: f.typeColor, background: f.typeBg, borderRadius: 999, padding: '2px 9px' }}>{f.type}</span></span>
-              <span style={ellip(13.5, 500, 'var(--me-ink)')}>{f.name}</span>
-              <span style={{ fontSize: 12, color: 'var(--me-grey-70)' }}>{f.docChips.length ? `${f.docChips.length} doc${f.docChips.length === 1 ? '' : 's'}` : '—'}</span>
+              <span style={ellip(13.5, 600, 'var(--me-ink)')}>{f.name}</span>
+              <span style={ellip(12.5, 400, 'var(--me-grey)')}>{f.description || '—'}</span>
+              <span style={ellip(12, 400, 'var(--me-grey-70)')}>{f.docsLine}</span>
               <span style={{ fontSize: 12, color: 'var(--me-grey-70)' }}>{f.usedLabel}</span>
               <Icon name="chevron-right" size={16} color="var(--me-grey-50)" />
             </div>
@@ -98,69 +110,102 @@ export default function Dictionary({ v }) {
   )
 }
 
-function FieldCard({ f }) {
+// A field, with its sources folded away.
+//
+// A field can be read from half a dozen documents, and each source carries a
+// note long enough to be an instruction. Printed in full, twenty-two of these
+// is a scroll nobody reads. So a card rests at three lines — name, description,
+// and the documents as chips — and opens to the notes when you go to work on
+// it. The chips carry the same information the list view's "Read from" column
+// does, which is what you need to answer "where does this come from" without
+// opening anything.
+function FieldCard({ f, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen)
+  const n = f.bindings.length
   return (
-    <div style={card}>
+    <Card pad="sm">
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <input className="inline-edit" value={f.code} onChange={f.onChangeCode} placeholder="Code" style={{ width: 88, flexShrink: 0, padding: '6px 9px', fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--me-blue-deep)' }} />
-        <select value={f.type} onChange={f.onChangeType} style={{ flexShrink: 0, height: 32, border: '1px solid var(--me-grey-20)', borderRadius: 7, padding: '0 8px', fontSize: 11.5, fontWeight: 600, color: f.typeColor, background: f.typeBg, cursor: 'pointer', outline: 'none' }}>
-          <option value="LC field">LC field</option>
-          <option value="Document data point">Document data point</option>
-          <option value="Derived">Derived</option>
-          <option value="External">External</option>
-        </select>
-        <input className="inline-edit" value={f.name} onChange={f.onChangeName} placeholder="Field name" style={nameInput} />
-        <button onClick={f.onRemove} title="Remove" style={trashBtn}><Icon name="trash-2" size={15} /></button>
+        <input className="inline-edit" value={f.name} onChange={f.onChangeName} placeholder="Business field name" style={nameInput} />
+        <Chip size="sm" title="Checks that read this field" style={{ flexShrink: 0, fontWeight: 600, color: 'var(--me-grey-70)' }}>{f.usedLabel}</Chip>
+        <IconButton icon="trash-2" title="Remove this field" tone="danger" onClick={f.onRemove} />
       </div>
-      <AutoTextarea className="inline-edit" value={f.description} onChange={f.onChangeDesc} onBlur={f.onBlurDesc} placeholder="Short description of what this field holds…" maxLength={DESC_MAX} style={descArea} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 8, paddingLeft: 6 }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--me-grey-70)' }}>Appears on</span>
-        {f.docChips.map((dc, i) => (
-          <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--me-grey)', background: 'var(--me-grey-08)', border: '1px solid var(--me-grey-15)', borderRadius: 999, padding: '3px 6px 3px 10px' }}>
-            {dc.name}
-            <button onClick={dc.onRemove} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--me-grey-50)', display: 'flex', padding: 0 }}><Icon name="x" size={11} /></button>
-          </span>
-        ))}
-        <span style={{ position: 'relative', display: 'inline-flex' }}>
-          <button onClick={f.onTogglePicker} style={dashChip}>+ Document type</button>
-          {f.pickerOpen && (
-            <div style={{ ...popover, top: 30, left: 0, width: 240, maxHeight: 240, overflow: 'auto' }}>
-              {f.docBook.map((db, i) => (
-                <button key={i} onClick={db.onAdd} style={{ width: '100%', textAlign: 'left', padding: '8px 9px', background: 'none', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 12.5, color: 'var(--me-ink)' }}>{db.name}</button>
-              ))}
-            </div>
-          )}
-        </span>
+      <TextArea className="inline-edit" value={f.description} onChange={f.onChangeDesc} onBlur={f.onBlurDesc} placeholder="What this field holds, in one line…" maxLines={3} maxLength={DESC_MAX} style={descArea} />
+
+      <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--me-grey-08)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={() => setOpen((o) => !o)} style={disclosure}>
+            <Icon name={open ? 'chevron-down' : 'chevron-right'} size={14} color="var(--me-grey-50)" />
+            <Eyebrow size="sm">Read from</Eyebrow>
+            <span style={{ fontSize: 11.5, fontWeight: 500, color: 'var(--me-grey-70)' }}>{n === 0 ? 'no source yet' : n === 1 ? '1 document' : `${n} documents`}</span>
+          </button>
+          {!open && f.bindings.map((b, i) => (
+            <Chip key={i} size="sm" title={b.note || 'No read note yet'}>{b.doc}</Chip>
+          ))}
+          {!open && n === 0 && <span style={{ fontSize: 12, color: 'var(--me-grey-50)' }}>A check cannot read this field until it has one.</span>}
+        </div>
+
+        {open && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+            {f.bindings.map((b, i) => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '176px minmax(0,1fr) 24px', gap: 10, alignItems: 'start' }}>
+                <span title={b.doc} style={{ ...ellip(12.5, 600, 'var(--me-ink)'), paddingTop: 7 }}>{b.doc}</span>
+                <TextArea
+                  className="inline-edit"
+                  value={b.note}
+                  onChange={b.onChangeNote}
+                  onBlur={b.onBlurNote}
+                  placeholder="What it is called here and how to read it…"
+                  maxLines={3}
+                  maxLength={NOTE_MAX}
+                  style={{ width: '100%', fontSize: 12.5, lineHeight: 1.5, color: 'var(--me-grey)', padding: '5px 7px' }}
+                />
+                <IconButton icon="x" size="sm" tone="danger" title="Remove this source" onClick={b.onRemove} style={{ justifySelf: 'end', marginTop: 3 }} />
+              </div>
+            ))}
+            {!n && <span style={{ fontSize: 12, color: 'var(--me-grey-50)' }}>No source yet — a check cannot read this field until it has one.</span>}
+            <span style={{ alignSelf: 'flex-start', marginTop: 4 }}>
+              <Menu
+                open={f.pickerOpen}
+                onClose={f.onTogglePicker}
+                width={250}
+                maxHeight={250}
+                trigger={<Chip dashed onClick={f.onTogglePicker}>+ Document it appears on</Chip>}
+              >
+                {f.docBook.map((db, i) => <MenuItem key={i} label={db.name} onClick={db.onAdd} />)}
+                {!f.docBook.length && <MenuEmpty>Every document type is already a source for this field.</MenuEmpty>}
+              </Menu>
+            </span>
+          </div>
+        )}
       </div>
-    </div>
+    </Card>
   )
 }
 
 function DocCard({ d }) {
   return (
-    <div style={card}>
+    <Card pad="sm">
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <input className="inline-edit" value={d.key} onChange={d.onChangeKey} placeholder="KEY" style={{ width: 180, flexShrink: 0, padding: '6px 9px', fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--me-blue-deep)' }} />
         <input className="inline-edit" value={d.name} onChange={d.onChangeName} placeholder="Document name" style={nameInput} />
-        <button onClick={d.onRemove} title="Remove" style={trashBtn}><Icon name="trash-2" size={15} /></button>
+        <IconButton icon="trash-2" title="Remove this document type" tone="danger" onClick={d.onRemove} />
       </div>
-      <AutoTextarea className="inline-edit" value={d.description} onChange={d.onChangeDesc} onBlur={d.onBlurDesc} placeholder="Short description of this document type…" maxLength={DESC_MAX} style={descArea} />
-    </div>
+      <TextArea className="inline-edit" value={d.description} onChange={d.onChangeDesc} onBlur={d.onBlurDesc} placeholder="Short description of this document type…" maxLines={3} maxLength={DESC_MAX} style={descArea} />
+    </Card>
   )
 }
 
-// A description is a one-breath definition — this cap keeps it concise (and keeps
-// the auto-growing field a few lines tall at most, no scrollbar needed).
+// A description is a one-breath definition, and a read note is one instruction:
+// both are capped so a card stays scannable rather than growing into an essay.
 const DESC_MAX = 240
+const NOTE_MAX = 200
 
-const ellip = (fs, fw, color, family) => ({ fontSize: fs, fontWeight: fw, color, fontFamily: family, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' })
-const clamp = (fs, fw, color, lines) => ({ fontSize: fs, fontWeight: fw, color, display: '-webkit-box', WebkitLineClamp: lines, WebkitBoxOrient: 'vertical', overflow: 'hidden' })
+const disclosure = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '2px 6px 2px 0', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }
+
+const ellip = (fs, fw, color, family) => ({ fontSize: fs, fontWeight: fw, color, fontFamily: family, ...ellipsis })
+const clamp = (fs, fw, color, lines) => ({ fontSize: fs, fontWeight: fw, color, ...clampLines(lines) })
 const tab = { padding: '8px 16px', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600 }
-const card = { background: '#fff', border: '1px solid var(--me-grey-15)', borderRadius: 12, boxShadow: '0 1px 4px rgba(27,28,30,.05)', padding: '14px 16px' }
 const nameInput = { flex: 1, minWidth: 0, fontSize: 15, fontWeight: 600, color: 'var(--me-ink)', padding: '4px 6px' }
 const descArea = { display: 'block', width: '100%', fontSize: 13, lineHeight: 1.55, color: 'var(--me-grey)', padding: '6px 6px', marginTop: 2, fontFamily: 'inherit' }
-const trashBtn = { width: 28, height: 28, borderRadius: 7, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--me-grey-50)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }
-const dashChip = { display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px dashed var(--me-grey-20)', background: 'none', borderRadius: 999, padding: '3px 10px', cursor: 'pointer', fontSize: 11.5, color: 'var(--me-grey-70)' }
-const popover = { position: 'absolute', zIndex: Z.popover, background: '#fff', border: '1px solid var(--me-grey-20)', borderRadius: 10, boxShadow: '0 12px 30px rgba(27,28,30,.16)', padding: 6 }
-const fieldGrid = { display: 'grid', gridTemplateColumns: '90px 140px minmax(0,1fr) 84px 78px 20px', gap: 14 }
+const fieldGrid = { display: 'grid', gridTemplateColumns: 'minmax(0,1.1fr) minmax(0,1.6fr) minmax(0,1.2fr) 78px 20px', gap: 14 }
 const docGrid = { display: 'grid', gridTemplateColumns: '160px minmax(0,1fr) minmax(0,1.4fr) 78px 20px', gap: 14 }

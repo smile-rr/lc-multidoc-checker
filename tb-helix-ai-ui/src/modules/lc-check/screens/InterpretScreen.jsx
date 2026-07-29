@@ -1,3 +1,4 @@
+import { ellipsis } from '@shared/ds/text'
 import { useState, useMemo } from 'react'
 import PageStrip from '@shared/ds/PageStrip'
 import ResizeHandle from '@shared/ds/ResizeHandle'
@@ -75,7 +76,7 @@ export default function InterpretScreen() {
             onTogglePageBar={togglePageBar}
             header={
               <>
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)', ...ellipsis }}>
                   {shownDoc.docType}
                 </span>
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)', whiteSpace: 'nowrap' }}>

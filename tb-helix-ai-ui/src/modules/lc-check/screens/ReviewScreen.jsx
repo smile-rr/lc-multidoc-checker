@@ -1,3 +1,5 @@
+import { cardSurface } from '@shared/ds/Card'
+import Eyebrow from '@shared/ds/Eyebrow'
 import { useState, useMemo } from 'react'
 import Badge from '@shared/ds/Badge'
 import Button from '@shared/ds/Button'
@@ -107,7 +109,7 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
           {groups.map((g) => (
             <div key={g.label} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '2px 2px 0' }}>
-                <span style={{ fontSize: 11, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--me-grey-70)' }}>{g.label}</span>
+                <Eyebrow size="sm">{g.label}</Eyebrow>
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--me-grey-70)' }}>{plural(g.items.length, 'item')}</span>
               </div>
               {g.items.map((f) => (
@@ -151,12 +153,12 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
           ) : null}
         </div>
 
-        <div style={{ background: '#fff', border: '1px solid var(--me-grey-15)', borderRadius: 12, boxShadow: '0 2px 8px rgba(27,28,30,.06)', overflow: 'hidden' }}>
+        <div style={{ ...cardSurface(12), boxShadow: 'none', boxShadow: '0 2px 8px rgba(27,28,30,.06)', overflow: 'hidden' }}>
           <div style={{ padding: '18px 22px 14px', display: 'flex', flexDirection: 'column', gap: 10, borderBottom: '1px solid var(--me-grey-15)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <Badge tone={sev.tone}>{sev.label}</Badge>
-                <span style={{ fontSize: 11.5, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--me-grey-70)' }}>{selected.area}</span>
+                <Eyebrow size="sm">{selected.area}</Eyebrow>
               </div>
               <DispositionChips variant="labelled" value={officer.decisions[selected.id]} onPick={(d) => actions.decide(selected.id, d)} />
             </div>
@@ -164,9 +166,9 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
 
             {/* The statement that would go out in the refusal advice. */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontSize: 10.5, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--me-grey-70)' }}>
+              <Eyebrow size="sm" style={{ fontWeight: 400 }}>
                 {selected.severity === 'clean' ? 'Result Statement' : 'Discrepancy Statement'}
-              </span>
+              </Eyebrow>
               <DiscrepancyStatement text={selected.statement} tone={sev.accent} />
             </div>
 

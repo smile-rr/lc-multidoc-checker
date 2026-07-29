@@ -1,3 +1,5 @@
+import { cardSurface } from '@shared/ds/Card'
+import { ellipsis } from '@shared/ds/text'
 import { useState, useMemo } from 'react'
 import Button from '@shared/ds/Button'
 import Icon from '@shared/ds/Icon'
@@ -40,7 +42,7 @@ export default function DecisionScreen({ onOpenFinding }) {
 
   return (
     <section className="helix-screen" style={{ padding: '18px 32px 40px', display: 'grid', gridTemplateColumns: 'minmax(360px,1fr) minmax(320px,400px)', gap: 16, alignItems: 'start' }}>
-      <div style={{ background: '#fff', border: '1px solid var(--me-grey-15)', borderRadius: 12, overflow: 'hidden' }}>
+      <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '13px 18px', borderBottom: '1px solid var(--me-grey-15)', minHeight: 56 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)' }}>Dispositions</span>
@@ -99,13 +101,13 @@ export default function DecisionScreen({ onOpenFinding }) {
                       <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: f.checkId ? 'var(--me-grey-70)' : '#946400', whiteSpace: 'nowrap' }}>
                         {f.checkId ?? 'no check'}
                       </span>
-                      <span style={{ fontSize: 12, color: 'var(--me-grey-70)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span style={{ fontSize: 12, color: 'var(--me-grey-70)', minWidth: 0, ...ellipsis }}>
                         {check?.name ?? f.area}
                       </span>
                     </div>
                     <span
                       onClick={() => toggle(f.id)}
-                      style={{ fontSize: 13, color: 'var(--me-ink)', lineHeight: 1.4, cursor: 'pointer', ...(isOpen ? {} : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }) }}
+                      style={{ fontSize: 13, color: 'var(--me-ink)', lineHeight: 1.4, cursor: 'pointer', ...(isOpen ? {} : { ...ellipsis }) }}
                     >
                       {f.title}
                     </span>
@@ -150,7 +152,7 @@ export default function DecisionScreen({ onOpenFinding }) {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ background: '#fff', border: '1px solid var(--me-grey-15)', borderRadius: 12, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ ...cardSurface(12), boxShadow: 'none', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
             <Button onClick={actions.submit} disabled={officer.submitted}>{officer.submitted ? 'Submitted' : 'Submit'}</Button>
             <Button variant="secondary" size="sm" onClick={() => actions.flash('Findings exported as Excel.')}>Export to Excel</Button>
@@ -200,7 +202,7 @@ export default function DecisionScreen({ onOpenFinding }) {
           </div>
         </div>
 
-        <div style={{ background: '#fff', border: '1px solid var(--me-grey-15)', borderRadius: 12, padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ ...cardSurface(12), boxShadow: 'none', padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--me-ink)' }}>Routing</span>
           {[
             { icon: 'user-check', color: 'var(--me-blue)', text: 'You are the maker of record', sub: 'The AI pre-check does not sign anything' },

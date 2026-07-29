@@ -18,30 +18,12 @@
         "holistic": true,
         "order": "sev_desc",
         "lcFields": [
-          {
-            "code": "31D",
-            "name": "Date of expiry"
-          },
-          {
-            "code": "41A",
-            "name": "Available with"
-          },
-          {
-            "code": "41D",
-            "name": "Available with"
-          },
-          {
-            "code": "44C",
-            "name": "Latest shipment"
-          },
-          {
-            "code": "48",
-            "name": "Presentation period"
-          },
-          {
-            "code": "59",
-            "name": "Beneficiary"
-          }
+          "Expiry date",
+          "Place of presentation",
+          "Available with",
+          "Latest shipment date",
+          "Presentation period",
+          "Beneficiary name"
         ],
         "docTypes": [
           "Transport document",
@@ -116,18 +98,9 @@
         "holistic": true,
         "order": "sev_desc",
         "lcFields": [
-          {
-            "code": "44E",
-            "name": "Port of loading"
-          },
-          {
-            "code": "44F",
-            "name": "Port of discharge"
-          },
-          {
-            "code": "44C",
-            "name": "Latest shipment"
-          }
+          "Port of loading",
+          "Port of discharge",
+          "Latest shipment date"
         ],
         "docTypes": [
           "Bill of lading",
@@ -189,14 +162,8 @@
         "holistic": false,
         "order": "sev_desc",
         "lcFields": [
-          {
-            "code": "45A",
-            "name": "Goods"
-          },
-          {
-            "code": "32B",
-            "name": "Amount"
-          }
+          "Goods description",
+          "Credit amount"
         ],
         "docTypes": [
           "Commercial invoice"
@@ -256,18 +223,9 @@
         "holistic": false,
         "order": "sev_desc",
         "lcFields": [
-          {
-            "code": "45A",
-            "name": "Goods"
-          },
-          {
-            "code": "32B",
-            "name": "Amount"
-          },
-          {
-            "code": "44C",
-            "name": "Latest shipment"
-          }
+          "Goods description",
+          "Credit amount",
+          "Latest shipment date"
         ],
         "docTypes": [
           "Insurance document"
@@ -319,14 +277,8 @@
         "holistic": false,
         "order": "sev_desc",
         "lcFields": [
-          {
-            "code": "59",
-            "name": "Beneficiary"
-          },
-          {
-            "code": "50",
-            "name": "Applicant"
-          }
+          "Beneficiary name",
+          "Applicant name"
         ],
         "docTypes": [
           "Commercial invoice",
@@ -439,7 +391,7 @@
       ],
       "suggestion": "Add a condition for credits available by mixed payment (part sight, part deferred) — confirm each portion matches its own draft.",
       "title": "Where and how the credit is available",
-      "body": "Read the availability terms together with the place of expiry. The key risk is when the credit is available with any bank, or when the availability method does not match the draft actually presented.\n\nFields to look at: {41A} or {41D} (available with), {42C} (drafts at), {31D} (place of expiry)\n\n- If available with a named nominated bank: the place of expiry should sit with that bank.\n- If available with any bank, no country specified: check the place of expiry against the country of presentation and flag routing risk.\n- The availability method — sight, acceptance or negotiation — must match the draft presented.",
+      "body": "Read the availability terms together with the place of expiry. The key risk is when the credit is available with any bank, or when the availability method does not match the draft actually presented.\n\nFields to look at: {Available with}, {Place of presentation}, {Draft tenor}, {Place of expiry}\n\n- If available with a named nominated bank: the place of expiry should sit with that bank.\n- If available with any bank, no country specified: check the place of expiry against the country of presentation and flag routing risk.\n- The availability method — sight, acceptance or negotiation — must match the draft presented.",
       "timeline": [
         {
           "color": "var(--me-blue)",
@@ -453,7 +405,8 @@
           "date": "4 Mar 2026",
           "detail": "Reviewed and confirmed."
         }
-      ]
+      ],
+      "type": "requirement"
     },
     {
       "id": "REQ-38",
@@ -468,7 +421,7 @@
       ],
       "suggestion": "No condition yet for transferring the insurance benefit to the second beneficiary — consider adding one.",
       "title": "Transferable-credit routing",
-      "body": "When the credit is transferable, watch where the second beneficiary sits and how documents are substituted. Routing a presentation through a third country can change the expiry and availability picture.\n\nFields to look at: {41A} (available with), {59} (beneficiary), {31D} (place of expiry)\n\n- If the second beneficiary is in a different country from the first: re-check the place of expiry and the presentation route.\n- The substituted invoice and draft must still satisfy the original availability terms.",
+      "body": "When the credit is transferable, watch where the second beneficiary sits and how documents are substituted. Routing a presentation through a third country can change the expiry and availability picture.\n\nFields to look at: {Available with}, {Beneficiary name}, {Place of expiry}\n\n- If the second beneficiary is in a different country from the first: re-check the place of expiry and the presentation route.\n- The substituted invoice and draft must still satisfy the original availability terms.",
       "timeline": [
         {
           "color": "var(--me-blue)",
@@ -476,7 +429,8 @@
           "date": "19 Jun 2026",
           "detail": "Suggested from a transferable-credit case. Awaiting confirmation."
         }
-      ]
+      ],
+      "type": "requirement"
     },
     {
       "id": "DATE-31D",
@@ -492,7 +446,7 @@
       ],
       "suggestion": "You handle cross-border couriers but not electronic presentation (eUCP). Add a condition to skip the buffer when documents are presented electronically.",
       "title": "Expiry buffer for presentation",
-      "body": "Check whether the beneficiary has enough time to present documents before the LC expires. The key factor is whether the presentation location matches where the beneficiary is based — not simply whether it says \"any bank.\"\n\nFields to look at: {41A} or {41D} (presentation location), {31D} (expiry date), {59} (beneficiary), {44C} (latest shipment), {48} (presentation period)\n\n- If the presentation location is in the beneficiary's own country: no extra buffer needed. {31D} just needs to be later than the date documents would realistically be ready.\n- If the presentation location is in a different country from the beneficiary (this can happen even with a nominated bank, not just \"any bank\"): add roughly 3-5 working days as a buffer, since documents need to be couriered cross-border.\n- If it says \"any bank\" with no country specified: treat this the same as a local presentation — no buffer needed.\n\nNote: the buffer is an operational risk flag, not a UCP requirement — don't treat it as a hard discrepancy, just something to warn about.",
+      "body": "Check whether the beneficiary has enough time to present documents before the LC expires. The key factor is whether the presentation location matches where the beneficiary is based — not simply whether it says \"any bank.\"\n\nFields to look at: {Place of presentation}, {Expiry date}, {Beneficiary name}, {Latest shipment date}, {Presentation period}\n\n- If the presentation location is in the beneficiary's own country: no extra buffer needed. {Expiry date} just needs to be later than the date documents would realistically be ready.\n- If the presentation location is in a different country from the beneficiary (this can happen even with a nominated bank, not just \"any bank\"): add roughly 3-5 working days as a buffer, since documents need to be couriered cross-border.\n- If it says \"any bank\" with no country specified: treat this the same as a local presentation — no buffer needed.\n\nNote: the buffer is an operational risk flag, not a UCP requirement — don't treat it as a hard discrepancy, just something to warn about.",
       "timeline": [
         {
           "color": "var(--me-blue)",
@@ -512,7 +466,8 @@
           "date": "18 Mar 2026",
           "detail": "Cross-border buffer added by Amara Osei."
         }
-      ]
+      ],
+      "type": "requirement"
     },
     {
       "id": "DOCSET-42C",
@@ -526,7 +481,7 @@
       ],
       "suggestion": "Consider a condition for drafts drawn on a reimbursing bank rather than the issuing bank.",
       "title": "Draft tenor and drawee",
-      "body": "Check the draft against the credit's own terms: the tenor it is drawn at, and the party it is drawn on.\n\nFields to look at: {42C} (drafts at), {42A} or {42D} (drawee), {31D} (expiry)\n\n- The draft tenor must match the tenor stated in the credit.\n- The drawee must be the party named in the credit — usually the issuing bank, not the applicant.",
+      "body": "",
       "timeline": [
         {
           "color": "var(--me-blue)",
@@ -540,7 +495,8 @@
           "date": "5 Mar 2026",
           "detail": "Confirmed."
         }
-      ]
+      ],
+      "type": "rule"
     },
     {
       "id": "TRANS-20",
@@ -554,7 +510,7 @@
       ],
       "suggestion": "Add a condition for charter-party bills of lading, which are examined differently.",
       "title": "Bill of lading on-board notation",
-      "body": "Confirm the bill of lading shows a signed, dated on-board notation, and that the ports match the credit.\n\nFields to look at: {44E} (port of loading), {44F} (port of discharge), {44C} (latest shipment)\n\n- The on-board notation is present, signed and dated.\n- Ports of loading and discharge match the credit.\n- Pre-printed \"shipped on board\" wording is treated correctly.",
+      "body": "",
       "timeline": [
         {
           "color": "var(--me-blue)",
@@ -568,7 +524,8 @@
           "date": "6 Mar 2026",
           "detail": "Confirmed."
         }
-      ]
+      ],
+      "type": "rule"
     },
     {
       "id": "CERT-28",
@@ -582,7 +539,7 @@
       ],
       "suggestion": "Add a condition confirming the insurance is assignable or endorsed in blank.",
       "title": "Insurance coverage amount",
-      "body": "Confirm the insurance document covers enough of the goods' value, in the right currency, dated no later than shipment.\n\nFields to look at: {45A} (goods), {32B} (amount), {44C} (latest shipment)\n\n- Cover is at least 110% of CIF or CIP value.\n- Currency matches the credit.\n- Cover date is on or before the shipment date.",
+      "body": "",
       "timeline": [
         {
           "color": "var(--me-blue)",
@@ -590,7 +547,8 @@
           "date": "11 Jun 2026",
           "detail": "From insurance cases."
         }
-      ]
+      ],
+      "type": "rule"
     },
     {
       "id": "PARTY-FC04",
@@ -603,13 +561,125 @@
       "refs": [],
       "suggestion": "Link this check to the party fields so screening runs on every named party automatically.",
       "title": "Restricted-party screening",
-      "body": "When any party, vessel or port on the documents appears on a sanctions or restricted-party list, hold the presentation and escalate before honouring.\n\nFields to look at: {59} (beneficiary), {50} (applicant), {44E} or {44F} (ports)\n\n- If any named party matches a restricted-party list: hold and escalate.\n- If a vessel or port is subject to restrictions: hold and escalate.",
+      "body": "When any party, vessel or port on the documents appears on a sanctions or restricted-party list, hold the presentation and escalate before honouring.\n\nFields to look at: {Beneficiary name}, {Applicant name}, {Port of loading}, {Port of discharge}\n\n- If any named party matches a restricted-party list: hold and escalate.\n- If a vessel or port is subject to restrictions: hold and escalate.",
       "timeline": [
         {
           "color": "var(--me-blue)",
           "label": "Proposed by assistant",
           "date": "20 Jun 2026",
           "detail": "Not yet added to an agent."
+        }
+      ],
+      "type": "requirement"
+    },
+    {
+      "id": "XD-14",
+      "type": "rule",
+      "domain": "Goods & pricing",
+      "cases": 9,
+      "agentId": "invoice",
+      "groupId": "INV_GOODS",
+      "severity": "CRITICAL",
+      "refs": [
+        "UCP600 Art.14",
+        "UCP600 Art.18"
+      ],
+      "suggestion": "Add a row for marks and numbers once packing lists are extracted.",
+      "title": "Documents do not conflict with each other",
+      "body": "",
+      "timeline": [
+        {
+          "color": "var(--me-blue)",
+          "label": "Proposed by assistant",
+          "date": "12 Jun 2026",
+          "detail": "Clustered from 9 data-conflict cases."
+        },
+        {
+          "color": "var(--status-success)",
+          "label": "Confirmed by Amara Osei",
+          "date": "14 Jun 2026",
+          "detail": "Confirmed."
+        }
+      ]
+    },
+    {
+      "id": "AMT-18",
+      "type": "rule",
+      "domain": "Goods & pricing",
+      "cases": 6,
+      "agentId": "invoice",
+      "groupId": "INV_AMOUNTS",
+      "severity": "MAJOR",
+      "refs": [
+        "UCP600 Art.18"
+      ],
+      "suggestion": "Add a row for unit price against the credit once pricing is extracted.",
+      "title": "Invoice value within the credit amount",
+      "body": "",
+      "timeline": [
+        {
+          "color": "var(--me-blue)",
+          "label": "Proposed by assistant",
+          "date": "9 Apr 2026",
+          "detail": "From over-drawing cases."
+        },
+        {
+          "color": "var(--status-success)",
+          "label": "Confirmed by Wei Chen",
+          "date": "11 Apr 2026",
+          "detail": "Tolerance set to +/-5%."
+        }
+      ]
+    },
+    {
+      "id": "DOCSET-46A",
+      "type": "requirement",
+      "domain": "Documents required",
+      "cases": 11,
+      "agentId": null,
+      "groupId": null,
+      "severity": "CRITICAL",
+      "refs": [
+        "UCP600 Art.14"
+      ],
+      "suggestion": "Add an assertion for legalisation wording — three recent cases turned on it.",
+      "title": "Every document the credit calls for is present",
+      "body": "Read {Documents required} as a list: one requirement per numbered or lettered item, and check the presentation against each in turn.\n\n- A document of the type the item names is in the presentation.\n- At least one original is presented, unless the item calls only for copies. \"In triplicate\" means one original and two copies.\n- Where a full set is called for on a transport document, every original the document itself says was issued is presented.\n- Signed, certified or legalised where the item says so.\n- Issued by the party the item names, where it names one. If the issuer is worded differently but performs the same function, put it to a checker rather than raising it.\n- The invoice is made out to the applicant, in the currency of the credit, and describes the goods as the credit does.\n- No document is dated later than the date of presentation.\n\nA sentence that qualifies every item (\"all documents in English\") applies to each document, not only the last one.",
+      "timeline": [
+        {
+          "color": "var(--me-blue)",
+          "label": "Proposed by assistant",
+          "date": "2 May 2026",
+          "detail": "Built from 11 missing-document cases."
+        },
+        {
+          "color": "var(--status-success)",
+          "label": "Confirmed by Amara Osei",
+          "date": "6 May 2026",
+          "detail": "Confirmed."
+        }
+      ]
+    },
+    {
+      "id": "COND-47A",
+      "type": "requirement",
+      "domain": "Additional conditions",
+      "cases": 7,
+      "agentId": null,
+      "groupId": null,
+      "severity": "MAJOR",
+      "refs": [
+        "ISBP821 A"
+      ],
+      "suggestion": "Split non-documentary conditions into their own assertion so they are reported as notes.",
+      "title": "Additional conditions are satisfied",
+      "body": "Read {Additional conditions} one condition at a time — numbered items or sentences — and decide what, if anything, evidences each.\n\n- A condition naming a document and something it must show: check that document carries the wording demanded.\n- A condition fixing a value — credit number, incoterm, vessel, port — compare it with the field on the documents.\n- A condition naming the issuer of a document: check the document was issued by that party.\n- A condition setting timing: count from the shipment date, in calendar days unless it says banking days.\n- A condition naming no document and no data point is non-documentary. Disregard it for the discrepancy list and report it to the checker as a note.\n\nWhere a condition repeats something the credit already requires elsewhere, raise it once, not twice.",
+      "timeline": [
+        {
+          "color": "var(--me-blue)",
+          "label": "Proposed by assistant",
+          "date": "21 Jun 2026",
+          "detail": "From 47A cases. Awaiting confirmation."
         }
       ]
     }
@@ -744,117 +814,89 @@
       "read": "Detailed guidance on dating, consignee and notify parties, on-board notations and clean documents when examining bills of lading and other transport documents."
     }
   },
-  "fieldDict": {
-    "48": "Presentation period",
-    "50": "Applicant",
-    "59": "Beneficiary",
-    "31D": "Date of expiry",
-    "41A": "Available with",
-    "41D": "Available with",
-    "42C": "Drafts at",
-    "42A": "Drawee",
-    "42D": "Drawee",
-    "44C": "Latest shipment",
-    "44E": "Port of loading",
-    "44F": "Port of discharge",
-    "45A": "Goods",
-    "46A": "Documents required",
-    "32B": "Amount"
-  },
-  "docTypeBook": [
-    "Covering Schedule",
-    "Draft / Bill of Exchange",
-    "Commercial Invoice",
-    "Bill of Lading",
-    "Air Waybill",
-    "Multimodal Transport Doc",
-    "Charter-party B/L",
-    "Insurance Document",
-    "Packing List",
-    "Certificate of Origin",
-    "Inspection Certificate",
-    "Beneficiary Certificate",
-    "Transport Document"
-  ],
   "checkDefaults": {
     "REQ-41A": {
       "fields": [
-        "41A",
-        "41D",
-        "42C",
-        "31D"
+        "Place of presentation",
+        "Available with",
+        "Place of expiry",
+        "Draft tenor"
       ],
       "docs": [
-        "Covering schedule",
+        "Letter of credit",
         "Draft / bill of exchange"
       ]
     },
     "REQ-38": {
       "fields": [
-        "41A",
-        "59",
-        "31D"
+        "Available with",
+        "Beneficiary name",
+        "Place of expiry"
       ],
       "docs": [
-        "Commercial invoice",
-        "Draft / bill of exchange"
+        "Letter of credit",
+        "Commercial invoice"
       ]
     },
     "DATE-31D": {
       "fields": [
-        "41A",
-        "41D",
-        "31D",
-        "59",
-        "44C",
-        "48"
+        "Place of presentation",
+        "Expiry date",
+        "Beneficiary name",
+        "Latest shipment date",
+        "Presentation period"
       ],
       "docs": [
-        "Covering schedule",
-        "Transport document"
+        "Letter of credit",
+        "Covering schedule"
       ]
     },
     "DOCSET-42C": {
-      "fields": [
-        "42C",
-        "42A",
-        "42D",
-        "31D"
-      ],
-      "docs": [
-        "Draft / bill of exchange"
-      ]
+      "fields": [],
+      "docs": []
     },
     "TRANS-20": {
-      "fields": [
-        "44E",
-        "44F",
-        "44C"
-      ],
-      "docs": [
-        "Bill of lading"
-      ]
+      "fields": [],
+      "docs": []
     },
     "CERT-28": {
-      "fields": [
-        "45A",
-        "32B",
-        "44C"
-      ],
-      "docs": [
-        "Insurance document"
-      ]
+      "fields": [],
+      "docs": []
+    },
+    "XD-14": {
+      "fields": [],
+      "docs": []
+    },
+    "AMT-18": {
+      "fields": [],
+      "docs": []
     },
     "PARTY-FC04": {
       "fields": [
-        "59",
-        "50",
-        "44E",
-        "44F"
+        "Beneficiary name",
+        "Applicant name",
+        "Port of loading",
+        "Port of discharge"
       ],
       "docs": [
         "Commercial invoice",
         "Bill of lading"
+      ]
+    },
+    "DOCSET-46A": {
+      "fields": [
+        "Documents required"
+      ],
+      "docs": [
+        "Letter of credit"
+      ]
+    },
+    "COND-47A": {
+      "fields": [
+        "Additional conditions"
+      ],
+      "docs": [
+        "Letter of credit"
       ]
     }
   },
@@ -877,5 +919,618 @@
         "text": "This group is tight — one rich check covers it well. No need to split."
       }
     ]
+  },
+  "docTypes": [
+    {
+      "id": "d0",
+      "key": "LETTER_OF_CREDIT",
+      "name": "Letter of credit",
+      "description": "The credit as received by wire — tagged fields and free-text blocks."
+    },
+    {
+      "id": "d1",
+      "key": "COVERING_SCHEDULE",
+      "name": "Covering schedule",
+      "description": "The presenting bank's covering letter and receipt stamp."
+    },
+    {
+      "id": "d2",
+      "key": "DRAFT__BILL_OF_EXCHANGE",
+      "name": "Draft / bill of exchange",
+      "description": "The draft drawn under the credit."
+    },
+    {
+      "id": "d3",
+      "key": "COMMERCIAL_INVOICE",
+      "name": "Commercial invoice",
+      "description": "Issued by the beneficiary; lists goods, quantities and value."
+    },
+    {
+      "id": "d4",
+      "key": "BILL_OF_LADING",
+      "name": "Bill of lading",
+      "description": "Carrier's receipt and document of title for sea shipment."
+    },
+    {
+      "id": "d5",
+      "key": "AIR_WAYBILL",
+      "name": "Air waybill",
+      "description": "Air carrier receipt evidencing shipment by air."
+    },
+    {
+      "id": "d6",
+      "key": "MULTIMODAL_TRANSPORT_DOC",
+      "name": "Multimodal transport doc",
+      "description": "Covers at least two different modes of transport."
+    },
+    {
+      "id": "d7",
+      "key": "CHARTER_PARTY_B_L",
+      "name": "Charter-party B/L",
+      "description": "Bill of lading issued subject to a charter party."
+    },
+    {
+      "id": "d8",
+      "key": "INSURANCE_DOCUMENT",
+      "name": "Insurance document",
+      "description": "Evidence of cargo insurance cover."
+    },
+    {
+      "id": "d9",
+      "key": "PACKING_LIST",
+      "name": "Packing list",
+      "description": "Breakdown of how the goods are packed."
+    },
+    {
+      "id": "d10",
+      "key": "CERTIFICATE_OF_ORIGIN",
+      "name": "Certificate of origin",
+      "description": "States the country where goods were produced."
+    },
+    {
+      "id": "d11",
+      "key": "INSPECTION_CERTIFICATE",
+      "name": "Inspection certificate",
+      "description": "Third-party evidence the goods were inspected."
+    },
+    {
+      "id": "d12",
+      "key": "BENEFICIARY_CERTIFICATE",
+      "name": "Beneficiary certificate",
+      "description": "A statement signed by the beneficiary itself."
+    },
+    {
+      "id": "d13",
+      "key": "TRANSPORT_DOCUMENT",
+      "name": "Transport document",
+      "description": "Any transport document where the credit names no particular form."
+    }
+  ],
+  "fields": [
+    {
+      "id": "f1",
+      "name": "Expiry date",
+      "description": "The last date documents may be presented under the credit.",
+      "bindings": [
+        {
+          "doc": "Letter of credit",
+          "note": "Tag 31D — first six digits, YYMMDD"
+        },
+        {
+          "doc": "Covering schedule",
+          "note": "Only where the schedule restates it: \"valid until\", \"expires on\""
+        }
+      ]
+    },
+    {
+      "id": "f2",
+      "name": "Place of expiry",
+      "description": "The counter at which the credit expires.",
+      "bindings": [
+        {
+          "doc": "Letter of credit",
+          "note": "Tag 31D — text following the date"
+        }
+      ]
+    },
+    {
+      "id": "f3",
+      "name": "Place of presentation",
+      "description": "Bank and location with which the credit is available.",
+      "bindings": [
+        {
+          "doc": "Letter of credit",
+          "note": "41A / 41D — the bank line before \"BY\""
+        }
+      ]
+    },
+    {
+      "id": "f4",
+      "name": "Available with",
+      "description": "How the credit is available — sight, acceptance, negotiation or deferred payment.",
+      "bindings": [
+        {
+          "doc": "Letter of credit",
+          "note": "41A / 41D — the text after \"BY\""
+        }
+      ]
+    },
+    {
+      "id": "f5",
+      "name": "Draft tenor",
+      "description": "The tenor the draft is drawn at.",
+      "bindings": [
+        {
+          "doc": "Letter of credit",
+          "note": "Tag 42C, \"drafts at\""
+        },
+        {
+          "doc": "Draft / bill of exchange",
+          "note": "The tenor phrase on the face: \"at sight\", \"at 60 days after B/L date\""
+        }
+      ]
+    },
+    {
+      "id": "f6",
+      "name": "Drawee",
+      "description": "The party the draft is drawn on.",
+      "bindings": [
+        {
+          "doc": "Letter of credit",
+          "note": "Tag 42A or 42D"
+        },
+        {
+          "doc": "Draft / bill of exchange",
+          "note": "Party named after \"drawn on\" or \"to\""
+        }
+      ]
+    },
+    {
+      "id": "f7",
+      "name": "Documents required",
+      "description": "Free text listing the documents the credit calls for.",
+      "bindings": [
+        {
+          "doc": "Letter of credit",
+          "note": "Tag 46A — whole block, kept unparsed for requirement cards"
+        }
+      ]
+    },
+    {
+      "id": "f8",
+      "name": "Additional conditions",
+      "description": "Free text conditions added by the applicant or issuing bank.",
+      "bindings": [
+        {
+          "doc": "Letter of credit",
+          "note": "Tag 47A — whole block, kept unparsed for requirement cards"
+        }
+      ]
+    },
+    {
+      "id": "f9",
+      "name": "Goods description",
+      "description": "What is being shipped, as described on each document.",
+      "bindings": [
+        {
+          "doc": "Letter of credit",
+          "note": "Tag 45A"
+        },
+        {
+          "doc": "Commercial invoice",
+          "note": "Goods lines under \"description of goods\" — ignore packing and freight notes"
+        },
+        {
+          "doc": "Bill of lading",
+          "note": "\"Description of packages and goods\" — may be in general terms"
+        }
+      ]
+    },
+    {
+      "id": "f10",
+      "name": "Credit amount",
+      "description": "Currency and amount of the credit, with any tolerance.",
+      "bindings": [
+        {
+          "doc": "Letter of credit",
+          "note": "Tag 32B, widened by the 39A tolerance when present"
+        }
+      ]
+    },
+    {
+      "id": "f11",
+      "name": "Invoice value",
+      "description": "Total value claimed on the invoice.",
+      "bindings": [
+        {
+          "doc": "Commercial invoice",
+          "note": "Highest-level total: \"total\", \"grand total\", \"total amount due\"; sum the lines if none is shown"
+        }
+      ]
+    },
+    {
+      "id": "f12",
+      "name": "Currency",
+      "description": "Currency denomination of the figure on this document.",
+      "bindings": [
+        {
+          "doc": "Letter of credit",
+          "note": "Tag 32B — first three characters"
+        },
+        {
+          "doc": "Commercial invoice",
+          "note": "Code beside the total"
+        },
+        {
+          "doc": "Insurance document",
+          "note": "Currency of the sum insured"
+        }
+      ]
+    },
+    {
+      "id": "f13",
+      "name": "Insured amount",
+      "description": "Sum insured shown on the insurance document.",
+      "bindings": [
+        {
+          "doc": "Insurance document",
+          "note": "Amount beside \"sum insured\" or \"amount insured\""
+        }
+      ]
+    },
+    {
+      "id": "f14",
+      "name": "Cover date",
+      "description": "The date insurance cover takes effect.",
+      "bindings": [
+        {
+          "doc": "Insurance document",
+          "note": "\"Cover effective from\" if shown, else the date of issue"
+        }
+      ]
+    },
+    {
+      "id": "f15",
+      "name": "Latest shipment date",
+      "description": "The last date shipment may be effected.",
+      "bindings": [
+        {
+          "doc": "Letter of credit",
+          "note": "Tag 44C, or derived from the 44D shipment period"
+        }
+      ]
+    },
+    {
+      "id": "f16",
+      "name": "On-board date",
+      "description": "The date the goods were actually shipped.",
+      "bindings": [
+        {
+          "doc": "Bill of lading",
+          "note": "Dated on-board notation; the issue date only where the wording is pre-printed"
+        },
+        {
+          "doc": "Air waybill",
+          "note": "Actual flight-date notation — not the issue date"
+        }
+      ]
+    },
+    {
+      "id": "f17",
+      "name": "Port of loading",
+      "description": "Where the goods were taken on board.",
+      "bindings": [
+        {
+          "doc": "Letter of credit",
+          "note": "Tag 44E"
+        },
+        {
+          "doc": "Bill of lading",
+          "note": "\"Port of loading\" or \"from\" — the named port, not a place of receipt"
+        }
+      ]
+    },
+    {
+      "id": "f18",
+      "name": "Port of discharge",
+      "description": "Where the goods are to be delivered.",
+      "bindings": [
+        {
+          "doc": "Letter of credit",
+          "note": "Tag 44F"
+        },
+        {
+          "doc": "Bill of lading",
+          "note": "\"Port of discharge\" or \"to\" — not an inland final destination"
+        }
+      ]
+    },
+    {
+      "id": "f19",
+      "name": "Beneficiary name",
+      "description": "The party in whose favour the credit is issued.",
+      "bindings": [
+        {
+          "doc": "Letter of credit",
+          "note": "Tag 59 — first line"
+        },
+        {
+          "doc": "Commercial invoice",
+          "note": "Issuer of the invoice, however labelled: \"seller\", \"exporter\", \"shipper\", \"from\""
+        },
+        {
+          "doc": "Bill of lading",
+          "note": "Shipper or consignor box"
+        }
+      ]
+    },
+    {
+      "id": "f20",
+      "name": "Applicant name",
+      "description": "The party on whose request the credit is issued.",
+      "bindings": [
+        {
+          "doc": "Letter of credit",
+          "note": "Tag 50"
+        },
+        {
+          "doc": "Commercial invoice",
+          "note": "Party the invoice is made out to: \"buyer\", \"consignee\", \"sold to\", \"bill to\""
+        }
+      ]
+    },
+    {
+      "id": "f21",
+      "name": "Presentation period",
+      "description": "Days after shipment within which documents must be presented.",
+      "bindings": [
+        {
+          "doc": "Letter of credit",
+          "note": "Tag 48; 21 calendar days where the credit is silent"
+        }
+      ]
+    },
+    {
+      "id": "f22",
+      "name": "Presentation date",
+      "description": "The date documents reached the presentation counter.",
+      "bindings": [
+        {
+          "doc": "Covering schedule",
+          "note": "Receipt stamp date, else the date the case was opened"
+        }
+      ]
+    }
+  ],
+  "ruleSeeds": {
+    "DOCSET-42C": {
+      "scope": "Any presentation that includes a draft",
+      "logic": "all",
+      "message": "The draft does not agree with the tenor or drawee stated in the credit.",
+      "rows": [
+        {
+          "id": "r1",
+          "l": {
+            "field": "Draft tenor",
+            "doc": "Draft / bill of exchange"
+          },
+          "op": "eq",
+          "tol": "",
+          "r": {
+            "field": "Draft tenor",
+            "doc": "Letter of credit"
+          }
+        },
+        {
+          "id": "r2",
+          "l": {
+            "field": "Drawee",
+            "doc": "Draft / bill of exchange"
+          },
+          "op": "same_party",
+          "tol": "",
+          "r": {
+            "field": "Drawee",
+            "doc": "Letter of credit"
+          }
+        }
+      ]
+    },
+    "TRANS-20": {
+      "scope": "When a marine bill of lading is presented",
+      "logic": "all",
+      "message": "The bill of lading conflicts with the shipment terms of the credit.",
+      "rows": [
+        {
+          "id": "r1",
+          "l": {
+            "field": "On-board date",
+            "doc": "Bill of lading"
+          },
+          "op": "d_lte",
+          "tol": "",
+          "r": {
+            "field": "Latest shipment date",
+            "doc": "Letter of credit"
+          }
+        },
+        {
+          "id": "r2",
+          "l": {
+            "field": "Port of loading",
+            "doc": "Bill of lading"
+          },
+          "op": "eq",
+          "tol": "",
+          "r": {
+            "field": "Port of loading",
+            "doc": "Letter of credit"
+          }
+        },
+        {
+          "id": "r3",
+          "l": {
+            "field": "Port of discharge",
+            "doc": "Bill of lading"
+          },
+          "op": "eq",
+          "tol": "",
+          "r": {
+            "field": "Port of discharge",
+            "doc": "Letter of credit"
+          }
+        },
+        {
+          "id": "r4",
+          "l": {
+            "field": "Presentation date",
+            "doc": "Covering schedule"
+          },
+          "op": "d_within",
+          "tol": "21 calendar days",
+          "r": {
+            "field": "On-board date",
+            "doc": "Bill of lading"
+          }
+        }
+      ]
+    },
+    "CERT-28": {
+      "scope": "When the credit calls for an insurance document",
+      "logic": "all",
+      "message": "Insurance cover is below 110% of the invoice value, in the wrong currency, or dated after shipment.",
+      "rows": [
+        {
+          "id": "r1",
+          "l": {
+            "field": "Insured amount",
+            "doc": "Insurance document"
+          },
+          "op": "gte",
+          "tol": "",
+          "r": {
+            "literal": "110% of Invoice value @ Commercial invoice"
+          }
+        },
+        {
+          "id": "r2",
+          "l": {
+            "field": "Currency",
+            "doc": "Insurance document"
+          },
+          "op": "eq",
+          "tol": "",
+          "r": {
+            "field": "Currency",
+            "doc": "Letter of credit"
+          }
+        },
+        {
+          "id": "r3",
+          "l": {
+            "field": "Cover date",
+            "doc": "Insurance document"
+          },
+          "op": "d_lte",
+          "tol": "",
+          "r": {
+            "field": "On-board date",
+            "doc": "Bill of lading"
+          }
+        }
+      ]
+    },
+    "XD-14": {
+      "scope": "Every presentation, across all documents",
+      "logic": "all",
+      "message": "Data on the documents conflicts within the same presentation.",
+      "rows": [
+        {
+          "id": "r1",
+          "l": {
+            "field": "Goods description",
+            "doc": "Commercial invoice"
+          },
+          "op": "eq",
+          "tol": "corresponds, not identical",
+          "r": {
+            "field": "Goods description",
+            "doc": "Letter of credit"
+          }
+        },
+        {
+          "id": "r2",
+          "l": {
+            "field": "Goods description",
+            "doc": "Bill of lading"
+          },
+          "op": "noconflict",
+          "tol": "general terms allowed",
+          "r": {
+            "field": "Goods description",
+            "doc": "Commercial invoice"
+          }
+        },
+        {
+          "id": "r3",
+          "l": {
+            "field": "Beneficiary name",
+            "doc": "Commercial invoice"
+          },
+          "op": "same_party",
+          "tol": "",
+          "r": {
+            "field": "Beneficiary name",
+            "doc": "Letter of credit"
+          }
+        },
+        {
+          "id": "r4",
+          "l": {
+            "field": "Applicant name",
+            "doc": "Commercial invoice"
+          },
+          "op": "addr_same_country",
+          "tol": "",
+          "r": {
+            "field": "Applicant name",
+            "doc": "Letter of credit"
+          }
+        }
+      ]
+    },
+    "AMT-18": {
+      "scope": "Every presentation with a commercial invoice",
+      "logic": "all",
+      "message": "The invoice value exceeds the credit amount, or is in the wrong currency.",
+      "rows": [
+        {
+          "id": "r1",
+          "l": {
+            "field": "Invoice value",
+            "doc": "Commercial invoice"
+          },
+          "op": "lte",
+          "tol": "5% tolerance",
+          "r": {
+            "field": "Credit amount",
+            "doc": "Letter of credit"
+          }
+        },
+        {
+          "id": "r2",
+          "l": {
+            "field": "Currency",
+            "doc": "Commercial invoice"
+          },
+          "op": "eq",
+          "tol": "",
+          "r": {
+            "field": "Currency",
+            "doc": "Letter of credit"
+          }
+        }
+      ]
+    }
   }
 }

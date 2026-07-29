@@ -1,3 +1,4 @@
+import { ellipsis } from '@shared/ds/text'
 import { useState } from 'react'
 import Icon from '@shared/ds/Icon'
 import PageStrip from '@shared/ds/PageStrip'
@@ -56,10 +57,10 @@ export default function IntakeScreen() {
               >
                 <Icon name={s.icon} size={15} color={on ? 'var(--me-blue)' : 'var(--me-grey-70)'} />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, letterSpacing: '-0.01em', color: on ? 'var(--me-blue-deep)' : 'var(--me-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, letterSpacing: '-0.01em', color: on ? 'var(--me-blue-deep)' : 'var(--me-ink)', ...ellipsis }}>
                     {s.role}
                   </span>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--me-grey-70)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--me-grey-70)', ...ellipsis }}>
                     {s.fileName}
                   </span>
                 </div>
@@ -89,7 +90,7 @@ export default function IntakeScreen() {
                 <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)' }}>
                   {isCredit ? 'Letter of Credit' : 'Presented Documents'}
                 </span>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)', ...ellipsis }}>
                   {isCredit ? credit.fileName : slots[1].fileName}
                 </span>
                 <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)', whiteSpace: 'nowrap' }}>

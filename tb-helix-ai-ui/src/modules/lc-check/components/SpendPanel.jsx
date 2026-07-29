@@ -1,3 +1,6 @@
+import { cardSurface } from '@shared/ds/Card'
+import { ellipsis } from '@shared/ds/text'
+import Eyebrow from '@shared/ds/Eyebrow'
 import Icon from '@shared/ds/Icon'
 import InfoTip from '@shared/ds/InfoTip'
 import { usePersistedState } from '@shared/lib/usePersistedState'
@@ -64,7 +67,7 @@ export default function SpendPanel({ spend }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(228px,1fr) minmax(228px,1fr) minmax(280px,1.3fr)', gap: 1, background: 'var(--me-grey-15)' }}>
           {/* ---- 1. What you get ---------------------------------------- */}
           <Cell>
-            <Eyebrow>Turnaround</Eyebrow>
+            <Eyebrow size="sm">Turnaround</Eyebrow>
             <Big title="Time to findings" tip="Wall-clock time for the automated examination itself: from the file being accepted to every check having returned. Machine time only — it does not include anyone reading the result.">
               {duration(spend.medianWallClock)}
             </Big>
@@ -96,7 +99,7 @@ export default function SpendPanel({ spend }) {
 
           {/* ---- 2. What it costs --------------------------------------- */}
           <Cell>
-            <Eyebrow>Spend</Eyebrow>
+            <Eyebrow size="sm">Spend</Eyebrow>
             <Big title="Spend" tip="Total model spend for every case examined this period, priced per model at its own input and output rates.">
               {usd(spend.totalCost)}
             </Big>
@@ -117,7 +120,7 @@ export default function SpendPanel({ spend }) {
                   style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11, cursor: 'help' }}
                 >
                   <span style={{ width: 7, height: 7, borderRadius: 2, background: modelColour(m.modelId), flexShrink: 0 }} />
-                  <span style={{ color: 'var(--me-grey)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.label}</span>
+                  <span style={{ color: 'var(--me-grey)', flex: 1, minWidth: 0, ...ellipsis }}>{m.label}</span>
                   <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--me-grey-70)' }}>{percent(m.costShare * 100)}</span>
                 </div>
               ))}
@@ -136,7 +139,7 @@ export default function SpendPanel({ spend }) {
           {/* ---- 3. How good it is -------------------------------------- */}
           <Cell>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-              <Eyebrow>Quality</Eyebrow>
+              <Eyebrow size="sm">Quality</Eyebrow>
               {/* The convention, stated once, so no arrow has to be decoded. */}
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, color: 'var(--me-grey-50)', whiteSpace: 'nowrap' }}>
                 <Icon name="arrow-up" size={9} color="var(--status-success)" />
@@ -312,14 +315,10 @@ function Count({ label, tip, value, previous, suffix = '', lowerIsBetter, tone, 
   )
 }
 
-const shell = { background: '#fff', border: '1px solid var(--me-grey-15)', borderRadius: 12, overflow: 'hidden' }
+const shell = { ...cardSurface(12), boxShadow: 'none', overflow: 'hidden' }
 
 const Cell = ({ children }) => (
   <div style={{ background: '#fff', padding: '13px 16px 15px', display: 'flex', flexDirection: 'column', minWidth: 0 }}>{children}</div>
-)
-
-const Eyebrow = ({ children }) => (
-  <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--me-grey-70)' }}>{children}</span>
 )
 
 const Big = ({ tip, title, children }) => (

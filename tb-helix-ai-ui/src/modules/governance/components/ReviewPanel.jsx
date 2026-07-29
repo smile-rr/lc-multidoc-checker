@@ -1,3 +1,5 @@
+import Chip from '@shared/ds/Chip'
+import Eyebrow from '@shared/ds/Eyebrow'
 import Icon from '@shared/ds/Icon'
 import Button from '@shared/ds/Button'
 
@@ -9,7 +11,7 @@ export default function ReviewPanel({ ctx, collapsed, onToggleCollapse, onDragSt
     <aside style={{ width: '100%', background: '#fff', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: '13px 14px 13px 18px', borderBottom: collapsed ? 'none' : '1px solid var(--me-grey-15)', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
         <div onMouseDown={onDragStart} title="Drag to move" style={{ flex: 1, minWidth: 0, cursor: 'grab', userSelect: 'none' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--me-grey-70)' }}>{ctx.kindLabel}</div>
+          <Eyebrow size="sm">{ctx.kindLabel}</Eyebrow>
           <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2, lineHeight: 1.35 }}>{ctx.title}</div>
         </div>
         <button onClick={onToggleCollapse} title={collapsed ? 'Expand' : 'Collapse'} style={hdrBtn}><Icon name={collapsed ? 'chevron-down' : 'chevron-up'} size={18} /></button>
@@ -26,7 +28,7 @@ export default function ReviewPanel({ ctx, collapsed, onToggleCollapse, onDragSt
         <div style={{ padding: '14px 18px 6px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 9 }}>
             <Icon name="sparkles" size={14} color="var(--me-navy)" />
-            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--me-grey-70)' }}>Refine with the assistant</span>
+            <Eyebrow size="sm">Refine with the assistant</Eyebrow>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {ctx.chips.map((ch, i) => (
@@ -36,7 +38,7 @@ export default function ReviewPanel({ ctx, collapsed, onToggleCollapse, onDragSt
         </div>
 
         <div style={{ padding: '12px 18px 14px' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--me-grey-70)', marginBottom: 12 }}>Comments &amp; review</div>
+          <Eyebrow size="sm">Comments &amp; review</Eyebrow>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {ctx.comments.map((cm, i) => (
               <div key={i} style={{ display: 'flex', gap: 10 }}>
@@ -45,7 +47,7 @@ export default function ReviewPanel({ ctx, collapsed, onToggleCollapse, onDragSt
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)' }}>{cm.author}</span>
                     <span style={{ fontSize: 11, color: 'var(--me-grey-70)' }}>{cm.when}</span>
-                    {cm.tag && <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: cm.tagColor, background: cm.tagBg, borderRadius: 999, padding: '2px 7px' }}>{cm.tag}</span>}
+                    {cm.tag && <Chip size="sm" style={{ fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: cm.tagColor, background: cm.tagBg, borderColor: 'transparent' }}>{cm.tag}</Chip>}
                   </div>
                   <div style={{ fontSize: 13, lineHeight: 1.55, color: 'var(--me-grey)', marginTop: 4, background: cm.bubbleBg, borderRadius: 8, padding: cm.bubblePad }}>{cm.text}</div>
                   {cm.canAdd && <button onClick={cm.onAdd} style={{ marginTop: 7, background: 'none', border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: 'var(--me-blue)' }}>+ Add this condition</button>}
@@ -58,7 +60,7 @@ export default function ReviewPanel({ ctx, collapsed, onToggleCollapse, onDragSt
 
         {ctx.hasHistory && (
           <div style={{ padding: '2px 18px 16px' }}>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--me-grey-70)', marginBottom: 12 }}>History</div>
+            <Eyebrow size="sm">History</Eyebrow>
             {ctx.timeline.map((ev, i) => (
               <div key={i} style={{ display: 'flex', gap: 11 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>

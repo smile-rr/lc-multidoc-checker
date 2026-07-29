@@ -8,7 +8,7 @@ import { summariseRun } from '@modules/lc-check/state/runCost'
 import { STAGES, needsAction } from '@modules/lc-check/state/severity'
 import { caseDetailFor } from '@modules/lc-check/data/fixtures.js'
 import IntakeScreen from '@modules/lc-check/screens/IntakeScreen'
-import ReadScreen from '@modules/lc-check/screens/ReadScreen'
+import InterpretScreen from '@modules/lc-check/screens/InterpretScreen'
 import ChecksScreen from '@modules/lc-check/screens/ChecksScreen'
 import ReviewScreen from '@modules/lc-check/screens/ReviewScreen'
 import DecisionScreen from '@modules/lc-check/screens/DecisionScreen'
@@ -81,7 +81,7 @@ function stageCases(value, tag) {
   const cost = summariseRun(value.data.runSteps, value.run.finished ? value.data.runSteps.length : 0, value.data.bundlePages.length)
   return [
     [`${tag} intake`, <IntakeScreen />],
-    [`${tag} read`, <ReadScreen />],
+    [`${tag} interpret`, <InterpretScreen />],
     [`${tag} checks`, <ChecksScreen onOpenFinding={noop} />],
     [`${tag} review`, <ReviewScreen selectedId={null} onSelect={noop} onJumpToRead={noop} />],
     [`${tag} decision`, <DecisionScreen onOpenFinding={noop} />],

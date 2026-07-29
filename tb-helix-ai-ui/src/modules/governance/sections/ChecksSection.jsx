@@ -4,32 +4,55 @@ import Page from '@shared/ds/Page'
 import Toolbar from '@shared/ds/Toolbar'
 import SearchBar from '@shared/ds/SearchBar'
 import ViewSwitch from '@shared/ds/ViewSwitch'
+import Chip from '@shared/ds/Chip'
+import { Menu, MenuItem } from '@shared/ds/Menu'
 import { listWrap, listHead } from '@shared/ds/listStyles'
 import Check from '../components/Check'
 import CheckRow, { CHECKS_COLS } from '../components/CheckRow'
 
 // Checks library — Cards (layer-1 inline edit) or List (rows → detail page).
+//
+// Two kinds of card live here. Rule cards compare a field on one document with
+// a field on another, deterministically. Requirement cards hold requirements in
+// plain language — read out of a clause of the credit (46A, 47A) or as standing
+// practice against the whole presentation.
 export default function ChecksSection({ v }) {
   return (
-    <Page width="list">
+    // Detail tier, not list: the cards view puts full rule cards on this page,
+    // so it needs the same width they get anywhere else they appear.
+    <Page width="detail">
       <Toolbar
-        left={<SearchBar value={v.search} onChange={v.setSearch} placeholder="Search checks by wording or field code…" />}
+        left={<SearchBar value={v.search} onChange={v.setSearch} placeholder="Search checks by wording, field or document…" />}
         right={
           <>
             <a href={`data:text/markdown;charset=utf-8,${v.exportHref}`} download="lc-checks.md" style={exportBtn}>
               <Icon name="download" size={16} />Export
             </a>
             <Button variant="secondary" size="md" onClick={v.openAdd}><Icon name="sparkles" size={16} />Import</Button>
-            <Button variant="primary" size="md" onClick={v.newCheck}>New check</Button>
+            <NewCheckButton v={v} />
             <ViewSwitch isList={v.isChecksList} onList={v.setChecksList} onCards={v.setChecksCards} />
           </>
         }
       />
 
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', margin: '0 0 14px' }}>
+        {v.typeFilters.map((tf) => (
+          <Chip
+            key={tf.id}
+            tone={tf.on ? 'blue' : 'plain'}
+            onClick={tf.onPick}
+            style={{ padding: '5px 13px', fontWeight: 600, background: tf.on ? 'var(--me-blue-20)' : '#fff', borderColor: tf.on ? 'var(--me-blue)' : 'var(--me-grey-20)' }}
+          >
+            {tf.label}
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, opacity: 0.72 }}>{tf.count}</span>
+          </Chip>
+        ))}
+      </div>
+
       {v.isChecksList ? (
         <div style={listWrap}>
           <div style={{ ...CHECKS_COLS, ...listHead }}>
-            <span /><span>ID</span><span>Check</span><span>Severity</span><span>In Agent</span><span />
+            <span /><span>ID</span><span>Kind</span><span>Check</span><span>Severity</span><span>In Agent</span><span />
           </div>
           {v.libChecks.map((check) => (
             <CheckRow key={check.id} check={check} />
@@ -43,6 +66,29 @@ export default function ChecksSection({ v }) {
         </div>
       )}
     </Page>
+  )
+}
+
+// Which kind of card you are making is the first decision, so it is the button
+// itself rather than a setting to find afterwards.
+function NewCheckButton({ v }) {
+  return (
+    <Menu
+      open={v.newMenuOpen}
+      onClose={v.closeNewMenu}
+      align="right"
+      top={50}
+      width={340}
+      trigger={
+        <Button variant="primary" size="md" onClick={v.toggleNewMenu}>
+          New check<Icon name="chevron-down" size={16} />
+        </Button>
+      }
+    >
+      {v.newTypes.map((nt) => (
+        <MenuItem key={nt.id} icon={nt.icon} label={nt.label} hint={nt.desc} onClick={nt.onPick} />
+      ))}
+    </Menu>
   )
 }
 

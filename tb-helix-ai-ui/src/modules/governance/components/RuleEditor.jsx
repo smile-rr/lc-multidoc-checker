@@ -59,31 +59,33 @@ const highlightPlugin = ViewPlugin.fromClass(
   { decorations: (v) => v.decorations }
 )
 
-// Autocomplete field codes from the Dictionary while typing inside `{ … }`.
+// Autocomplete field names from the Dictionary while typing inside `{ … }`.
+// Names are plain business words with spaces in them ("Latest shipment date"),
+// so the token being completed runs to the brace, not to the first space.
 function fieldCompletionSource(fields) {
   return (ctx) => {
-    const token = ctx.matchBefore(/\{[A-Za-z0-9.]*/)
+    const token = ctx.matchBefore(/\{[^}\n]*/)
     if (!token) return null
     if (token.from + 1 === token.to && !ctx.explicit) return null
     return {
       from: token.from + 1,
-      options: fields.map((f) => ({ label: f.code, detail: f.name, type: 'variable', apply: f.code })),
+      options: fields.map((f) => ({ label: f.name, detail: f.docs, type: 'variable', apply: f.name })),
     }
   }
 }
 
-// Warn on any {token} whose code isn't a defined Dictionary field.
+// Warn on any {token} that isn't a field the Dictionary defines.
 function unknownTokenLinter(fields) {
-  const known = new Set(fields.map((f) => f.code))
+  const known = new Set(fields.map((f) => f.name))
   return linter((view) => {
     const diags = []
     const text = view.state.doc.toString()
     const re = /\{([^}\n]*)\}/g
     let m
     while ((m = re.exec(text)) !== null) {
-      const code = m[1].trim()
-      if (code && !known.has(code)) {
-        diags.push({ from: m.index, to: m.index + m[0].length, severity: 'warning', message: `“${code}” isn't a field in the dictionary.` })
+      const name = m[1].trim()
+      if (name && !known.has(name)) {
+        diags.push({ from: m.index, to: m.index + m[0].length, severity: 'warning', message: `“${name}” isn't a field in the dictionary.` })
       }
     }
     return diags
@@ -102,7 +104,6 @@ const theme = EditorView.theme({
   '.cm-lc-ref': { color: 'var(--me-blue-deep)' },
   '.cm-lc-kw': { color: 'var(--me-navy)', fontWeight: '600' },
   '.cm-lc-modal': { color: '#946400', fontWeight: '700' },
-  '.cm-tooltip-autocomplete .cm-completionLabel': { fontFamily: "'Roboto Mono', monospace" },
 })
 
 // Reject any edit that would push the rule past the character limit — a hard cap

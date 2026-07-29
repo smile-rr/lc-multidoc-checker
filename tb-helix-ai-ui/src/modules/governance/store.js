@@ -29,55 +29,86 @@ const SEV_META = {
 
 export const REF_BOOK = seed.refBook
 const ARTICLE_INFO = seed.articleInfo
-const FIELD_DICT = seed.fieldDict
-const DOC_TYPE_BOOK = seed.docTypeBook
 const CHECK_DEFAULTS = seed.checkDefaults
+const RULE_SEEDS = seed.ruleSeeds
 
-const TYPE_META = {
-  'LC field': { c: 'var(--me-blue-deep)', b: 'var(--me-blue-20)' },
-  'Document data point': { c: '#1F7A00', b: 'var(--me-green-20)' },
-  Derived: { c: 'var(--me-navy)', b: 'var(--me-grey-08)' },
-  External: { c: '#946400', b: '#FBEFCF' },
+// ---- The two kinds of check card ------------------------------------------
+// A Rule card compares one field against another, deterministically. A
+// Requirement card holds requirements in plain language, read out of a clause
+// of the credit (46A, 47A) or as standing practice across the presentation.
+// Everything that isn't explicitly a rule is a requirement — that is the
+// default a check is born as.
+export const CARD_TYPES = {
+  rule: { label: 'Rule', icon: 'equal', color: 'var(--me-blue-deep)', bg: 'var(--me-blue-20)', hint: 'Deterministic — compares fields read from documents' },
+  requirement: { label: 'Requirement', icon: 'list-checks', color: '#1F7A00', bg: 'var(--me-green-20)', hint: 'Requirements in plain language, read against the credit or a clause of it' },
+}
+export const typeOf = (c) => (c && c.type === 'rule' ? 'rule' : 'requirement')
+
+// ---- Rule-card vocabulary --------------------------------------------------
+// Operators are grouped the way a checker thinks about them, not by data type.
+export const OP_GROUPS = [
+  { label: 'Text & wording', ops: [{ value: 'eq', label: 'equals' }, { value: 'noconflict', label: 'does not conflict with' }, { value: 'contains', label: 'contains' }, { value: 'oneof', label: 'is one of' }, { value: 'ne', label: 'differs from' }] },
+  { label: 'Amounts & quantities', ops: [{ value: 'n_eq', label: 'equals (amount)' }, { value: 'lte', label: 'is at most' }, { value: 'gte', label: 'is at least' }, { value: 'within_pct', label: 'is within tolerance of' }] },
+  { label: 'Dates', ops: [{ value: 'd_lte', label: 'is on or before' }, { value: 'd_gte', label: 'is on or after' }, { value: 'd_within', label: 'is within' }, { value: 'd_eq', label: 'is the same date as' }] },
+  { label: 'Parties, places & countries', ops: [{ value: 'same_party', label: 'is the same party as' }, { value: 'same_country', label: 'is in the same country as' }, { value: 'addr_same_country', label: 'address agrees (same country is enough)' }] },
+  { label: 'Presence & expression', ops: [{ value: 'present', label: 'is stated' }, { value: 'absent', label: 'is not stated' }, { value: 'matches', label: 'satisfies expression' }, { value: 'nmatches', label: 'does not satisfy expression' }] },
+]
+// Operators that take no right-hand operand, and those whose right side is an
+// expression rather than another field.
+const UNARY_OPS = ['present', 'absent']
+const EXPR_OPS = ['matches', 'nmatches']
+const opLabel = (v) => { let out = v; OP_GROUPS.forEach((g) => g.ops.forEach((o) => { if (o.value === v) out = o.label })); return out }
+
+// A block joins the one above it with AND or OR (`connector`); the first block
+// has nothing to join to, so it carries none.
+const ruleBlank = () => ({ scope: 'Every presentation', message: '', groups: [{ id: 'g1', logic: 'all', rows: [{ id: 'r1', l: {}, r: {}, op: 'eq', tol: '' }] }] })
+
+// Seeds are stored flat (one block of rows); the editor works in bracketed
+// blocks. Normalise on read so both shapes render the same.
+const normaliseRule = (raw) => {
+  if (!raw) return ruleBlank()
+  if (raw.groups) return raw
+  return { scope: raw.scope, message: raw.message, groups: [{ id: 'g1', logic: raw.logic || 'all', rows: raw.rows || [] }] }
+}
+
+const blankRow = () => ({ id: 'r-' + reqId(), l: {}, r: {}, op: 'eq', tol: '' })
+
+// Run after anything is removed. A block that has lost its last condition is
+// gone — an empty bracket means nothing, and leaving one for the author to tidy
+// up by hand is work the interface can do itself. A rule always keeps one
+// block with one condition, because a rule with nothing to compare is not a
+// rule. Whichever block ends up first carries no connector: there is nothing
+// above it to join to.
+const tidyRule = (ru) => {
+  const kept = ru.groups.filter((g) => g.rows.length)
+  if (!kept.length) return { ...ru, groups: [{ id: 'g-' + reqId(), logic: 'all', rows: [blankRow()] }] }
+  return { ...ru, groups: kept.map((g, i) => (i === 0 ? { ...g, connector: undefined } : g)) }
+}
+
+// What still has to be filled in before this rule can be saved. Each line says
+// what to do, not what is wrong.
+const ruleIssues = (rule) => {
+  const out = []
+  const rows = rule.groups.flatMap((g) => g.rows)
+  if (!rows.length) out.push('Add a condition.')
+  const side = (o) => !!(o && (o.field || o.literal))
+  const incomplete = rows.filter((r) => !side(r.l) || (!UNARY_OPS.includes(r.op) && !side(r.r)))
+  if (incomplete.length) out.push(`${incomplete.length} condition${incomplete.length === 1 ? ' has' : 's have'} nothing to compare — pick a field on both sides.`)
+  if (!(rule.message || '').trim()) out.push('Say what this raises when it fails.')
+  return out
 }
 
 // ---- Seed builders (document types, dictionary fields, reference books) -----
 export function seedDocTypes() {
-  const desc = {
-    'Commercial invoice': 'Issued by the beneficiary; lists goods, quantities and value.',
-    'Bill of lading': "Carrier's receipt and document of title for sea shipment.",
-    'Insurance document': 'Evidence of cargo insurance cover.',
-    'Air waybill': 'Air carrier receipt evidencing shipment by air.',
-    'Packing list': 'Breakdown of how the goods are packed.',
-    'Certificate of origin': 'States the country where goods were produced.',
-  }
-  return DOC_TYPE_BOOK.map((name, i) => ({
-    id: 'd' + i,
-    key: name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, ''),
-    name,
-    description: desc[name] || '',
-  }))
+  return seed.docTypes.map((d) => ({ ...d }))
 }
 
+// A dictionary field is a plain business name plus the documents it can be read
+// from; each binding carries one note saying what it is called there and how to
+// read it. There is no reserved LC tag vocabulary — the credit is just another
+// document a field is bound to.
 export function seedFields() {
-  const info = {
-    '31D': ['The date and place the credit expires.', ['Covering schedule']],
-    '41A': ['Bank with which the credit is available, and how.', ['Covering schedule']],
-    '41D': ['Bank with which the credit is available, and how.', ['Covering schedule']],
-    '44C': ['Latest date the goods may be shipped.', ['Bill of lading', 'Air waybill']],
-    '45A': ['Description of the goods, services or performance.', ['Commercial invoice']],
-    '32B': ['Currency and amount of the credit.', ['Commercial invoice']],
-    '59': ['The party in whose favour the credit is issued.', ['Commercial invoice']],
-    '50': ['The party on whose request the credit is issued.', []],
-  }
-  const base = Object.keys(FIELD_DICT).map((code, i) => ({
-    id: 'f' + i, code, name: FIELD_DICT[code], type: 'LC field',
-    description: (info[code] || ['', []])[0], docs: (info[code] || ['', []])[1],
-  }))
-  return base.concat([
-    { id: 'fx1', code: 'DOC.OBD', name: 'On-board date', type: 'Document data point', description: 'The shipped-on-board date read from the transport document.', docs: ['Bill of lading', 'Air waybill'] },
-    { id: 'fx2', code: 'CALC.PRES', name: 'Presentation date', type: 'Derived', description: 'The date documents were presented, taken from the covering schedule stamp.', docs: ['Covering schedule'] },
-    { id: 'fx3', code: 'EXT.SANCTIONS', name: 'Sanctions match', type: 'External', description: 'Whether any named party, vessel or port hits a restricted-party list.', docs: [] },
-  ])
+  return seed.fields.map((f) => ({ ...f, bindings: (f.bindings || []).map((b) => ({ ...b })) }))
 }
 
 export function seedBooks() {
@@ -100,7 +131,7 @@ export const initialState = {
   detailTab: 'checkpoints',
   agentActive: true,
   cpActive: {},
-  editingId: null, overrides: {}, editSnap: {}, refsOpenId: null, helpOpenId: null,
+  editingId: null, overrides: {}, editSnap: {}, ruleSnap: {}, refsOpenId: null, helpOpenId: null,
   panel: null, commentTarget: null, commentDraft: '',
   holistic: true, order: 'sev_desc', testOpen: false,
   search: '',
@@ -108,6 +139,7 @@ export const initialState = {
   addMenuGid: null, assignOpenId: null, fieldsOpenId: null, docsOpenId: null,
   importOpen: false, importStage: 'upload', importItems: [], importName: '', books: null, activeBookId: null, libSearch: '', tocCollapsed: {}, artEditingId: null, libAddOpen: false,
   dictTab: 'fields', dictView: 'list', dictSearch: '', dictDetail: null, dictFields: null, dictDocs: null, dictDocPickerId: null,
+  rules: {}, operandOpen: null, typeFilter: 'all', newMenuOpen: false,
   density: 'list', expandedIds: {}, placements: {}, activeCheckId: null,
   dragId: null, dragOverGid: null, dragGroupGid: null, activeAgentId: 'expiry', checkFrom: null,
   agentChecksView: 'list', agentArrange: false, reviewAnchorY: null, reviewAnchorX: null, confirm: null, bookQuery: '',
@@ -162,6 +194,11 @@ export function deriveVals(state, setState) {
   // Single field vocabulary: the (editable) Dictionary fields are the source of
   // truth for what checks can reference.
   const dictFieldList = S.dictFields || seedFields()
+  const dictDocList = S.dictDocs || seedDocTypes()
+  const docNameBook = dictDocList.map((d) => d.name)
+  // Every (field, document) pair the dictionary knows about — the vocabulary a
+  // rule row picks its operands from.
+  const operandBook = dictFieldList.flatMap((f) => (f.bindings || []).map((b) => ({ field: f.name, doc: b.doc, note: b.note })))
   const allChecks = () => CHECKS.concat(S.extraChecks).filter((c) => !S.deletedCheckIds[c.id])
   const valueOf = (c, field) => {
     const o = S.overrides[c.id]
@@ -183,7 +220,23 @@ export function deriveVals(state, setState) {
     const g = S.agentGroups.find((x) => x.gid === gid)
     return g ? g.name : ''
   }
-  const fieldName = (code) => { const f = dictFieldList.find((x) => x.code === code); return f ? f.name : FIELD_DICT[code] || 'LC field' }
+  // What a field is read from, said in one line — the hint under a field chip.
+  const fieldDocHint = (name) => {
+    const f = dictFieldList.find((x) => x.name === name)
+    if (!f) return 'not in dictionary'
+    const ds = (f.bindings || []).map((b) => b.doc)
+    if (!ds.length) return 'no source yet'
+    return ds.length > 2 ? ds.length + ' documents' : ds.join(' · ')
+  }
+
+  // ---- Rule cards ----------------------------------------------------------
+  const ruleOf = (id) => normaliseRule(S.rules[id] || RULE_SEEDS[id])
+  const setRule = (id, fn) => setState((s) => ({ rules: { ...s.rules, [id]: fn(normaliseRule(s.rules[id] || RULE_SEEDS[id])) } }))
+  const mapGroups = (rule, gid, fn) => ({ ...rule, groups: rule.groups.map((g) => (g.id === gid ? fn(g) : g)) })
+  // Which fields a rule reads — so the dictionary can tell how often a field is
+  // used without the check having to list it twice.
+  const ruleFieldsOf = (id) =>
+    ruleOf(id).groups.flatMap((g) => g.rows.flatMap((r) => [r.l && r.l.field, r.r && r.r.field])).filter(Boolean)
 
   const assignCheck = (id, agentId) =>
     setState((s) => ({ placements: { ...s.placements, [id]: { agentId, groupId: agentId ? firstGroupOf(agentId) : null } }, assignOpenId: null }))
@@ -252,6 +305,30 @@ export function deriveVals(state, setState) {
     setState((s) => ({ comments: { ...s.comments, [t]: [...(s.comments[t] || []), entry] } }))
   }
 
+  // A new card is born as a draft in the GEN concern (general examiner
+  // judgement); an officer moves it to its proper id when it settles. The kind
+  // is chosen up front because it decides what the card is made of — a rule
+  // opens on an empty condition block, a requirement on an empty dash line.
+  const newCheck = (kind) =>
+    setState((s) => {
+      const id = 'GEN-' + String(s.newSeq + 90).padStart(2, '0')
+      const isRule = kind === 'rule'
+      const nc = {
+        id, type: isRule ? 'rule' : 'requirement', domain: 'Uncategorised', cases: 0, draft: true,
+        agentId: null, groupId: null,
+        title: isRule ? 'New rule card' : 'New requirement card',
+        severity: 'MAJOR', refs: [],
+        suggestion: isRule
+          ? 'Fill in both sides of the first condition so the rule has something to compare.'
+          : 'Add a requirement or two so the assistant has something to check.',
+        body: isRule ? '' : 'Say what must be true, one requirement per dash line.\n\n- ',
+        timeline: [{ color: 'var(--me-blue)', label: 'Created', date: 'just now', detail: 'New ' + CARD_TYPES[isRule ? 'rule' : 'requirement'].label.toLowerCase() + ' card.' }],
+      }
+      const patch = { extraChecks: [nc, ...s.extraChecks], newSeq: s.newSeq + 1, editingId: id, section: 'checks', newMenuOpen: false, typeFilter: 'all', density: 'cards' }
+      if (isRule) patch.rules = { ...s.rules, [id]: ruleBlank() }
+      return patch
+    })
+
   function buildCheck(c, ctx) {
     const title = valueOf(c, 'title')
     const severity = (valueOf(c, 'severity') || 'MAJOR').toUpperCase()
@@ -263,6 +340,11 @@ export function deriveVals(state, setState) {
     const editing = S.editingId === c.id
     const active = S.cpActive[c.id] === undefined ? true : S.cpActive[c.id]
     const inactive = !!S.inactiveIds[c.id]
+    // Which kind of card this is decides what the middle of it holds, and it is
+    // read before the snapshot below so Cancel can put the rule back too.
+    const kind = typeOf(c)
+    const isRule = kind === 'rule'
+    const rule = isRule ? ruleOf(c.id) : null
     // A check that has examined a case is referenced by the findings it produced
     // and by any refusal advice quoting them. Deleting it orphans that record, so
     // only a draft that never ran can be deleted; everything else is retired.
@@ -270,51 +352,128 @@ export function deriveVals(state, setState) {
     const deletable = !!c.draft && timesUsed === 0
     const cc = S.comments[c.id] || []
     const inAgent = ctx === 'agent'
+    // What Cancel puts back. The rule travels with it — without that, undoing an
+    // edit restored the title and left the conditions rewritten.
     const snapNow = { title, severity, refs: [...refs], body, fields: [...fields], docs: [...docs] }
+    const snapRule = isRule ? JSON.parse(JSON.stringify(rule)) : null
+    const takeSnap = (s) => ({
+      editSnap: s.editSnap[c.id] !== undefined ? s.editSnap : { ...s.editSnap, [c.id]: snapNow },
+      ruleSnap: !isRule || s.ruleSnap[c.id] !== undefined ? s.ruleSnap : { ...s.ruleSnap, [c.id]: snapRule },
+    })
     const startEdit = () => {
-      if (S.editingId !== c.id) setState((s) => ({ editingId: c.id, editSnap: s.editSnap[c.id] !== undefined ? s.editSnap : { ...s.editSnap, [c.id]: snapNow } }))
+      if (S.editingId !== c.id) setState((s) => ({ editingId: c.id, ...takeSnap(s) }))
     }
     const write = (field, val) =>
       setState((s) => {
         const base = s.overrides[c.id] || snapNow
         return {
           editingId: c.id,
-          editSnap: s.editSnap[c.id] !== undefined ? s.editSnap : { ...s.editSnap, [c.id]: snapNow },
+          ...takeSnap(s),
           overrides: { ...s.overrides, [c.id]: { ...base, [field]: val } },
         }
       })
     const compactMode = false
     const expanded = !!S.expandedIds[c.id]
     const showBody = editing || !compactMode || expanded
-    const detectCodes = () => {
-      const cds = []
-      const seen = {}
-      const fre = /\{\s*([0-9]{2}[A-Z]?)\s*\}/g
+    // Field names the author has already braced in the body text.
+    const detectNames = () => {
+      const known = dictFieldList.map((f) => f.name)
+      const out = []
+      const fre = /\{\s*([^}\n]+?)\s*\}/g
       let fm
       while ((fm = fre.exec(body)) !== null) {
-        if (!seen[fm[1]]) {
-          seen[fm[1]] = 1
-          cds.push(fm[1])
-        }
+        if (known.includes(fm[1]) && !out.includes(fm[1])) out.push(fm[1])
       }
-      return cds
+      return out
     }
     const place = placementOf(c)
     const inLabel = place.agentId ? agentName(place.agentId) + (place.groupId ? ' · ' + groupName(place.groupId) : '') : 'Not in an agent'
     const preview = (body.split('\n').find((l) => l.trim()) || '').replace(/[{}]/g, '')
+
+    // ---- card type ---------------------------------------------------------
+    const meta = CARD_TYPES[kind]
+    // A rule states its operands in its own rows, so the chip rows and the
+    // plain-language body belong to requirement cards only.
+    const showFieldRows = !isRule
+    const patchRule = (fn) => { setRule(c.id, fn); startEdit() }
+    const issues = isRule && editing ? ruleIssues(rule) : []
+
+    const operandVM = (gid, r, side) => {
+      const o = (side === 'l' ? r.l : r.r) || {}
+      const openKey = `${c.id}|${gid}|${r.id}|${side}`
+      const set = (val) => patchRule((ru) => mapGroups(ru, gid, (g) => ({ ...g, rows: g.rows.map((x) => (x.id === r.id ? { ...x, [side]: val } : x)) })))
+      const unset = !o.field && !o.literal
+      return {
+        isLiteral: !!o.literal || (side === 'r' && EXPR_OPS.includes(r.op)),
+        isField: !o.literal && !(side === 'r' && EXPR_OPS.includes(r.op)),
+        field: o.field || 'Pick a field', doc: o.field ? o.doc : '',
+        literal: o.literal || '',
+        literalPlaceholder: EXPR_OPS.includes(r.op) ? 'An expression, e.g. matches /^[A-Z]{3}$/' : 'A fixed value…',
+        onChangeLiteral: (e) => set({ literal: e.target.value }),
+        onUseLiteral: () => { set({ literal: '' }); setState({ operandOpen: null }) },
+        border: unset ? 'var(--me-grey-20)' : 'var(--me-grey-15)', borderStyle: unset ? 'dashed' : 'solid',
+        bg: unset ? 'transparent' : 'var(--me-grey-08)', color: unset ? 'var(--me-grey-70)' : 'var(--me-ink)',
+        open: S.operandOpen === openKey,
+        onToggle: (e) => { if (e && e.stopPropagation) e.stopPropagation(); startEdit(); setState((s) => ({ operandOpen: s.operandOpen === openKey ? null : openKey })) },
+        book: operandBook.map((op) => ({ ...op, onPick: () => { set({ field: op.field, doc: op.doc }); setState({ operandOpen: null }) } })),
+      }
+    }
+
+    const ruleGroups = !rule ? [] : rule.groups.map((g, gi) => ({
+      id: g.id,
+      showConnector: gi > 0, connector: g.connector || 'AND',
+      onToggleConnector: () => patchRule((ru) => mapGroups(ru, g.id, (x) => ({ ...x, connector: (x.connector || 'AND') === 'AND' ? 'OR' : 'AND' }))),
+      railColor: g.logic === 'any' ? 'var(--me-blue-20)' : 'var(--me-grey-15)',
+      showHead: rule.groups.length > 1 || g.logic === 'any',
+      logicLabel: g.logic === 'any' ? 'Any of these' : 'All of these',
+      onToggleLogic: () => patchRule((ru) => mapGroups(ru, g.id, (x) => ({ ...x, logic: x.logic === 'all' ? 'any' : 'all' }))),
+      canRemove: rule.groups.length > 1,
+      onRemove: () => patchRule((ru) => tidyRule({ ...ru, groups: ru.groups.filter((x) => x.id !== g.id) })),
+      onAddRow: () => patchRule((ru) => mapGroups(ru, g.id, (x) => ({ ...x, rows: [...x.rows, blankRow()] }))),
+      rows: g.rows.map((r, ri) => ({
+        id: r.id,
+        joiner: ri === 0 ? '' : g.logic === 'any' ? 'or' : 'and',
+        op: r.op, opLabel: opLabel(r.op),
+        onChangeOp: (e) => { const op = e.target.value; patchRule((ru) => mapGroups(ru, g.id, (x) => ({ ...x, rows: x.rows.map((y) => (y.id === r.id ? { ...y, op } : y)) }))) },
+        opGroups: OP_GROUPS,
+        showRight: !UNARY_OPS.includes(r.op),
+        showTol: !UNARY_OPS.includes(r.op),
+        tol: r.tol || '',
+        onChangeTol: (e) => { const tol = e.target.value; patchRule((ru) => mapGroups(ru, g.id, (x) => ({ ...x, rows: x.rows.map((y) => (y.id === r.id ? { ...y, tol } : y)) }))) },
+        onRemove: () => patchRule((ru) => tidyRule(mapGroups(ru, g.id, (x) => ({ ...x, rows: x.rows.filter((y) => y.id !== r.id) })))),
+        // Flagged only once the author has been told what is missing, so a
+        // half-typed condition isn't scolded while it is being typed.
+        incomplete: editing && issues.length > 0 && (!(r.l && (r.l.field || r.l.literal)) || (!UNARY_OPS.includes(r.op) && !(r.r && (r.r.field || r.r.literal)))),
+        left: operandVM(g.id, r, 'l'),
+        right: operandVM(g.id, r, 'r'),
+      })),
+    }))
+
     return {
-      id: c.id, title, body, bodySegments: hl(body), dictFields: dictFieldList.filter((f) => f.code).map((f) => ({ code: f.code, name: f.name })), severity,
+      id: c.id, title, body, bodySegments: hl(body), dictFields: dictFieldList.map((f) => ({ name: f.name, docs: fieldDocHint(f.name) })), severity,
+      kind, isRule, isRequirement: !isRule,
+      typeLabel: meta.label, typeIcon: meta.icon, typeColor: meta.color, typeBg: meta.bg, typeHint: meta.hint,
+      showFieldRows,
+      ruleScope: rule ? rule.scope || '' : '', onChangeScope: (e) => { const scope = e.target.value; patchRule((ru) => ({ ...ru, scope })) },
+      ruleMessage: rule ? rule.message || '' : '', onChangeMessage: (e) => { const message = e.target.value; patchRule((ru) => ({ ...ru, message })) },
+      ruleGroups, opGroups: OP_GROUPS,
+      onAddGroup: () => patchRule((ru) => ({ ...ru, groups: [...ru.groups, { id: 'g-' + reqId(), logic: 'all', connector: 'AND', rows: [blankRow()] }] })),
+      // The structure controls only appear once you are editing, and until now
+      // the only way in was to click into a field — so a finished rule offered
+      // no way to add a condition to it. This is that way in.
+      showEditEntry: isRule && !editing,
+      onStartEdit: () => startEdit(),
       sevColor: (SEV_META[severity] || SEV_META.MAJOR).color,
       onChangeSev: (e) => write('severity', e.target.value),
-      fieldChips: fields.map((cd) => ({ code: cd, name: fieldName(cd), onRemove: (e) => { if (e && e.stopPropagation) e.stopPropagation(); write('fields', fields.filter((x) => x !== cd)) } })),
+      fieldChips: fields.map((n) => ({ name: n, docHint: fieldDocHint(n), onRemove: (e) => { if (e && e.stopPropagation) e.stopPropagation(); write('fields', fields.filter((x) => x !== n)) } })),
       hasFields: fields.length > 0,
-      fieldBook: dictFieldList.filter((f) => f.code && !fields.includes(f.code)).map((f) => ({ code: f.code, name: f.name, onAdd: () => { write('fields', [...fields, f.code]); setState({ fieldsOpenId: null }) } })),
+      fieldBook: dictFieldList.filter((f) => !fields.includes(f.name)).map((f) => ({ name: f.name, docs: fieldDocHint(f.name), onAdd: () => { write('fields', [...fields, f.name]); setState({ fieldsOpenId: null }) } })),
       fieldsOpen: S.fieldsOpenId === c.id,
       onToggleFields: (e) => { if (e && e.stopPropagation) e.stopPropagation(); setState((s) => ({ fieldsOpenId: s.fieldsOpenId === c.id ? null : c.id })) },
-      onDetectFields: () => { const merged = fields.slice(); detectCodes().forEach((cd) => { if (!merged.includes(cd)) merged.push(cd) }); write('fields', merged); setState({ fieldsOpenId: null }) },
+      onDetectFields: () => { const merged = fields.slice(); detectNames().forEach((n) => { if (!merged.includes(n)) merged.push(n) }); write('fields', merged); setState({ fieldsOpenId: null }) },
       docChips: docs.map((d) => ({ name: d, onRemove: (e) => { if (e && e.stopPropagation) e.stopPropagation(); write('docs', docs.filter((x) => x !== d)) } })),
       hasDocs: docs.length > 0,
-      docBook: DOC_TYPE_BOOK.filter((d) => !docs.includes(d)).map((d) => ({ name: d, onAdd: () => { write('docs', [...docs, d]); setState({ docsOpenId: null }) } })),
+      docBook: docNameBook.filter((d) => !docs.includes(d)).map((d) => ({ name: d, onAdd: () => { write('docs', [...docs, d]); setState({ docsOpenId: null }) } })),
       docsOpen: S.docsOpenId === c.id,
       onToggleDocs: (e) => { if (e && e.stopPropagation) e.stopPropagation(); setState((s) => ({ docsOpenId: s.docsOpenId === c.id ? null : c.id })) },
       refChips: refs.map((code) => ({ code, desc: bookDesc(code), onRemove: (e) => { if (e && e.stopPropagation) e.stopPropagation(); write('refs', refs.filter((x) => x !== code)) } })),
@@ -326,7 +485,7 @@ export function deriveVals(state, setState) {
       casesLabel: c.cases + (c.cases === 1 ? ' linked case' : ' linked cases'),
       draft: !!c.draft,
       commentCount: cc.length, hasComments: cc.length > 0,
-      editing, showBody, expanded, showPreview: compactMode && !expanded && !editing, preview,
+      editing, showBody: showBody && !isRule, expanded, showPreview: compactMode && !expanded && !editing, preview: isRule ? rule.message || rule.scope || '' : preview,
       showExpand: compactMode, expandIcon: expanded ? 'chevron-up' : 'chevron-down',
       onToggleExpand: () => setState((s) => ({ expandedIds: { ...s.expandedIds, [c.id]: !s.expandedIds[c.id] } })),
       cardBorder: editing ? 'var(--me-blue-20)' : 'var(--me-grey-15)',
@@ -362,15 +521,37 @@ export function deriveVals(state, setState) {
       assignBorder: place.agentId ? 'var(--me-blue)' : 'var(--me-grey-20)', assignBg: place.agentId ? 'var(--me-blue-20)' : '#fff', assignColor: place.agentId ? 'var(--me-blue-deep)' : 'var(--me-grey-70)', assignIcon: place.agentId ? 'bot' : 'plus',
       assignOpen: S.assignOpenId === c.id,
       onToggleAssign: (e) => { if (e && e.stopPropagation) e.stopPropagation(); setState((s) => ({ assignOpenId: s.assignOpenId === c.id ? null : c.id })) },
-      assignOptions: AGENTS.map((a) => ({ label: a.name, icon: 'bot', bg: place.agentId === a.id ? 'var(--me-blue-20)' : 'transparent', color: 'var(--me-ink)', onPick: () => assignCheck(c.id, a.id) })).concat(
-        place.agentId ? [{ label: 'Remove from agent', icon: 'x', bg: 'transparent', color: 'var(--status-error)', onPick: () => assignCheck(c.id, null) }] : []
+      assignOptions: AGENTS.map((a) => ({ label: a.name, icon: 'bot', selected: place.agentId === a.id, onPick: () => assignCheck(c.id, a.id) })).concat(
+        place.agentId ? [{ label: 'Remove from agent', icon: 'x', tone: 'danger', onPick: () => assignCheck(c.id, null) }] : []
       ),
       onDragStart: (e) => { setState({ dragId: c.id }); if (e && e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', c.id) } catch (x) {} } },
       onFocus: () => startEdit(),
       onChangeTitle: (e) => write('title', e.target.value),
       onChangeBody: (val) => write('body', val), // RuleEditor (CodeMirror) passes the value string directly
-      onSave: () => setState((s) => { const es = { ...s.editSnap }; delete es[c.id]; const base = s.overrides[c.id] || snapNow; return { editingId: null, refsOpenId: null, helpOpenId: null, editSnap: es, overrides: { ...s.overrides, [c.id]: { ...base, title: (title || '').trim(), body: (body || '').trim() } } } }),
-      onCancel: () => setState((s) => { const snap = s.editSnap[c.id]; const ov = { ...s.overrides }; if (snap === undefined) delete ov[c.id]; else ov[c.id] = snap; const es = { ...s.editSnap }; delete es[c.id]; return { editingId: null, refsOpenId: null, helpOpenId: null, overrides: ov, editSnap: es } }),
+      // Save is held back while the card is still missing something it cannot
+      // run without; `issues` says what, right beside the button.
+      issues, canSave: !issues.length,
+      onSave: () => {
+        if (issues.length) return
+        setState((s) => {
+          const es = { ...s.editSnap }; delete es[c.id]
+          const rs = { ...s.ruleSnap }; delete rs[c.id]
+          const base = s.overrides[c.id] || snapNow
+          return { editingId: null, refsOpenId: null, helpOpenId: null, operandOpen: null, editSnap: es, ruleSnap: rs, overrides: { ...s.overrides, [c.id]: { ...base, title: (title || '').trim(), body: (body || '').trim() } } }
+        })
+      },
+      onCancel: () => setState((s) => {
+        const snap = s.editSnap[c.id]
+        const ov = { ...s.overrides }
+        if (snap === undefined) delete ov[c.id]
+        else ov[c.id] = snap
+        const es = { ...s.editSnap }; delete es[c.id]
+        const rules = { ...s.rules }
+        const rs = { ...s.ruleSnap }
+        if (isRule && rs[c.id] !== undefined) rules[c.id] = rs[c.id]
+        delete rs[c.id]
+        return { editingId: null, refsOpenId: null, helpOpenId: null, operandOpen: null, overrides: ov, editSnap: es, rules, ruleSnap: rs }
+      }),
       onOpen: () => setState((s) => ({ activeCheckId: c.id, editingId: null, panel: null, checkFrom: { section: s.section, view: s.view, activeAgentId: s.activeAgentId } })),
       onComment: (e) => { if (e && e.stopPropagation) e.stopPropagation(); toggleReview(c.id, e) },
       onToggleActive: (e) => { if (e && e.stopPropagation) e.stopPropagation(); setState((s) => ({ cpActive: { ...s.cpActive, [c.id]: !(s.cpActive[c.id] === undefined ? true : s.cpActive[c.id]) } })) },
@@ -406,7 +587,7 @@ export function deriveVals(state, setState) {
   const groups = S.agentGroups.filter((g) => g.agentId === detailAgentId).map((g, gi) => {
     const addable = allChecks()
       .filter((c) => { const p = placementOf(c); return !(p.agentId === detailAgentId && p.groupId === g.gid) })
-      .map((c) => { const p = placementOf(c); return { title: valueOf(c, 'title'), domain: p.agentId === detailAgentId ? 'move here' : p.agentId ? 'from ' + agentName(p.agentId) : 'unassigned', sevColor: (SEV_META[(valueOf(c, 'severity') || 'MAJOR').toUpperCase()] || SEV_META.MAJOR).color, onAdd: () => assignToGroup(c.id, g.gid, detailAgentId) } })
+      .map((c) => { const p = placementOf(c); return { title: valueOf(c, 'title'), kindIcon: CARD_TYPES[typeOf(c)].icon, domain: p.agentId === detailAgentId ? 'move here' : p.agentId ? 'from ' + agentName(p.agentId) : 'unassigned', sevColor: (SEV_META[(valueOf(c, 'severity') || 'MAJOR').toUpperCase()] || SEV_META.MAJOR).color, onAdd: () => assignToGroup(c.id, g.gid, detailAgentId) } })
     const gc = S.comments[g.gid] || []
     const cks = allChecks().filter((c) => { const p = placementOf(c); return p.agentId === detailAgentId && p.groupId === g.gid }).map((c) => buildCheck(c, 'agent'))
     return {
@@ -431,9 +612,30 @@ export function deriveVals(state, setState) {
   })
 
   const q = (S.search || '').toLowerCase()
-  const libChecks = allChecks()
-    .filter((c) => !q || (valueOf(c, 'title') + ' ' + valueOf(c, 'body') + ' ' + (valueOf(c, 'refs') || []).join(' ')).toLowerCase().includes(q))
+  // A rule card has no prose body, so its searchable text is its own rows: the
+  // fields it compares, the documents they are read from and what it raises.
+  const searchText = (c) => {
+    const base = valueOf(c, 'title') + ' ' + valueOf(c, 'body') + ' ' + (valueOf(c, 'refs') || []).join(' ')
+    if (typeOf(c) !== 'rule') return base
+    const r = ruleOf(c.id)
+    const rows = r.groups.flatMap((g) => g.rows).flatMap((x) => [x.l && x.l.field, x.l && x.l.doc, x.r && x.r.field, x.r && x.r.doc, x.r && x.r.literal])
+    return base + ' ' + r.scope + ' ' + r.message + ' ' + rows.filter(Boolean).join(' ')
+  }
+  const typeFilter = S.typeFilter || 'all'
+  const matchedChecks = allChecks().filter((c) => !q || searchText(c).toLowerCase().includes(q))
+  const libChecks = matchedChecks
+    .filter((c) => typeFilter === 'all' || typeOf(c) === typeFilter)
     .map((c) => buildCheck(c, 'library'))
+  const typeFilters = [
+    { id: 'all', label: 'All' },
+    { id: 'rule', label: 'Rule cards' },
+    { id: 'requirement', label: 'Requirement cards' },
+  ].map((t) => ({
+    ...t,
+    count: t.id === 'all' ? matchedChecks.length : matchedChecks.filter((c) => typeOf(c) === t.id).length,
+    on: typeFilter === t.id,
+    onPick: () => setState({ typeFilter: t.id }),
+  }))
 
   let panelCtx = null
   if (S.panel === 'review' && S.commentTarget) {
@@ -471,7 +673,21 @@ export function deriveVals(state, setState) {
 
   const phases = PHASES.map((p) => ({ ...p, scenarios: p.scenarios.map((r) => ({ ...r, mark: r.status === 'pass' ? '✓' : '!', markBg: r.status === 'pass' ? 'var(--status-success)' : 'var(--status-warning)' })) }))
   const reviewOpen = S.panel === 'review' && !!panelCtx
-  const exportMd = allChecks().map((c) => { const t = valueOf(c, 'title'); const sv = valueOf(c, 'severity') || 'MAJOR'; const rf = (valueOf(c, 'refs') || []).join(', '); const bd = valueOf(c, 'body') || ''; return 'CHECKPOINT: ' + t + '\nSeverity: ' + sv + '\n\n' + bd + (rf ? '\n\nReference: ' + rf : '') }).join('\n\n---\n\n')
+  // Export reads a rule card off its rows, since it has no prose to export.
+  const operandText = (o) => (!o ? '?' : o.literal ? o.literal : o.field ? `${o.field} @ ${o.doc}` : '?')
+  const ruleMd = (c) => {
+    const r = ruleOf(c.id)
+    const blocks = r.groups
+      .map((g, gi) => (gi ? `\n\n${g.connector || 'AND'}\n\n` : '') + g.rows.map((x) => `- ${operandText(x.l)} ${opLabel(x.op)}${UNARY_OPS.includes(x.op) ? '' : ' ' + operandText(x.r)}${x.tol ? ` (${x.tol})` : ''}`).join('\n'))
+      .join('')
+    return `Applies to: ${r.scope || 'Every presentation'}\n\n${blocks}${r.message ? `\n\nRaise: ${r.message}` : ''}`
+  }
+  const exportMd = allChecks().map((c) => {
+    const t = valueOf(c, 'title'); const sv = valueOf(c, 'severity') || 'MAJOR'; const rf = (valueOf(c, 'refs') || []).join(', ')
+    const kind = typeOf(c)
+    const bd = kind === 'rule' ? ruleMd(c) : valueOf(c, 'body') || ''
+    return `${CARD_TYPES[kind].label.toUpperCase()} CARD: ${c.id} — ${t}\nSeverity: ${sv}\n\n${bd}${rf ? '\n\nReference: ' + rf : ''}`
+  }).join('\n\n---\n\n')
   const usedByArt = (code) => allChecks().filter((c) => (valueOf(c, 'refs') || []).includes(code)).length
   const books = S.books || seedBooks()
   const setBooks = (fn) => setState((s) => ({ books: fn(s.books || seedBooks()) }))
@@ -518,54 +734,70 @@ export function deriveVals(state, setState) {
     }
   })
   const libEmpty = arts.length === 0
-  const dictDocs = S.dictDocs || seedDocTypes()
+  const dictDocs = dictDocList
   const dictFields = dictFieldList
   const setDF = (fn) => setState((s) => ({ dictFields: fn(s.dictFields || seedFields()) }))
   const setDD = (fn) => setState((s) => ({ dictDocs: fn(s.dictDocs || seedDocTypes()) }))
-  const docNames = dictDocs.map((d) => d.name)
-  const fieldUsed = (code) => allChecks().filter((c) => { const fs = valueOf(c, 'fields') || (CHECK_DEFAULTS[c.id] || {}).fields || []; return fs.includes(code) }).length
+  const docNames = docNameBook
+  const bindingDocs = (f) => (f.bindings || []).map((b) => b.doc)
+  // A field counts as used when a check names it — as a chip on a requirement
+  // card, as a braced token in its wording, or as an operand of a rule row.
+  const fieldUsed = (name) =>
+    allChecks().filter((c) => {
+      const fs = valueOf(c, 'fields') || (CHECK_DEFAULTS[c.id] || {}).fields || []
+      if (fs.includes(name)) return true
+      if (typeOf(c) === 'rule') return ruleFieldsOf(c.id).includes(name)
+      return (valueOf(c, 'body') || '').includes('{' + name + '}')
+    }).length
   const dq = (S.dictSearch || '').toLowerCase()
+  const patchField = (id, fn) => setDF((fs) => fs.map((x) => (x.id === id ? fn(x) : x)))
   const buildFieldRow = (f) => ({
-    id: f.id, code: f.code, name: f.name, description: f.description, type: f.type || 'LC field',
-    typeColor: (TYPE_META[f.type] || TYPE_META['LC field']).c, typeBg: (TYPE_META[f.type] || TYPE_META['LC field']).b,
+    id: f.id, name: f.name, description: f.description,
     onOpen: () => setState({ dictDetail: { kind: 'field', id: f.id } }),
-    onChangeType: (e) => { const v = e.target.value; setDF((fs) => fs.map((x) => (x.id === f.id ? { ...x, type: v } : x))) },
-    usedLabel: fieldUsed(f.code) + ' checks',
-    onChangeCode: (e) => { const v = e.target.value; setDF((fs) => fs.map((x) => (x.id === f.id ? { ...x, code: v } : x))) },
-    onChangeName: (e) => { const v = e.target.value; setDF((fs) => fs.map((x) => (x.id === f.id ? { ...x, name: v } : x))) },
-    onChangeDesc: (e) => { const v = e.target.value; setDF((fs) => fs.map((x) => (x.id === f.id ? { ...x, description: v } : x))) },
-    onBlurDesc: () => setDF((fs) => fs.map((x) => (x.id === f.id ? { ...x, description: (x.description || '').trim() } : x))),
-    usedCount: fieldUsed(f.code),
+    usedLabel: fieldUsed(f.name) + (fieldUsed(f.name) === 1 ? ' check' : ' checks'),
+    docsLine: bindingDocs(f).join(' · ') || '—',
+    onChangeName: (e) => { const v = e.target.value; patchField(f.id, (x) => ({ ...x, name: v })) },
+    onChangeDesc: (e) => { const v = e.target.value; patchField(f.id, (x) => ({ ...x, description: v })) },
+    onBlurDesc: () => patchField(f.id, (x) => ({ ...x, description: (x.description || '').trim() })),
+    usedCount: fieldUsed(f.name),
     onRemove: () => {
-      const used = fieldUsed(f.code)
+      const used = fieldUsed(f.name)
       return used
         ? requestConfirm({
             title: 'This field is in use',
-            message: `${used} check${used === 1 ? '' : 's'} read {${f.code}}. Removing it would leave those rules referring to a field that does not exist, and the extraction prompt built from them would go out broken. Take it out of those checks first.`,
+            message: `${used} check${used === 1 ? '' : 's'} read “${f.name}”. Removing it would leave them referring to a field that does not exist, and the extraction prompt built from them would go out broken. Take it out of those checks first.`,
             blocked: true,
           })
         : requestConfirm({
             title: 'Delete field?',
-            message: `{${f.code}} is not read by any check. It will be removed from the dictionary.`,
+            message: `“${f.name}” is not read by any check. It will be removed from the dictionary.`,
             confirmLabel: 'Delete field',
             onConfirm: () => { setDF((fs) => fs.filter((x) => x.id !== f.id)); setState({ dictDetail: null }) },
           })
     },
-    docChips: (f.docs || []).map((dn) => ({ name: dn, onRemove: () => setDF((fs) => fs.map((x) => (x.id === f.id ? { ...x, docs: x.docs.filter((y) => y !== dn) } : x))) })),
+    // Each source carries one note: what the field is called on that document
+    // and how to read it. That note is the whole extraction instruction.
+    bindings: (f.bindings || []).map((b, i) => ({
+      doc: b.doc, note: b.note || '',
+      onChangeNote: (e) => { const v = e.target.value; patchField(f.id, (x) => ({ ...x, bindings: x.bindings.map((y, j) => (j === i ? { ...y, note: v } : y)) })) },
+      onBlurNote: () => patchField(f.id, (x) => ({ ...x, bindings: x.bindings.map((y, j) => (j === i ? { ...y, note: (y.note || '').trim() } : y)) })),
+      onRemove: () => patchField(f.id, (x) => ({ ...x, bindings: x.bindings.filter((y, j) => j !== i) })),
+    })),
     pickerOpen: S.dictDocPickerId === f.id,
     onTogglePicker: () => setState((s) => ({ dictDocPickerId: s.dictDocPickerId === f.id ? null : f.id })),
-    docBook: docNames.filter((dn) => !(f.docs || []).includes(dn)).map((dn) => ({ name: dn, onAdd: () => { setDF((fs) => fs.map((x) => (x.id === f.id ? { ...x, docs: [...(x.docs || []), dn] } : x))); setState({ dictDocPickerId: null }) } })),
+    docBook: docNames.filter((dn) => !bindingDocs(f).includes(dn)).map((dn) => ({ name: dn, onAdd: () => { patchField(f.id, (x) => ({ ...x, bindings: [...(x.bindings || []), { doc: dn, note: '' }] })); setState({ dictDocPickerId: null }) } })),
   })
+  const docUsed = (name) => dictFields.filter((f) => bindingDocs(f).includes(name)).length
   const buildDocRow = (d) => ({
-    id: d.id, key: d.key, name: d.name, description: d.description, usedLabel: dictFields.filter((f) => (f.docs || []).includes(d.name)).length + ' fields',
+    id: d.id, key: d.key, name: d.name, description: d.description, usedLabel: docUsed(d.name) + (docUsed(d.name) === 1 ? ' field' : ' fields'),
     onOpen: () => setState({ dictDetail: { kind: 'doc', id: d.id } }),
     onChangeKey: (e) => { const v = e.target.value; setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, key: v } : x))) },
     onChangeName: (e) => { const v = e.target.value; setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, name: v } : x))) },
     onChangeDesc: (e) => { const v = e.target.value; setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, description: v } : x))) },
     onBlurDesc: () => setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, description: (x.description || '').trim() } : x))),
-    usedCount: dictFields.filter((f) => (f.docs || []).includes(d.name)).length,
+    usedCount: docUsed(d.name),
     onRemove: () => {
-      const used = dictFields.filter((f) => (f.docs || []).includes(d.name)).length
+      const used = docUsed(d.name)
       return used
         ? requestConfirm({
             title: 'This document type is in use',
@@ -580,7 +812,7 @@ export function deriveVals(state, setState) {
           })
     },
   })
-  const fieldRows = dictFields.filter((f) => !dq || (f.code + ' ' + f.name + ' ' + (f.description || '') + ' ' + (f.type || '')).toLowerCase().includes(dq)).map(buildFieldRow)
+  const fieldRows = dictFields.filter((f) => !dq || (f.name + ' ' + (f.description || '') + ' ' + bindingDocs(f).join(' ') + ' ' + (f.bindings || []).map((b) => b.note || '').join(' ')).toLowerCase().includes(dq)).map(buildFieldRow)
   const docRows = dictDocs.filter((d) => !dq || (d.key + ' ' + d.name + ' ' + (d.description || '')).toLowerCase().includes(dq)).map(buildDocRow)
   let dictDetail = null
   if (S.dictDetail) {
@@ -634,7 +866,8 @@ export function deriveVals(state, setState) {
     dictListBg: S.dictView === 'list' ? 'var(--me-blue)' : '#fff', dictListFg: S.dictView === 'list' ? '#fff' : 'var(--me-grey-70)',
     dictSearch: S.dictSearch, setDictSearch: (e) => setState({ dictSearch: e.target.value }),
     fieldRows, docRows, isDictDetail: !!dictDetail, dictDetail,
-    addField: () => setDF((fs) => [...fs, { id: 'f' + reqId(), code: '', name: 'New field', description: '', docs: [] }]),
+    dictCountLabel: (S.dictTab === 'doctypes' ? docRows.length : fieldRows.length) + ' of ' + (S.dictTab === 'doctypes' ? dictDocs.length : dictFields.length),
+    addField: () => setDF((fs) => [...fs, { id: 'f' + reqId(), name: 'New field', description: '', bindings: [] }]),
     addDoc: () => setDD((ds) => [...ds, { id: 'd' + reqId(), key: '', name: 'New document type', description: '' }]),
 
     // Nav state
@@ -651,7 +884,17 @@ export function deriveVals(state, setState) {
     checksListBg: S.density === 'list' ? 'var(--me-blue)' : '#fff', checksListFg: S.density === 'list' ? '#fff' : 'var(--me-grey-70)',
     search: S.search, setSearch: (e) => setState({ search: e.target.value }),
     exportHref: encodeURIComponent(exportMd),
-    newCheck: () => setState((s) => { const id = 'GEN-' + String(s.newSeq + 90).padStart(2, '0'); const nc = { id, domain: 'Uncategorised', cases: 0, draft: true, agentId: null, groupId: null, title: 'New check', severity: 'MAJOR', refs: [], suggestion: 'Add a condition or two so the assistant has something to check.', body: 'Describe what the agent should check, in plain language.\n\nFields to look at: {  }\n\n- ', timeline: [{ color: 'var(--me-blue)', label: 'Created', date: 'just now', detail: 'New check.' }] }; return { extraChecks: [nc, ...s.extraChecks], newSeq: s.newSeq + 1, editingId: id, section: 'checks' } }),
+    typeFilters,
+    // Two kinds of card, so the "New check" button is a choice, not a default.
+    newMenuOpen: S.newMenuOpen,
+    toggleNewMenu: () => setState((s) => ({ newMenuOpen: !s.newMenuOpen })),
+    closeNewMenu: () => setState({ newMenuOpen: false }),
+    newTypes: ['rule', 'requirement'].map((t) => ({
+      id: t, label: CARD_TYPES[t].label + ' card', desc: CARD_TYPES[t].hint,
+      icon: CARD_TYPES[t].icon, color: CARD_TYPES[t].color, bg: CARD_TYPES[t].bg,
+      onPick: () => newCheck(t),
+    })),
+    newCheck: () => newCheck('requirement'),
 
     // Agents list
     newAgent: () => setState((s) => { const id = 'agent' + reqId(); const a = { id, name: 'New agent', cat: 'Uncategorised', status: 'Draft', statusTone: 'neutral', cov: '', covColor: 'var(--me-grey-70)', summary: 'What this agent reads.', eyebrow: '', description: '', domainId: '', owner: '', version: '', icon: 'bot', accent: '#525355', behavior: '', config: { tools: [] } }; return { extraAgents: [...s.extraAgents, a], section: 'agents', view: 'detail', activeAgentId: id, detailTab: 'checkpoints', panel: null } }),
