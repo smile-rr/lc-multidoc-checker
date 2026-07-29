@@ -1,5 +1,5 @@
 import { ellipsis } from '@shared/ds/text'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Icon from '@shared/ds/Icon'
 import Button from '@shared/ds/Button'
 import Select from '@shared/ds/Select'
@@ -21,14 +21,23 @@ import RequirementCard from './RequirementCard'
 // `check` is the view-model produced by store.buildCheck().
 export default function Check({ check }) {
   const [menuOpen, setMenuOpen] = useState(false)
+  // A card you just created takes the caret and brings itself into view, so
+  // adding one never means hunting for where it landed.
+  const titleRef = useRef(null)
+  useEffect(() => {
+    if (!check.isNew || !titleRef.current) return
+    titleRef.current.focus()
+    titleRef.current.select?.()
+    titleRef.current.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [check.isNew])
   return (
     <div
       data-review-card
       style={{
         background: '#fff',
-        border: `1px solid ${check.cardBorder}`,
+        border: `1px solid ${check.isNew ? 'var(--me-blue)' : check.cardBorder}`,
         borderRadius: 14,
-        boxShadow: '0 2px 8px rgba(27,28,30,.05)',
+        boxShadow: check.isNew ? '0 0 0 3px rgba(4,115,234,.10)' : '0 2px 8px rgba(27,28,30,.05)',
         opacity: check.rowOpacity,
         padding: '14px 18px',
       }}
@@ -51,6 +60,7 @@ export default function Check({ check }) {
         </span>
         <TypeBadge check={check} />
         <input
+          ref={titleRef}
           className="inline-edit"
           value={check.title}
           onChange={check.onChangeTitle}
@@ -212,7 +222,7 @@ export default function Check({ check }) {
               </span>
             ))}
           </div>
-          <button onClick={check.onCancel} style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: 'var(--me-grey-70)', fontWeight: 600, paddingBottom: 8 }}>Cancel</button>
+          <button onClick={check.onCancel} title={check.isNew ? 'Discard this new card — it has not been created yet' : 'Undo the changes made since you started editing'} style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: check.isNew ? 'var(--status-error)' : 'var(--me-grey-70)', fontWeight: 600, paddingBottom: 8 }}>{check.cancelLabel}</button>
           <Button variant="primary" size="sm" onClick={check.onSave} disabled={!check.canSave}>Save</Button>
         </div>
       )}

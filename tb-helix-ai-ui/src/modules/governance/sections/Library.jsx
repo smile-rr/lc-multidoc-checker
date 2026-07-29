@@ -17,7 +17,7 @@ const ARTICLE_MAX = 3000
 // default, horizontal-scroll on overflow) above the reader for the active book.
 export default function Library({ v }) {
   return (
-    <Page width="list">
+    <Page width="detail">
       {/* Books first — a sticky bar so they stay visible while reading. Add/Import
           are secondary, pinned to the right as compact icons. */}
       <div style={booksBar}>

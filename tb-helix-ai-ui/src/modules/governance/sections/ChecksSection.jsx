@@ -5,6 +5,9 @@ import Toolbar from '@shared/ds/Toolbar'
 import SearchBar from '@shared/ds/SearchBar'
 import ViewSwitch from '@shared/ds/ViewSwitch'
 import Chip from '@shared/ds/Chip'
+import Select from '@shared/ds/Select'
+import SortHeader from '@shared/ds/SortHeader'
+import Eyebrow from '@shared/ds/Eyebrow'
 import { Menu, MenuItem } from '@shared/ds/Menu'
 import { listWrap, listHead } from '@shared/ds/listStyles'
 import Check from '../components/Check'
@@ -47,12 +50,25 @@ export default function ChecksSection({ v }) {
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, opacity: 0.72 }}>{tf.count}</span>
           </Chip>
         ))}
+        {/* Grouping belongs to the cards view: rows sort by column, cards don't
+            have columns, and a wall of them needs headings to be findable. */}
+        {!v.isChecksList && (
+          <span style={{ marginLeft: 'auto' }}>
+            <Select size="sm" value={v.checkGroupBy} onChange={v.setCheckGroupBy} options={v.groupByOptions} style={{ height: 30, borderRadius: 999, padding: '0 10px' }} />
+          </span>
+        )}
       </div>
 
       {v.isChecksList ? (
         <div style={listWrap}>
           <div style={{ ...CHECKS_COLS, ...listHead }}>
-            <span /><span>ID</span><span>Kind</span><span>Check</span><span>Severity</span><span>In Agent</span><span />
+            <span />
+            <SortHeader label="ID" {...v.checkSortCol('id')} />
+            <SortHeader label="Kind" {...v.checkSortCol('kind')} />
+            <SortHeader label="Check" {...v.checkSortCol('title')} />
+            <SortHeader label="Severity" {...v.checkSortCol('severity')} />
+            <SortHeader label="In Agent" {...v.checkSortCol('agent')} />
+            <span />
           </div>
           {v.libChecks.map((check) => (
             <CheckRow key={check.id} check={check} />
@@ -60,8 +76,17 @@ export default function ChecksSection({ v }) {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {v.libChecks.map((check) => (
-            <Check key={check.id} check={check} />
+          {v.checkGroups.map((g) => (
+            <div key={g.key} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {!g.ungrouped && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 9, position: 'sticky', top: 'calc(var(--nav-h, 56px) + 60px)', zIndex: 2, background: 'var(--me-grey-08)', padding: '6px 0 4px' }}>
+                  <Eyebrow>{g.name}</Eyebrow>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>{g.count}</span>
+                  <span style={{ flex: 1, height: 1, background: 'var(--me-grey-15)' }} />
+                </div>
+              )}
+              {g.checks.map((check) => <Check key={check.id} check={check} />)}
+            </div>
           ))}
         </div>
       )}

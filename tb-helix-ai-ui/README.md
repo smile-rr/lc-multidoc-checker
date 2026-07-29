@@ -379,7 +379,7 @@ adjacent panels.
 | `Select` | The native `<select>`, styled once | A short fixed list — it brings keyboard and typeahead with it |
 | `TextArea` | The multi-line field: `maxLines`, `maxLength`, counter | Every editable prose field |
 | `Button` | The pill button — `primary`/`secondary`/`ghost`/`danger`, `sm`/`md` | Any committed action |
-| `Page`, `Toolbar`, `listWrap/listHead/listRow` | Page width tiers, the sticky section toolbar, list-table chrome | Section layout |
+| `Page`, `Toolbar`, `listWrap/listHead/listRow`, `SortHeader` | Page width tiers, the sticky section toolbar, list-table chrome, sortable headings | Section layout |
 | `ellipsis`, `clampLines(n)` | Text-overflow styles | "This must not push the row wider" |
 
 Plus the domain-neutral heavies: `PdfViewer`, `PageStrip`, `DocumentSurface`,
@@ -397,6 +397,51 @@ stacked a label over a hint turned that into *horizontal* centring without
 meaning to. `ds/Select` is the other half: a native `<select>`, which is right
 for a short fixed list because it brings keyboard, typeahead and the platform's
 own popup with it. Two components, so a dropdown cannot drift again.
+
+### Where a new item lands, and how you get rid of it
+
+A new item goes where you will look for it next, which depends on whether its
+position means anything:
+
+| | Where | Why |
+|---|---|---|
+| Checks, dictionary fields, document types, books | **Top** | Order is whatever you sorted by, so the new one leads. You clicked "new" — it should be under your cursor |
+| Agent groups, a book's sections and articles | **Bottom** | Order *is* the content: a group's sequence is its run order, an article's place is its place in the rulebook. Prepending would silently renumber |
+
+In both cases the new item takes the caret and scrolls itself into view, and is
+outlined until it is named. Putting it on top only solves half the problem — the
+page may not be scrolled to the top either. Sorting is also suspended while an
+item is being added, because a row that reorders itself out from under you as you
+type its name is worse than an unsorted list.
+
+Two words for two outcomes:
+
+- **Discard** — on an item created by this edit. It never existed, nothing cites
+  it, so it goes with no confirm. Cancel used to leave a just-created card
+  behind as a draft, which read as "created it anyway".
+- **Cancel** — on an item that existed before the edit. Reverts the typing.
+- **Delete** — on a committed item, and still guarded: a draft that never ran can
+  go; anything that has examined a case is retired instead.
+
+### Sort the list, group the cards
+
+A list is read column by column, so its headings sort (`ds/SortHeader`; caret on
+the active column only — an idle up-down arrow on all five headings is five
+pieces of chrome saying "you could click me", which the pointer already says).
+Clicking the sorted column reverses it, clicking another starts it ascending.
+
+Cards don't sort usefully, because you never see two at once to compare. What
+helps there is **grouping**: by kind, severity or agent, each with a count and a
+sticky heading. It turns one long scroll into a few named runs, so "where am I"
+has an answer. Sorting still applies inside each group.
+
+### One measure per surface
+
+Governance's four sections sit under one tab bar, so they share one width (1240)
+— and so does the tab bar itself. They had drifted to three tiers, which made
+switching tabs shift the frame and read as a layout bug. Where a single card has
+no use for the full width, the page keeps the tier and the card caps itself: the
+frame stays put, the content decides its measure.
 
 ### A rule card is a form, and it behaves like one
 

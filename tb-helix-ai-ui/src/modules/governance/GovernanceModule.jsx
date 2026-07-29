@@ -112,7 +112,9 @@ export default function GovernanceModule() {
           they are governance's own surfaces, and the rail stays one row per
           module so the two products read as peers. */}
       <div ref={navRef} style={{ background: '#fff', borderBottom: '1px solid var(--me-grey-15)', position: 'sticky', top: 0, zIndex: Z.nav }}>
-        <div style={{ maxWidth: 1080, margin: '0 auto', padding: '0 32px', display: 'flex', alignItems: 'center', gap: 26 }}>
+        {/* Same measure as the sections below it, so the tabs line up with the
+            content they switch between rather than sitting inside it. */}
+        <div style={{ maxWidth: 1240, margin: '0 auto', padding: '0 32px', display: 'flex', alignItems: 'center', gap: 26 }}>
           {SECTIONS.map((s) => {
             const on = s.id === current
             return (

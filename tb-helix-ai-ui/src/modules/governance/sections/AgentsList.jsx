@@ -13,7 +13,7 @@ import { listWrap, listHead } from '@shared/ds/listStyles'
 // AI teammate. Cards (gallery) + List views; agents are deletable.
 export default function AgentsList({ v }) {
   return (
-    <Page width="list">
+    <Page width="detail">
       <Toolbar
         left={
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 13, color: 'var(--me-grey-70)' }}>

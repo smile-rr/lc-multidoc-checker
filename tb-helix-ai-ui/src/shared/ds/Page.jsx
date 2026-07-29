@@ -1,8 +1,13 @@
-// Standard page container. One of three width tiers so every section aligns:
-//   list   → 1120 (agents/dictionary/library lists & galleries)
-//   detail → 1240 (checks, agent detail, check detail — anywhere a check card
-//                  is shown, so one card is one width wherever you meet it)
-//   narrow → 960  (reading columns / forms)
+// Standard page container.
+//
+// The tier belongs to the *product surface*, not to the screen: every section
+// under one tab bar shares a measure, so switching tabs never shifts the frame.
+// Where a single card has no use for the full width, the page keeps the tier and
+// the card caps itself — the frame stays put, the content decides its measure.
+//
+//   detail → 1240  all four governance surfaces, and their detail pages
+//   list   → 1120  lc-check's own lists
+//   narrow → 960   reading columns / forms
 const MAX = { list: 1120, detail: 1240, narrow: 960 }
 
 export default function Page({ width = 'list', children, style }) {

@@ -140,6 +140,14 @@ export const initialState = {
   importOpen: false, importStage: 'upload', importItems: [], importName: '', books: null, activeBookId: null, libSearch: '', tocCollapsed: {}, artEditingId: null, libAddOpen: false,
   dictTab: 'fields', dictView: 'list', dictSearch: '', dictDetail: null, dictFields: null, dictDocs: null, dictDocPickerId: null,
   rules: {}, operandOpen: null, typeFilter: 'all', newMenuOpen: false,
+  // The item created by the last "new …" click. Cancel on it means "don't
+  // create it" rather than "undo my typing", so it is tracked separately from
+  // the edit snapshot.
+  createdId: null,
+  // Sort is per surface: a list is read by column, so it remembers a column.
+  checkSort: { key: 'id', dir: 'asc' }, dictSort: { key: 'name', dir: 'asc' },
+  // Cards are browsed rather than compared, so they group instead.
+  checkGroupBy: 'none',
   density: 'list', expandedIds: {}, placements: {}, activeCheckId: null,
   dragId: null, dragOverGid: null, dragGroupGid: null, activeAgentId: 'expiry', checkFrom: null,
   agentChecksView: 'list', agentArrange: false, reviewAnchorY: null, reviewAnchorX: null, confirm: null, bookQuery: '',
@@ -147,6 +155,37 @@ export const initialState = {
   agentGroups: seed.groups,
   comments: seed.comments,
 }
+
+// A new item goes where you will look for it next.
+//
+// Where order is arbitrary — the dictionary, the shelf of books, the check
+// library — that is the top: you clicked "new", so the new thing should be the
+// thing under your cursor, not something you have to scroll to find. Where the
+// order is itself the content — an agent's groups run in sequence, a book's
+// articles sit in the rulebook's own order — appending is the only honest
+// answer, and the interface scrolls you to it instead of moving it.
+const prepend = (list, item) => [item, ...list]
+
+// Sorting compares like with like: numbers numerically, everything else as
+// case-folded text, with a stable fallback so equal keys keep their order.
+function sortBy(rows, pick, dir) {
+  const sign = dir === 'desc' ? -1 : 1
+  return rows
+    .map((r, i) => [r, i])
+    .sort(([a, ai], [b, bi]) => {
+      const av = pick(a)
+      const bv = pick(b)
+      let c
+      if (typeof av === 'number' && typeof bv === 'number') c = av - bv
+      else c = String(av ?? '').localeCompare(String(bv ?? ''), undefined, { sensitivity: 'base', numeric: true })
+      return c !== 0 ? c * sign : ai - bi
+    })
+    .map(([r]) => r)
+}
+
+// Clicking the column you are already sorting by reverses it; clicking another
+// starts that one ascending.
+const nextSort = (cur, key) => (cur.key === key ? { key, dir: cur.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' })
 
 // ---- Syntax highlighter for check bodies -----------------------------------
 function hl(text) {
@@ -199,7 +238,10 @@ export function deriveVals(state, setState) {
   // Every (field, document) pair the dictionary knows about — the vocabulary a
   // rule row picks its operands from.
   const operandBook = dictFieldList.flatMap((f) => (f.bindings || []).map((b) => ({ field: f.name, doc: b.doc, note: b.note })))
-  const allChecks = () => CHECKS.concat(S.extraChecks).filter((c) => !S.deletedCheckIds[c.id])
+  // Added checks lead the library. Prepending inside `extraChecks` is not enough
+  // on its own — concatenating the seed first would still push a new card below
+  // every seeded one, which is the position the author is not looking at.
+  const allChecks = () => S.extraChecks.concat(CHECKS).filter((c) => !S.deletedCheckIds[c.id])
   const valueOf = (c, field) => {
     const o = S.overrides[c.id]
     return o && o[field] !== undefined ? o[field] : c[field]
@@ -324,7 +366,7 @@ export function deriveVals(state, setState) {
         body: isRule ? '' : 'Say what must be true, one requirement per dash line.\n\n- ',
         timeline: [{ color: 'var(--me-blue)', label: 'Created', date: 'just now', detail: 'New ' + CARD_TYPES[isRule ? 'rule' : 'requirement'].label.toLowerCase() + ' card.' }],
       }
-      const patch = { extraChecks: [nc, ...s.extraChecks], newSeq: s.newSeq + 1, editingId: id, section: 'checks', newMenuOpen: false, typeFilter: 'all', density: 'cards' }
+      const patch = { extraChecks: prepend(s.extraChecks, nc), newSeq: s.newSeq + 1, editingId: id, createdId: id, section: 'checks', newMenuOpen: false, typeFilter: 'all', density: 'cards' }
       if (isRule) patch.rules = { ...s.rules, [id]: ruleBlank() }
       return patch
     })
@@ -537,10 +579,22 @@ export function deriveVals(state, setState) {
           const es = { ...s.editSnap }; delete es[c.id]
           const rs = { ...s.ruleSnap }; delete rs[c.id]
           const base = s.overrides[c.id] || snapNow
-          return { editingId: null, refsOpenId: null, helpOpenId: null, operandOpen: null, editSnap: es, ruleSnap: rs, overrides: { ...s.overrides, [c.id]: { ...base, title: (title || '').trim(), body: (body || '').trim() } } }
+          return { editingId: null, createdId: null, refsOpenId: null, helpOpenId: null, operandOpen: null, editSnap: es, ruleSnap: rs, overrides: { ...s.overrides, [c.id]: { ...base, title: (title || '').trim(), body: (body || '').trim() } } }
         })
       },
+      // Cancel on an item created by this edit means "don't create it". Nothing
+      // has been committed and no finding cites it, so it goes without a
+      // confirm — and the button says Discard, not Cancel.
+      isNew: S.createdId === c.id,
+      cancelLabel: S.createdId === c.id ? 'Discard' : 'Cancel',
       onCancel: () => setState((s) => {
+        if (s.createdId === c.id) {
+          const ov = { ...s.overrides }; delete ov[c.id]
+          const es = { ...s.editSnap }; delete es[c.id]
+          const rs = { ...s.ruleSnap }; delete rs[c.id]
+          const rules = { ...s.rules }; delete rules[c.id]
+          return { editingId: null, createdId: null, refsOpenId: null, helpOpenId: null, operandOpen: null, overrides: ov, editSnap: es, ruleSnap: rs, rules, extraChecks: s.extraChecks.filter((x) => x.id !== c.id) }
+        }
         const snap = s.editSnap[c.id]
         const ov = { ...s.overrides }
         if (snap === undefined) delete ov[c.id]
@@ -550,7 +604,7 @@ export function deriveVals(state, setState) {
         const rs = { ...s.ruleSnap }
         if (isRule && rs[c.id] !== undefined) rules[c.id] = rs[c.id]
         delete rs[c.id]
-        return { editingId: null, refsOpenId: null, helpOpenId: null, operandOpen: null, overrides: ov, editSnap: es, rules, ruleSnap: rs }
+        return { editingId: null, createdId: null, refsOpenId: null, helpOpenId: null, operandOpen: null, overrides: ov, editSnap: es, rules, ruleSnap: rs }
       }),
       onOpen: () => setState((s) => ({ activeCheckId: c.id, editingId: null, panel: null, checkFrom: { section: s.section, view: s.view, activeAgentId: s.activeAgentId } })),
       onComment: (e) => { if (e && e.stopPropagation) e.stopPropagation(); toggleReview(c.id, e) },
@@ -623,9 +677,49 @@ export function deriveVals(state, setState) {
   }
   const typeFilter = S.typeFilter || 'all'
   const matchedChecks = allChecks().filter((c) => !q || searchText(c).toLowerCase().includes(q))
-  const libChecks = matchedChecks
-    .filter((c) => typeFilter === 'all' || typeOf(c) === typeFilter)
-    .map((c) => buildCheck(c, 'library'))
+  const shown = matchedChecks.filter((c) => typeFilter === 'all' || typeOf(c) === typeFilter)
+
+  // A list is read column by column, so it sorts. A newly added card stays put
+  // at the top until you sort deliberately — otherwise naming it moves it.
+  const SEV_RANK = { CRITICAL: 0, MAJOR: 1, MINOR: 2 }
+  const checkSort = S.createdId ? { key: 'none', dir: 'asc' } : S.checkSort
+  const CHECK_SORT = {
+    id: (c) => c.id,
+    kind: (c) => c.typeLabel,
+    title: (c) => c.title,
+    severity: (c) => SEV_RANK[c.severity] ?? 9,
+    agent: (c) => c.inLabel,
+  }
+  const built = shown.map((c) => buildCheck(c, 'library'))
+  const libChecks = CHECK_SORT[checkSort.key] ? sortBy(built, CHECK_SORT[checkSort.key], checkSort.dir) : built
+  const checkSortCol = (key) => ({ active: checkSort.key === key, dir: checkSort.dir, onSort: () => setState((x) => ({ checkSort: nextSort(x.checkSort, key), createdId: null })) })
+
+  // A wall of tall cards can't be compared the way rows can — you never see two
+  // at once. What helps there is grouping: it turns one long scroll into a few
+  // named runs, each with a count, so "where am I" has an answer. Sorting still
+  // applies, inside each group.
+  const GROUPERS = {
+    none: null,
+    kind: { label: 'Kind', of: (c) => c.typeLabel },
+    severity: { label: 'Severity', of: (c) => ({ CRITICAL: 'Critical', MAJOR: 'Major', MINOR: 'Minor' }[c.severity] || c.severity), order: ['Critical', 'Major', 'Minor'] },
+    agent: { label: 'Agent', of: (c) => c.inLabel.split(' · ')[0] },
+  }
+  const groupBy = S.checkGroupBy || 'none'
+  const grouper = GROUPERS[groupBy]
+  const checkGroups = !grouper
+    ? [{ key: 'all', name: '', count: 0, checks: libChecks, ungrouped: true }]
+    : (() => {
+        const buckets = new Map()
+        libChecks.forEach((c) => {
+          const k = grouper.of(c) || 'Unassigned'
+          if (!buckets.has(k)) buckets.set(k, [])
+          buckets.get(k).push(c)
+        })
+        let keys = [...buckets.keys()]
+        if (grouper.order) keys.sort((a, b) => (grouper.order.indexOf(a) + 1 || 99) - (grouper.order.indexOf(b) + 1 || 99))
+        else keys.sort((a, b) => (a === 'Not in an agent' ? 1 : b === 'Not in an agent' ? -1 : a.localeCompare(b)))
+        return keys.map((k) => ({ key: k, name: k, count: buckets.get(k).length, checks: buckets.get(k) }))
+      })()
   const typeFilters = [
     { id: 'all', label: 'All' },
     { id: 'rule', label: 'Rule cards' },
@@ -753,6 +847,7 @@ export function deriveVals(state, setState) {
   const patchField = (id, fn) => setDF((fs) => fs.map((x) => (x.id === id ? fn(x) : x)))
   const buildFieldRow = (f) => ({
     id: f.id, name: f.name, description: f.description,
+    isNew: S.createdId === f.id,
     onOpen: () => setState({ dictDetail: { kind: 'field', id: f.id } }),
     usedLabel: fieldUsed(f.name) + (fieldUsed(f.name) === 1 ? ' check' : ' checks'),
     docsLine: bindingDocs(f).join(' · ') || '—',
@@ -760,7 +855,10 @@ export function deriveVals(state, setState) {
     onChangeDesc: (e) => { const v = e.target.value; patchField(f.id, (x) => ({ ...x, description: v })) },
     onBlurDesc: () => patchField(f.id, (x) => ({ ...x, description: (x.description || '').trim() })),
     usedCount: fieldUsed(f.name),
+    removeTip: S.createdId === f.id ? 'Discard this new field' : 'Remove this field',
     onRemove: () => {
+      // Just added and nothing has been said about it yet — no confirm to read.
+      if (S.createdId === f.id) { setDF((fs) => fs.filter((x) => x.id !== f.id)); setState({ createdId: null, dictDetail: null }); return }
       const used = fieldUsed(f.name)
       return used
         ? requestConfirm({
@@ -789,14 +887,16 @@ export function deriveVals(state, setState) {
   })
   const docUsed = (name) => dictFields.filter((f) => bindingDocs(f).includes(name)).length
   const buildDocRow = (d) => ({
-    id: d.id, key: d.key, name: d.name, description: d.description, usedLabel: docUsed(d.name) + (docUsed(d.name) === 1 ? ' field' : ' fields'),
+    id: d.id, key: d.key, name: d.name, description: d.description, isNew: S.createdId === d.id, usedLabel: docUsed(d.name) + (docUsed(d.name) === 1 ? ' field' : ' fields'),
     onOpen: () => setState({ dictDetail: { kind: 'doc', id: d.id } }),
     onChangeKey: (e) => { const v = e.target.value; setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, key: v } : x))) },
     onChangeName: (e) => { const v = e.target.value; setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, name: v } : x))) },
     onChangeDesc: (e) => { const v = e.target.value; setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, description: v } : x))) },
     onBlurDesc: () => setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, description: (x.description || '').trim() } : x))),
     usedCount: docUsed(d.name),
+    removeTip: S.createdId === d.id ? 'Discard this new document type' : 'Remove this document type',
     onRemove: () => {
+      if (S.createdId === d.id) { setDD((ds) => ds.filter((x) => x.id !== d.id)); setState({ createdId: null, dictDetail: null }); return }
       const used = docUsed(d.name)
       return used
         ? requestConfirm({
@@ -812,8 +912,16 @@ export function deriveVals(state, setState) {
           })
     },
   })
-  const fieldRows = dictFields.filter((f) => !dq || (f.name + ' ' + (f.description || '') + ' ' + bindingDocs(f).join(' ') + ' ' + (f.bindings || []).map((b) => b.note || '').join(' ')).toLowerCase().includes(dq)).map(buildFieldRow)
-  const docRows = dictDocs.filter((d) => !dq || (d.key + ' ' + d.name + ' ' + (d.description || '')).toLowerCase().includes(dq)).map(buildDocRow)
+  // Sorted, except while an item is being added: a row that reorders itself out
+  // from under the cursor as you type its name is worse than an unsorted list.
+  const dictSort = S.createdId ? { key: 'none', dir: 'asc' } : S.dictSort
+  const FIELD_SORT = { name: (r) => r.name, description: (r) => r.description || '', sources: (r) => r.bindings.length, used: (r) => r.usedCount }
+  const DOC_SORT = { key: (r) => r.key, name: (r) => r.name, description: (r) => r.description || '', used: (r) => r.usedCount }
+  const fieldRows0 = dictFields.filter((f) => !dq || (f.name + ' ' + (f.description || '') + ' ' + bindingDocs(f).join(' ') + ' ' + (f.bindings || []).map((b) => b.note || '').join(' ')).toLowerCase().includes(dq)).map(buildFieldRow)
+  const docRows0 = dictDocs.filter((d) => !dq || (d.key + ' ' + d.name + ' ' + (d.description || '')).toLowerCase().includes(dq)).map(buildDocRow)
+  const fieldRows = FIELD_SORT[dictSort.key] ? sortBy(fieldRows0, FIELD_SORT[dictSort.key], dictSort.dir) : fieldRows0
+  const docRows = DOC_SORT[dictSort.key] ? sortBy(docRows0, DOC_SORT[dictSort.key], dictSort.dir) : docRows0
+  const dictSortCol = (key) => ({ active: dictSort.key === key, dir: dictSort.dir, onSort: () => setState((x) => ({ dictSort: nextSort(x.dictSort, key), createdId: null })) })
   let dictDetail = null
   if (S.dictDetail) {
     if (S.dictDetail.kind === 'field') { const f = dictFields.find((x) => x.id === S.dictDetail.id); if (f) dictDetail = { kind: 'field', row: buildFieldRow(f) } }
@@ -836,7 +944,7 @@ export function deriveVals(state, setState) {
     bookStrip, bookQuery: S.bookQuery, setBookQuery: (e) => setState({ bookQuery: e.target.value }),
     onDeleteActiveBook: () => requestConfirm({ title: 'Delete book?', message: `“${active.title}” and its ${active.articles.length} article${active.articles.length === 1 ? '' : 's'} will be permanently removed.`, confirmLabel: 'Delete book', onConfirm: () => deleteBook(active.id) }),
     activeTitle: active.title, activeSubtitle: active.subtitle, readerSections, libEmpty,
-    addBook: () => { const id = 'book' + reqId(); setBooks((bs) => [...bs, { id, title: 'New book', subtitle: 'Untitled reference', articles: [] }]); setState({ activeBookId: id }) },
+    addBook: () => { const id = 'book' + reqId(); setBooks((bs) => prepend(bs, { id, title: 'New book', subtitle: 'Untitled reference', articles: [] })); setState({ activeBookId: id, createdId: id }) },
     addSection: () => { const id = active.id; const code = 'ART-' + reqId(); setBooks((bs) => bs.map((b) => (b.id === id ? { ...b, articles: [...b.articles, { aid: code, code, title: 'New article', section: 'New section', read: '', isNew: true }] } : b))); setState({ artEditingId: code, libAddOpen: false }) },
     addArticle: () => { const id = active.id; const code = 'ART-' + reqId(); setBooks((bs) => bs.map((b) => (b.id === id ? { ...b, articles: [...b.articles, { aid: code, code, title: 'New article', section: '', read: '', isNew: true }] } : b))); setState({ artEditingId: code, libAddOpen: false }) },
     addMenuOpen: S.libAddOpen, toggleAddMenu: () => setState((s) => ({ libAddOpen: !s.libAddOpen })),
@@ -865,10 +973,10 @@ export function deriveVals(state, setState) {
     dictCardsBg: S.dictView === 'cards' ? 'var(--me-blue)' : '#fff', dictCardsFg: S.dictView === 'cards' ? '#fff' : 'var(--me-grey-70)',
     dictListBg: S.dictView === 'list' ? 'var(--me-blue)' : '#fff', dictListFg: S.dictView === 'list' ? '#fff' : 'var(--me-grey-70)',
     dictSearch: S.dictSearch, setDictSearch: (e) => setState({ dictSearch: e.target.value }),
-    fieldRows, docRows, isDictDetail: !!dictDetail, dictDetail,
+    fieldRows, docRows, isDictDetail: !!dictDetail, dictDetail, dictSortCol,
     dictCountLabel: (S.dictTab === 'doctypes' ? docRows.length : fieldRows.length) + ' of ' + (S.dictTab === 'doctypes' ? dictDocs.length : dictFields.length),
-    addField: () => setDF((fs) => [...fs, { id: 'f' + reqId(), name: 'New field', description: '', bindings: [] }]),
-    addDoc: () => setDD((ds) => [...ds, { id: 'd' + reqId(), key: '', name: 'New document type', description: '' }]),
+    addField: () => { const id = 'f' + reqId(); setDF((fs) => prepend(fs, { id, name: '', description: '', bindings: [] })); setState({ dictView: 'cards', createdId: id, dictSort: { key: 'none', dir: 'asc' } }) },
+    addDoc: () => { const id = 'd' + reqId(); setDD((ds) => prepend(ds, { id, key: '', name: '', description: '' })); setState({ dictView: 'cards', createdId: id, dictSort: { key: 'none', dir: 'asc' } }) },
 
     // Nav state
     navChecksBorder: section === 'checks' ? 'var(--me-blue)' : 'transparent', navChecksColor: section === 'checks' ? 'var(--me-ink)' : 'var(--me-grey-70)', navChecksWeight: section === 'checks' ? 700 : 500,
@@ -885,6 +993,11 @@ export function deriveVals(state, setState) {
     search: S.search, setSearch: (e) => setState({ search: e.target.value }),
     exportHref: encodeURIComponent(exportMd),
     typeFilters,
+    checkSortCol,
+    checkGroups,
+    checkGroupBy: groupBy,
+    groupByOptions: Object.entries(GROUPERS).map(([id, g]) => ({ value: id, label: g ? `Group by ${g.label.toLowerCase()}` : 'No grouping' })),
+    setCheckGroupBy: (e) => setState({ checkGroupBy: e.target.value }),
     // Two kinds of card, so the "New check" button is a choice, not a default.
     newMenuOpen: S.newMenuOpen,
     toggleNewMenu: () => setState((s) => ({ newMenuOpen: !s.newMenuOpen })),

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Icon from '@shared/ds/Icon'
 import Button from '@shared/ds/Button'
 import Page from '@shared/ds/Page'
@@ -10,6 +10,7 @@ import ViewSwitch from '@shared/ds/ViewSwitch'
 import Card from '@shared/ds/Card'
 import Chip from '@shared/ds/Chip'
 import Eyebrow from '@shared/ds/Eyebrow'
+import SortHeader from '@shared/ds/SortHeader'
 import IconButton from '@shared/ds/IconButton'
 import { Menu, MenuItem, MenuEmpty } from '@shared/ds/Menu'
 import { ellipsis, clampLines } from '@shared/ds/text'
@@ -27,15 +28,17 @@ export default function Dictionary({ v }) {
   if (v.isDictDetail) {
     const d = v.dictDetail
     return (
-      <Page width="narrow">
+      <Page width="detail">
         <DetailBack label="Back to dictionary" onBack={d.onBack} />
-        {d.kind === 'field' ? <FieldCard f={d.row} defaultOpen /> : <DocCard d={d.row} />}
+        <div style={{ maxWidth: 860 }}>
+          {d.kind === 'field' ? <FieldCard f={d.row} defaultOpen /> : <DocCard d={d.row} />}
+        </div>
       </Page>
     )
   }
 
   return (
-    <Page width="list">
+    <Page width="detail">
       <Toolbar
         left={
           <>
@@ -63,7 +66,11 @@ export default function Dictionary({ v }) {
       {v.dictIsFields && v.dictIsListView && (
         <div style={listWrap}>
           <div style={{ ...fieldGrid, ...listHead }}>
-            <span>Field</span><span>Description</span><span>Read from</span><span>Used by</span><span />
+            <SortHeader label="Field" {...v.dictSortCol('name')} />
+            <SortHeader label="Description" {...v.dictSortCol('description')} />
+            <SortHeader label="Read from" {...v.dictSortCol('sources')} />
+            <SortHeader label="Used by" {...v.dictSortCol('used')} />
+            <span />
           </div>
           {v.fieldRows.map((f) => (
             <div key={f.id} onClick={f.onOpen} style={{ ...fieldGrid, ...listRow, cursor: 'pointer' }}>
@@ -87,7 +94,11 @@ export default function Dictionary({ v }) {
       {v.dictIsDocs && v.dictIsListView && (
         <div style={listWrap}>
           <div style={{ ...docGrid, ...listHead }}>
-            <span>Key</span><span>Name</span><span>Description</span><span>Used by</span><span />
+            <SortHeader label="Key" {...v.dictSortCol('key')} />
+            <SortHeader label="Name" {...v.dictSortCol('name')} />
+            <SortHeader label="Description" {...v.dictSortCol('description')} />
+            <SortHeader label="Used by" {...v.dictSortCol('used')} />
+            <span />
           </div>
           {v.docRows.map((d) => (
             <div key={d.id} onClick={d.onOpen} style={{ ...docGrid, ...listRow, cursor: 'pointer' }}>
@@ -120,14 +131,15 @@ export default function Dictionary({ v }) {
 // does, which is what you need to answer "where does this come from" without
 // opening anything.
 function FieldCard({ f, defaultOpen = false }) {
-  const [open, setOpen] = useState(defaultOpen)
+  const [open, setOpen] = useState(defaultOpen || f.isNew)
+  const nameRef = useNewItemFocus(f.isNew)
   const n = f.bindings.length
   return (
-    <Card pad="sm">
+    <Card pad="sm" style={f.isNew ? newCard : undefined}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <input className="inline-edit" value={f.name} onChange={f.onChangeName} placeholder="Business field name" style={nameInput} />
+        <input ref={nameRef} className="inline-edit" value={f.name} onChange={f.onChangeName} placeholder="Business field name" style={nameInput} />
         <Chip size="sm" title="Checks that read this field" style={{ flexShrink: 0, fontWeight: 600, color: 'var(--me-grey-70)' }}>{f.usedLabel}</Chip>
-        <IconButton icon="trash-2" title="Remove this field" tone="danger" onClick={f.onRemove} />
+        <IconButton icon="trash-2" title={f.removeTip} tone="danger" onClick={f.onRemove} />
       </div>
       <TextArea className="inline-edit" value={f.description} onChange={f.onChangeDesc} onBlur={f.onBlurDesc} placeholder="What this field holds, in one line…" maxLines={3} maxLength={DESC_MAX} style={descArea} />
 
@@ -183,12 +195,13 @@ function FieldCard({ f, defaultOpen = false }) {
 }
 
 function DocCard({ d }) {
+  const nameRef = useNewItemFocus(d.isNew)
   return (
-    <Card pad="sm">
+    <Card pad="sm" style={d.isNew ? newCard : undefined}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <input className="inline-edit" value={d.key} onChange={d.onChangeKey} placeholder="KEY" style={{ width: 180, flexShrink: 0, padding: '6px 9px', fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--me-blue-deep)' }} />
-        <input className="inline-edit" value={d.name} onChange={d.onChangeName} placeholder="Document name" style={nameInput} />
-        <IconButton icon="trash-2" title="Remove this document type" tone="danger" onClick={d.onRemove} />
+        <input ref={nameRef} className="inline-edit" value={d.name} onChange={d.onChangeName} placeholder="Document name" style={nameInput} />
+        <IconButton icon="trash-2" title={d.removeTip} tone="danger" onClick={d.onRemove} />
       </div>
       <TextArea className="inline-edit" value={d.description} onChange={d.onChangeDesc} onBlur={d.onBlurDesc} placeholder="Short description of this document type…" maxLines={3} maxLength={DESC_MAX} style={descArea} />
     </Card>
@@ -197,6 +210,22 @@ function DocCard({ d }) {
 
 // A description is a one-breath definition, and a read note is one instruction:
 // both are capped so a card stays scannable rather than growing into an essay.
+// A new card takes the caret and brings itself into view. Adding something and
+// then having to find it is the whole of the complaint about appending; putting
+// it on top only solves half, because the page may not be scrolled to the top.
+function useNewItemFocus(isNew) {
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!isNew || !ref.current) return
+    ref.current.focus()
+    ref.current.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [isNew])
+  return ref
+}
+
+// Outlined until it is named, so it is obvious which row is the unfinished one.
+const newCard = { borderColor: 'var(--me-blue)', boxShadow: '0 0 0 3px rgba(4,115,234,.10)' }
+
 const DESC_MAX = 240
 const NOTE_MAX = 200
 
