@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import Icon from '@shared/ds/Icon'
 import Button from '@shared/ds/Button'
 import Page from '@shared/ds/Page'
@@ -15,6 +15,8 @@ import IconButton from '@shared/ds/IconButton'
 import { Menu, MenuItem, MenuEmpty } from '@shared/ds/Menu'
 import { ellipsis, clampLines } from '@shared/ds/text'
 import { listWrap, listHead, listRow } from '@shared/ds/listStyles'
+import { useNewItemFocus } from '@shared/lib/useNewItemFocus'
+import PendingNotice from '../components/PendingNotice'
 
 // Dictionary — the shared vocabulary of fields and document types.
 //
@@ -52,10 +54,11 @@ export default function Dictionary({ v }) {
         }
         right={
           <>
+            <PendingNotice pending={v.pending} />
             {v.dictIsFields ? (
-              <Button variant="primary" size="md" onClick={v.addField}>New field</Button>
+              <Button variant="primary" size="md" onClick={v.addField} disabled={v.addBlocked}>New field</Button>
             ) : (
-              <Button variant="primary" size="md" onClick={v.addDoc}>New document type</Button>
+              <Button variant="primary" size="md" onClick={v.addDoc} disabled={v.addBlocked}>New document type</Button>
             )}
             <ViewSwitch isList={v.dictIsListView} onList={v.setDictListView} onCards={v.setDictCards} />
           </>
@@ -135,7 +138,7 @@ function FieldCard({ f, defaultOpen = false }) {
   const nameRef = useNewItemFocus(f.isNew)
   const n = f.bindings.length
   return (
-    <Card pad="sm" style={f.isNew ? newCard : undefined}>
+    <Card pad="sm" data-item-id={f.id} style={f.isNew ? newCard : undefined}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <input ref={nameRef} className="inline-edit" value={f.name} onChange={f.onChangeName} placeholder="Business field name" style={nameInput} />
         <Chip size="sm" title="Checks that read this field" style={{ flexShrink: 0, fontWeight: 600, color: 'var(--me-grey-70)' }}>{f.usedLabel}</Chip>
@@ -197,7 +200,7 @@ function FieldCard({ f, defaultOpen = false }) {
 function DocCard({ d }) {
   const nameRef = useNewItemFocus(d.isNew)
   return (
-    <Card pad="sm" style={d.isNew ? newCard : undefined}>
+    <Card pad="sm" data-item-id={d.id} style={d.isNew ? newCard : undefined}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <input className="inline-edit" value={d.key} onChange={d.onChangeKey} placeholder="KEY" style={{ width: 180, flexShrink: 0, padding: '6px 9px', fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--me-blue-deep)' }} />
         <input ref={nameRef} className="inline-edit" value={d.name} onChange={d.onChangeName} placeholder="Document name" style={nameInput} />
@@ -210,19 +213,6 @@ function DocCard({ d }) {
 
 // A description is a one-breath definition, and a read note is one instruction:
 // both are capped so a card stays scannable rather than growing into an essay.
-// A new card takes the caret and brings itself into view. Adding something and
-// then having to find it is the whole of the complaint about appending; putting
-// it on top only solves half, because the page may not be scrolled to the top.
-function useNewItemFocus(isNew) {
-  const ref = useRef(null)
-  useEffect(() => {
-    if (!isNew || !ref.current) return
-    ref.current.focus()
-    ref.current.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  }, [isNew])
-  return ref
-}
-
 // Outlined until it is named, so it is obvious which row is the unfinished one.
 const newCard = { borderColor: 'var(--me-blue)', boxShadow: '0 0 0 3px rgba(4,115,234,.10)' }
 

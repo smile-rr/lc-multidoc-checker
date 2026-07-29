@@ -12,6 +12,7 @@ import { Menu, MenuItem } from '@shared/ds/Menu'
 import { listWrap, listHead } from '@shared/ds/listStyles'
 import Check from '../components/Check'
 import CheckRow, { CHECKS_COLS } from '../components/CheckRow'
+import PendingNotice from '../components/PendingNotice'
 
 // Checks library — Cards (layer-1 inline edit) or List (rows → detail page).
 //
@@ -31,7 +32,8 @@ export default function ChecksSection({ v }) {
             <a href={`data:text/markdown;charset=utf-8,${v.exportHref}`} download="lc-checks.md" style={exportBtn}>
               <Icon name="download" size={16} />Export
             </a>
-            <Button variant="secondary" size="md" onClick={v.openAdd}><Icon name="sparkles" size={16} />Import</Button>
+            <PendingNotice pending={v.pending} />
+            <Button variant="secondary" size="md" onClick={v.openAdd} disabled={v.addBlocked}><Icon name="sparkles" size={16} />Import</Button>
             <NewCheckButton v={v} />
             <ViewSwitch isList={v.isChecksList} onList={v.setChecksList} onCards={v.setChecksCards} />
           </>
@@ -105,7 +107,13 @@ function NewCheckButton({ v }) {
       top={50}
       width={340}
       trigger={
-        <Button variant="primary" size="md" onClick={v.toggleNewMenu}>
+        <Button
+          variant="primary"
+          size="md"
+          onClick={v.addBlocked ? v.pending.onGo : v.toggleNewMenu}
+          disabled={v.addBlocked}
+          style={v.addBlocked ? { pointerEvents: 'auto', cursor: 'not-allowed' } : undefined}
+        >
           New check<Icon name="chevron-down" size={16} />
         </Button>
       }

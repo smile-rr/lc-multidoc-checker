@@ -8,6 +8,7 @@
 // data — the backend service is wired in later.
 // ============================================================================
 
+import { focusItem } from '@shared/lib/useNewItemFocus'
 import seed from './data/seed.json' with { type: 'json' }
 
 const START_SECTION = 'checks'
@@ -238,6 +239,24 @@ export function deriveVals(state, setState) {
   // Every (field, document) pair the dictionary knows about — the vocabulary a
   // rule row picks its operands from.
   const operandBook = dictFieldList.flatMap((f) => (f.bindings || []).map((b) => ({ field: f.name, doc: b.doc, note: b.note })))
+  // ---- one open edit at a time --------------------------------------------
+  //
+  // The console had three independent edit slots — a check being edited, an
+  // article being written, and a just-added dictionary row that has not been
+  // named — and none of them stopped you starting a fourth thing. So you could
+  // click "New field" five times and end up with five unnamed rows, each having
+  // silently taken the edit off the last.
+  //
+  // There is one slot. While it is occupied every "New …" is blocked, and the
+  // block names the item holding it and takes you back to it. Resolving it means
+  // finishing it (Save) or dropping it (Discard); the interface never picks for
+  // you, because one of those loses typing and the other commits something
+  // half-written.
+  const pendingId = S.editingId || S.artEditingId || S.createdId || null
+  // An add while something is pending is not a mistake to scold — it is someone
+  // who lost track of where the unfinished thing is. So it takes them there.
+  const guard = (fn) => (...args) => { if (pendingId) { focusItem(pendingId); return } fn(...args) }
+
   // Added checks lead the library. Prepending inside `extraChecks` is not enough
   // on its own — concatenating the seed first would still push a new card below
   // every seeded one, which is the position the author is not looking at.
@@ -803,12 +822,16 @@ export function deriveVals(state, setState) {
     return {
       aid, code: a.code, title: a.title, anchorId: 'art-' + String(aid).replace(/[^a-z0-9]/gi, '-'),
       read: a.read || 'Reading text not yet added — click to write it.', editRead: a.read || '', usedByLabel: n + (n === 1 ? ' check' : ' checks'), isNew: !!a.isNew, editing, notEditing: !editing,
+      isNew: !!a.isNew,
+      cancelLabel: a.isNew ? 'Discard' : 'Cancel',
       onEdit: () => setState({ artEditingId: aid }),
       onChangeCode: (e) => patch('code', e.target.value),
       onChangeTitle: (e) => patch('title', e.target.value),
       onChangeRead: (e) => patch('read', e.target.value),
-      onSave: () => { setBooks((bs) => bs.map((b) => (b.id === bookId ? { ...b, articles: b.articles.map((x) => (aidOf(x) === aid ? { ...x, code: (x.code || '').trim(), title: (x.title || '').trim(), read: (x.read || '').trim() } : x)) } : b))); setState({ artEditingId: null }) },
-      onCancel: () => setState({ artEditingId: null }),
+      onSave: () => { setBooks((bs) => bs.map((b) => (b.id === bookId ? { ...b, articles: b.articles.map((x) => (aidOf(x) === aid ? { ...x, code: (x.code || '').trim(), title: (x.title || '').trim(), read: (x.read || '').trim(), isNew: false } : x)) } : b))); setState({ artEditingId: null }) },
+      // Discard on an article that was never written removes it, the same rule
+      // the check cards follow: Cancel reverts, Discard un-creates.
+      onCancel: () => { if (a.isNew) deleteArticle(bookId, aid); setState({ artEditingId: null }) },
       onDelete: () => requestConfirm({ title: 'Delete article?', message: `“${a.title}” will be removed from this book.`, confirmLabel: 'Delete article', onConfirm: () => deleteArticle(bookId, aid) }),
     }
   }
@@ -822,7 +845,7 @@ export function deriveVals(state, setState) {
     return {
       name: sec, hasName: sec !== '', key, open, caret: open ? 'chevron-down' : 'chevron-right', count: bySec[sec].length,
       onToggle: () => setState((x) => ({ tocCollapsed: { ...x.tocCollapsed, [key]: !x.tocCollapsed[key] } })),
-      onAddArticle: () => { const code = 'ART-' + reqId(); setBooks((bs) => bs.map((b) => (b.id === active.id ? { ...b, articles: [...b.articles, { aid: code, code, title: 'New article', section: sec, read: '', isNew: true }] } : b))); setState({ artEditingId: code }) },
+      onAddArticle: guard(() => { const code = 'ART-' + reqId(); setBooks((bs) => bs.map((b) => (b.id === active.id ? { ...b, articles: [...b.articles, { aid: code, code: '', title: '', section: sec, read: '', isNew: true }] } : b))); setState({ artEditingId: code }) }),
       onDeleteSection: () => requestConfirm({ title: 'Delete section?', message: `All ${bySec[sec].length} article${bySec[sec].length === 1 ? '' : 's'} in “${sec}” will be removed.`, confirmLabel: 'Delete section', onConfirm: () => deleteSection(active.id, sec) }),
       arts: bySec[sec].map((a) => mkArt(active.id, a)),
     }
@@ -928,6 +951,24 @@ export function deriveVals(state, setState) {
     else { const dd = dictDocs.find((x) => x.id === S.dictDetail.id); if (dd) dictDetail = { kind: 'doc', row: buildDocRow(dd) } }
     if (dictDetail) dictDetail.onBack = () => setState({ dictDetail: null })
   }
+  // What to call the thing that is holding the edit slot.
+  const pendingLabel = (() => {
+    if (!pendingId) return ''
+    const c = allChecks().find((x) => x.id === pendingId)
+    if (c) return c.id
+    const f = dictFields.find((x) => x.id === pendingId)
+    if (f) return f.name ? `“${f.name}”` : 'the new field'
+    const d = dictDocs.find((x) => x.id === pendingId)
+    if (d) return d.name ? `“${d.name}”` : 'the new document type'
+    const bk = books.find((x) => x.id === pendingId)
+    if (bk) return `“${bk.title}”`
+    for (const b of books) {
+      const a = b.articles.find((x) => aidOf(x) === pendingId)
+      if (a) return a.code || 'the new article'
+    }
+    return 'the item you started'
+  })()
+
   const importItems = (S.importItems || []).map((it, i) => ({ ...it, onToggle: () => setState((s) => ({ importItems: s.importItems.map((x, j) => (j === i ? { ...x, include: !x.include } : x)) })), mark: it.include ? '✓' : '', markBg: it.include ? 'var(--me-blue)' : '#fff', markBorder: it.include ? 'var(--me-blue)' : 'var(--me-grey-20)' }))
   const importCount = (S.importItems || []).filter((x) => x.include).length
 
@@ -944,9 +985,9 @@ export function deriveVals(state, setState) {
     bookStrip, bookQuery: S.bookQuery, setBookQuery: (e) => setState({ bookQuery: e.target.value }),
     onDeleteActiveBook: () => requestConfirm({ title: 'Delete book?', message: `“${active.title}” and its ${active.articles.length} article${active.articles.length === 1 ? '' : 's'} will be permanently removed.`, confirmLabel: 'Delete book', onConfirm: () => deleteBook(active.id) }),
     activeTitle: active.title, activeSubtitle: active.subtitle, readerSections, libEmpty,
-    addBook: () => { const id = 'book' + reqId(); setBooks((bs) => prepend(bs, { id, title: 'New book', subtitle: 'Untitled reference', articles: [] })); setState({ activeBookId: id, createdId: id }) },
-    addSection: () => { const id = active.id; const code = 'ART-' + reqId(); setBooks((bs) => bs.map((b) => (b.id === id ? { ...b, articles: [...b.articles, { aid: code, code, title: 'New article', section: 'New section', read: '', isNew: true }] } : b))); setState({ artEditingId: code, libAddOpen: false }) },
-    addArticle: () => { const id = active.id; const code = 'ART-' + reqId(); setBooks((bs) => bs.map((b) => (b.id === id ? { ...b, articles: [...b.articles, { aid: code, code, title: 'New article', section: '', read: '', isNew: true }] } : b))); setState({ artEditingId: code, libAddOpen: false }) },
+    addBook: guard(() => { const id = 'book' + reqId(); setBooks((bs) => prepend(bs, { id, title: 'New book', subtitle: 'Untitled reference', articles: [] })); setState({ activeBookId: id, createdId: id }) }),
+    addSection: guard(() => { const id = active.id; const code = 'ART-' + reqId(); setBooks((bs) => bs.map((b) => (b.id === id ? { ...b, articles: [...b.articles, { aid: code, code: '', title: '', section: 'New section', read: '', isNew: true }] } : b))); setState({ artEditingId: code, libAddOpen: false }) }),
+    addArticle: guard(() => { const id = active.id; const code = 'ART-' + reqId(); setBooks((bs) => bs.map((b) => (b.id === id ? { ...b, articles: [...b.articles, { aid: code, code: '', title: '', section: '', read: '', isNew: true }] } : b))); setState({ artEditingId: code, libAddOpen: false }) }),
     addMenuOpen: S.libAddOpen, toggleAddMenu: () => setState((s) => ({ libAddOpen: !s.libAddOpen })),
     libSearch: S.libSearch, setLibSearch: (e) => setState({ libSearch: e.target.value }),
 
@@ -975,8 +1016,8 @@ export function deriveVals(state, setState) {
     dictSearch: S.dictSearch, setDictSearch: (e) => setState({ dictSearch: e.target.value }),
     fieldRows, docRows, isDictDetail: !!dictDetail, dictDetail, dictSortCol,
     dictCountLabel: (S.dictTab === 'doctypes' ? docRows.length : fieldRows.length) + ' of ' + (S.dictTab === 'doctypes' ? dictDocs.length : dictFields.length),
-    addField: () => { const id = 'f' + reqId(); setDF((fs) => prepend(fs, { id, name: '', description: '', bindings: [] })); setState({ dictView: 'cards', createdId: id, dictSort: { key: 'none', dir: 'asc' } }) },
-    addDoc: () => { const id = 'd' + reqId(); setDD((ds) => prepend(ds, { id, key: '', name: '', description: '' })); setState({ dictView: 'cards', createdId: id, dictSort: { key: 'none', dir: 'asc' } }) },
+    addField: guard(() => { const id = 'f' + reqId(); setDF((fs) => prepend(fs, { id, name: '', description: '', bindings: [] })); setState({ dictView: 'cards', createdId: id, dictSort: { key: 'none', dir: 'asc' } }) }),
+    addDoc: guard(() => { const id = 'd' + reqId(); setDD((ds) => prepend(ds, { id, key: '', name: '', description: '' })); setState({ dictView: 'cards', createdId: id, dictSort: { key: 'none', dir: 'asc' } }) }),
 
     // Nav state
     navChecksBorder: section === 'checks' ? 'var(--me-blue)' : 'transparent', navChecksColor: section === 'checks' ? 'var(--me-ink)' : 'var(--me-grey-70)', navChecksWeight: section === 'checks' ? 700 : 500,
@@ -993,6 +1034,8 @@ export function deriveVals(state, setState) {
     search: S.search, setSearch: (e) => setState({ search: e.target.value }),
     exportHref: encodeURIComponent(exportMd),
     typeFilters,
+    addBlocked: !!pendingId,
+    pending: pendingId ? { id: pendingId, label: pendingLabel, onGo: () => focusItem(pendingId) } : null,
     checkSortCol,
     checkGroups,
     checkGroupBy: groupBy,
@@ -1005,12 +1048,12 @@ export function deriveVals(state, setState) {
     newTypes: ['rule', 'requirement'].map((t) => ({
       id: t, label: CARD_TYPES[t].label + ' card', desc: CARD_TYPES[t].hint,
       icon: CARD_TYPES[t].icon, color: CARD_TYPES[t].color, bg: CARD_TYPES[t].bg,
-      onPick: () => newCheck(t),
+      onPick: guard(() => newCheck(t)),
     })),
-    newCheck: () => newCheck('requirement'),
+    newCheck: guard(() => newCheck('requirement')),
 
     // Agents list
-    newAgent: () => setState((s) => { const id = 'agent' + reqId(); const a = { id, name: 'New agent', cat: 'Uncategorised', status: 'Draft', statusTone: 'neutral', cov: '', covColor: 'var(--me-grey-70)', summary: 'What this agent reads.', eyebrow: '', description: '', domainId: '', owner: '', version: '', icon: 'bot', accent: '#525355', behavior: '', config: { tools: [] } }; return { extraAgents: [...s.extraAgents, a], section: 'agents', view: 'detail', activeAgentId: id, detailTab: 'checkpoints', panel: null } }),
+    newAgent: guard(() => setState((s) => { const id = 'agent' + reqId(); const a = { id, name: 'New agent', cat: 'Uncategorised', status: 'Draft', statusTone: 'neutral', cov: '', covColor: 'var(--me-grey-70)', summary: 'What this agent reads.', eyebrow: '', description: '', domainId: '', owner: '', version: '', icon: 'bot', accent: '#525355', behavior: '', config: { tools: [] } }; return { extraAgents: [...s.extraAgents, a], section: 'agents', view: 'detail', activeAgentId: id, detailTab: 'checkpoints', panel: null } })),
     agents: allAgents().filter((a) => !S.deletedAgentIds[a.id]).map((raw) => withEdits(raw)).map((a) => ({
       ...a,
       accentSoft: a.accent ? a.accent + '1A' : 'var(--me-grey-08)',
@@ -1048,7 +1091,7 @@ export function deriveVals(state, setState) {
     cpTabColor: tab === 'checkpoints' ? 'var(--me-blue)' : 'var(--me-grey-70)', cpTabWeight: tab === 'checkpoints' ? 700 : 500, cpTabBorder: tab === 'checkpoints' ? 'var(--me-blue)' : 'transparent',
     cfgTabColor: tab === 'config' ? 'var(--me-blue)' : 'var(--me-grey-70)', cfgTabWeight: tab === 'config' ? 700 : 500, cfgTabBorder: tab === 'config' ? 'var(--me-blue)' : 'transparent',
 
-    groups, addGroup: () => addGroupFor(detailAgentId), panelOpen: false,
+    groups, addGroup: guard(() => addGroupFor(detailAgentId)), panelOpen: false,
     reviewOpen, reviewCtx: panelCtx, appPadRight: reviewOpen ? '384px' : '0', closeReview: () => setState({ panel: null }),
     openReviewAgent: (e) => toggleReview('agent', e),
     reviewAnchorY: S.reviewAnchorY, reviewAnchorX: S.reviewAnchorX,

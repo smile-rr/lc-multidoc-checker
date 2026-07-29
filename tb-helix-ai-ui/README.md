@@ -398,6 +398,24 @@ meaning to. `ds/Select` is the other half: a native `<select>`, which is right
 for a short fixed list because it brings keyboard, typeahead and the platform's
 own popup with it. Two components, so a dropdown cannot drift again.
 
+### One open edit at a time
+
+There is a single edit slot across the whole console. It had been three — a check
+being edited, an article being written, and a just-added dictionary row that had
+not been named — and none of them stopped you starting a fourth thing, so five
+clicks of "New field" left five unnamed rows, each having silently taken the edit
+off the last.
+
+While the slot is occupied, every "New …" on every governance surface is blocked
+and a notice beside the button names what is holding it: *"GEN-90 is unfinished —
+Go to it"*. Clicking the notice (or the disabled button) scrolls to the item and
+puts the caret back in it. Resolving it means **Save** or **Discard**; the
+interface never picks for you, because one of those loses typing and the other
+commits something half-written.
+
+That single slot is also what makes focus predictable: whatever is created takes
+the slot, takes the caret, and scrolls itself into view (`useNewItemFocus`).
+
 ### Where a new item lands, and how you get rid of it
 
 A new item goes where you will look for it next, which depends on whether its
@@ -406,7 +424,15 @@ position means anything:
 | | Where | Why |
 |---|---|---|
 | Checks, dictionary fields, document types, books | **Top** | Order is whatever you sorted by, so the new one leads. You clicked "new" — it should be under your cursor |
-| Agent groups, a book's sections and articles | **Bottom** | Order *is* the content: a group's sequence is its run order, an article's place is its place in the rulebook. Prepending would silently renumber |
+| Agent groups, a book's sections and articles | **Bottom** | Order *is* the content: a group's sequence is its run order, and UCP 600 art. 6 comes before art. 14 because that is the book. Prepending an article would claim it is article 1 |
+
+For the reference library specifically: nav and body are two projections of one
+list, so they cannot disagree about where a new article went — and the answer to
+"appending makes it hard to find" is not to move it, it is to go to it. A new
+article opens for editing, takes the caret and scrolls into view, and a section's
+own `+` appends within *that* section rather than at the end of the book, which
+is both order-honest and near where you were reading. (Inserting at an arbitrary
+position would need drag-to-reorder; not built.)
 
 In both cases the new item takes the caret and scrolls itself into view, and is
 outlined until it is named. Putting it on top only solves half the problem — the

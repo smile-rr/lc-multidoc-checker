@@ -1,11 +1,12 @@
 import { ellipsis } from '@shared/ds/text'
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import Icon from '@shared/ds/Icon'
 import Button from '@shared/ds/Button'
 import Select from '@shared/ds/Select'
 import Chip from '@shared/ds/Chip'
 import IconButton from '@shared/ds/IconButton'
 import { Menu, MenuItem, MenuHeader, MenuEmpty } from '@shared/ds/Menu'
+import { useNewItemFocus } from '@shared/lib/useNewItemFocus'
 import RuleCard from './RuleCard'
 import RequirementCard from './RequirementCard'
 
@@ -23,16 +24,11 @@ export default function Check({ check }) {
   const [menuOpen, setMenuOpen] = useState(false)
   // A card you just created takes the caret and brings itself into view, so
   // adding one never means hunting for where it landed.
-  const titleRef = useRef(null)
-  useEffect(() => {
-    if (!check.isNew || !titleRef.current) return
-    titleRef.current.focus()
-    titleRef.current.select?.()
-    titleRef.current.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  }, [check.isNew])
+  const titleRef = useNewItemFocus(check.isNew)
   return (
     <div
       data-review-card
+      data-item-id={check.id}
       style={{
         background: '#fff',
         border: `1px solid ${check.isNew ? 'var(--me-blue)' : check.cardBorder}`,

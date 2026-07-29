@@ -6,6 +6,8 @@ import Page from '@shared/ds/Page'
 import TextArea from '@shared/ds/TextArea'
 import IconButton from '@shared/ds/IconButton'
 import { Menu, MenuItem } from '@shared/ds/Menu'
+import PendingNotice from '../components/PendingNotice'
+import { useNewItemFocus } from '@shared/lib/useNewItemFocus'
 import { cardSurface } from '@shared/ds/Card'
 import { Z } from '@shared/ds/z'
 
@@ -50,13 +52,14 @@ export default function Library({ v }) {
           <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--me-ink)' }}>{v.activeTitle}</div>
           <div style={{ fontSize: 12, color: 'var(--me-grey-70)' }}>{v.activeSubtitle}</div>
         </div>
+        <PendingNotice pending={v.pending} />
         <Menu
           open={v.addMenuOpen}
           onClose={v.toggleAddMenu}
           align="right"
           top={42}
           width={186}
-          trigger={<Button variant="primary" size="sm" onClick={v.toggleAddMenu}>+ Add</Button>}
+          trigger={<Button variant="primary" size="sm" onClick={v.addBlocked ? v.pending.onGo : v.toggleAddMenu} disabled={v.addBlocked}>+ Add</Button>}
         >
           <MenuItem icon="folder-plus" label="New section" onClick={v.addSection} />
           <MenuItem icon="file-plus" label="New article" onClick={v.addArticle} />
@@ -105,32 +108,7 @@ export default function Library({ v }) {
             <div key={sec.key}>
               {sec.hasName && <Eyebrow as="div" color="var(--me-blue)" style={{ margin: '24px 0 2px' }}>{sec.name}</Eyebrow>}
               {sec.arts.map((art) => (
-                <div key={art.aid} id={art.anchorId} style={{ padding: '18px 0', borderBottom: '1px solid var(--me-grey-08)', scrollMarginTop: 'calc(var(--nav-h, 56px) + 112px)' }}>
-                  {art.notEditing ? (
-                    <div onClick={art.onEdit} style={{ cursor: 'text', borderRadius: 8, margin: '-6px -10px', padding: '6px 10px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--me-blue-deep)' }}>{art.code}</span>
-                        <h3 style={{ fontSize: 16.5, fontWeight: 700, margin: 0 }}>{art.title}</h3>
-                        <div style={{ flex: 1 }} />
-                        <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>{art.usedByLabel}</span>
-                        <IconButton icon="trash-2" size="sm" tone="danger" title="Delete this article" onClick={(e) => { e.stopPropagation(); art.onDelete() }} />
-                      </div>
-                      <div style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--me-grey)', whiteSpace: 'pre-wrap' }}>{art.read}</div>
-                    </div>
-                  ) : (
-                    <div>
-                      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                        <input value={art.code} onChange={art.onChangeCode} placeholder="Code" style={{ width: 150, flexShrink: 0, border: '1px solid var(--me-grey-20)', borderRadius: 8, padding: '8px 10px', fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: 'var(--me-blue-deep)', outline: 'none' }} />
-                        <input value={art.title} onChange={art.onChangeTitle} placeholder="Article title" style={{ flex: 1, minWidth: 0, border: '1px solid var(--me-grey-20)', borderRadius: 8, padding: '8px 10px', fontSize: 16.5, fontWeight: 700, color: 'var(--me-ink)', outline: 'none' }} />
-                      </div>
-                      <TextArea value={art.read} onChange={art.onChangeRead} placeholder="Reading text…" maxLength={ARTICLE_MAX} style={{ width: '100%', minHeight: 120, border: '1px solid var(--me-grey-20)', borderRadius: 8, padding: '10px 12px', fontSize: 14, lineHeight: 1.7, color: 'var(--me-grey)', outline: 'none', fontFamily: 'inherit' }} />
-                      <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
-                        <Button variant="primary" size="sm" onClick={art.onSave}>Save</Button>
-                        <button onClick={art.onCancel} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--me-grey-70)', fontWeight: 600 }}>Cancel</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <Article key={art.aid} art={art} />
               ))}
             </div>
           ))}
@@ -143,3 +121,51 @@ export default function Library({ v }) {
 
 const booksBar = { position: 'sticky', top: 'var(--nav-h, 56px)', zIndex: Z.toolbar, background: 'var(--me-grey-08)', display: 'flex', alignItems: 'stretch', gap: 12, paddingTop: 14, paddingBottom: 10 }
 const bookAction = { width: 40, height: 40, alignSelf: 'center', borderRadius: 10, border: '1px solid var(--me-grey-20)', background: '#fff', cursor: 'pointer', color: 'var(--me-grey-70)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }
+
+// One article of a rulebook.
+//
+// A book's order *is* its content — UCP 600 art. 6 comes before art. 14 because
+// that is the book — so a new article appends and never jumps the queue. The
+// answer to "then it's hard to find" is not to move it: it is to go to it. So a
+// new article opens for editing, takes the caret, and scrolls itself into view,
+// and the section's own `+` puts it at the end of *that* section rather than the
+// end of the book. Nav and body stay in agreement because they are one list.
+function Article({ art }) {
+  const codeRef = useNewItemFocus(art.isNew)
+  return (
+    <div
+      id={art.anchorId}
+      data-item-id={art.aid}
+      style={{
+        padding: '18px 0',
+        borderBottom: '1px solid var(--me-grey-08)',
+        scrollMarginTop: 'calc(var(--nav-h, 56px) + 112px)',
+      }}
+    >
+      {art.notEditing ? (
+                  <div onClick={art.onEdit} style={{ cursor: 'text', borderRadius: 8, margin: '-6px -10px', padding: '6px 10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--me-blue-deep)' }}>{art.code}</span>
+                      <h3 style={{ fontSize: 16.5, fontWeight: 700, margin: 0 }}>{art.title || 'Untitled article'}</h3>
+                      <div style={{ flex: 1 }} />
+                      <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>{art.usedByLabel}</span>
+                      <IconButton icon="trash-2" size="sm" tone="danger" title="Delete this article" onClick={(e) => { e.stopPropagation(); art.onDelete() }} />
+                    </div>
+                    <div style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--me-grey)', whiteSpace: 'pre-wrap' }}>{art.read}</div>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                      <input ref={codeRef} value={art.code} onChange={art.onChangeCode} placeholder="e.g. UCP600 Art.6" style={{ width: 150, flexShrink: 0, border: '1px solid var(--me-grey-20)', borderRadius: 8, padding: '8px 10px', fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: 'var(--me-blue-deep)', outline: 'none' }} />
+                      <input value={art.title} onChange={art.onChangeTitle} placeholder="What the article is about" style={{ flex: 1, minWidth: 0, border: '1px solid var(--me-grey-20)', borderRadius: 8, padding: '8px 10px', fontSize: 16.5, fontWeight: 700, color: 'var(--me-ink)', outline: 'none' }} />
+                    </div>
+                    <TextArea value={art.read} onChange={art.onChangeRead} placeholder="Reading text…" maxLength={ARTICLE_MAX} style={{ width: '100%', minHeight: 120, border: '1px solid var(--me-grey-20)', borderRadius: 8, padding: '10px 12px', fontSize: 14, lineHeight: 1.7, color: 'var(--me-grey)', outline: 'none', fontFamily: 'inherit' }} />
+                    <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+                      <Button variant="primary" size="sm" onClick={art.onSave}>Save</Button>
+                      <button onClick={art.onCancel} title={art.isNew ? 'Discard this article — it has not been added yet' : 'Undo the changes made since you started editing'} style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: art.isNew ? 'var(--status-error)' : 'var(--me-grey-70)', fontWeight: 600 }}>{art.cancelLabel}</button>
+                    </div>
+                  </div>
+      )}
+    </div>
+  )
+}

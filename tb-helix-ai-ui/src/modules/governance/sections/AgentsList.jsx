@@ -1,3 +1,4 @@
+import PendingNotice from '../components/PendingNotice'
 import IconButton from '@shared/ds/IconButton'
 import { ellipsis } from '@shared/ds/text'
 import Icon from '@shared/ds/Icon'
@@ -24,7 +25,8 @@ export default function AgentsList({ v }) {
         }
         right={
           <>
-            <Button variant="primary" size="md" onClick={v.newAgent}>New agent</Button>
+            <PendingNotice pending={v.pending} />
+            <Button variant="primary" size="md" onClick={v.newAgent} disabled={v.addBlocked}>New agent</Button>
             <ViewSwitch isList={v.isListMode} onList={v.setListMode} onCards={v.setGallery} />
           </>
         }
