@@ -34,104 +34,36 @@ import { checkSpec, buildExecutionPlan, checkTier, checkType, checkSource, resol
 // not the examiner's.
 const CREDIT_DEMANDS = {
   mt700: null,
-  // `'*'` is the credit talking about the presentation as a whole rather than about
-  // one document — a :47A: condition that binds everything. It has no page to sit
-  // beside in Examine, and it is exactly where an uncovered requirement hides, so it
-  // has to exist in the structure rather than only in a finding.
-  '*': {
-    calls: null,
-    fields: [],
-    conditions: [
-      { text: 'All documents must bear the credit number', ruleIds: ['COND-47A.2'] },
-      { text: 'All documents must be in English', ruleIds: [] },
-    ],
-    refs: ['UCP600 Art.14'],
-  },
-  CS: { calls: null, fields: [{ credit: 'Presentation period', doc: null, ruleIds: ['DATE-48', 'DATE-31D'] }], conditions: [], refs: ['UCP600 Art.14'] },
+  CS: { calls: null, fields: [{ credit: 'Presentation period', doc: null }], conditions: [], refs: ['UCP600 Art.14'] },
   INV: {
-    calls: { text: 'Signed commercial invoice in 3 originals', ruleIds: ['DOCSET-14A', 'DOCSET-17', 'DOCSET-03'] },
+    calls: 'Signed commercial invoice in 3 originals',
     fields: [
-      { credit: 'Amount', doc: 'Total', ruleIds: ['AMT-30A'] },
-      { credit: 'Goods', doc: 'Goods', ruleIds: ['GOODS-18C', 'XD-A23'] },
-      { credit: 'Credit number', doc: 'LC number quoted', ruleIds: ['COND-47A.2'] },
+      { credit: 'Amount', doc: 'Total' },
+      { credit: 'Goods', doc: 'Goods' },
+      { credit: 'Credit number', doc: 'LC number quoted' },
     ],
-    conditions: [
-      { text: 'Invoice must quote the credit number and the contract number', ruleIds: ['COND-47A.1'] },
-    ],
+    conditions: ['Invoice must quote the credit number and the contract number'],
     refs: ['UCP600 Art.18', 'ISBP821 C3'],
   },
   BOL: {
-    calls: { text: 'Full set 3/3 original clean on board ocean bill of lading, made out to order and blank endorsed', ruleIds: ['DOCSET-14A', 'TRANS-20'] },
+    calls: 'Full set 3/3 original clean on board ocean bill of lading, made out to order and blank endorsed',
     fields: [
-      { credit: 'Latest shipment', doc: 'On board', ruleIds: ['DATE-44C'] },
-      { credit: 'Partial shipments', doc: null, ruleIds: ['TRANS-43P'] },
-      { credit: 'Transhipment', doc: null, ruleIds: ['TRANS-43T'] },
+      { credit: 'Latest shipment', doc: 'On board' },
+      { credit: 'Partial shipments', doc: null },
+      { credit: 'Transhipment', doc: null },
     ],
-    conditions: [],
+    conditions: ['All documents must bear the credit number'],
     refs: ['UCP600 Art.20', 'UCP600 Art.14'],
   },
-  PKL: {
-    calls: { text: 'Packing list in 2 copies', ruleIds: ['DOCSET-14A', 'DOCSET-17'] },
-    fields: [{ credit: 'Goods', doc: 'Packing', ruleIds: ['XD-A23'] }],
-    conditions: [],
-    refs: ['ISBP821 A23'],
-  },
-  BOE: {
-    calls: { text: 'Draft at sight drawn on the issuing bank', ruleIds: ['DOCSET-14A', 'DOCSET-03'] },
-    fields: [{ credit: 'Amount', doc: 'Amount', ruleIds: ['AMT-30A'] }],
-    conditions: [],
-    refs: ['UCP600 Art.6'],
-  },
+  PKL: { calls: 'Packing list in 2 copies', fields: [{ credit: 'Goods', doc: 'Packing' }], conditions: [], refs: ['ISBP821 A23'] },
+  BOE: { calls: 'Draft at sight drawn on the issuing bank', fields: [{ credit: 'Amount', doc: 'Amount' }], conditions: [], refs: ['UCP600 Art.6'] },
   BC: {
-    calls: { text: "Beneficiary's certificate stating goods were inspected pre-shipment", ruleIds: ['DOCSET-14A'] },
-    fields: [{ credit: 'Goods', doc: 'Origin statement', ruleIds: ['XD-A23'] }],
-    conditions: [
-      { text: 'Certificate to state pre-shipment inspection was carried out', ruleIds: ['DOCSET-14A'] },
-    ],
+    calls: "Beneficiary's certificate stating goods were inspected pre-shipment",
+    fields: [{ credit: 'Goods', doc: 'Origin statement' }],
+    conditions: ['Certificate to state pre-shipment inspection was carried out'],
     refs: ['UCP600 Art.14'],
   },
   WC: { calls: null, fields: [], conditions: [], refs: ['ISBP821 A31'] },
-}
-
-/**
- * What this credit requires, and what tests each one.
- *
- * **This is what Plan extracts, and it is the other half of the vocabulary.** A
- * *requirement* is what the credit demands — read out of :46A: (the documents it
- * calls for and what they must state) and :47A: (its conditions). Different on every
- * credit, written by the planner, approved by nobody. A *rule* is how the bank tests
- * a requirement — authored in Governance, versioned, standing.
- *
- * Derived from `CREDIT_DEMANDS` rather than authored separately, so the plan's list
- * and the column Examine puts beside each page are one structure. Two structures
- * holding the same facts drift, and nothing compares them until someone notices the
- * screens disagree.
- *
- * A requirement with no rule is the whole point of showing this **before** the run:
- * it is the one thing the examination will not cover, and an officer should learn
- * that from the plan rather than from a flag on a finding afterwards.
- */
-function buildRequirements(demands, documents) {
-  const docName = (id) => (id === '*' ? null : documents.find((d) => d.id === id)?.docType ?? id)
-  const out = []
-  Object.entries(demands).forEach(([docId, d]) => {
-    if (!d) return
-    const doc = docName(docId)
-    if (d.calls) {
-      out.push({ id: `${docId}-46A`, from: '46A', docId: docId === '*' ? null : docId, doc, text: d.calls.text, ruleIds: d.calls.ruleIds ?? [], refs: d.refs })
-    }
-    d.fields.forEach((f, i) => {
-      if (!f.credit) return
-      out.push({
-        id: `${docId}-F${i}`, from: '46A', docId: docId === '*' ? null : docId, doc,
-        text: `${f.credit} must agree with the credit`, ruleIds: f.ruleIds ?? [], refs: d.refs,
-      })
-    })
-    d.conditions.forEach((c, i) => {
-      out.push({ id: `${docId}-47A${i}`, from: '47A', docId: docId === '*' ? null : docId, doc, text: c.text, ruleIds: c.ruleIds ?? [], refs: d.refs })
-    })
-  })
-  return out
 }
 
 const AREAS = [
@@ -1409,7 +1341,6 @@ function buildCase(defKey, overrides) {
     ),
     facts,
     creditDemands: CREDIT_DEMANDS,
-    requirements: buildRequirements(CREDIT_DEMANDS, documents),
     areas: AREAS,
     checks,
     findings: withProvenance(buildFindings(def), checksById, facts),

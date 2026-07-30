@@ -342,7 +342,7 @@ function CreditColumn({ demands, facts, docFacts, creditLines, isCredit }) {
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           {demands.calls ? (
             <Block label="Called for by 46A">
-              <span style={{ fontSize: 12.5, lineHeight: 1.6, color: 'var(--me-ink)' }}>{demands.calls.text}</span>
+              <span style={{ fontSize: 12.5, lineHeight: 1.6, color: 'var(--me-ink)' }}>{demands.calls}</span>
             </Block>
           ) : null}
           {demands.fields.length ? (
@@ -376,12 +376,7 @@ function CreditColumn({ demands, facts, docFacts, creditLines, isCredit }) {
             <Block label="Conditions in 47A">
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                 {demands.conditions.map((c, i) => (
-                  <span key={i} style={{ fontSize: 12, lineHeight: 1.55, color: 'var(--me-ink)' }}>
-                    · {c.text}
-                    {/* A condition nothing tests is the examiner's to carry, and this
-                        column is where they are standing when it matters. */}
-                    {c.ruleIds?.length ? null : <span style={{ marginLeft: 6, fontSize: 10.5, color: '#946400' }}>no rule — yours to check</span>}
-                  </span>
+                  <span key={i} style={{ fontSize: 12, lineHeight: 1.55, color: 'var(--me-ink)' }}>· {c}</span>
                 ))}
               </div>
             </Block>
