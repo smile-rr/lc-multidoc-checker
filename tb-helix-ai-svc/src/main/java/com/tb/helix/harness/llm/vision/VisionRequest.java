@@ -1,5 +1,6 @@
-package com.tb.helix.harness.model;
+package com.tb.helix.harness.llm.vision;
 
+import com.tb.helix.harness.llm.LlmRole;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -12,7 +13,7 @@ import java.util.Objects;
  * cache, and the cache is consulted before any of this is built. A request that carried a
  * PDF and rendered it internally would render on every cache hit.
  *
- * @param role       {@link ModelRole#SEGMENT} or {@link ModelRole#EXTRACT}
+ * @param role       {@link LlmRole#SEGMENT} or {@link LlmRole#EXTRACT}
  * @param pages      PNG bytes, in page order. Order is meaningful — a two-page invoice
  *                   read backwards yields plausible nonsense.
  * @param prompt     the extraction spec: which fields, of what type, with what provenance
@@ -22,7 +23,7 @@ import java.util.Objects;
  * @param overrides  per-call additions to the request body
  */
 public record VisionRequest(
-        ModelRole role,
+        LlmRole role,
         List<byte[]> pages,
         String prompt,
         List<Integer> pageLabels,
@@ -42,7 +43,7 @@ public record VisionRequest(
         overrides = overrides == null ? Map.of() : Map.copyOf(overrides);
     }
 
-    public static VisionRequest of(ModelRole role, List<byte[]> pages, String prompt, List<Integer> pageLabels) {
+    public static VisionRequest of(LlmRole role, List<byte[]> pages, String prompt, List<Integer> pageLabels) {
         return new VisionRequest(role, pages, prompt, pageLabels, Map.of());
     }
 }

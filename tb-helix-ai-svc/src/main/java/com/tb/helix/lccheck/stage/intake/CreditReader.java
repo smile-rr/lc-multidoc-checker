@@ -1,9 +1,9 @@
 package com.tb.helix.lccheck.stage.intake;
 
+import com.tb.helix.harness.llm.LlmGateway;
+import com.tb.helix.harness.llm.LlmRole;
+import com.tb.helix.harness.llm.text.TextRequest;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tb.helix.harness.model.ModelGateway;
-import com.tb.helix.harness.model.ModelRole;
-import com.tb.helix.harness.model.TextRequest;
 import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
@@ -38,11 +38,11 @@ public class CreditReader {
 
     private static final Logger log = LoggerFactory.getLogger(CreditReader.class);
 
-    private final ModelGateway models;
+    private final LlmGateway models;
     private final DerivationCache cache;
     private final ObjectMapper json;
 
-    public CreditReader(ModelGateway models, DerivationCache cache, ObjectMapper json) {
+    public CreditReader(LlmGateway models, DerivationCache cache, ObjectMapper json) {
         this.models = models;
         this.cache = cache;
         this.json = json;
@@ -69,7 +69,7 @@ public class CreditReader {
 
         try {
             var hit = cache.computeIfAbsent(key, Map.class, () -> {
-                var result = models.complete(TextRequest.json(ModelRole.READ_TEXT, SYSTEM, prompt));
+                var result = models.complete(TextRequest.json(LlmRole.READ_TEXT, SYSTEM, prompt));
                 return DerivationCache.Entry.of(parse(result.content()));
             });
             @SuppressWarnings("unchecked")

@@ -7,6 +7,8 @@ import com.tb.helix.infra.blob.BlobStore;
 import com.tb.helix.infra.error.NotFoundException;
 import com.tb.helix.harness.doc.PageRenderer;
 import com.tb.helix.lccheck.domain.*;
+import com.tb.helix.lccheck.domain.document.*;
+import com.tb.helix.lccheck.domain.examination.*;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.pipeline.StageId;
 import com.tb.helix.lccheck.stage.intake.CreditReader;

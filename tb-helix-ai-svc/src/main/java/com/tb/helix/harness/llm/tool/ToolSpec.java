@@ -1,4 +1,4 @@
-package com.tb.helix.harness.model;
+package com.tb.helix.harness.llm.tool;
 
 import java.util.Map;
 import java.util.function.Function;

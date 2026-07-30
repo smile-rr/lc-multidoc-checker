@@ -1,4 +1,4 @@
-package com.tb.helix.harness.model;
+package com.tb.helix.harness.llm;
 
 /**
  * What a model is being asked to do.
@@ -19,7 +19,7 @@ package com.tb.helix.harness.model;
  * rule or controller mentions any of them, and the ArchUnit boundary makes that
  * structural rather than aspirational.
  */
-public enum ModelRole {
+public enum LlmRole {
 
     /** Identify which document each page of a bundle belongs to. Vision. */
     SEGMENT,

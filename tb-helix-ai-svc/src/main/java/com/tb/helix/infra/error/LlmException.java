@@ -12,25 +12,25 @@ package com.tb.helix.infra.error;
  * service can produce, and it is indistinguishable from a real pass unless this
  * propagates.
  */
-public class ModelException extends HelixException {
+public class LlmException extends HelixException {
 
-    private final ModelRoleFailure failure;
+    private final LlmRoleFailure failure;
 
     /** Which role could not be served, and what the slots said. */
-    public record ModelRoleFailure(String role, java.util.List<String> slotErrors) {
+    public record LlmRoleFailure(String role, java.util.List<String> slotErrors) {
     }
 
-    public ModelException(String message, ModelRoleFailure failure) {
+    public LlmException(String message, LlmRoleFailure failure) {
         super(message);
         this.failure = failure;
     }
 
-    public ModelException(String message, ModelRoleFailure failure, Throwable cause) {
+    public LlmException(String message, LlmRoleFailure failure, Throwable cause) {
         super(message, cause);
         this.failure = failure;
     }
 
-    public ModelRoleFailure failure() {
+    public LlmRoleFailure failure() {
         return failure;
     }
 

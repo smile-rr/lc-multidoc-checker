@@ -1,5 +1,6 @@
-package com.tb.helix.harness.model;
+package com.tb.helix.harness.llm.text;
 
+import com.tb.helix.harness.llm.LlmRole;
 import java.util.Map;
 import java.util.Objects;
 
@@ -18,7 +19,7 @@ import java.util.Objects;
  *                     one call is the case this exists for.
  */
 public record TextRequest(
-        ModelRole role,
+        LlmRole role,
         String system,
         String user,
         boolean jsonOutput,
@@ -31,11 +32,11 @@ public record TextRequest(
         overrides = overrides == null ? Map.of() : Map.copyOf(overrides);
     }
 
-    public static TextRequest of(ModelRole role, String system, String user) {
+    public static TextRequest of(LlmRole role, String system, String user) {
         return new TextRequest(role, system, user, false, null, Map.of());
     }
 
-    public static TextRequest json(ModelRole role, String system, String user) {
+    public static TextRequest json(LlmRole role, String system, String user) {
         return new TextRequest(role, system, user, true, null, Map.of());
     }
 }

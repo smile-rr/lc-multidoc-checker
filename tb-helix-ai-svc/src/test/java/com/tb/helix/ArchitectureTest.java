@@ -194,6 +194,31 @@ class ArchitectureTest {
     }
 
     @Test
+    @DisplayName("no upward references, even in text")
+    void noUpwardReferencesInSource() throws java.io.IOException {
+        // ArchUnit reads bytecode, where an unused import has already been discarded — so a
+        // governance file can carry `import ...lccheck...` for a javadoc {@link} and every
+        // rule above still passes. It is wrong anyway: it tells the next reader that
+        // governance knows about examinations, and the day someone uses the symbol the
+        // build breaks somewhere that looks unrelated.
+        var root = java.nio.file.Path.of("src/main/java/com/tb/helix");
+        var offenders = new java.util.ArrayList<String>();
+        try (var files = java.nio.file.Files.walk(root.resolve("governance"))) {
+            files.filter(f -> f.toString().endsWith(".java")).forEach(f -> {
+                try {
+                    if (java.nio.file.Files.readString(f).contains("com.tb.helix.lccheck")) {
+                        offenders.add(root.relativize(f).toString());
+                    }
+                } catch (java.io.IOException ignored) {
+                }
+            });
+        }
+        org.assertj.core.api.Assertions.assertThat(offenders)
+                .as("governance source must not name lc-check anywhere, imports included")
+                .isEmpty();
+    }
+
+    @Test
     @DisplayName("declared packages exist")
     void declaredPackagesExist() {
         // The counterweight to allowEmptyShould: a rule naming a misspelt package matches

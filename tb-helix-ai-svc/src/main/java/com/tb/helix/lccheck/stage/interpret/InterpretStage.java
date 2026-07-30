@@ -1,14 +1,14 @@
 package com.tb.helix.lccheck.stage.interpret;
 
+import com.tb.helix.harness.llm.LlmGateway;
+import com.tb.helix.harness.llm.LlmRole;
+import com.tb.helix.harness.llm.vision.VisionRequest;
+import com.tb.helix.harness.llm.vision.VisionResult;
 import com.tb.helix.governance.domain.DocType;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tb.helix.harness.doc.PageRenderer;
 import com.tb.helix.harness.doc.RenderProperties;
-import com.tb.helix.harness.model.ModelGateway;
-import com.tb.helix.harness.model.ModelRole;
-import com.tb.helix.harness.model.VisionRequest;
-import com.tb.helix.harness.model.VisionResult;
 import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
@@ -44,12 +44,12 @@ public class InterpretStage implements Stage {
 
     private final PageRenderer renderer;
     private final RenderProperties render;
-    private final ModelGateway models;
+    private final LlmGateway models;
     private final DerivationCache cache;
     private final CaseStore cases;
     private final ObjectMapper json;
 
-    public InterpretStage(PageRenderer renderer, RenderProperties render, ModelGateway models,
+    public InterpretStage(PageRenderer renderer, RenderProperties render, LlmGateway models,
                           DerivationCache cache, CaseStore cases, ObjectMapper json) {
         this.renderer = renderer;
         this.render = render;
@@ -99,7 +99,7 @@ public class InterpretStage implements Stage {
 
         var hit = cache.computeIfAbsent(key, Map.class, () -> {
             List<byte[]> images = renderer.render(pdfSha, all, spec);
-            VisionResult result = models.read(VisionRequest.of(ModelRole.SEGMENT, images,
+            VisionResult result = models.read(VisionRequest.of(LlmRole.SEGMENT, images,
                     SEGMENT_PROMPT.replace("{PAGES}", String.valueOf(pageCount)), all));
             return DerivationCache.Entry.of(result.fields());
         });
@@ -182,7 +182,7 @@ public class InterpretStage implements Stage {
                 var hit = cache.computeIfAbsent(key, Map.class, () -> {
                     List<byte[]> images = renderer.render(pdfSha, pages, spec);
                     VisionResult result = models.read(
-                            VisionRequest.of(ModelRole.EXTRACT, images, prompt, pages));
+                            VisionRequest.of(LlmRole.EXTRACT, images, prompt, pages));
                     return DerivationCache.Entry.of(result.fields());
                 });
 

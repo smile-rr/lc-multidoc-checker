@@ -1,12 +1,12 @@
 package com.tb.helix.lccheck.api;
 
+import com.tb.helix.lccheck.domain.CaseDetail;
+import com.tb.helix.lccheck.domain.CaseSummary;
+import com.tb.helix.lccheck.domain.examination.PlanCheckView;
 import com.tb.helix.infra.stream.EventStream;
 import com.tb.helix.lccheck.api.dto.DecisionRequest;
 import com.tb.helix.lccheck.api.dto.NewCheckRequest;
 import com.tb.helix.lccheck.api.dto.SignoffRequest;
-import com.tb.helix.lccheck.domain.CaseDetail;
-import com.tb.helix.lccheck.domain.CaseSummary;
-import com.tb.helix.lccheck.domain.PlanCheckView;
 import com.tb.helix.lccheck.pipeline.PipelineService;
 import com.tb.helix.lccheck.pipeline.StageId;
 import com.tb.helix.lccheck.service.CaseService;

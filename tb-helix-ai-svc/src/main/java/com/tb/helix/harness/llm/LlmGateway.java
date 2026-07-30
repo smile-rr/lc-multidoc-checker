@@ -1,4 +1,12 @@
-package com.tb.helix.harness.model;
+package com.tb.helix.harness.llm;
+
+import com.tb.helix.harness.llm.text.TextRequest;
+import com.tb.helix.harness.llm.text.TextResult;
+import com.tb.helix.harness.llm.tool.ToolRequest;
+import com.tb.helix.harness.llm.tool.ToolResult;
+import com.tb.helix.harness.llm.vision.VisionRequest;
+import com.tb.helix.harness.llm.vision.VisionResult;
+import com.tb.helix.infra.error.LlmException;
 
 /**
  * Every call to a language model in this service goes through here.
@@ -31,12 +39,12 @@ package com.tb.helix.harness.model;
  * <em>not</em> responsible for caching: that is decided a layer up, where the caller knows
  * whether the question is one worth remembering.
  */
-public interface ModelGateway {
+public interface LlmGateway {
 
     /**
      * One completion.
      *
-     * @throws com.tb.helix.infra.error.ModelException when every attempt on every slot for
+     * @throws com.tb.helix.infra.error.LlmException when every attempt on every slot for
      *         the role failed. A caller that can proceed without an answer should catch it;
      *         most cannot, and a rule that silently concludes "pass" because the model was
      *         unreachable is the worst failure this system can have.

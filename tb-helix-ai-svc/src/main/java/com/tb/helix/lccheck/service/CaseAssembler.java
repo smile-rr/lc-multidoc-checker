@@ -1,6 +1,8 @@
 package com.tb.helix.lccheck.service;
 
 import com.tb.helix.lccheck.domain.*;
+import com.tb.helix.lccheck.domain.document.*;
+import com.tb.helix.lccheck.domain.examination.*;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import org.springframework.stereotype.Component;
 

@@ -1,5 +1,6 @@
-package com.tb.helix.harness.model;
+package com.tb.helix.harness.llm.openai;
 
+import com.tb.helix.harness.llm.LlmProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -28,11 +29,11 @@ class OpenAiCompatClient {
     private static final Logger log = LoggerFactory.getLogger(OpenAiCompatClient.class);
 
     private final String name;
-    private final ModelProperties.Slot slot;
+    private final LlmProperties.Slot slot;
     private final RestClient http;
     private final ObjectMapper json;
 
-    OpenAiCompatClient(String name, ModelProperties.Slot slot, ObjectMapper json) {
+    OpenAiCompatClient(String name, LlmProperties.Slot slot, ObjectMapper json) {
         this.name = name;
         this.slot = slot;
         this.json = json;

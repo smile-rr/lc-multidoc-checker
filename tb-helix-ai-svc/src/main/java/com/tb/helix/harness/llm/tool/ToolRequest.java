@@ -1,5 +1,6 @@
-package com.tb.helix.harness.model;
+package com.tb.helix.harness.llm.tool;
 
+import com.tb.helix.harness.llm.LlmRole;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -7,7 +8,7 @@ import java.util.Objects;
 /**
  * A tool-calling conversation with a hard turn budget.
  *
- * @param role           usually {@link ModelRole#JUDGE}
+ * @param role           usually {@link LlmRole#JUDGE}
  * @param system         persona and output contract
  * @param user           the question
  * @param tools          what the model may call. An empty list makes this a plain
@@ -18,7 +19,7 @@ import java.util.Objects;
  * @param overrides      per-call additions to the request body
  */
 public record ToolRequest(
-        ModelRole role,
+        LlmRole role,
         String system,
         String user,
         List<ToolSpec> tools,

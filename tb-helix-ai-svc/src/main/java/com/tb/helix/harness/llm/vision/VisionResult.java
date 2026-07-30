@@ -1,5 +1,6 @@
-package com.tb.helix.harness.model;
+package com.tb.helix.harness.llm.vision;
 
+import com.tb.helix.harness.llm.TokenUsage;
 import java.util.List;
 import java.util.Map;
 

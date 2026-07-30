@@ -1,4 +1,4 @@
-package com.tb.helix.harness.model;
+package com.tb.helix.harness.llm;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -14,14 +14,14 @@ import java.util.Map;
  * travel as {@code extraBody} — {@code enable_thinking: false} is a fact about one model
  * family, and teaching this type about it would make every future family a code change.
  *
- * <p>Roles are the indirection that matters. Domain code asks for {@link ModelRole#EXTRACT};
+ * <p>Roles are the indirection that matters. Domain code asks for {@link LlmRole#EXTRACT};
  * configuration decides that means {@code vlm-1}, or {@code vlm-1} and {@code vlm-2}
  * voting. Swapping provider, model or consensus width never reaches a stage.
  */
 @ConfigurationProperties(prefix = "helix")
-public record ModelProperties(Models models, Map<String, List<String>> roles) {
+public record LlmProperties(Models models, Map<String, List<String>> roles) {
 
-    public ModelProperties {
+    public LlmProperties {
         models = models == null ? new Models(Map.of(), Map.of()) : models;
         roles = roles == null ? Map.of() : Map.copyOf(roles);
     }
@@ -82,7 +82,7 @@ public record ModelProperties(Models models, Map<String, List<String>> roles) {
      * <p>Empty when a role is unconfigured, which the registry turns into a clear failure
      * at startup rather than a null model reference halfway through a run.
      */
-    public List<String> slotsFor(ModelRole role) {
+    public List<String> slotsFor(LlmRole role) {
         String snake = role.name().toLowerCase();
         // YAML prefers read-text, the enum is READ_TEXT, and Spring binds a map key
         // verbatim — so both spellings are accepted rather than making the config file

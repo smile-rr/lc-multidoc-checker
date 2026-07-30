@@ -1,4 +1,6 @@
-package com.tb.helix.harness.model;
+package com.tb.helix.harness.llm.text;
+
+import com.tb.helix.harness.llm.TokenUsage;
 
 /**
  * What a text model said.

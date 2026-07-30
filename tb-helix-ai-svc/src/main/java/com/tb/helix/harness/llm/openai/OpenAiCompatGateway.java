@@ -1,7 +1,18 @@
-package com.tb.helix.harness.model;
+package com.tb.helix.harness.llm.openai;
 
+import com.tb.helix.harness.llm.LlmGateway;
+import com.tb.helix.harness.llm.LlmProperties;
+import com.tb.helix.harness.llm.LlmRole;
+import com.tb.helix.harness.llm.TokenUsage;
+import com.tb.helix.harness.llm.text.TextRequest;
+import com.tb.helix.harness.llm.text.TextResult;
+import com.tb.helix.harness.llm.tool.ToolRequest;
+import com.tb.helix.harness.llm.tool.ToolResult;
+import com.tb.helix.harness.llm.tool.ToolSpec;
+import com.tb.helix.harness.llm.vision.VisionRequest;
+import com.tb.helix.harness.llm.vision.VisionResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tb.helix.infra.error.ModelException;
+import com.tb.helix.infra.error.LlmException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -24,16 +35,16 @@ import java.util.concurrent.Executors;
  * configuration. Nothing above this line knows a vendor exists.
  */
 @Component
-public class OpenAiCompatGateway implements ModelGateway {
+public class OpenAiCompatGateway implements LlmGateway {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAiCompatGateway.class);
 
-    private final ModelProperties props;
+    private final LlmProperties props;
     private final ObjectMapper json;
     private final Map<String, OpenAiCompatClient> clients = new LinkedHashMap<>();
     private final ExecutorService slotPool = Executors.newVirtualThreadPerTaskExecutor();
 
-    public OpenAiCompatGateway(ModelProperties props, ObjectMapper json) {
+    public OpenAiCompatGateway(LlmProperties props, ObjectMapper json) {
         this.props = props;
         this.json = json;
         props.allSlots().forEach((name, slot) -> {
@@ -84,8 +95,8 @@ public class OpenAiCompatGateway implements ModelGateway {
         List<VisionResult.SlotResult> good = results.stream().filter(r -> !r.failed()).toList();
 
         if (good.isEmpty()) {
-            throw new ModelException("Every vision slot failed for role " + request.role(),
-                    new ModelException.ModelRoleFailure(request.role().name(),
+            throw new LlmException("Every vision slot failed for role " + request.role(),
+                    new LlmException.LlmRoleFailure(request.role().name(),
                             results.stream().map(VisionResult.SlotResult::error).toList()));
         }
         return Consensus.of(good, results);
@@ -212,19 +223,19 @@ public class OpenAiCompatGateway implements ModelGateway {
 
     // --- Role resolution ----------------------------------------------------
 
-    private List<OpenAiCompatClient> usableSlots(ModelRole role) {
+    private List<OpenAiCompatClient> usableSlots(LlmRole role) {
         List<OpenAiCompatClient> found = props.slotsFor(role).stream()
                 .map(clients::get).filter(java.util.Objects::nonNull).toList();
         if (found.isEmpty()) {
-            throw new ModelException(
+            throw new LlmException(
                     "No usable model slot for role " + role + ". Configured: "
                             + props.slotsFor(role) + "; usable: " + clients.keySet(),
-                    new ModelException.ModelRoleFailure(role.name(), List.of("no usable slot")));
+                    new LlmException.LlmRoleFailure(role.name(), List.of("no usable slot")));
         }
         return found;
     }
 
-    private OpenAiCompatClient firstUsable(ModelRole role) {
+    private OpenAiCompatClient firstUsable(LlmRole role) {
         return usableSlots(role).get(0);
     }
 

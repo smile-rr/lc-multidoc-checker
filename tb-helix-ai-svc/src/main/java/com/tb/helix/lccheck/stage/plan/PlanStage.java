@@ -1,10 +1,11 @@
 package com.tb.helix.lccheck.stage.plan;
 
+import com.tb.helix.harness.llm.LlmGateway;
+import com.tb.helix.harness.llm.LlmRole;
+import com.tb.helix.harness.llm.text.TextRequest;
+import com.tb.helix.lccheck.domain.examination.Areas;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tb.helix.harness.model.ModelGateway;
-import com.tb.helix.harness.model.ModelRole;
-import com.tb.helix.harness.model.TextRequest;
 import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
@@ -40,11 +41,11 @@ public class PlanStage implements Stage {
 
     private final CheckCatalog catalog;
     private final CaseStore cases;
-    private final ModelGateway models;
+    private final LlmGateway models;
     private final DerivationCache cache;
     private final ObjectMapper json;
 
-    public PlanStage(CheckCatalog catalog, CaseStore cases, ModelGateway models,
+    public PlanStage(CheckCatalog catalog, CaseStore cases, LlmGateway models,
                      DerivationCache cache, ObjectMapper json) {
         this.catalog = catalog;
         this.cases = cases;
@@ -119,7 +120,7 @@ public class PlanStage implements Stage {
         List<Map<String, Object>> found;
         try {
             var hit = cache.computeIfAbsent(key, Map.class, () -> {
-                var result = models.complete(TextRequest.json(ModelRole.PLAN, PLANNER_SYSTEM, prompt));
+                var result = models.complete(TextRequest.json(LlmRole.PLAN, PLANNER_SYSTEM, prompt));
                 return DerivationCache.Entry.of(parse(result.content()));
             });
             found = readList(hit.value());

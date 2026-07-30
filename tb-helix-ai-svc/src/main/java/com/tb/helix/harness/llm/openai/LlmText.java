@@ -1,4 +1,4 @@
-package com.tb.helix.harness.model;
+package com.tb.helix.harness.llm.openai;
 
 /**
  * Cleaning up after a model.

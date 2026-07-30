@@ -1,4 +1,4 @@
-package com.tb.helix.lccheck.domain;
+package com.tb.helix.lccheck.domain.examination;
 
 import java.util.List;
 import java.util.Map;

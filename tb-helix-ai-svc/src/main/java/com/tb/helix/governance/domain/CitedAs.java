@@ -3,7 +3,8 @@ package com.tb.helix.governance.domain;
 /**
  * What a check is answerable to — the "Cited as" column.
  *
- * <p>Distinct from {@link Origin}: a rule card from the dictionary may cite the credit, and
+ * <p>Distinct from a check's origin — which lc-check tracks, because it is about a run
+ * rather than about authoring. A rule card from the dictionary may cite the credit, and
  * a requirement read from the credit may rest on practice. Where a rule came from and what
  * it stands on are different facts.
  */
