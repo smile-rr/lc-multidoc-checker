@@ -16,7 +16,7 @@
 
 import { SAMPLES, DOC_TYPES } from './samples/index.js'
 import { parseMt700Lines, tagValue } from '../lib/mt700.js'
-import { checkSpec, buildExecutionPlan } from './checkSpecs.js'
+import { checkSpec, buildExecutionPlan, checkKind, resolveRuleInputs } from './checkSpecs.js'
 
 /** @typedef {import('./contracts.js').CaseDetail} CaseDetail */
 
@@ -847,7 +847,7 @@ function buildFacts(def, lines) {
  * Each entry carries the rule it will apply and the request that will be sent to
  * execute it, so the plan is reviewable before it runs rather than after.
  */
-function buildChecks(def, lines, credit, documents) {
+function buildChecks(def, lines, credit, documents, facts) {
   const tags = {}
   lines.forEach((l) => { if (l.tag) tags[l.tag] = l.text.replace(new RegExp(`^:${l.tag}:\\s*`), '') })
 
@@ -868,6 +868,11 @@ function buildChecks(def, lines, credit, documents) {
   const withPlan = (check, spec) => ({
     ...check,
     spec,
+    kind: checkKind(check.id),
+    // A Rule card has no request to compile: what it needs is its operands
+    // resolved against what Interpret produced, which is also what makes its
+    // answerability knowable before the run.
+    ruleDef: checkKind(check.id) === 'rule' ? resolveRuleInputs(check.id, facts) : null,
     executionPlan: buildExecutionPlan({
       check,
       spec,
@@ -1051,6 +1056,8 @@ function buildCase(defKey, overrides) {
   // The checks need the credit and the document set to compile their execution
   // plans, so both are built before the case object rather than inside it.
   const documents = buildDocuments(def, lines)
+  // Built before the plan, because the plan says which rules their absence blocks.
+  const facts = buildFacts(def, lines)
 
   return {
     id: overrides.id,
@@ -1066,9 +1073,9 @@ function buildCase(defKey, overrides) {
     bundlePages: sample.segments.flatMap((seg) =>
       seg.pages.map((n) => ({ number: n, docId: seg.code, label: DOC_TYPES[seg.code].docType })),
     ),
-    facts: buildFacts(def, lines),
+    facts,
     areas: AREAS,
-    checks: buildChecks(def, lines, creditTerms, documents),
+    checks: buildChecks(def, lines, creditTerms, documents, facts),
     findings: buildFindings(def),
     runSteps: RUN_STEPS,
     runModelSummary: 'GPT-4o · Qwen3 32B · Claude Sonnet 4.6 — 30 calls, 2 repairs, 6 pages read, prompt cache 43%',

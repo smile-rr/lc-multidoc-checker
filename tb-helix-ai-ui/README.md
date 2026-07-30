@@ -510,6 +510,49 @@ vocabulary. Checks reference a field by its name, both in a braced token and as
 a rule operand, so renaming one is a dictionary edit with a usage count beside
 it rather than a hunt through the catalogue.
 
+### Two kinds of check, one execute step
+
+Governance authors two kinds of card, and they are executed by different things:
+
+| | Executor | Cost | Reproducible | What you read to trust it |
+|---|---|---|---|---|
+| **Rule** | the system, over extracted fields | ≈0 tokens, ms | byte-identical | the rows, and the values it read |
+| **Requirement** | an agent, over the presentation | tokens, seconds | no | the prompt, and the reasoning |
+
+The pipeline did **not** gain a stage for this. A deterministic pass is not a step
+in the sense the other steps are: pacing exists to make model work observable,
+and there is nothing to observe in six expression evaluations. Adding
+`verify`/`examine` would have made an officer track four stages to understand a
+division of labour that belongs to the checks themselves. So `interpret → plan →
+execute` stands, and the difference lives where the checks live:
+
+- the **kind is marked on every plan row**, in the same badge Governance uses
+- the **header states each half's economics**: *6 evaluated on extracted fields —
+  no model, no cost* / *16 read by an agent — about 78k tokens*
+- rules **lead their group** and settle in the tick the run starts, because you
+  do not queue work that takes no time behind work that does
+
+**The plan can now say what is answerable before anything is spent.** A rule
+consumes fields Interpret produced, so its readiness is knowable in advance: a
+blocked rule names the field it is missing and says what will happen — *reported
+as not covered, never as a pass*. A missing input is not evidence of compliance.
+
+`CheckSpecCard`'s middle tab follows the kind. A rule has no request to read —
+nothing is sent anywhere — so its equivalent artefact is **Inputs**: each operand,
+the document it was read from, the value found, and the confidence. Same promise
+(*you may read what the system judged on*), the artefact that actually exists.
+
+### Stopping on a rule failure is a policy, not a surprise
+
+A critical failure found by arithmetic is exactly the case where reading on may be
+waste: if the invoice overdraws the credit, the presentation is refused whatever
+:47A: says. But some banks want the complete picture for a waiver request, so it
+is a **choice made in the plan** — a checkbox next to the estimate, before you
+press go. That keeps Auto's promise: it never stops on you unless you asked it to.
+
+When it fires, the plan says what was skipped and what that saved, and offers both
+ways out: *Read on anyway* or *Take it to the report*.
+
 ### Run modes, and why not "Manual"
 
 **Auto** runs every area straight through; **Step** pauses after each one. The

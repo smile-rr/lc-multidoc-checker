@@ -21,6 +21,93 @@
 // Here both are fixtures with the same shape.
 // ===========================================================================
 
+// Which kind of card the check came from, and therefore who executes it.
+//
+// A Rule card is rows over named fields: the system evaluates it, in
+// milliseconds, for nothing, and the same inputs always give the same answer. A
+// Requirement card is prose read against the presentation by an agent: it costs
+// tokens and seconds and its answer is a judgement.
+//
+// This is the same split Governance authors, carried through unchanged. Anything
+// not named here is a requirement — the same default a check is born with.
+export const RULE_CHECKS = ['DATE-44C', 'DATE-48', 'DATE-31D', 'AMT-30A', 'AMT-C6', 'XD-A23']
+export const checkKind = (id) => (RULE_CHECKS.includes(id) ? 'rule' : 'requirement')
+
+// The rows a Rule card evaluates, and the field each side reads. `factLabel` is
+// how that operand appears in the extracted facts — the join between the
+// dictionary's vocabulary and what Interpret actually produced.
+//
+// A rule is only answerable if every operand resolved. When one did not, the
+// plan says so before anything runs, and the result is "not covered" — never a
+// pass. A missing input is not evidence of compliance.
+export const RULE_ROWS = {
+  'DATE-44C': {
+    scope: 'When the credit states a latest shipment date',
+    message: 'Shipment was effected after the latest shipment date stated in the credit.',
+    rows: [{ l: { field: 'On-board date', doc: 'Bill of lading', factLabel: 'On board' }, op: 'is on or before', r: { field: 'Latest shipment date', doc: 'Letter of credit', factLabel: 'Latest shipment' }, tol: '' }],
+  },
+  'DATE-48': {
+    scope: 'Every presentation',
+    message: 'Documents were presented outside the presentation period.',
+    rows: [{ l: { field: 'Presentation date', doc: 'Covering schedule', factLabel: 'Presentation date' }, op: 'is within', r: { field: 'On-board date', doc: 'Bill of lading', factLabel: 'On board' }, tol: '21 calendar days' }],
+  },
+  'DATE-31D': {
+    scope: 'Every presentation',
+    message: 'Documents were presented after the credit expired.',
+    rows: [{ l: { field: 'Presentation date', doc: 'Covering schedule', factLabel: 'Presentation date' }, op: 'is on or before', r: { field: 'Expiry date', doc: 'Letter of credit', factLabel: 'Expiry' }, tol: '' }],
+  },
+  'AMT-30A': {
+    scope: 'Every presentation with a commercial invoice',
+    message: 'The invoice value exceeds the credit amount, tolerance included.',
+    rows: [
+      { l: { field: 'Invoice value', doc: 'Commercial invoice', factLabel: 'Total' }, op: 'is at most', r: { field: 'Credit amount', doc: 'Letter of credit', factLabel: 'Amount' }, tol: 'tolerance from 39A' },
+      { l: { field: 'Currency', doc: 'Commercial invoice', factLabel: 'Total' }, op: 'equals', r: { field: 'Currency', doc: 'Letter of credit', factLabel: 'Amount' }, tol: '' },
+    ],
+  },
+  'AMT-C6': {
+    scope: 'When the credit states a quantity and a unit price',
+    message: 'Quantity times unit price does not equal the invoice total.',
+    rows: [{ l: { field: 'Invoice value', doc: 'Commercial invoice', factLabel: 'Total' }, op: 'equals (amount)', r: { literal: 'Quantity × Unit price @ Commercial invoice', factLabel: 'Quantity' }, tol: '' }],
+  },
+  'XD-A23': {
+    scope: 'Every presentation, across all documents',
+    message: 'Data on the documents conflicts within the same presentation.',
+    rows: [
+      { l: { field: 'Goods description', doc: 'Commercial invoice', factLabel: 'Goods' }, op: 'does not conflict with', r: { field: 'Goods description', doc: 'Letter of credit', factLabel: 'Goods' }, tol: 'general terms allowed' },
+      { l: { field: 'Beneficiary name', doc: 'Commercial invoice', factLabel: 'Invoice number' }, op: 'is the same party as', r: { field: 'Beneficiary name', doc: 'Letter of credit', factLabel: 'Invoice number' }, tol: '' },
+    ],
+  },
+}
+
+/**
+ * Resolve a rule's operands against what Interpret extracted.
+ *
+ * Returns one entry per operand with the value found and its confidence, or
+ * `resolved: false` when the field is not there. `ready` is the whole point of
+ * showing this in the plan: it is knowable before a single token is spent.
+ */
+export function resolveRuleInputs(id, facts = []) {
+  const def = RULE_ROWS[id]
+  if (!def) return null
+  const find = (label) => facts.find((f) => f.label === label) ?? null
+  const operands = def.rows.flatMap((r) => [r.l, r.r].filter((o) => o && o.factLabel))
+  const seen = new Set()
+  const inputs = operands
+    .filter((o) => { const k = `${o.field ?? o.literal}|${o.doc ?? ''}`; if (seen.has(k)) return false; seen.add(k); return true })
+    .map((o) => {
+      const fact = find(o.factLabel)
+      return {
+        field: o.field ?? o.literal,
+        doc: o.doc ?? 'derived',
+        resolved: !!fact,
+        value: fact ? fact.value : null,
+        confidence: fact ? fact.confidence : null,
+      }
+    })
+  const missing = inputs.filter((i) => !i.resolved)
+  return { ...def, inputs, missing, ready: missing.length === 0 }
+}
+
 /** @typedef {{ rule: string, refs: string[], agent: string, severity: 'CRITICAL'|'MAJOR'|'MINOR' }} CheckSpec */
 
 /** @type {Record<string, CheckSpec>} */

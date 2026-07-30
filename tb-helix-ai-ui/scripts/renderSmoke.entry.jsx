@@ -38,12 +38,12 @@ function finishedCaseValue() {
     loading: false,
     error: null,
     data,
-    run: { segmented: 6, segmentTotal: 6, completedAreaIds: areaIds, activeAreaId: null, started: true, finished: true, mode: 'auto' },
+    run: { segmented: 6, segmentTotal: 6, completedAreaIds: areaIds, activeAreaId: null, started: true, finished: true, mode: 'auto', done: ['interpret', 'plan', 'execute'], activeStep: null },
     officer: {
       decisions: { 'f-date': 'agreed', 'f-cert': 'parked' },
       notes: { 'f-date': 'Applicant contacted.' },
       drafts: {},
-      addedChecks: [],
+      addedChecks: [], stopOnRuleFailure: true,
       verdict: 'refuse',
       reviewNote: 'Shipment is late — raising it.',
       submitted: false,
@@ -57,7 +57,7 @@ function finishedCaseValue() {
     },
     stages: STAGES,
     actions: {
-      flash() {}, startRun() {}, advanceRun() {}, decide() {}, saveNote() {},
+      flash() {}, startRun() {}, advanceRun() {}, decide() {}, saveNote() {}, dispatch() {},
       addCheck() {}, submit() {}, askQuestion() {}, dispatch() {},
     },
   }
@@ -68,7 +68,7 @@ function freshCaseValue() {
   const v = finishedCaseValue()
   return {
     ...v,
-    run: { segmented: 0, segmentTotal: 6, completedAreaIds: [], activeAreaId: null, started: false, finished: false, mode: 'step' },
+    run: { segmented: 0, segmentTotal: 6, completedAreaIds: [], activeAreaId: null, started: false, finished: false, mode: 'step', done: [], activeStep: null },
     officer: { ...v.officer, decisions: {}, notes: {}, reviewNote: '' },
     ui: { ...v.ui, toast: null, askOpen: false, costOpen: false },
     visible: { findings: [], attention: [], clean: [], manual: [] },

@@ -10,6 +10,19 @@ import Tabs from '@shared/ds/Tabs'
 import { toneOf } from '@shared/lib/tone'
 
 
+// One side of a condition: a dictionary field read off a named document, or a
+// value derived on the spot.
+function Operand({ o }) {
+  if (!o) return null
+  if (o.literal) return <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--me-ink)', background: 'var(--me-grey-08)', borderRadius: 5, padding: '2px 6px' }}>{o.literal}</span>
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 5, background: 'var(--me-grey-08)', border: '1px solid var(--me-grey-15)', borderRadius: 6, padding: '2px 7px' }}>
+      <span style={{ fontWeight: 600, color: 'var(--me-ink)' }}>{o.field}</span>
+      <span style={{ fontSize: 10.5, color: 'var(--me-grey-70)' }}>{o.doc}</span>
+    </span>
+  )
+}
+
 const SEVERITY_TONE = { CRITICAL: 'error', MAJOR: 'warning', MINOR: 'neutral' }
 
 const STATUS_LABEL = { planned: 'Planned', queued: 'Queued', running: 'Running now', done: 'Done', skipped: 'Not run' }
@@ -27,6 +40,10 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
   const [tab, setTab] = useState('rule')
   const spec = check.spec
   const sevTone = toneOf(SEVERITY_TONE[spec.severity] ?? 'neutral')
+  // A rule carries its rows and its resolved operands; a requirement carries a
+  // compiled prompt. Which one this is decides what the card can honestly show.
+  const rd = check.ruleDef
+  const isRule = check.kind === 'rule' && !!rd
 
   return (
     <div style={{ ...cardSurface(12), boxShadow: 'none', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -79,7 +96,11 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
         onChange={setTab}
         items={[
           { id: 'rule', label: 'Rule' },
-          { id: 'plan', label: 'Execution Plan' },
+          // A Rule card has no request to read — nothing is sent anywhere. The
+          // equivalent thing an officer needs in order to trust it is the values
+          // it compared and where each came from. Same promise, same place, the
+          // artefact that actually exists for this kind of check.
+          { id: 'plan', label: isRule ? 'Inputs' : 'Execution Plan' },
           { id: 'result', label: 'Result' },
         ]}
       />
@@ -90,7 +111,30 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
             <Field label="Trigger">
               <span style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--me-ink)' }}>{check.appliesBecause}.</span>
             </Field>
-            <Field label="Rule">
+            {isRule ? (
+              <>
+                <Field label="Applies to">
+                  <span style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--me-ink)' }}>{rd.scope}</span>
+                </Field>
+                <Field label="Conditions">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {rd.rows.map((r, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 7, flexWrap: 'wrap', fontSize: 12.5 }}>
+                        {i > 0 && <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--me-grey-50)' }}>and</span>}
+                        <Operand o={r.l} />
+                        <span style={{ fontWeight: 600, color: 'var(--me-blue-deep)' }}>{r.op}</span>
+                        <Operand o={r.r} />
+                        {r.tol ? <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>({r.tol})</span> : null}
+                      </div>
+                    ))}
+                  </div>
+                </Field>
+                <Field label="Raises">
+                  <span style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--me-grey)' }}>{rd.message}</span>
+                </Field>
+              </>
+            ) : null}
+            <Field label={isRule ? 'Authored as' : 'Rule'}>
               {spec.rule ? (
                 <RuleText text={spec.rule} />
               ) : (
@@ -105,7 +149,40 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
           </div>
         ) : null}
 
-        {tab === 'plan' ? (
+        {tab === 'plan' && isRule ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <span style={{ fontSize: 12.5, lineHeight: 1.6, color: 'var(--me-grey-70)' }}>
+              Nothing is sent anywhere: this check is evaluated here, on the fields below. It gives
+              the same answer every time it is run on the same presentation.
+            </span>
+            <div style={{ ...cardSurface(10), boxShadow: 'none', overflow: 'hidden' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.1fr) minmax(0,1fr) minmax(0,1.2fr) 64px', gap: 12, padding: '8px 12px', borderBottom: '1px solid var(--me-grey-15)', background: 'var(--me-grey-08)' }}>
+                <Eyebrow size="sm">Field</Eyebrow>
+                <Eyebrow size="sm">Read from</Eyebrow>
+                <Eyebrow size="sm">Value</Eyebrow>
+                <Eyebrow size="sm">Conf.</Eyebrow>
+              </div>
+              {rd.inputs.map((inp, i) => (
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.1fr) minmax(0,1fr) minmax(0,1.2fr) 64px', gap: 12, padding: '9px 12px', borderBottom: i < rd.inputs.length - 1 ? '1px solid var(--me-grey-08)' : 'none', alignItems: 'center', fontSize: 12.5 }}>
+                  <span style={{ fontWeight: 600, color: 'var(--me-ink)' }}>{inp.field}</span>
+                  <span style={{ color: 'var(--me-grey-70)' }}>{inp.doc}</span>
+                  <span style={{ color: inp.resolved ? 'var(--me-ink)' : '#946400', fontFamily: inp.resolved ? 'var(--font-mono)' : 'inherit' }}>
+                    {inp.resolved ? inp.value : 'not extracted'}
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>{inp.confidence ?? '—'}</span>
+                </div>
+              ))}
+            </div>
+            {!rd.ready ? (
+              <div style={{ padding: '10px 12px', borderRadius: 9, background: '#FBEFCF', fontSize: 12.5, color: '#946400', lineHeight: 1.55 }}>
+                This rule cannot be answered on this presentation — {rd.missing.map((m) => `${m.field} @ ${m.doc}`).join(' and ')} was not extracted.
+                It will be reported as not covered. A missing input is not evidence of compliance.
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {tab === 'plan' && !isRule ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <span style={{ fontSize: 12.5, lineHeight: 1.6, color: 'var(--me-grey-70)' }}>
               The request that executes this check, verbatim — not a description of it.

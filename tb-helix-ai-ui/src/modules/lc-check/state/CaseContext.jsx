@@ -64,6 +64,10 @@ const initial = {
     drafts: {},
     /** Checks the officer added to this case's plan. */
     addedChecks: [],
+    // Whether a critical failure found by arithmetic should stop the run before
+    // any model spend. Set in the plan, before pressing go, so Auto keeps its
+    // promise not to surprise you — you chose this.
+    stopOnRuleFailure: true,
     verdict: 'refuse',
     reviewNote: '',
     submitted: false,
@@ -169,6 +173,8 @@ function reducer(state, action) {
           reviewNote: [state.officer.reviewNote, `${action.title} — ${action.text}`].filter(Boolean).join('\n'),
         },
       }
+    case 'stop_on_rule_failure':
+      return { ...state, officer: { ...state.officer, stopOnRuleFailure: action.on } }
     case 'add_check':
       return { ...state, officer: { ...state.officer, addedChecks: [...state.officer.addedChecks, action.check] } }
     case 'verdict':
