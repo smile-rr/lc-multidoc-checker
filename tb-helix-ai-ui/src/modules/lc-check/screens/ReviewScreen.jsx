@@ -151,26 +151,18 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
             ].filter(Boolean).join(' · ') || 'Nothing back yet'}
           </span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          {mode === 'findings' ? (
-            <SegmentedControl
-              value={grouping}
-              onChange={setGrouping}
-              items={[
-                { id: 'kind', label: 'By kind' },
-                { id: 'doc', label: 'By document' },
-              ]}
-            />
-          ) : null}
-          <SegmentedControl
-            value={mode}
-            onChange={setMode}
-            items={[
-              { id: 'findings', label: 'Findings', tip: 'Check what we found' },
-              { id: 'examine', label: 'Examine the documents', tip: 'Read the pages yourself and raise what we missed' },
-            ]}
-          />
-        </div>
+        {/* The mode is the only control at this level, because it is the only one
+            that changes what you are doing. The grouping went down onto the list it
+            arranges — see the note there. Two segmented controls side by side read
+            as one tier, and then neither says which it is. */}
+        <SegmentedControl
+          value={mode}
+          onChange={setMode}
+          items={[
+            { id: 'findings', label: 'Findings', tip: 'Check what we found' },
+            { id: 'examine', label: 'Examine the documents', tip: 'Read the pages yourself and raise what we missed' },
+          ]}
+        />
       </div>
 
       {mode === 'examine' ? (
@@ -184,11 +176,17 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
             clean={visible.clean}
             decisions={officer.decisions}
             docById={docById}
+            grouping={grouping}
+            setGrouping={setGrouping}
             onSelect={(id) => { onSelect(id); setTab('analysis') }}
           />
         )}
         {selected ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Eyebrow size="sm">Grouped by</Eyebrow>
+            <SegmentedControl size="sm" value={grouping} onChange={setGrouping} items={[{ id: 'kind', label: 'Kind' }, { id: 'doc', label: 'Document' }]} />
+          </div>
           {groups.map((g) => (
             <div key={g.label} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '2px 2px 0' }}>
@@ -423,7 +421,7 @@ const FCOLS = {
   alignItems: 'center',
 }
 
-function FindingsTable({ groups, clean, decisions, docById, onSelect }) {
+function FindingsTable({ groups, clean, decisions, docById, grouping, setGrouping, onSelect }) {
   const [showClean, setShowClean] = useState(false)
   return (
     <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden', minWidth: 0 }}>

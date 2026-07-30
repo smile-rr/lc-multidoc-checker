@@ -23,6 +23,41 @@ import { checkSpec, buildExecutionPlan, checkKind, checkSource, resolveRuleInput
 // ---- Review areas ----------------------------------------------------------
 // Stable across credits. Which *checks* run varies; which areas exist does not.
 
+// What the credit demands of each document, and the practice that governs it.
+//
+// An examiner does not read a document and then wonder what to think about it. They
+// hold the credit's requirement in one hand and the document in the other — the 46A
+// item that calls for it, the data fields it has to agree with, any 47A condition
+// that touches it, and the article that says how to read it. Examine shows exactly
+// that, per document, which is why it is authored per document type here rather
+// than derived from the check list: the check list is our decomposition of the job,
+// not the examiner's.
+const CREDIT_DEMANDS = {
+  mt700: null,
+  CS: { calls: null, fields: ['Presentation period'], conditions: [], refs: ['UCP600 Art.14'] },
+  INV: {
+    calls: 'Signed commercial invoice in 3 originals',
+    fields: ['Amount', 'Goods', 'Credit number'],
+    conditions: ['Invoice must quote the credit number and the contract number'],
+    refs: ['UCP600 Art.18', 'ISBP821 C3'],
+  },
+  BOL: {
+    calls: 'Full set 3/3 original clean on board ocean bill of lading, made out to order and blank endorsed',
+    fields: ['Latest shipment', 'Partial shipments', 'Transhipment'],
+    conditions: ['All documents must bear the credit number'],
+    refs: ['UCP600 Art.20', 'UCP600 Art.14'],
+  },
+  PKL: { calls: 'Packing list in 2 copies', fields: ['Goods'], conditions: [], refs: ['ISBP821 A23'] },
+  BOE: { calls: 'Draft at sight drawn on the issuing bank', fields: ['Amount'], conditions: [], refs: ['UCP600 Art.6'] },
+  BC: {
+    calls: "Beneficiary's certificate stating goods were inspected pre-shipment",
+    fields: ['Goods'],
+    conditions: ['Certificate to state pre-shipment inspection was carried out'],
+    refs: ['UCP600 Art.14'],
+  },
+  WC: { calls: null, fields: [], conditions: [], refs: ['ISBP821 A31'] },
+}
+
 const AREAS = [
   { id: 'a1', name: 'Requirements', kind: 'domain', wave: 1, purpose: 'Settles what the credit calls for. Everything else is measured against this.' },
   { id: 'a2', name: 'Presentation & Completeness', kind: 'domain', wave: 2, purpose: 'Every required document there, in the right originals, signed.' },
@@ -243,6 +278,44 @@ const CASE_01 = {
     ],
   },
   findings: [
+    {
+      // A rule whose input was never extracted. It did not pass and it did not
+      // fail — it could not run, which is a third outcome the UI has to say out
+      // loud, because a missing input is not evidence of compliance.
+      id: 'f-pres', severity: 'manual', area: 'Dates & Shipment', areaId: 'a3', checkId: 'DATE-48',
+      docId: 'mt700', page: null, creditTag: '48',
+      statement: 'PRESENTATION DATE NOT ESTABLISHED — PERIOD UNDER FIELD 48 COULD NOT BE TESTED',
+      title: 'We could not test the presentation period',
+      detail: 'The covering schedule carries no legible receipt stamp, so the date documents reached the counter is not established. Field 48 allows 21 days from shipment; without a presentation date that cannot be measured.',
+      expected: ':48: 21 days from shipment',
+      quote: '[no receipt stamp read]',
+      quoteSource: 'Covering schedule',
+      reason: 'UCP 600 article 14(c) with field 48. The period is measurable only from a presentation date; we did not obtain one, so this is put to you rather than passed.',
+      analysis: {
+        requirement: 'Field 48 allows 21 calendar days from the date of shipment for documents to be presented.',
+        presented: 'No presentation date was extracted. The covering schedule stamp did not read.',
+        why: 'A rule with a missing operand has no answer. Reporting it as a pass would assert something we did not establish.',
+        options: ['Read the receipt stamp yourself and enter the date, then the rule can run.', 'Take the presentation date from the case file if the presenting bank advised it separately.'],
+      },
+      analysisMarkdown: 'The presentation period under field 48 could not be tested: no presentation date was established from the covering schedule.',
+      trace: [{ key: 'status', value: 'operand missing — Presentation date @ Covering schedule' }],
+    },
+    {
+      // Raised by a person, not by a check. Seeded so the third group and the
+      // provenance marks are visible without anyone having to raise one first.
+      id: 'f-officer-1', severity: 'possible', area: 'Raised by you', areaId: null, checkId: null,
+      raisedByOfficer: true,
+      docId: 'INV', page: 1, creditTag: null,
+      statement: 'INVOICE UNIT PRICE SHOWN NET OF DISCOUNT NOT MENTIONED IN THE CREDIT',
+      title: 'Invoice shows a discount the credit does not mention',
+      detail: 'The invoice prices 500 units at USD 112.00 and then shows a 2% settlement discount in the footer. The credit says nothing about a discount. Raising it so the applicant confirms the net figure is what they expect to pay.',
+      quote: 'Less 2% settlement discount',
+      quoteSource: 'Commercial invoice, p.1',
+      reason: 'Not a discrepancy on its face — the drawn amount is still within tolerance. Recorded because the applicant should see it before payment.',
+      analysis: { requirement: '', presented: 'Less 2% settlement discount', why: 'The credit is silent on discounts and the net figure differs from quantity times unit price.', options: [] },
+      analysisMarkdown: 'Invoice footer shows a 2% settlement discount. The credit is silent on discounts.',
+      trace: [{ key: 'raised by', value: 'the examining officer' }],
+    },
     {
       id: 'f-date', severity: 'discrepancy', area: 'Shipment terms', areaId: 'a3', checkId: 'DATE-44C',
       docId: 'BOL', page: 2, creditTag: '44C',
@@ -1104,6 +1177,7 @@ function buildCase(defKey, overrides) {
       seg.pages.map((n) => ({ number: n, docId: seg.code, label: DOC_TYPES[seg.code].docType })),
     ),
     facts,
+    creditDemands: CREDIT_DEMANDS,
     areas: AREAS,
     checks,
     findings: withProvenance(buildFindings(def), checksById, facts),

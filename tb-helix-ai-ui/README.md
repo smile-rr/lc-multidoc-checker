@@ -676,6 +676,18 @@ interface speaks in the first person — and not "manual", which in trade financ
 means a person examining documents and would make the label sound like the whole
 job. So: **Rule · Requirement · Raised by you**.
 
+### Two tiers, told apart
+
+The mode (*Findings* / *Examine the documents*) changes what you are doing. The
+grouping (*Kind* / *Document*) arranges one list inside one of those modes. Both
+were segmented controls, adjacent and equal-weight, which read as one tier and
+then said nothing about which was which.
+
+The fix is placement, not decoration: **a control that arranges a list belongs on
+the list.** The mode stays in the screen header, alone at that level; the grouping
+moved into the findings list's own header, smaller, labelled *Grouped by*. Nothing
+is ambiguous about a control's scope when it sits on the thing it scopes.
+
 ### Examine the documents yourself
 
 The engine's findings are a head start, not the examination. Under UCP 600 art. 14(a)
@@ -687,9 +699,34 @@ not that. Three things a finding list structurally cannot cover:
 - the credit states something no card covers
 
 So Review has a second **mode** — not a grouping, because neither job contains the
-other. *Findings* is checking what we found; *Examine the documents* inverts the
-flow to document-led: the bundle on the left, the page in the middle, and what we
-made of that page on the right.
+other. *Findings* is checking what we found; *Examine the documents* inverts the flow
+to document-led.
+
+But document-led is not one-document-at-a-time-in-isolation, which is what a first
+pass at this was and what no examiner does. **An examiner holds the credit's
+requirement in one hand and the document in the other.** They do not read a bill of
+lading and then wonder what to think about it — they read it *against* the 46A item
+that called for it, the fields it must agree with, the 47A condition that touches it,
+and the article that says how to read it. So the layout is the desk:
+
+```
+[ credit ] [ invoice ] [ bill of lading ] [ packing list ] …     ← documents, across the top
+┌──────────────────────┬───────────────────┬──────────────────┐
+│ What the credit      │  the page         │ What we read     │
+│ demands              │                   │  · our doubt     │
+│  · called for by 46A │                   │    first         │
+│  · must agree with   │                   │  · everything    │
+│  · conditions in 47A │                   │    else          │
+│  · read it under     │                   │  · findings here │
+└──────────────────────┴───────────────────┴──────────────────┘
+```
+
+The credit column is **filtered to what bears on the document in front of you**.
+Showing the whole credit beside every page would be technically complete and
+practically useless — the examiner would filter it in their head, every time. It
+opens on the first *presented* document, not the credit: examining is reading what
+was presented against what was demanded, and landing on the credit puts you on the
+instrument rather than the subject.
 
 **Our own uncertainty is promoted to the top of that panel**, and that is the whole
 idea. We already record a confidence per reading and a flag when something looked
@@ -700,9 +737,17 @@ documents, one of which ("Drawee", faint scan) we could not read at all.
 
 Every reading carries **Raise** — not only the doubtful ones, because a confident
 misreading is still a misreading and the officer decides which of our readings to
-trust. Raising pre-fills the document, the page and the quote from where you were
-standing: a finding whose provenance was typed from memory is worth less than one
-the interface recorded.
+trust.
+
+Raising opens a **dialog with room in it**, not a form in the corner of a column.
+Crammed into the panel it read as a nervous afterthought, and a form that feels like
+an afterthought produces findings that look like one — the wrong signal on something
+that ends up in a refusal advice. It pre-fills the document, page and quote from
+where you were standing, because a finding whose provenance was typed from memory is
+worth less than one the interface recorded. The article you are relying on is
+*offered, not demanded*: an examiner often knows a document is wrong before knowing
+which article says so, and forcing the citation first would either block the finding
+or invite a guess.
 
 ### A finding carries how it was settled
 
