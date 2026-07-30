@@ -721,6 +721,28 @@ and the article that says how to read it. So the layout is the desk:
 └──────────────────────┴───────────────────┴──────────────────┘
 ```
 
+**Segmentation is a guess, so it must not be a cage.** The document tabs say what a
+page *probably* belongs to; every page of the bundle stays one click away regardless,
+and when you page past a boundary the tab follows the page rather than the two
+silently disagreeing. A segmentation error is exactly the thing an examiner needs to
+be able to catch, and the first pass at this clamped paging to the selected
+document's own range — which would have hidden it.
+
+**The two side panels are a pair, not two lists.** Left is *Required by the credit*
+(the 46A item, the credit's own fields with their `:tag:`, the 47A conditions, the
+articles); right is *Read off this document*. They were indistinguishable because
+both were labelled values, so each credit requirement now carries what this page
+answers with directly beneath it:
+
+```
+Amount · :32B:
+USD60000,00 ±10% (:39A: 10/10)
+  │ on the document   USD 56,000.00
+```
+
+The comparison is the examiner's whole act. Splitting it across two panels for them
+to hold in their head was the mistake.
+
 The credit column is **filtered to what bears on the document in front of you**.
 Showing the whole credit beside every page would be technically complete and
 practically useless — the examiner would filter it in their head, every time. It

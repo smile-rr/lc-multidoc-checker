@@ -34,24 +34,32 @@ import { checkSpec, buildExecutionPlan, checkKind, checkSource, resolveRuleInput
 // not the examiner's.
 const CREDIT_DEMANDS = {
   mt700: null,
-  CS: { calls: null, fields: ['Presentation period'], conditions: [], refs: ['UCP600 Art.14'] },
+  CS: { calls: null, fields: [{ credit: 'Presentation period', doc: null }], conditions: [], refs: ['UCP600 Art.14'] },
   INV: {
     calls: 'Signed commercial invoice in 3 originals',
-    fields: ['Amount', 'Goods', 'Credit number'],
+    fields: [
+      { credit: 'Amount', doc: 'Total' },
+      { credit: 'Goods', doc: 'Goods' },
+      { credit: 'Credit number', doc: 'LC number quoted' },
+    ],
     conditions: ['Invoice must quote the credit number and the contract number'],
     refs: ['UCP600 Art.18', 'ISBP821 C3'],
   },
   BOL: {
     calls: 'Full set 3/3 original clean on board ocean bill of lading, made out to order and blank endorsed',
-    fields: ['Latest shipment', 'Partial shipments', 'Transhipment'],
+    fields: [
+      { credit: 'Latest shipment', doc: 'On board' },
+      { credit: 'Partial shipments', doc: null },
+      { credit: 'Transhipment', doc: null },
+    ],
     conditions: ['All documents must bear the credit number'],
     refs: ['UCP600 Art.20', 'UCP600 Art.14'],
   },
-  PKL: { calls: 'Packing list in 2 copies', fields: ['Goods'], conditions: [], refs: ['ISBP821 A23'] },
-  BOE: { calls: 'Draft at sight drawn on the issuing bank', fields: ['Amount'], conditions: [], refs: ['UCP600 Art.6'] },
+  PKL: { calls: 'Packing list in 2 copies', fields: [{ credit: 'Goods', doc: 'Packing' }], conditions: [], refs: ['ISBP821 A23'] },
+  BOE: { calls: 'Draft at sight drawn on the issuing bank', fields: [{ credit: 'Amount', doc: 'Amount' }], conditions: [], refs: ['UCP600 Art.6'] },
   BC: {
     calls: "Beneficiary's certificate stating goods were inspected pre-shipment",
-    fields: ['Goods'],
+    fields: [{ credit: 'Goods', doc: 'Origin statement' }],
     conditions: ['Certificate to state pre-shipment inspection was carried out'],
     refs: ['UCP600 Art.14'],
   },

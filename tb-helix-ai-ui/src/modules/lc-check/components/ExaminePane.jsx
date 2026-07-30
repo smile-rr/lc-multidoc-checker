@@ -8,6 +8,7 @@ import IconButton from '@shared/ds/IconButton'
 import TextArea from '@shared/ds/TextArea'
 import Select from '@shared/ds/Select'
 import Modal from '@shared/ds/Modal'
+import PageStrip from '@shared/ds/PageStrip'
 import { ellipsis } from '@shared/ds/text'
 import { plural } from '@shared/lib/format'
 import BundleViewer from './BundleViewer'
@@ -56,8 +57,14 @@ export default function ExaminePane({ findings, onOpenFinding }) {
   const [page, setPage] = useState(() => (data.documents.find((d) => d.role === 'presented')?.pageRange?.[0] ?? 1))
   const [draft, setDraft] = useState(null)
 
-  const doc = data.documents.find((d) => d.id === docId) ?? data.documents[0]
-  // eslint-disable-next-line no-unused-vars
+  // Our segmentation decides which document a tab *means*, and it can be wrong —
+  // a page filed under the invoice may belong to the packing list. So the tabs are
+  // a starting point, never a boundary: paging runs across the whole bundle, and
+  // when a page turns out to sit outside the tab you picked, the tab follows the
+  // page rather than the two silently disagreeing. Same rule Interpret uses.
+  const picked = data.documents.find((d) => d.id === docId) ?? data.documents[0]
+  const pageDocId = useMemo(() => data.bundlePages.find((p) => p.number === page)?.docId ?? null, [data.bundlePages, page])
+  const doc = picked?.role === 'credit' ? picked : data.documents.find((d) => d.id === pageDocId) ?? picked
   const isCredit = doc?.role === 'credit'
   const docFacts = useMemo(() => data.facts.filter((f) => f.docId === doc?.id), [data.facts, doc])
 
@@ -72,6 +79,14 @@ export default function ExaminePane({ findings, onOpenFinding }) {
     setDraft(null)
     const d = data.documents.find((x) => x.id === id)
     if (d?.pageRange) setPage(d.pageRange[0])
+  }
+
+  // Turning a page can move which document you are in. Keep the tab in step.
+  const goPage = (n) => {
+    const next = Math.min(Math.max(1, n), data.totalPages)
+    setPage(next)
+    const owner = data.bundlePages.find((p) => p.number === next)?.docId
+    if (owner && owner !== docId && picked?.role !== 'credit') setDocId(owner)
   }
 
   // Raising starts from what you were looking at, so the record carries where it
@@ -120,21 +135,24 @@ export default function ExaminePane({ findings, onOpenFinding }) {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px,320px) minmax(320px,1fr) minmax(300px,360px)', gap: 14, alignItems: 'start' }}>
-      <CreditColumn demands={demands} facts={creditFacts} isCredit={isCredit} />
+      <CreditColumn demands={demands} facts={creditFacts} docFacts={docFacts} isCredit={isCredit} />
 
       <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: '1px solid var(--me-grey-15)', flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)' }}>{doc.docType}</span>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>{doc.reference}</span>
           <div style={{ flex: 1 }} />
-          {!isCredit && doc.pageRange ? (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <IconButton icon="chevron-left" size="sm" title="Previous page" onClick={() => setPage((p) => Math.max(doc.pageRange[0], p - 1))} disabled={page <= doc.pageRange[0]} />
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>p.{page}</span>
-              <IconButton icon="chevron-right" size="sm" title="Next page" onClick={() => setPage((p) => Math.min(doc.pageRange[1], p + 1))} disabled={page >= doc.pageRange[1]} />
-            </span>
-          ) : null}
         </div>
+        {isCredit ? null : (
+          <div style={{ borderBottom: '1px solid var(--me-grey-15)' }}>
+            {/* Every page of the bundle, not just the ones we filed under this
+                document. Restricting the strip to the document's own pages is the
+                same cage in a nicer shape: reaching page 5 from page 1 should be
+                one click, not four Nexts. Which document a page belongs to is
+                already answered by the tab, which follows the page. */}
+            <PageStrip pages={data.totalPages} activePage={page} onPage={goPage} docLabel={doc.docType} />
+          </div>
+        )}
         {isCredit ? (
           <div style={{ maxHeight: 620, overflow: 'auto', padding: '14px 16px', fontFamily: 'var(--font-mono)', fontSize: 11.5, lineHeight: 1.85, color: 'var(--me-ink)' }}>
             {doc.lines?.map((l) => (
@@ -170,7 +188,10 @@ export default function ExaminePane({ findings, onOpenFinding }) {
         {/* Everything else we read, so a human can disagree with any of it. */}
         <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid var(--me-grey-15)' }}>
-            <Eyebrow size="sm">What we read here</Eyebrow>
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <Eyebrow size="sm">Read off this document</Eyebrow>
+              <span style={{ fontSize: 11, color: 'var(--me-grey-70)' }}>Our reading of the page — disagree with any of it</span>
+            </span>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>{confident.length}</span>
             <div style={{ flex: 1 }} />
             <Button variant="secondary" size="sm" onClick={() => startDraft(null)}>
@@ -216,8 +237,9 @@ export default function ExaminePane({ findings, onOpenFinding }) {
 
 // What the credit demands of the document in front of you, and the practice that
 // governs how to read it. This is the hand an examiner cannot work without.
-function CreditColumn({ demands, facts, isCredit }) {
+function CreditColumn({ demands, facts, docFacts, isCredit }) {
   const byLabel = (label) => facts.find((f) => f.label === label)
+  const docByLabel = (label) => (label ? docFacts.find((f) => f.label === label) : null)
   if (isCredit) {
     return (
       <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden' }}>
@@ -234,7 +256,10 @@ function CreditColumn({ demands, facts, isCredit }) {
     <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--me-blue-20)', borderBottom: '1px solid var(--me-grey-15)' }}>
         <Icon name="file-text" size={14} color="var(--me-blue-deep)" />
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--me-blue-deep)' }}>What the credit demands</span>
+        <span style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--me-blue-deep)' }}>Required by the credit</span>
+          <span style={{ fontSize: 11, color: 'var(--me-blue-deep)', opacity: 0.85 }}>What this document has to satisfy</span>
+        </span>
       </div>
       {!demands ? (
         <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -255,13 +280,25 @@ function CreditColumn({ demands, facts, isCredit }) {
           ) : null}
           {demands.fields.length ? (
             <Block label="Must agree with">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {demands.fields.map((label) => {
-                  const f = byLabel(label)
+              {/* The requirement, and directly beneath it what this page answers
+                  with. Two independent lists of labelled values is what made the
+                  left and right panels indistinguishable — and the comparison is
+                  the examiner's whole act, so it belongs in one place, not split
+                  across the screen for them to hold in their head. */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+                {demands.fields.map((pair) => {
+                  const c = byLabel(pair.credit)
+                  const d = docByLabel(pair.doc)
                   return (
-                    <span key={label} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                      <span style={{ fontSize: 11, color: 'var(--me-grey-70)' }}>{label}{f?.source ? ` · ${f.source}` : ''}</span>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--me-ink)' }}>{f?.value ?? '—'}</span>
+                    <span key={pair.credit} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span style={{ fontSize: 11, color: 'var(--me-grey-70)' }}>{pair.credit}{c?.source ? ` · ${c.source}` : ''}</span>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.5, color: 'var(--me-ink)', whiteSpace: 'pre-wrap' }}>{c?.value ?? '—'}</span>
+                      <span style={{ display: 'flex', alignItems: 'baseline', gap: 6, paddingLeft: 10, borderLeft: '2px solid var(--me-grey-15)', marginTop: 2 }}>
+                        <span style={{ fontSize: 10.5, color: 'var(--me-grey-70)', flexShrink: 0 }}>on the document</span>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: d ? 'var(--me-ink)' : 'var(--me-grey-50)' }}>
+                          {d ? d.value : pair.doc ? 'not read' : 'read it yourself'}
+                        </span>
+                      </span>
                     </span>
                   )
                 })}
