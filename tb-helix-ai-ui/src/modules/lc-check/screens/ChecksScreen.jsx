@@ -108,6 +108,8 @@ export default function ChecksScreen({ onOpenFinding }) {
   const allChecks = useMemo(() => [...data.checks, ...officer.addedChecks], [data.checks, officer.addedChecks])
   const [selectedId, setSelectedId] = useState(null)
   const [showSkipped, setShowSkipped] = useState(false)
+  // Uncovered requirements open the band; a fully covered credit does not need it open.
+  const [showReqs, setShowReqs] = useState(true)
 
   const executing = run.activeStep === 'execute' || run.done.includes('execute')
   const planned = run.done.includes('plan')
@@ -136,6 +138,15 @@ export default function ChecksScreen({ onOpenFinding }) {
   // cannot disagree. It used to be `reqs.length * 4.9`, a hand-written constant
   // three times under what the run actually reports.
   const est = judgedRuleCost(judged.length)
+
+  // What this credit requires, and whether anything tests it.
+  //
+  // The plan used to answer only "what will run", which cannot tell an officer the
+  // thing they most need before a run: what it will *not* cover. A requirement with
+  // no rule was discoverable only afterwards, as a flag on a finding. Now it is the
+  // first thing on the screen.
+  const requirements = data.requirements ?? []
+  const uncovered = requirements.filter((r) => !r.ruleIds.length)
 
   // A critical failure found on the figures is the case where reading on may be
   // waste: the presentation is refused whatever :47A: says. Whether to stop is a
@@ -234,6 +245,35 @@ export default function ChecksScreen({ onOpenFinding }) {
           )}
         </div>
 
+        {/* What the credit requires, before what we will do about it. An examiner
+            works outward from the credit, and the plan should be readable in that
+            order — the rulebook is our answer to this list, not the other way round. */}
+        {requirements.length && !selected ? (
+          <div style={{ flexShrink: 0, borderBottom: '1px solid var(--me-grey-15)' }}>
+            <button
+              onClick={() => setShowReqs((v) => !v)}
+              style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '9px 16px', border: 'none', background: uncovered.length ? '#FBEFCF' : 'var(--me-grey-08)', cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              <Icon name={showReqs ? 'chevron-down' : 'chevron-right'} size={14} color="var(--me-grey-50)" />
+              <Eyebrow size="sm">What this credit requires</Eyebrow>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>{requirements.length}</span>
+              <div style={{ flex: 1 }} />
+              <span style={{ fontSize: 11.5, color: uncovered.length ? '#946400' : 'var(--me-grey-70)' }}>
+                {uncovered.length
+                  ? `${requirements.length - uncovered.length} have a rule · ${uncovered.length} for you`
+                  : 'every one has a rule'}
+              </span>
+            </button>
+            {showReqs ? (
+              <div>
+                {requirements.map((r) => (
+                  <RequirementRow key={r.id} req={r} onPick={pick} />
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         {halted && (
           <div style={{ margin: '12px 16px 0', border: '1px solid #E9C97A', background: '#FBEFCF', borderRadius: 10, padding: '10px 13px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <Icon name="circle-pause" size={15} color="#946400" />
@@ -324,6 +364,36 @@ export default function ChecksScreen({ onOpenFinding }) {
         </div>
       ) : null}
     </section>
+  )
+}
+
+// One thing the credit demands, and what tests it.
+//
+// The rule ids are clickable because the question that follows "the credit wants X"
+// is always "show me the rule" — and where there is no rule the row says so in the
+// same slot, which is the only place an officer will be looking.
+function RequirementRow({ req, onPick }) {
+  const covered = req.ruleIds.length > 0
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '54px minmax(0,1.6fr) minmax(0,0.7fr) minmax(0,1fr)', gap: 12, alignItems: 'baseline', padding: '7px 16px', borderTop: '1px solid var(--me-grey-08)' }}>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--me-grey-70)' }}>:{req.from}:</span>
+      <span style={{ fontSize: 12.5, lineHeight: 1.4, color: 'var(--me-ink)' }}>{req.text}</span>
+      <span style={{ ...ellipsis, fontSize: 11.5, color: 'var(--me-grey-70)' }}>{req.doc ?? 'the presentation'}</span>
+      {covered ? (
+        <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {req.ruleIds.map((id) => (
+            <button key={id} onClick={() => onPick(id)} style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--me-blue)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+              {id}
+            </button>
+          ))}
+        </span>
+      ) : (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#946400' }}>
+          <Icon name="circle-alert" size={12} color="currentColor" />
+          no rule tests this — yours
+        </span>
+      )}
+    </div>
   )
 }
 

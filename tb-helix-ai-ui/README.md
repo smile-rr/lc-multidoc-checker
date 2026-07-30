@@ -576,7 +576,63 @@ description" says nothing; `Goods description @ Commercial invoice no conflict w
 
 Not-brought-into-play collapses to one line: it is reference, not work.
 
-### Two kinds of check, one execute step
+### Requirement and rule are different words for different things
+
+The word was doing two jobs, and the collision was live: `ExaminePane`'s credit column
+rendered **"Requirements"** for the `:46A:`/`:47A:` parse while the plan beside it
+badged a *governance card kind* "Requirement". Its own source comment used both
+meanings in one sentence.
+
+The service had already settled it. `catalog.yml` holds **one list, keyed `rules:`**,
+each entry carrying a `check_type` — and no requirement card anywhere. The UI invented
+a second card kind that the thing it is a UI for does not have.
+
+| | Is | Authored | Lives |
+|---|---|---|---|
+| **Requirement** | what *this credit* demands — read out of `:46A:` and `:47A:` | by the planner, per case, approved by nobody | Plan |
+| **Rule** | how the bank *tests* a requirement | in Governance: versioned, reviewed, standing | the dictionary |
+
+So everything Governance authors is a **Rule card**. A rule an agent reads is no less
+a rule than one comparing two fields — both are standing instructions the bank
+approved, and only the evaluation differs. Each carries the service's `checkType`, and
+the officer sees the one bit that matters:
+
+- **Exact** — an expression over extracted fields. Reproducible, no model, free.
+- **Judged** — an agent read it and formed a view. Costs money, needs your eye.
+
+**Not "static / dynamic".** Both are equally static as authored artefacts: neither
+changes per credit, both are versioned text in the dictionary. The genuinely dynamic
+thing here is a requirement read out of a credit's `:47A:` — different every case — so
+that word is needed elsewhere. The four service tiers (`PROGRAMMATIC` · `AGENT` ·
+`AGENT_TOOL` · `AGENTIC`) stay visible on a card's detail and in the cost drawer,
+where `AGENT` against `AGENTIC` is the difference in the bill.
+
+### The plan leads with what the credit requires
+
+An examiner works outward from the credit, so the plan reads in that order: what is
+demanded, then what tests it.
+
+```
+WHAT THIS CREDIT REQUIRES                            19    18 have a rule · 1 for you
+:46A:  Signed commercial invoice in 3 originals   INV   DOCSET-14A DOCSET-17 DOCSET-03
+:46A:  Latest shipment must agree with the credit BOL   DATE-44C
+:47A:  Invoice must quote the contract number     INV   COND-47A.1
+:47A:  All documents must be in English           all   ⚠ no rule tests this — yours
+```
+
+That last row is the point. The plan used to answer only *"what will run"*, which
+cannot tell an officer the thing they most need beforehand: **what it will not
+cover.** An uncovered requirement was discoverable only afterwards, as a flag on a
+finding. Coverage becomes a real number too — *19 requirements, 18 have a rule* rather
+than a count of the checks we happened to write.
+
+It is derived from `CREDIT_DEMANDS`, the same structure Examine puts beside each page,
+rather than authored twice. Two structures holding the same facts drift, and nothing
+compares them until someone notices the screens disagree.
+
+**No new pipeline step** — all of this is inside `plan`.
+
+### Two tiers, one execute step
 
 Governance authors two kinds of card, and they are executed by different things:
 
