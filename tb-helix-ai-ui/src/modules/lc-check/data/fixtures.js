@@ -309,6 +309,32 @@ const CASE_01 = {
       trace: [{ key: 'status', value: 'operand missing — Presentation date @ Covering schedule' }],
     },
     {
+      // A hold that cites internal policy, not the credit and not UCP/ISBP.
+      //
+      // This is where "policy" comes from and it is not a third kind of card: it is a
+      // Requirement card like any other, whose reference happens to be an internal
+      // policy rather than an article. What makes it different is downstream — it
+      // stops the payment without being a discrepancy, so it cannot be stated to the
+      // presenting bank under art. 16(c). Seeded so that separation is visible.
+      id: 'f-fc', severity: 'possible', area: 'Sanctions & Parties', areaId: 'a6', checkId: 'PARTY-FC04',
+      docId: 'BOL', page: 2, creditTag: null,
+      statement: 'VESSEL NAME RETURNS A POSSIBLE MATCH ON THE RESTRICTED-PARTY LIST',
+      title: 'The vessel returns a possible sanctions match',
+      detail: 'The carrying vessel named on the bill of lading returns a partial match against the restricted-vessel list. The documents themselves are in order; this is a payment hold, not a discrepancy.',
+      expected: 'Internal policy FC-04 — no party, vessel or port on a restricted list',
+      quote: 'MV NORTHERN TRADER',
+      quoteSource: 'Bill of lading, p.2',
+      reason: 'Internal policy FC-04. Not a UCP 600 matter: a complying presentation can still be held here, and the hold is not stated on a refusal advice.',
+      analysis: {
+        requirement: 'Policy FC-04 requires every named party, vessel and port to clear the restricted-party lists before value is released.',
+        presented: 'The vessel name partially matches an entry on the restricted-vessel list.',
+        why: 'This does not make the presentation discrepant. It stops the payment until financial crime clears or confirms the match.',
+        options: ['Escalate to financial crime for a definitive match decision.', 'Hold the payment; do not state this on the refusal advice.'],
+      },
+      analysisMarkdown: 'Vessel named on the bill of lading returns a partial match on the restricted-vessel list. Payment hold, not a discrepancy.',
+      trace: [{ key: 'list', value: 'restricted vessels' }, { key: 'match', value: 'partial' }],
+    },
+    {
       // Raised by a person, not by a check. Seeded so the third group and the
       // provenance marks are visible without anyone having to raise one first.
       id: 'f-officer-1', severity: 'possible', area: 'Raised by you', areaId: null, checkId: null,

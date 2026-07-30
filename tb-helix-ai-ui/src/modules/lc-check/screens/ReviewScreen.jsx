@@ -183,6 +183,15 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
         )}
         {selected ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* The way back. Focus mode had no exit, so selecting a finding made the
+              overview unreachable — and the overview is the default state. */}
+          <button
+            onClick={() => onSelect(null)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 7, alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, color: 'var(--me-blue)' }}
+          >
+            <Icon name="arrow-left" size={14} />
+            All findings
+          </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Eyebrow size="sm">Grouped by</Eyebrow>
             <SegmentedControl size="sm" value={grouping} onChange={setGrouping} items={[{ id: 'kind', label: 'Kind' }, { id: 'doc', label: 'Document' }]} />

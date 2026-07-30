@@ -19,12 +19,28 @@ import { useCase } from '../state/CaseContext'
 // Rows collapse because this list is read twice for different reasons: once
 // scanning for what is still open, once reading a specific finding in full. A
 // list that is always expanded serves the second and defeats the first.
+// What a finding is cited against, in the words a notice uses.
+const CITE = { credit: 'the credit', practice: 'UCP / ISBP', policy: 'bank policy' }
+
 export default function DecisionScreen({ onOpenFinding }) {
   const { data, visible, officer, actions } = useCase()
   const [expanded, setExpanded] = useState({})
 
-  const rows = visible.attention
   const checkById = useMemo(() => Object.fromEntries(data.checks.map((c) => [c.id, c])), [data.checks])
+
+  // A refusal notice under UCP 600 art. 16(c) states *discrepancies* — ways the
+  // presentation fails to comply with the credit and the rules applied to it. A hold
+  // that cites internal policy is not one of those: the documents may comply
+  // perfectly and the bank still will not pay yet. It stops the payment through a
+  // different door, and stating it to the presenting bank as a discrepancy would be
+  // wrong on the face of the notice.
+  //
+  // So the two are separated here rather than listed together. Everything else keeps
+  // Review's vocabulary — how it was settled, what it is cited against — because the
+  // officer arrives from Review and should not have to relearn the list.
+  const all = visible.attention
+  const rows = all.filter((f) => (f.source ?? 'credit') !== 'policy')
+  const holds = all.filter((f) => f.source === 'policy')
 
   const decided = rows.filter((f) => officer.decisions[f.id]).length
   const open = rows.length - decided
@@ -42,6 +58,38 @@ export default function DecisionScreen({ onOpenFinding }) {
 
   return (
     <section className="helix-screen" style={{ padding: '18px 32px 40px', display: 'grid', gridTemplateColumns: 'minmax(360px,1fr) minmax(320px,400px)', gap: 16, alignItems: 'start' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Held, not refused. A sanctions or policy hold stops the payment without
+          being a discrepancy: the documents may comply perfectly. It cannot be
+          stated to the presenting bank under art. 16(c), so it is above the
+          dispositions rather than in them, where nobody can mistake it for one. */}
+      {holds.length ? (
+        <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden', borderColor: '#E9C97A' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '11px 16px', background: '#FBEFCF', borderBottom: '1px solid var(--me-grey-15)' }}>
+            <Icon name="shield-alert" size={15} color="#946400" />
+            <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: '#946400' }}>
+              {holds.length === 1 ? 'A policy hold stops this payment' : `${holds.length} policy holds stop this payment`}
+            </span>
+          </div>
+          <div style={{ padding: '10px 16px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {holds.map((f) => (
+              <button key={f.id} onClick={() => onOpenFinding(f.id)} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit' }}>
+                <Icon name="dot" size={14} color="#946400" />
+                <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span style={{ fontSize: 12.5, lineHeight: 1.45, color: 'var(--me-ink)' }}>{f.title}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--me-grey-70)' }}>{f.checkId}</span>
+                </span>
+              </button>
+            ))}
+            <span style={{ fontSize: 11.5, lineHeight: 1.55, color: 'var(--me-grey-70)' }}>
+              Not a discrepancy, and not stated on the advice — the presentation may comply in
+              every respect and still be held here. Escalate it through financial crime; the
+              refusal notice below covers the credit and the rules only.
+            </span>
+          </div>
+        </div>
+      ) : null}
+
       <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '13px 18px', borderBottom: '1px solid var(--me-grey-15)', minHeight: 56 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -111,6 +159,20 @@ export default function DecisionScreen({ onOpenFinding }) {
                     >
                       {f.title}
                     </span>
+                    {/* Same marks as Review: how it was settled, and what it is
+                        cited against. The officer arrives from that screen. */}
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                      {f.settledBy ? (
+                        <span title={f.settledBy === 'rule' ? 'Computed by a rule' : 'Read by an agent'} style={{ display: 'flex', color: f.settledBy === 'rule' ? 'var(--me-blue-deep)' : '#1F7A00' }}>
+                          <Icon name={f.settledBy === 'rule' ? 'equal' : 'list-checks'} size={11} color="currentColor" />
+                        </span>
+                      ) : f.raisedByOfficer ? (
+                        <span title="You raised this" style={{ display: 'flex', color: 'var(--me-grey)' }}><Icon name="flag" size={11} color="currentColor" /></span>
+                      ) : null}
+                      <span style={{ fontSize: 10.5, color: 'var(--me-grey-70)', whiteSpace: 'nowrap' }}>
+                        {CITE[f.source] ?? (f.raisedByOfficer ? 'yours' : '')}
+                      </span>
+                    </span>
                   </div>
 
                   {/* Fixed width: the label changes from "Open" to "Not one" as
@@ -129,6 +191,19 @@ export default function DecisionScreen({ onOpenFinding }) {
                   // blending into the rows above and below it.
                   <div style={{ margin: '0 18px 12px 55px', padding: '12px 14px', background: 'var(--me-grey-08)', border: '1px solid var(--me-grey-15)', borderRadius: 9, display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <DiscrepancyStatement text={f.statement} tone={sev.accent} compact onSurface />
+                    {/* Where the wording came from. A statement derived from a rule's
+                        own Raise line plus the real values is exact and reproducible;
+                        one an agent drafted is prose that has to be read before it
+                        goes out over the bank's name. Saying which tells the officer
+                        where to spend their attention. */}
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: f.statementSource === 'derived' ? 'var(--me-grey-70)' : '#946400' }}>
+                      <Icon name={f.statementSource === 'derived' ? 'circle-check' : 'pencil'} size={12} color="currentColor" />
+                      {f.statementSource === 'derived'
+                        ? 'Derived from the rule and the values it read — exact as written.'
+                        : f.statementSource === 'officer'
+                          ? 'Your wording.'
+                          : 'Drafted by the agent — read it before it goes out.'}
+                    </span>
                     <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.6, color: 'var(--me-grey)' }}>{f.analysis.why}</p>
                     {f.analysis.options?.length ? (
                       <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -149,6 +224,7 @@ export default function DecisionScreen({ onOpenFinding }) {
             )
           })
         )}
+      </div>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
