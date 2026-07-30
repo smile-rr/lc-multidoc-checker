@@ -70,3 +70,6 @@ coverage/
 *.swp
 *.swo
 ~
+
+# tb-helix-ai-svc local blob store (content-addressed; regenerated from uploads)
+tb-helix-ai-svc/var/

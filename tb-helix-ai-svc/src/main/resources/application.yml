@@ -1,0 +1,283 @@
+# ============================================================================
+# tb-helix-ai-svc
+#
+# Configuration philosophy, unchanged from v3: operational knobs are hardcoded
+# here and change by rebuild; `.env` holds only secrets and Mac-local overrides.
+# A knob that can be changed without review is a knob that will be.
+#
+# Nothing in this file names a vendor. Model slots are numbered and uniform, and
+# `extra-body` is the generic escape hatch that carries provider quirks (Qwen's
+# enable_thinking, response_format) without the abstraction learning what Qwen is.
+# ============================================================================
+
+spring:
+  application:
+    name: tb-helix-ai-svc
+  config:
+    import:
+      - "optional:file:../.env[.properties]"
+  profiles:
+    active: default
+  devtools:
+    restart:
+      log-condition-evaluation-delta: false
+
+  autoconfigure:
+    exclude:
+      # L2 is design-complete and switched off. Excluding the autoconfiguration
+      # keeps a disabled tier from opening a connection at boot; the RedisTier
+      # bean is @ConditionalOnProperty and its @Import turns this back on.
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+
+  servlet:
+    multipart:
+      # A scanned TIFF bundle is the largest thing that arrives here.
+      max-file-size: 80MB
+      max-request-size: 120MB
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:lc_checker}
+    username: ${DB_USERNAME:lcuser}
+    password: ${DB_PASSWORD:lcdev}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      idle-timeout: 30000
+      connection-timeout: 20000
+      connection-test-query: SELECT 1
+      validation-timeout: 3000
+      keepalive-time: 60000
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    # The three schemas this service owns. The first is the history table's home.
+    schemas: helix_core,helix_check,helix_gov
+    create-schemas: true
+    baseline-on-migrate: true
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    default-property-inclusion: non_null
+
+server:
+  port: 9090
+
+# ============================================================================
+# Helix
+# ============================================================================
+helix:
+
+  # --- Blob store ---------------------------------------------------------
+  # Content-addressed. No case folders and no doc-type folders: the catalogue
+  # (helix_core.blob + blob_ref) answers "which blobs belong to case X", which
+  # is what makes dedup free — the same bundle uploaded twice is one file.
+  blob:
+    tier: DISK                       # DISK | S3 (S3 adapter is a stub for now)
+    root: ${HELIX_BLOB_ROOT:./var/blob}
+    # A human-navigable symlink mirror under by-case/. Costs nothing, and makes
+    # "show me what this case actually holds" a shell command.
+    link-by-case: true
+    # How long an unreferenced blob survives before GC will take it. Long,
+    # because the thing being collected is evidence.
+    orphan-grace: 30d
+
+  # --- Cache tiers --------------------------------------------------------
+  cache:
+    l1:
+      enabled: true
+      # Bounded by weight, unlike the unbounded byte[] map this replaces. Page
+      # renders dominate: a 200 DPI page is ~1.5 MB.
+      max-weight-mb: 512
+      ttl: 10m
+    l2:
+      enabled: false                 # design complete, switched off
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      ttl: 24h
+    l3:
+      enabled: true
+      # Per-op TTL. Deterministic ops never expire — the answer cannot go stale
+      # if nothing about it can change.
+      #
+      # Bracket notation is required, not decoration: Spring binds a dotted map key
+      # as a NESTED map, so `convert.tiff_pdf: 0` becomes {convert:{tiff_pdf:0}},
+      # every per-op lookup misses, and everything silently gets the fallback.
+      ttl:
+        "[default]": 90d
+        "[convert.tiff_pdf]": 0       # 0 = never
+        "[render.pages]": 30d
+        "[parse.mt700]": 0
+        "[segment.bundle]": 90d
+        "[extract.doc]": 90d
+        "[plan.requirements]": 30d
+        "[judge.rule]": 30d
+      purge-cron: "0 30 3 * * *"
+
+  # --- Document handling --------------------------------------------------
+  render:
+    dpi: 200
+    max-pages: 12
+    max-long-edge-px: 2048
+    # Rendered pages are VLM input; the browser never sees one. A page render is
+    # ~1.5 s against a 30 s model call, and the cache is consulted before the
+    # render — so persisting 1.5 MB per page buys almost nothing. Turn this on
+    # for a "show me what the model saw" view, not for speed.
+    persist-pages: false
+
+  convert:
+    # Bitonal CCITT G4 frames are re-embedded rather than rasterised. Scanned
+    # bank documents are overwhelmingly G4, and rasterising a 2 MB fax to RGB
+    # inflates it to ~40 MB for no gain in what the model can read.
+    preserve-ccitt: true
+
+  # --- Models -------------------------------------------------------------
+  # Slots are numbered and uniform; a provider switch is base-url + api-key.
+  models:
+    text:
+      llm-1:
+        enabled: true
+        base-url: ${LLM_1_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+        api-key: ${LLM_1_API_KEY:}
+        model: ${LLM_1_MODEL:qwen3.7-flash}
+        # Zero, always, for anything cacheable. A cached answer from a sampling
+        # call is a lie about repeatability.
+        temperature: 0
+        max-tokens: 8192
+        connect-timeout: 10s
+        read-timeout: 180s
+        max-retries: 2
+        extra-body:
+          enable_thinking: false
+      llm-2:
+        enabled: false
+        base-url: ${LLM_2_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+        api-key: ${LLM_2_API_KEY:}
+        model: ${LLM_2_MODEL:qwen3.6-plus}
+        temperature: 0
+        max-tokens: 8192
+        connect-timeout: 10s
+        read-timeout: 180s
+        max-retries: 2
+        extra-body:
+          enable_thinking: false
+
+    vision:
+      vlm-1:
+        enabled: true
+        base-url: ${VLM_1_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+        api-key: ${VLM_1_API_KEY:}
+        model: ${VLM_1_MODEL:qwen3.7-vl-flash}
+        temperature: 0
+        max-tokens: 4096
+        connect-timeout: 10s
+        read-timeout: 240s
+        max-retries: 1
+        # Per-slot render params. Two slots at different DPI get two renders and
+        # two cache keys — v2 hashed each slot's DPI into its key but rendered
+        # once using slot 1's, so the key described a request that never happened.
+        render:
+          dpi: 200
+          max-pages: 12
+          max-long-edge-px: 2048
+        extra-body:
+          enable_thinking: false
+          response_format:
+            type: json_object
+      vlm-2:
+        enabled: false
+        base-url: ${VLM_2_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+        api-key: ${VLM_2_API_KEY:}
+        model: ${VLM_2_MODEL:qwen3.6-vl-plus}
+        temperature: 0
+        max-tokens: 4096
+        connect-timeout: 10s
+        read-timeout: 240s
+        max-retries: 1
+        render:
+          dpi: 200
+          max-pages: 12
+          max-long-edge-px: 2048
+        extra-body:
+          enable_thinking: false
+          response_format:
+            type: json_object
+
+  # Domain code asks for a role, never a slot. More than one slot on a role means
+  # consensus: they run in parallel and vote, first slot breaking ties.
+  roles:
+    segment: [vlm-1]
+    extract: [vlm-1]
+    plan:    [llm-1]
+    judge:   [llm-1]
+    narrate: [llm-1]
+
+  # --- lc-check -----------------------------------------------------------
+  check:
+    catalog:
+      # LIVE reads check_def directly, so an edit in Governance takes effect on
+      # the next run — right for development. RELEASE reads the pinned snapshot,
+      # which is what makes an examination defensible. Switch at cutover.
+      pin-mode: ${HELIX_CATALOG_PIN:LIVE}
+    agent:
+      # Hard cap on an agentic rule's tool-calling turns. A per-rule
+      # max_iterations may lower this; nothing raises it.
+      max-iterations: 3
+    presets:
+      dir: ${PRESETS_DIR:${user.dir}/../test/cases}
+      max-count: 3
+
+  # --- Governance ---------------------------------------------------------
+  governance:
+    seed:
+      # Per-table, only when empty. Hand-authored rows carry seeded=false and
+      # survive; a reseed that overwrote them would delete a person's work.
+      enabled: true
+      resource: classpath:seed/governance-seed.json
+
+# ============================================================================
+# Platform
+# ============================================================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  tracing:
+    enabled: ${LANGFUSE_ENABLED:false}
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${LANGFUSE_OTLP_ENDPOINT:http://192.168.31.214:3300/api/public/otel/v1/traces}
+      headers:
+        Authorization: "Basic ${LANGFUSE_AUTH_BASIC:}"
+      compression: gzip
+      timeout: 10s
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+    enabled: true
+  swagger-ui:
+    enabled: false
+  default-produces-media-type: application/json
+  packages-to-scan: com.tb.helix.lccheck.api,com.tb.helix.governance.api
+
+logging:
+  level:
+    root: INFO
+    com.tb.helix: DEBUG
+    io.opentelemetry.exporter.internal.http: WARN
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level [%thread] %X{caseId:-} %X{stage:-} %X{checkId:-} %logger{36} - %msg%n"
