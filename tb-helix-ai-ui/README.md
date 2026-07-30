@@ -1105,14 +1105,14 @@ good it is**.
 
 ```
 TURNAROUND              SPEND                     QUALITY
-3 min 12 s              $4.28                     92%
-median to findings      total for the period      383 of 417 upheld
-24 pages · 88 cards     $1.00/case  $0.17/page    34  raised, not upheld
-41 findings evidenced   $100 per 100 cases         3  MISSED
-6.2 h to decision       ▉▉▉▉▉ 86% Sonnet          86% conditions covered
-74% of window free      no model  6 / 22 cards       by card kind
-                        kept off the bill $1.09     ═ rule         168  4  0
-                                                    ☰ requirement  215 30  3
+2 min 45 s              $1.00                     99%  Recall
+median to findings      per case · 4 examined     383 of 386 caught · was 98%
+                        $4.00 for the period      92%  Precision
+6.2 h                   6 / 22                    383 of 417 stood · was 88%
+Presentation to         Settled without a model    3   Missed
+Decision. Slowest 31 h  27% of the examination,        all in requirement cards
+of the 120 h art. 14(b) at no cost and identical   86% Conditions covered
+allows — 74% free       on every run
 ```
 
 The title is **AI performance** and nothing cleverer. A draft called it the
@@ -1130,23 +1130,40 @@ number available and was carrying the entire claim.
 
 So value is stated from the system's own side:
 
-- **Turnaround leads**, because being decision-ready before a case is opened is
-  the thing the assistant actually delivers. The supporting numbers are work
-  completed — pages read, cards run, findings evidenced.
-- **The free half is stated as a sentence, not a slice.** 6 of the 22 cards a credit
-  brings into play are settled without asking a model anything, and unlike the rest
-  that does not grow with the size of the bundle. It is in `byModel` because it did
-  work, but a 0% bar is invisible and a 0% legend row reads as a model that failed to
-  report, so the cost cell says it in words.
-- **Errors are split by card kind**, because the two halves fail for unrelated
-  reasons and the fixes are unrelated too. A Rule card cannot be wrong about its
-  comparison — when one does not stand it is a misread field or a mis-authored card,
-  which is a dictionary job, reproducible, and it stays fixed. A Requirement card is a
-  model reading prose, where the fix is the prompt or accepting that the question
-  needs a person. One blended rate hides which conversation to have. Deliberately
-  three counts each rather than two more precision/recall pairs: doubling the rates on
-  the panel would invite someone to quote whichever is higher. The per-kind counts
-  reconcile to the totals exactly.
+#### One headline and one or two lines a cell
+
+The panel had grown to about twenty-five numbers, which is not a panel — it is a
+report, and a report nobody reads past the first row. The test applied to every
+figure was: **does it move, and does moving it change what somebody does?** Eight
+survived.
+
+| Cut | Why |
+|---|---|
+| per-model cost bar and legend, cost per page, cost per hundred, kept off the bill | structural — true this month and next. Say it once in the docs, not daily on a panel |
+| pages read, cards run, findings evidenced | volume, not performance. They say the queue was busy |
+| "raised, not upheld" count | precision in another unit, sitting directly under precision. Its detail line already carries the raw numbers |
+| the slowest-case bar | it drew the sentence beside it |
+| the errors-by-card-kind table | the densest thing here, for a finding that fits in six words |
+
+- **Turnaround leads**, because being decision-ready before a case is opened is the
+  thing the assistant actually delivers. Its one supporting figure is the art. 14(b)
+  window — the only number here with regulatory teeth, since under art. 16(f) a bank
+  that misses it is precluded from calling the documents non-compliant at all.
+- **Cost per case leads, and the total is demoted to its note.** This reverses an
+  earlier call that led with the total because that is what a budget holder gets
+  asked for — the same paragraph defending it conceded that a total only ever rises
+  and so cannot show a regression, which on a panel cut to what moves decides it. It
+  also makes the folded summary and the open panel agree: both now lead per case.
+- **The free half is a sentence, not a slice.** 6 of the 22 cards a credit brings into
+  play are settled without asking a model anything, and unlike the rest that does not
+  grow with the bundle. `engine` is in `byModel` because it did work, but a 0% bar is
+  invisible and a 0% legend row reads as a model that failed to report.
+- **Which half the misses are in is a clause on the Missed line** — *all in
+  requirement cards*. It was a four-column grid. The fact matters (a Rule card cannot
+  be wrong about its comparison, so a rule error is a misread field or a mis-authored
+  card: a dictionary job that stays fixed; a Requirement error is judgement, where the
+  fix is the prompt or accepting the question needs a person) but it does not need a
+  table, and the per-kind counts still reconcile to the totals for anyone who asks.
 - **The run takes minutes, and says so.** Step durations describe the work: a
   vision model reading six scanned pages is over a minute on its own, and the
   `:47A:` conditions run an agentic loop. Six pages and twenty-odd checks come to
