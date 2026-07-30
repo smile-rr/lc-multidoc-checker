@@ -37,11 +37,13 @@ COMPOSE  := docker compose --project-directory . -f infra/docker-compose.yml
 SVC_DIR  := lc-checker-v2-svc
 UI_DIR   := ui
 HELIX_DIR  := tb-helix-ai-ui
+HSVC_DIR   := tb-helix-ai-svc
 LOG_DIR  := /tmp/lc-checker-v2
 
 SVC_PORT     := 9082
 UI_DEV_PORT  := 5173
 HELIX_PORT   := 5174
+HSVC_PORT    := 9090
 DB_CONTAINER := lc-checker-postgres
 DB_IMAGE     := postgres:16-alpine
 DB_PORT      := 5432
@@ -206,6 +208,46 @@ helix-down:  ## stop TB Helix AI UI (kills :5174)
 	@pid=$$(lsof -ti tcp:$(HELIX_PORT) 2>/dev/null); \
 	  if [ -n "$$pid" ]; then kill $$pid && echo "✓ helix stopped (pid $$pid)"; \
 	  else echo "  (helix not running on :$(HELIX_PORT))"; fi
+
+# ---------------------------------------------------------------------------
+# tb-helix-ai-svc — the backend the helix UI will talk to.
+#
+# Runs alongside lc-checker-v2-svc rather than replacing it: the old service
+# still serves ui/ until cutover, and they listen on different ports (9082/9090)
+# against different schemas (lc_v3 / helix_*) in the same database.
+# ---------------------------------------------------------------------------
+
+.PHONY: hsvc hsvc-watch hsvc-bg hsvc-down hsvc-wait hsvc-build
+
+hsvc:  ## start tb-helix-ai-svc (foreground) — :9090
+	@echo "→ tb-helix-ai-svc on :$(HSVC_PORT)   (Ctrl-C to stop)"
+	@cd $(HSVC_DIR) && set -a && source ../$(ENV_FILE) && set +a && ./gradlew bootRun
+
+hsvc-watch:  ## start tb-helix-ai-svc with DevTools hot reload (~3s on save)
+	@echo "→ tb-helix-ai-svc on :$(HSVC_PORT) with continuous build"
+	@cd $(HSVC_DIR) && (./gradlew classes --continuous > /dev/null 2>&1 &) \
+	  && set -a && source ../$(ENV_FILE) && set +a && ./gradlew bootRun
+
+hsvc-bg: $(LOG_DIR)  ## start tb-helix-ai-svc in background (log → /tmp/lc-checker-v2/hsvc.log)
+	@(cd $(HSVC_DIR) && set -a && source ../$(ENV_FILE) && set +a \
+	   && nohup ./gradlew bootRun > $(LOG_DIR)/hsvc.log 2>&1 &) \
+	  && echo "✓ tb-helix-ai-svc bg on :$(HSVC_PORT)   (log: $(LOG_DIR)/hsvc.log)"
+
+hsvc-down:  ## stop tb-helix-ai-svc (kills :9090)
+	@pid=$$(lsof -ti tcp:$(HSVC_PORT) 2>/dev/null); \
+	 if [ -n "$$pid" ]; then kill $$pid && echo "✓ tb-helix-ai-svc stopped"; \
+	 else echo "  (tb-helix-ai-svc not running on :$(HSVC_PORT))"; fi
+
+hsvc-wait:  ## block until tb-helix-ai-svc reports UP
+	@echo "→ waiting for :$(HSVC_PORT)/actuator/health …"
+	@for i in $$(seq 1 60); do \
+	   if curl -sf http://127.0.0.1:$(HSVC_PORT)/actuator/health 2>/dev/null | grep -q '"status":"UP"'; then \
+	     echo "✓ tb-helix-ai-svc UP"; exit 0; fi; sleep 2; done; \
+	 echo "✗ tb-helix-ai-svc did not come up — see $(LOG_DIR)/hsvc.log"; exit 1
+
+hsvc-build:  ## compile + run the ArchUnit boundary rules
+	@cd $(HSVC_DIR) && ./gradlew build
+
 
 helix-build: _helix-install  ## production build → tb-helix-ai-ui/dist
 	@cd $(HELIX_DIR) && npm run build
