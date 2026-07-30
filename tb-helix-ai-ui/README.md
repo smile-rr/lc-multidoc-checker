@@ -608,6 +608,42 @@ nothing is sent anywhere — so its equivalent artefact is **Inputs**: each oper
 the document it was read from, the value found, and the confidence. Same promise
 (*you may read what the system judged on*), the artefact that actually exists.
 
+### Plan is coverage; Review is decisions
+
+They look like the same results table after a run, and they are not. **A check is
+not a finding**: one check can produce none, one or several, and a finding can exist
+with no check behind it at all — which is the whole reason Review leads with "Not
+covered".
+
+| | Shows | Answers |
+|---|---|---|
+| **Plan / Execute** | all 25 checks, complete — including the ones that passed, the ones that could not be answered, the ones never brought into play | *did you check X?* — the question asked in a dispute, years later |
+| **Review** | only what needs a person, worst first, with evidence and the officer's call | *what do I do about each of these?* |
+
+So the plan screen does **not** grow disposition buttons. Three of them on 25 rows,
+14 of which need nothing, would invite an officer to work top-to-bottom through a
+list that is mostly noise — exactly the failure Review's ordering exists to prevent.
+Instead, once the run produces anything the plan states its coverage
+(*14 passed · 2 could not be answered · 3 not brought into play*) and hands over:
+**3 findings need your decision →**.
+
+### A finding carries how it was settled
+
+`settledBy` (rule or requirement), `source` (credit / practice / policy), and for a
+computed finding the `comparison` — each row with the values actually compared,
+where each was read, and which row failed. That is the evidence for a rule finding,
+and it *replaces* the model's reasoning because there is none: nothing formed a
+view, two values were compared. Checking such a finding is checking a sum, which is
+quick — and labelling it "model output" would have been a lie.
+
+`statementSource` says where the discrepancy wording came from:
+
+- **derived** — the rule's own *Raise* line plus the real values. Exact, reproducible,
+  no hallucination risk.
+- **drafted** — the agent wrote it. Needs the officer's eye before it goes on a
+  refusal advice.
+- **officer** — raised by a person, no check behind it.
+
 ### Stopping on a rule failure is a policy, not a surprise
 
 A critical failure found by arithmetic is exactly the case where reading on may be

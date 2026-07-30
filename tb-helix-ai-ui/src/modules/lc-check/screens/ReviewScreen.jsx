@@ -221,11 +221,17 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
           />
 
           {tab === 'analysis' ? (
-            <div style={{ padding: '14px 22px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ padding: '14px 22px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {/* A computed finding has no reasoning to read — nothing formed a
+                  view, two values were compared. So the evidence is the
+                  arithmetic: both sides, where each was read, and which row
+                  failed. Checking it is checking a sum, which is quick, and
+                  labelling it "model output" would have been a lie. */}
+              {selected.comparison ? <Comparison outcome={selected.comparison} /> : null}
               <MarkdownDoc
                 text={selected.analysisMarkdown}
-                label="Finding"
-                meta={`${selected.checkId ?? 'no check'} · model output`}
+                label={selected.comparison ? 'How it reads' : 'Finding'}
+                meta={`${selected.checkId ?? 'no check'} · ${selected.statementSource === 'derived' ? 'derived from the rule' : selected.statementSource === 'officer' ? 'raised by you' : 'model output'}`}
               />
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 18px' }}>
                 {selected.trace.map((t) => (
@@ -272,6 +278,54 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
         </div>
       </div>
     </section>
+  )
+}
+
+// The arithmetic behind a computed finding.
+function Comparison({ outcome }) {
+  const TONE = {
+    fail: { border: 'var(--status-error)', bg: '#FBE3E1', label: 'failed' },
+    pass: { border: 'var(--me-grey-15)', bg: '#fff', label: 'held' },
+    unanswerable: { border: '#E9C97A', bg: '#FBEFCF', label: 'could not be answered' },
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+        <Eyebrow size="sm">Compared</Eyebrow>
+        <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>{outcome.scope}</span>
+      </div>
+      {outcome.rows.map((r, i) => {
+        const t = TONE[r.verdict] ?? TONE.pass
+        return (
+          <div key={i} style={{ border: `1px solid ${t.border}`, background: t.bg, borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 12 }}>
+              <Side o={r.left} />
+              <span style={{ fontWeight: 600, color: 'var(--me-blue-deep)' }}>{r.op}</span>
+              <Side o={r.right} />
+              {r.tol ? <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>({r.tol})</span> : null}
+              <div style={{ flex: 1 }} />
+              <span style={{ fontSize: 11, fontWeight: 600, color: r.verdict === 'fail' ? 'var(--status-error)' : r.verdict === 'unanswerable' ? '#946400' : 'var(--me-grey-70)' }}>{t.label}</span>
+            </div>
+          </div>
+        )
+      })}
+      <span style={{ fontSize: 11.5, lineHeight: 1.5, color: 'var(--me-grey-70)' }}>
+        Raised as: {outcome.message}
+      </span>
+    </div>
+  )
+}
+
+function Side({ o }) {
+  if (!o) return null
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
+      <span style={{ fontWeight: 600, color: 'var(--me-ink)' }}>{o.field}</span>
+      {o.doc ? <span style={{ fontSize: 10.5, color: 'var(--me-grey-70)' }}>@ {o.doc}</span> : null}
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: o.resolved ? 'var(--me-ink)' : '#946400' }}>
+        {o.resolved ? o.value : 'not extracted'}
+      </span>
+    </span>
   )
 }
 

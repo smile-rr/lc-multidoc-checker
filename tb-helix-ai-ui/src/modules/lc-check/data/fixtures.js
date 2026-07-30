@@ -16,7 +16,7 @@
 
 import { SAMPLES, DOC_TYPES } from './samples/index.js'
 import { parseMt700Lines, tagValue } from '../lib/mt700.js'
-import { checkSpec, buildExecutionPlan, checkKind, checkSource, resolveRuleInputs } from './checkSpecs.js'
+import { checkSpec, buildExecutionPlan, checkKind, checkSource, resolveRuleInputs, ruleOutcome } from './checkSpecs.js'
 
 /** @typedef {import('./contracts.js').CaseDetail} CaseDetail */
 
@@ -985,6 +985,30 @@ ${cite ? `\n**Basis:** ${cite}\n` : ''}${options}${confidence}`
  * derived from the evidence already on the record rather than left blank: a
  * clean result still has to say what it checked.
  */
+/**
+ * Findings, with how each was settled travelling on it.
+ *
+ * `settledBy` is the check's kind, and `comparison` is the arithmetic for the ones
+ * a rule produced. `statementSource` says whether the discrepancy wording was
+ * *derived* — the rule's own Raise line plus the real values, exact and
+ * reproducible — or *drafted* by the agent, which needs the officer's eye before
+ * it goes on a refusal advice.
+ */
+function withProvenance(findings, checksById, facts) {
+  return findings.map((f) => {
+    const check = f.checkId ? checksById[f.checkId] : null
+    const settledBy = check ? check.kind : null
+    const failedRow = f.severity === 'discrepancy' ? 0 : null
+    return {
+      ...f,
+      settledBy,
+      source: check ? check.source : null,
+      comparison: settledBy === 'rule' ? ruleOutcome(f.checkId, facts, failedRow) : null,
+      statementSource: settledBy === 'rule' ? 'derived' : settledBy ? 'drafted' : 'officer',
+    }
+  })
+}
+
 function buildFindings(def) {
   return def.findings.map((f) => {
     const analysis = f.analysis ?? {
@@ -1059,6 +1083,11 @@ function buildCase(defKey, overrides) {
   const documents = buildDocuments(def, lines)
   // Built before the plan, because the plan says which rules their absence blocks.
   const facts = buildFacts(def, lines)
+  // Checks first, then findings — a finding carries the kind and source of the
+  // check that produced it, so review and the refusal advice can say how each was
+  // settled without looking anything up.
+  const checks = buildChecks(def, lines, creditTerms, documents, facts)
+  const checksById = Object.fromEntries(checks.map((c) => [c.id, c]))
 
   return {
     id: overrides.id,
@@ -1076,8 +1105,8 @@ function buildCase(defKey, overrides) {
     ),
     facts,
     areas: AREAS,
-    checks: buildChecks(def, lines, creditTerms, documents, facts),
-    findings: buildFindings(def),
+    checks,
+    findings: withProvenance(buildFindings(def), checksById, facts),
     runSteps: RUN_STEPS,
     runModelSummary: 'GPT-4o · Qwen3 32B · Claude Sonnet 4.6 — 30 calls, 2 repairs, 6 pages read, prompt cache 43%',
     // The run state the case is already in when it loads. A finished case needs

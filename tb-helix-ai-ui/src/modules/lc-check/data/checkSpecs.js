@@ -179,6 +179,42 @@ export function resolveRuleInputs(id, facts = []) {
   return { ...def, inputs, missing, ready: missing.length === 0 }
 }
 
+/**
+ * What a rule produced: each row with the values it actually compared.
+ *
+ * This is the evidence for a computed finding, and it replaces the model's
+ * reasoning because there is none — nothing formed a view here, two values were
+ * compared. An officer checking such a finding is checking arithmetic, and what
+ * they need is the arithmetic: both sides, where each was read, and which row
+ * failed.
+ *
+ * `failed` is mocked from whether the check produced a discrepancy, since the
+ * fixtures hold values as they appear on the page ("14 JAN 2025") rather than as
+ * comparable types. A real evaluator returns it per row; the shape is the same.
+ */
+export function ruleOutcome(id, facts = [], failedRow = null) {
+  const def = resolveRuleInputs(id, facts)
+  if (!def) return null
+  const valueOf = (o) => {
+    if (!o) return null
+    if (o.literal) return { field: o.literal, doc: 'derived', value: null, resolved: false }
+    const hit = def.inputs.find((i) => i.field === o.field && i.doc === o.doc)
+    return { field: o.field, doc: o.doc, value: hit ? hit.value : null, resolved: !!(hit && hit.resolved), confidence: hit ? hit.confidence : null }
+  }
+  return {
+    ...def,
+    message: def.message,
+    rows: def.rows.map((r, i) => ({
+      op: r.op,
+      tol: r.tol,
+      left: valueOf(r.l),
+      right: valueOf(r.r),
+      // Unanswerable beats failed: a row missing an input did not fail, it never ran.
+      verdict: !valueOf(r.l)?.resolved || (r.r.field && !valueOf(r.r)?.resolved) ? 'unanswerable' : failedRow === null ? 'pass' : i === failedRow ? 'fail' : 'pass',
+    })),
+  }
+}
+
 /** @typedef {{ rule: string, refs: string[], agent: string, severity: 'CRITICAL'|'MAJOR'|'MINOR' }} CheckSpec */
 
 /** @type {Record<string, CheckSpec>} */

@@ -56,6 +56,30 @@ import { useCase } from '../state/CaseContext'
 // Clicking a row is the whole gesture: it already says "I want to study this", so
 // a separate mode switch would be a second control for the same intent. Closing
 // the panel (or clicking the selected row again) gives the overview back.
+//
+// ---------------------------------------------------------------------------
+// What this screen is for after the run, and why it is not the review screen.
+//
+// A check is not a finding. One check can produce none, one or several findings,
+// and a finding can exist with no check behind it at all — that case is the whole
+// reason the review screen leads with "Not covered". So the two screens are views
+// of different things and both have to exist.
+//
+// The division of labour:
+//
+//   here    COVERAGE, and it is complete. All 25 checks, including the 14 that
+//           passed, the 2 that could not be answered and the 3 the credit never
+//           brought into play. This is the only screen that answers "did you
+//           check X?" — which is the question asked in a dispute, years later.
+//   review  DECISIONS, and it is selective. Only what needs a person, worst
+//           first, each with its evidence and the officer's call.
+//
+// So this screen does not grow disposition buttons. Putting three of them on 25
+// rows, 14 of which need nothing, would invite an officer to work top-to-bottom
+// through a list that is mostly noise — which is exactly the failure the review
+// screen's ordering exists to prevent. Instead, when the run finishes this screen
+// states its coverage and hands over.
+// ---------------------------------------------------------------------------
 const COLS = {
   display: 'grid',
   gridTemplateColumns: '26px 96px minmax(0,1.4fr) minmax(0,1.9fr) minmax(0,0.9fr) 88px',
@@ -119,6 +143,16 @@ export default function ChecksScreen({ onOpenFinding }) {
   const selected = selectedId ? allChecks.find((c) => c.id === selectedId) : null
   const pick = (id) => setSelectedId((cur) => (cur === id ? null : id))
 
+  // Coverage — what this screen exists to say once the run has produced anything.
+  // Counted here rather than taken from the findings list, because the interesting
+  // numbers are the ones a findings list has no way to show: what could not be
+  // answered, and what was never brought into play.
+  const settled = runnable.filter((c) => statusOf(c) === 'done')
+  const withFinding = settled.map((c) => findingFor(c)).filter(Boolean)
+  const needsDecision = withFinding.filter((f) => f.severity !== 'clean')
+  const unanswerable = blocked.length + settled.filter((c) => c.notCovered).length
+  const passed = settled.length - needsDecision.length - blocked.filter((c) => settled.includes(c)).length
+
   const sections = [
     {
       key: 'rule',
@@ -165,7 +199,23 @@ export default function ChecksScreen({ onOpenFinding }) {
             {' · '}
             {runnable.length} to run
           </span>
+          {executing ? (
+            <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>
+              {passed > 0 ? `${passed} passed` : null}
+              {unanswerable ? ` · ${unanswerable} could not be answered` : ''}
+              {skipped.length ? ` · ${skipped.length} not brought into play` : ''}
+            </span>
+          ) : null}
           <div style={{ flex: 1 }} />
+          {/* The hand-over. This screen's job ends at "here is what was examined";
+              deciding what to do about it is the next screen's, and saying so with
+              a count is more use than a tab an officer has to remember to visit. */}
+          {executing && needsDecision.length ? (
+            <button onClick={() => onOpenFinding?.(needsDecision[0].id)} style={{ ...linkBtn, fontWeight: 600 }}>
+              {plural(needsDecision.length, 'finding')} need your decision
+              <Icon name="arrow-right" size={14} />
+            </button>
+          ) : null}
           {!executing && (
             <button onClick={actions.addCheck} title="Add a check the credit does not call for — it runs with the rest and is recorded against your name" style={linkBtn}>
               <Icon name="plus" size={14} />
