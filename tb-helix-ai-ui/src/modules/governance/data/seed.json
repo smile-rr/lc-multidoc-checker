@@ -406,7 +406,7 @@
           "detail": "Reviewed and confirmed."
         }
       ],
-      "type": "requirement"
+      "checkType": "AGENT"
     },
     {
       "id": "REQ-38",
@@ -430,7 +430,7 @@
           "detail": "Suggested from a transferable-credit case. Awaiting confirmation."
         }
       ],
-      "type": "requirement"
+      "checkType": "AGENT"
     },
     {
       "id": "DATE-31D",
@@ -467,7 +467,7 @@
           "detail": "Cross-border buffer added by Amara Osei."
         }
       ],
-      "type": "requirement"
+      "checkType": "AGENT"
     },
     {
       "id": "DOCSET-42C",
@@ -496,7 +496,7 @@
           "detail": "Confirmed."
         }
       ],
-      "type": "rule"
+      "checkType": "PROGRAMMATIC"
     },
     {
       "id": "TRANS-20",
@@ -525,7 +525,7 @@
           "detail": "Confirmed."
         }
       ],
-      "type": "rule"
+      "checkType": "PROGRAMMATIC"
     },
     {
       "id": "CERT-28",
@@ -548,7 +548,7 @@
           "detail": "From insurance cases."
         }
       ],
-      "type": "rule"
+      "checkType": "AGENT_TOOL"
     },
     {
       "id": "PARTY-FC04",
@@ -570,11 +570,10 @@
           "detail": "Not yet added to an agent."
         }
       ],
-      "type": "requirement"
+      "checkType": "AGENT"
     },
     {
       "id": "XD-14",
-      "type": "rule",
       "domain": "Goods & pricing",
       "cases": 9,
       "agentId": "invoice",
@@ -600,11 +599,11 @@
           "date": "14 Jun 2026",
           "detail": "Confirmed."
         }
-      ]
+      ],
+      "checkType": "PROGRAMMATIC"
     },
     {
       "id": "AMT-18",
-      "type": "rule",
       "domain": "Goods & pricing",
       "cases": 6,
       "agentId": "invoice",
@@ -629,11 +628,11 @@
           "date": "11 Apr 2026",
           "detail": "Tolerance set to +/-5%."
         }
-      ]
+      ],
+      "checkType": "PROGRAMMATIC"
     },
     {
       "id": "DOCSET-46A",
-      "type": "requirement",
       "domain": "Documents required",
       "cases": 11,
       "agentId": null,
@@ -658,11 +657,11 @@
           "date": "6 May 2026",
           "detail": "Confirmed."
         }
-      ]
+      ],
+      "checkType": "AGENT"
     },
     {
       "id": "COND-47A",
-      "type": "requirement",
       "domain": "Additional conditions",
       "cases": 7,
       "agentId": null,
@@ -681,7 +680,8 @@
           "date": "21 Jun 2026",
           "detail": "From 47A cases. Awaiting confirmation."
         }
-      ]
+      ],
+      "checkType": "AGENTIC"
     }
   ],
   "phases": [

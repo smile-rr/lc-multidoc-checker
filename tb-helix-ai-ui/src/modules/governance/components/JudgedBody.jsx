@@ -3,14 +3,14 @@ import { Menu } from '@shared/ds/Menu'
 import { Z } from '@shared/ds/z'
 import RuleEditor from './RuleEditor'
 
-// The body of a Requirement card.
+// The body of a **judged** rule card.
 //
-// A requirement is written in plain language — one requirement per dash line —
+// A judged rule is written in plain language — one requirement per dash line —
 // and read against the whole presentation, or against a clause of the credit
 // (46A, 47A) when the credit is what states it. Dictionary field names wrapped
 // in braces bind to the field; the assistant resolves which document to read
 // each from. `check` is the view-model from store.buildCheck().
-export default function RequirementCard({ check }) {
+export default function JudgedBody({ check }) {
   return (
     <div style={{ position: 'relative', marginTop: 12 }}>
       <span style={{ position: 'absolute', top: 8, right: 8, zIndex: Z.popover }}>
@@ -36,7 +36,7 @@ function Help({ onClose }) {
   return (
     <div style={{ padding: '6px 8px' }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 9 }}>
-        <div style={{ flex: 1, fontSize: 12.5, fontWeight: 700 }}>Writing a requirement card</div>
+        <div style={{ flex: 1, fontSize: 12.5, fontWeight: 700 }}>Writing a judged rule</div>
         <button onClick={onClose} title="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--me-grey-50)', display: 'flex', padding: 2, marginRight: -2 }}><Icon name="x" size={15} /></button>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 9, fontSize: 12, lineHeight: 1.5, color: 'var(--me-grey)' }}>

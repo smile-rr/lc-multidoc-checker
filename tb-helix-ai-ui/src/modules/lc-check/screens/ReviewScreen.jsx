@@ -29,30 +29,30 @@ import { useCase } from '../state/CaseContext'
 // The plan's structure carries through, deliberately: same groups, same two
 // densities, same words. Learning one screen should teach you the other.
 //
-// **Grouped by kind, by default.** A finding inherits the kind of the check that
-// settled it, and that is the grouping for the same reasons it is on the plan: it
-// needs no expertise to read, and it is the same on every credit. It is also the
-// most useful sweep an officer has — rule findings are arithmetic and can be agreed
-// or rejected quickly, agent findings are where the reading time belongs, so
-// grouping by it puts the fast work in one place.
+// **Grouped by how it was settled. One arrangement, no control.** A finding inherits
+// the tier of the rule that settled it, and that grouping needs no expertise to read,
+// is the same on every credit, and puts the fast work in one place: exact findings are
+// arithmetic and can be agreed or rejected quickly, judged findings are where the
+// reading time belongs.
 //
-// One alternative, not three. "By review area" is gone: an area is which of our
-// agents ran the check, which is a fact about our implementation and means nothing
-// to a reader who does not already know our agent names. "By document" stays,
-// because it answers a real question an examiner asks — *what is wrong with the
-// bill of lading?* — and it is a thing you can point at on a desk.
+// Two alternatives have been removed rather than offered. "By review area" was which
+// of our agents ran the rule — a fact about our implementation that means nothing to a
+// reader who does not know our agent names. "By document" answered a question an
+// examiner does ask, but Examine already answers it far better: it is document-led by
+// construction, with the pages in front of you. A grouping control that switches
+// between one good arrangement and one redundant one is a decision the officer has to
+// make before they can start reading, in exchange for nothing.
 //
 // **"Not covered" is not a group.** It used to be, and that was wrong: if a finding
-// belongs to no rule card and no requirement card, where did it come from? The
-// answer is that the planner read a condition out of the credit and found nothing in
-// the dictionary that covers it — so it *is* a requirement, one we have no card for.
-// A category made it look like a legitimate third kind of finding when it is a gap
-// in the catalogue, which is a thing to fix in Governance, not a bucket to file in.
-// So it is a flag on the finding, with the fix offered next to it.
+// belongs to no rule, where did it come from? The answer is that the planner read a
+// requirement out of the credit and found nothing in the dictionary that tests it. A
+// category made that look like a legitimate third kind of finding when it is a gap in
+// the rulebook — a thing to fix in Governance, not a bucket to file in. So it is a
+// flag on the finding, with the fix offered next to it.
 //
-// The third group is provenance, not kind: **Raised by you**. A person examining the
-// pages is the backstop for everything OCR mangled and every condition no card
-// covers, and what they raise is theirs — not a check's output, and a refusal advice
+// The third group is provenance, not tier: **Raised by you**. A person examining the
+// pages is the backstop for everything OCR mangled and every requirement no rule
+// covers, and what they raise is theirs — not a rule's output, and a refusal advice
 // has to be able to say so.
 //
 // Uncovered findings still lead their group, because an officer must not be able to
@@ -64,7 +64,6 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
   // only route to a discrepancy our extraction fumbled. Neither contains the other,
   // so it is a mode, not a grouping.
   const [mode, setMode] = useState('findings')
-  const [grouping, setGrouping] = useState('kind')
   const [tab, setTab] = useState('analysis')
   const [showClean, setShowClean] = useState(false)
 
@@ -79,28 +78,24 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
     // Two different gaps, and they call for different fixes, so they are marked
     // differently rather than lumped as "not covered":
     //
-    //   no card      nothing in the dictionary covers this. A governance gap —
-    //                somebody should author a card for it.
-    //   not settled  a card ran and could not conclude, so it handed the question
-    //                to a person. The card is too weak, or the data was not there.
+    //   no rule      nothing in the dictionary tests this requirement. A governance
+    //                gap — somebody should author a rule for it.
+    //   not settled  a rule ran and could not conclude, so it handed the question to
+    //                a person. The rule is too weak, or the data was not there.
     //
     // Both are the engine admitting something, which is why they lead their group.
     const rest = visible.attention.map((f) => ({
       ...f,
-      gap: f.raisedByOfficer ? null : !f.checkId ? 'no card' : f.severity === 'manual' ? 'not settled' : null,
+      gap: f.raisedByOfficer ? null : !f.checkId ? 'no rule' : f.severity === 'manual' ? 'not settled' : null,
     }))
 
-    // Uncovered first inside whichever group holds them: they are the ones nothing
-    // examined, so they are the ones most easily skipped.
+    // Uncovered first: they are the ones nothing examined, so they are the ones most
+    // easily skipped.
     const gapsFirst = (a, b) => (!!b.gap) - (!!a.gap)
 
-    // The kind groups are shared with Decision — see `state/findingKinds`.
-    return grouping === 'doc'
-      ? data.documents
-          .map((d) => ({ label: d.docType, items: rest.filter((f) => f.docId === d.id).sort(gapsFirst) }))
-          .filter((g) => g.items.length)
-      : groupByKind(rest, gapsFirst)
-  }, [visible.attention, grouping, data.documents])
+    // One arrangement, shared with Decision — see `state/findingKinds`.
+    return groupByKind(rest, gapsFirst)
+  }, [visible.attention])
 
   const counts = {
     discrepancy: visible.attention.filter((f) => f.severity === 'discrepancy').length,
@@ -129,7 +124,7 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
 
   const isCreditFinding = selected?.docId === 'mt700'
 
-  const subtitleFor = (f) => (grouping === 'doc' ? f.area : docById[f.docId]?.docType ?? f.quoteSource)
+  const subtitleFor = (f) => docById[f.docId]?.docType ?? f.quoteSource
 
   return (
     <section className="helix-screen" style={{ padding: '18px 32px 16px', ...PANE_FILL, display: 'flex', flexDirection: 'column' }}>
@@ -181,8 +176,6 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
             clean={visible.clean}
             decisions={officer.decisions}
             docById={docById}
-            grouping={grouping}
-            setGrouping={setGrouping}
             onSelect={(id) => { onSelect(id); setTab('analysis') }}
           />
         )}
@@ -199,10 +192,6 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
               <Icon name="arrow-left" size={14} />
               All findings
             </button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Eyebrow size="sm">Grouped by</Eyebrow>
-              <SegmentedControl size="sm" value={grouping} onChange={setGrouping} items={[{ id: 'kind', label: 'Kind' }, { id: 'doc', label: 'Document' }]} />
-            </div>
           </div>
 
           {/* The list, and the only thing in this column that scrolls. */}
@@ -314,7 +303,7 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
               <MarkdownDoc
                 text={selected.analysisMarkdown}
                 label={selected.comparison ? 'How it reads' : 'Finding'}
-                meta={`${selected.checkId ?? 'no check'} · ${selected.statementSource === 'derived' ? 'derived from the rule' : selected.statementSource === 'officer' ? 'raised by you' : 'model output'}`}
+                meta={`${selected.checkId ?? 'no rule'} · ${selected.statementSource === 'derived' ? 'derived from the rule' : selected.statementSource === 'officer' ? 'raised by you' : 'model output'}`}
               />
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 18px' }}>
                 {selected.trace.map((t) => (
@@ -395,12 +384,12 @@ function RailRow({ finding, subtitle, selected, decision, onSelect }) {
       <span style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
         <span title={sev.label} style={{ width: 7, height: 7, borderRadius: 999, background: sev.dot, flex: '0 0 7px' }} />
         {finding.gap ? (
-          <span title={finding.gap === 'no card' ? 'No card in the dictionary covers this' : 'A card ran and could not conclude'} style={{ display: 'flex', flexShrink: 0, color: '#946400' }}><Icon name="circle-alert" size={11} color="currentColor" /></span>
+          <span title={finding.gap === 'no rule' ? 'No rule in the dictionary tests this' : 'A rule ran and could not conclude'} style={{ display: 'flex', flexShrink: 0, color: '#946400' }}><Icon name="circle-alert" size={11} color="currentColor" /></span>
         ) : (
           <span title={mark.title} style={{ display: 'flex', flexShrink: 0, color: mark.color }}><Icon name={mark.icon} size={11} color="currentColor" /></span>
         )}
         <span style={{ ...ellipsis, flex: 1, minWidth: 0, fontFamily: 'var(--font-mono)', fontSize: 10, color: finding.checkId || finding.raisedByOfficer ? 'var(--me-grey-70)' : '#946400' }}>
-          {finding.checkId ?? (finding.raisedByOfficer ? 'yours' : 'no card')}
+          {finding.checkId ?? (finding.raisedByOfficer ? 'yours' : 'no rule')}
         </span>
         {/* Always rendered, so a decision does not change the row's width or height. */}
         <span style={{ flex: '0 0 13px', display: 'flex', justifyContent: 'flex-end' }}>
@@ -493,17 +482,10 @@ const FCOLS = {
   alignItems: 'center',
 }
 
-function FindingsTable({ groups, clean, decisions, docById, grouping, setGrouping, onSelect }) {
+function FindingsTable({ groups, clean, decisions, docById, onSelect }) {
   const [showClean, setShowClean] = useState(false)
   return (
     <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden', minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      {/* The control that arranges this list, on the list — and here in the overview
-          as well as in the focus rail. It was only ever rendered in the rail, so the
-          default view of the findings had no way to regroup them. */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px', borderBottom: '1px solid var(--me-grey-15)', flexShrink: 0 }}>
-        <Eyebrow size="sm">Grouped by</Eyebrow>
-        <SegmentedControl size="sm" value={grouping} onChange={setGrouping} items={[{ id: 'kind', label: 'Kind' }, { id: 'doc', label: 'Document' }]} />
-      </div>
       <div style={{ ...FCOLS, padding: '9px 16px', borderBottom: '1px solid var(--me-grey-15)', flexShrink: 0 }}>
         <span />
         <Eyebrow size="sm">Check</Eyebrow>
@@ -562,14 +544,14 @@ function FindingRow({ finding, decision, docById, onSelect }) {
         {/* The gap mark wins over the kind mark: that a card could not settle it,
             or that no card covers it, is the more urgent thing about the row. */}
         {finding.gap ? (
-          <span title={finding.gap === 'no card' ? 'No card in the dictionary covers this — a gap to close in Governance' : 'A card ran and could not conclude, so it handed the question to you'} style={{ display: 'flex', flexShrink: 0, color: '#946400' }}><Icon name="circle-alert" size={11} color="currentColor" /></span>
+          <span title={finding.gap === 'no rule' ? 'No rule in the dictionary tests this — a gap to close in Governance' : 'A rule ran and could not conclude, so it handed the question to you'} style={{ display: 'flex', flexShrink: 0, color: '#946400' }}><Icon name="circle-alert" size={11} color="currentColor" /></span>
         ) : (
           <span title={mark.title} style={{ display: 'flex', flexShrink: 0, color: mark.color }}>
             <Icon name={mark.icon} size={11} color="currentColor" />
           </span>
         )}
         <span style={{ ...ellipsis, fontFamily: 'var(--font-mono)', fontSize: 11, color: finding.checkId ? 'var(--me-grey-70)' : finding.raisedByOfficer ? 'var(--me-grey-70)' : '#946400' }}>
-          {finding.checkId ?? (finding.raisedByOfficer ? 'yours' : 'no card')}
+          {finding.checkId ?? (finding.raisedByOfficer ? 'yours' : 'no rule')}
         </span>
         <span style={{ ...ellipsis, fontSize: 10, color: '#946400' }}>
           {finding.gap === 'not settled' ? 'not settled' : ''}

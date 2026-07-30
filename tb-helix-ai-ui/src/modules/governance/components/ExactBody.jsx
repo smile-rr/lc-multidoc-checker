@@ -21,7 +21,7 @@ import { ellipsis } from '@shared/ds/text'
 // The structural controls (add, remove, reorder) appear only while editing, so
 // a saved rule reads as a statement rather than a form. "Edit rule" in the
 // header is the way in.
-export default function RuleCard({ check }) {
+export default function ExactBody({ check }) {
   return (
     <div style={{ marginTop: 10, border: '1px solid var(--me-grey-15)', borderRadius: 10 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '7px 11px', background: 'var(--me-grey-08)', borderBottom: '1px solid var(--me-grey-15)', borderRadius: '9px 9px 0 0' }}>

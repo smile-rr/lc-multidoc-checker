@@ -16,7 +16,7 @@
 
 import { SAMPLES, DOC_TYPES } from './samples/index.js'
 import { parseMt700Lines, tagValue } from '../lib/mt700.js'
-import { checkSpec, buildExecutionPlan, checkKind, checkSource, resolveRuleInputs, ruleOutcome } from './checkSpecs.js'
+import { checkSpec, buildExecutionPlan, checkTier, checkType, checkSource, resolveRuleInputs, ruleOutcome } from './checkSpecs.js'
 
 /** @typedef {import('./contracts.js').CaseDetail} CaseDetail */
 
@@ -174,41 +174,41 @@ export const TOKEN_RATES = { inPerMillion: 3.0, outPerMillion: 15.0 }
 // The animated run on screen is deliberately faster — nobody demos a three-minute
 // spinner — but every number reported anywhere comes from this table.
 //
-// **The shape follows the flow and the two card kinds.** Read, plan, then settle the
-// Rule cards, then read the Requirement cards area by area. `kind` is what makes the
-// cost legible: `rule` work is free and instant, `requirement` work is where all the
-// money is, and an officer deciding whether to let the requirements run after a rule
-// failure needs those two totals apart.
+// **The shape follows the flow and the two tiers.** Read, plan, settle the exact
+// rules, then let the judged ones read area by area. `kind` is what makes the cost
+// legible: exact work is free and instant, judged work is where all the money is, and
+// an officer deciding whether to let the judged half run after an exact rule has
+// already failed needs those two totals apart.
 //
 // Two things this table used to get wrong, both of which flattered the model:
 //
 //   · a "driver · sequencing, retries, merge" step billing 14k planner tokens for
-//     orchestration. Sequencing is code. Its slot in the run is now the Rule cards,
-//     which is what actually happens there, and rules run first because a critical
-//     rule failure can make the requirement half unnecessary.
+//     orchestration. Sequencing is code. Its slot in the run is now the exact rules,
+//     which is what actually happens there, and they run first because a critical
+//     failure among them can make the judged half unnecessary.
 //   · "Dates & Shipment" billing 3 calls and 21k tokens. All three of its checks —
-//     DATE-44C, DATE-48, DATE-31D — are Rule cards. The area costs nothing, and the
-//     run said it cost more than any other area but two.
+//     DATE-44C, DATE-48, DATE-31D — are exact. The area costs nothing, and the run
+//     said it cost more than any other area but two.
 //
-// `checks` is how many cards the step settled, so the per-kind roll-up can say "6
-// cards, no model" rather than only reporting calls.
+// `checks` is how many rules the step settled, so the per-tier roll-up can say "6
+// rules, no model" rather than only reporting calls.
 const RUN_STEPS = [
   { id: 'r1', name: 'Read the pages', kind: 'read', role: 'vision · OCR, layout, segmentation', model: 'gpt-4o', checks: 0, calls: 6, seconds: 108, tokensIn: 38000, tokensOut: 3100, cachePct: 0, retries: 0 },
   { id: 'r2', name: 'Plan the checks', kind: 'plan', role: 'planner · triggers, order, conditions with no card', model: 'qwen3-32b', checks: 0, calls: 1, seconds: 7.5, tokensIn: 11000, tokensOut: 1700, cachePct: 0, retries: 0 },
-  { id: 'r3', name: 'Rule cards', kind: 'rule', role: 'engine · six comparisons over extracted fields', model: 'engine', checks: 6, calls: 0, seconds: 0.4, tokensIn: 0, tokensOut: 0, cachePct: 0, retries: 0, note: 'No model asked. Same answer every time.' },
-  { id: 'r4', name: 'Requirements', kind: 'requirement', role: 'agent · reads 46A and 47A into a list', model: 'claude-sonnet-4-6', checks: 3, calls: 3, seconds: 21, tokensIn: 26000, tokensOut: 3200, cachePct: 14, retries: 0 },
-  { id: 'r5', name: 'Presentation & Completeness', kind: 'requirement', role: 'agent · four cards over the whole set', model: 'claude-sonnet-4-6', checks: 4, calls: 4, seconds: 47, tokensIn: 51000, tokensOut: 5400, cachePct: 46, retries: 1 },
+  { id: 'r3', name: 'Exact rules', kind: 'exact', role: 'engine · six expressions over extracted fields', model: 'engine', checks: 6, calls: 0, seconds: 0.4, tokensIn: 0, tokensOut: 0, cachePct: 0, retries: 0, note: 'No model asked. Same answer every time.' },
+  { id: 'r4', name: 'Requirements', kind: 'judged', role: 'agent · reads 46A and 47A into a list', model: 'claude-sonnet-4-6', checks: 3, calls: 3, seconds: 21, tokensIn: 26000, tokensOut: 3200, cachePct: 14, retries: 0 },
+  { id: 'r5', name: 'Presentation & Completeness', kind: 'judged', role: 'agent · four cards over the whole set', model: 'claude-sonnet-4-6', checks: 4, calls: 4, seconds: 47, tokensIn: 51000, tokensOut: 5400, cachePct: 46, retries: 1 },
   // `checks: 0`, not 3. Its three cards are Rule cards and are counted once, on r3
   // where they were settled — counting them again here made the run claim 9 free
   // cards when the catalogue holds 6. The step stays in the list because "this area
   // ran and cost nothing" is the striking fact, not something to hide.
-  { id: 'r6', name: 'Dates & Shipment', kind: 'rule', role: 'settled by rule — nothing left to read', model: 'engine', checks: 0, calls: 0, seconds: 0, tokensIn: 0, tokensOut: 0, cachePct: 0, retries: 0, note: 'All three cards here are rules, settled above.' },
-  { id: 'r7', name: 'Goods, Amounts & Tolerance', kind: 'requirement', role: 'agent · one card; the two amount cards are rules', model: 'claude-sonnet-4-6', checks: 1, calls: 1, seconds: 14, tokensIn: 15000, tokensOut: 1500, cachePct: 55, retries: 0 },
+  { id: 'r6', name: 'Dates & Shipment', kind: 'exact', role: 'settled by an exact rule — nothing left to read', model: 'engine', checks: 0, calls: 0, seconds: 0, tokensIn: 0, tokensOut: 0, cachePct: 0, retries: 0, note: 'All three rules here are exact, settled above.' },
+  { id: 'r7', name: 'Goods, Amounts & Tolerance', kind: 'judged', role: 'agent · one card; the two amount cards are rules', model: 'claude-sonnet-4-6', checks: 1, calls: 1, seconds: 14, tokensIn: 15000, tokensOut: 1500, cachePct: 55, retries: 0 },
   // Seven cards, not five: five from the dictionary plus the two the planner wrote
   // for this credit's own :47A: conditions. Ten calls because one of the seven is
   // agentic and loops, and one call was retried.
-  { id: 'r8', name: 'General Review', kind: 'requirement', role: 'agent + tools · agentic loop on the 47A conditions', model: 'claude-sonnet-4-6', checks: 7, calls: 10, seconds: 96, tokensIn: 96000, tokensOut: 9700, cachePct: 42, retries: 1 },
-  { id: 'r9', name: 'Sanctions & Parties', kind: 'requirement', role: 'agent · list screening against policy FC-04', model: 'qwen3-32b', checks: 1, calls: 1, seconds: 9, tokensIn: 12000, tokensOut: 800, cachePct: 68, retries: 0 },
+  { id: 'r8', name: 'General Review', kind: 'judged', role: 'agent + tools · agentic loop on the 47A conditions', model: 'claude-sonnet-4-6', checks: 7, calls: 10, seconds: 96, tokensIn: 96000, tokensOut: 9700, cachePct: 42, retries: 1 },
+  { id: 'r9', name: 'Sanctions & Parties', kind: 'judged', role: 'agent · list screening against policy FC-04', model: 'qwen3-32b', checks: 1, calls: 1, seconds: 9, tokensIn: 12000, tokensOut: 800, cachePct: 68, retries: 0 },
 ]
 
 const ALL_AREA_IDS = AREAS.map((a) => a.id)
@@ -1089,12 +1089,19 @@ function buildChecks(def, lines, credit, documents, facts) {
   const withPlan = (check, spec) => ({
     ...check,
     spec,
-    kind: checkKind(check.id),
+    tier: checkTier(check.id),
+    checkType: checkType(check.id),
+    // `source` is what the card is *cited against* — the credit, UCP/ISBP, or bank
+    // policy. Both branches below also set a `source` meaning where the card came
+    // from (dictionary or planner), and this spread silently overwrote it, so that
+    // second meaning never survived and nothing noticed because `plannedByLlm`
+    // already carries it. Dead assignments that look live are worse than absent
+    // ones, so they are gone.
     source: checkSource(check.id),
     // A Rule card has no request to compile: what it needs is its operands
     // resolved against what Interpret produced, which is also what makes its
     // answerability knowable before the run.
-    ruleDef: checkKind(check.id) === 'rule' ? resolveRuleInputs(check.id, facts) : null,
+    ruleDef: checkTier(check.id) === 'exact' ? resolveRuleInputs(check.id, facts) : null,
     executionPlan: buildExecutionPlan({
       check,
       spec,
@@ -1142,7 +1149,6 @@ function buildChecks(def, lines, credit, documents, facts) {
       addedByOfficer: false,
       plannedByLlm: true,
       notCovered: !!c.notCovered,
-      source: 'planner',
     }
     return withPlan(check, spec)
   })
@@ -1218,7 +1224,7 @@ ${cite ? `\n**Basis:** ${cite}\n` : ''}${options}${confidence}`
 function withProvenance(findings, checksById, facts) {
   return findings.map((f) => {
     const check = f.checkId ? checksById[f.checkId] : null
-    const settledBy = check ? check.kind : null
+    const settledBy = check ? check.tier : null
     // Which row failed is a fact about the rule's run, so the finding states it. A
     // discrepancy that does not say defaults to the first row; anything else defaults
     // to none, which is what a clean result means.
@@ -1227,8 +1233,8 @@ function withProvenance(findings, checksById, facts) {
       ...f,
       settledBy,
       source: check ? check.source : null,
-      comparison: settledBy === 'rule' ? ruleOutcome(f.checkId, facts, failedRow) : null,
-      statementSource: settledBy === 'rule' ? 'derived' : settledBy ? 'drafted' : 'officer',
+      comparison: settledBy === 'exact' ? ruleOutcome(f.checkId, facts, failedRow) : null,
+      statementSource: settledBy === 'exact' ? 'derived' : settledBy ? 'drafted' : 'officer',
     }
   })
 }
@@ -1459,8 +1465,8 @@ export const AI_PERFORMANCE = {
       falseNegativeNote: 'two insurance cover, one charter-party wording',
       falsePositiveTopCause: 'insurance cover',
       byKind: {
-        rule: { truePositive: 168, falsePositive: 4, falseNegative: 0, cause: 'all four were misread fields, not the comparison' },
-        requirement: { truePositive: 215, falsePositive: 30, falseNegative: 3, cause: 'judgement on document wording' },
+        exact: { truePositive: 168, falsePositive: 4, falseNegative: 0, cause: 'all four were misread fields, not the comparison' },
+        judged: { truePositive: 215, falsePositive: 30, falseNegative: 3, cause: 'judgement on document wording' },
       },
     },
     previous: {
@@ -1469,8 +1475,8 @@ export const AI_PERFORMANCE = {
       falseNegative: 6,
       conditionsCoveredPct: 79,
       byKind: {
-        rule: { truePositive: 150, falsePositive: 9, falseNegative: 1 },
-        requirement: { truePositive: 191, falsePositive: 38, falseNegative: 5 },
+        exact: { truePositive: 150, falsePositive: 9, falseNegative: 1 },
+        judged: { truePositive: 191, falsePositive: 38, falseNegative: 5 },
       },
     },
   },

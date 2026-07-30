@@ -76,7 +76,7 @@ export default function SpendPanel({ spend }) {
 
             <Split>
               <Unit label="pages read" value={String(spend.totalPages)} tip="Bundle pages rendered and read by the vision model across all cases examined this period." />
-              <Unit label="cards run" value={String(spend.checksRun)} tip="Rule and Requirement cards executed. Excludes cards whose trigger the credit did not meet — those are recorded as not applicable, never as passes." />
+              <Unit label="cards run" value={String(spend.checksRun)} tip="Rules executed, exact and judged. Excludes rules whose trigger the credit did not meet — those are recorded as not applicable, never as passes." />
               <Unit label="findings" value={String(spend.findingsRaised)} tip="Conclusions returned with quoted evidence and a citation, of every severity — discrepancies, possible discrepancies, clean results and items left for a person." />
             </Split>
 
@@ -137,7 +137,7 @@ export default function SpendPanel({ spend }) {
               label="Settled Without a Model"
               value={`${spend.freeCardsPerCase} / ${spend.cardsPerCase}`}
               tone="var(--status-success)"
-              tip="Rule cards per case: settled by comparing extracted fields, with no model call, no tokens and no cost. They give the same answer every time and their cost does not grow with the size of the bundle. The rest are Requirement cards, which an agent reads — that is the whole of the spend above."
+              tip="Exact rules per case: settled by an expression over extracted fields, with no model call, no tokens and no cost. They give the same answer every time and their cost does not grow with the size of the bundle. The rest are judged rules, which an agent reads — that is the whole of the spend above."
               note={`cards per case settled by comparison — ${percent(spend.freeCardPct)} of the examination, at no cost and identical on every run.`}
             />
             <Line
@@ -209,10 +209,10 @@ export default function SpendPanel({ spend }) {
             </div>
 
             {/* Which half the errors are in — the question that decides what to do
-                about them. A Rule card cannot be wrong about its comparison, so when
-                one does not stand it is the extraction or the authoring: a dictionary
-                job, reproducible, and it stays fixed. A Requirement card is a model
-                reading prose, where the fix is the prompt or accepting that the
+                about them. An exact rule cannot be wrong about its comparison, so
+                when one does not stand it is the extraction or the authoring: a
+                dictionary job, reproducible, and it stays fixed. A judged rule is a
+                model reading prose, where the fix is the prompt or accepting that the
                 question needs a person. One blended rate hides which conversation to
                 have. */}
             {q.byKind ? <KindSplit current={q.byKind} previous={p.byKind} /> : null}
@@ -234,13 +234,13 @@ export default function SpendPanel({ spend }) {
  */
 function KindSplit({ current, previous }) {
   const rows = [
-    { key: 'rule', label: 'Rule cards', icon: 'equal', colour: 'var(--me-blue-deep)', tip: 'Cards settled by comparing extracted fields. Deterministic — the comparison cannot be wrong, so a finding that does not stand means a misread field or a mis-authored card.' },
-    { key: 'requirement', label: 'Requirement cards', icon: 'list-checks', colour: '#1F7A00', tip: 'Cards an agent reads and forms a view on. Where judgement lives, and where the misses are.' },
+    { key: 'exact', label: 'Exact rules', icon: 'equal', colour: 'var(--me-blue-deep)', tip: 'Rules settled by an expression over extracted fields. Deterministic — the comparison cannot be wrong, so a finding that does not stand means a misread field or a mis-authored rule.' },
+    { key: 'judged', label: 'Judged rules', icon: 'list-checks', colour: '#1F7A00', tip: 'Rules an agent reads and forms a view on. Where judgement lives, and where the misses are.' },
   ]
   return (
     <div style={{ marginTop: 10, paddingTop: 9, borderTop: '1px solid var(--me-grey-08)', display: 'flex', flexDirection: 'column', gap: 7 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 42px 42px 42px', gap: 6, fontSize: 10, color: 'var(--me-grey-50)' }}>
-        <span>by card kind</span>
+        <span>by tier</span>
         <span style={{ textAlign: 'right' }} title="Findings that stood on review">stood</span>
         <span style={{ textAlign: 'right' }} title="Raised, then set aside on review">set aside</span>
         <span style={{ textAlign: 'right' }} title="Real discrepancies not raised, found downstream">missed</span>

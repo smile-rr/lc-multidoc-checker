@@ -35,15 +35,36 @@ const RULE_SEEDS = seed.ruleSeeds
 
 // ---- The two kinds of check card ------------------------------------------
 // A Rule card compares one field against another, deterministically. A
-// Requirement card holds requirements in plain language, read out of a clause
-// of the credit (46A, 47A) or as standing practice across the presentation.
-// Everything that isn't explicitly a rule is a requirement — that is the
-// default a check is born as.
-export const CARD_TYPES = {
-  rule: { label: 'Rule', icon: 'equal', color: 'var(--me-blue-deep)', bg: 'var(--me-blue-20)', hint: 'Deterministic — compares fields read from documents' },
-  requirement: { label: 'Requirement', icon: 'list-checks', color: '#1F7A00', bg: 'var(--me-green-20)', hint: 'Requirements in plain language, read against the credit or a clause of it' },
+// **Everything authored here is a Rule card.** One catalogue, as the service has it:
+// `catalog.yml` holds a single list keyed `rules:`, each entry carrying a
+// `check_type`. A rule an agent reads is no less a rule than one comparing two
+// fields — both are standing instructions this bank authored and approved, and only
+// the evaluation differs. There used to be a second card kind here called
+// "Requirement", which collided with what the *credit* requires and had no
+// counterpart in the service at all.
+//
+// So a card carries `checkType`, the service's tier, and the two things the UI needs
+// fall out of it:
+//
+//   TIERS      the four tiers as the service declares them, for the card's detail
+//   tierOf     the one bit an officer needs — is the answer reproducible?
+export const TIERS = {
+  PROGRAMMATIC: { label: 'Programmatic', tier: 'exact', hint: 'An expression over extracted fields. Under 100ms, no model, deterministic.' },
+  AGENT: { label: 'Agent', tier: 'judged', hint: 'One structured model call against the presentation. No tools.' },
+  AGENT_TOOL: { label: 'Agent + tools', tier: 'judged', hint: 'A model call with date, amount and currency tools. Three calls at most.' },
+  AGENTIC: { label: 'Agentic', tier: 'judged', hint: 'A multi-iteration tool-using loop, hard-capped. One rule, many sub-results.' },
 }
-export const typeOf = (c) => (c && c.type === 'rule' ? 'rule' : 'requirement')
+
+// Exact or judged — the officer-facing half of the tier. Named for what it says
+// about trust rather than "static / dynamic": both are equally static as authored
+// artefacts, and the genuinely dynamic thing in this system is a requirement read out
+// of a credit's :47A:, which is different on every case.
+export const CARD_TYPES = {
+  exact: { label: 'Exact', icon: 'equal', color: 'var(--me-blue-deep)', bg: 'var(--me-blue-20)', hint: 'An expression over fields read from the documents. Same answer every time, no model.' },
+  judged: { label: 'Judged', icon: 'list-checks', color: '#1F7A00', bg: 'var(--me-green-20)', hint: 'Read against the presentation by an agent, which forms a view. Costs tokens and needs your eye.' },
+}
+export const checkTypeOf = (c) => (c && TIERS[c.checkType] ? c.checkType : 'AGENT')
+export const typeOf = (c) => TIERS[checkTypeOf(c)].tier
 
 // ---- Rule-card vocabulary --------------------------------------------------
 // Operators are grouped the way a checker thinks about them, not by data type.
@@ -417,24 +438,24 @@ export function deriveVals(state, setState) {
   // A new card is born as a draft in the GEN concern (general examiner
   // judgement); an officer moves it to its proper id when it settles. The kind
   // is chosen up front because it decides what the card is made of — a rule
-  // opens on an empty condition block, a requirement on an empty dash line.
+  // opens on an empty condition block, a judged one on an empty dash line.
   const newCheck = (kind) =>
     setState((s) => {
       const id = 'GEN-' + String(s.newSeq + 90).padStart(2, '0')
-      const isRule = kind === 'rule'
+      const isExact = kind === 'exact'
       const nc = {
-        id, type: isRule ? 'rule' : 'requirement', domain: 'Uncategorised', cases: 0, draft: true,
+        id, checkType: isExact ? 'PROGRAMMATIC' : 'AGENT', domain: 'Uncategorised', cases: 0, draft: true,
         agentId: null, groupId: null,
-        title: isRule ? 'New rule card' : 'New requirement card',
+        title: isExact ? 'New exact rule' : 'New judged rule',
         severity: 'MAJOR', refs: [],
-        suggestion: isRule
+        suggestion: isExact
           ? 'Fill in both sides of the first condition so the rule has something to compare.'
-          : 'Add a requirement or two so the assistant has something to check.',
-        body: isRule ? '' : 'Say what must be true, one requirement per dash line.\n\n- ',
-        timeline: [{ color: 'var(--me-blue)', label: 'Created', date: 'just now', detail: 'New ' + CARD_TYPES[isRule ? 'rule' : 'requirement'].label.toLowerCase() + ' card.' }],
+          : 'Add a requirement or two so the assistant has something to read against.',
+        body: isExact ? '' : 'Say what must be true, one requirement per dash line.\n\n- ',
+        timeline: [{ color: 'var(--me-blue)', label: 'Created', date: 'just now', detail: 'New ' + CARD_TYPES[isExact ? 'exact' : 'judged'].label.toLowerCase() + ' rule card.' }],
       }
       const patch = { extraChecks: prepend(s.extraChecks, nc), newSeq: s.newSeq + 1, editingId: id, createdId: id, section: 'checks', newMenuOpen: false, typeFilter: 'all', density: 'cards' }
-      if (isRule) patch.rules = { ...s.rules, [id]: ruleBlank() }
+      if (isExact) patch.rules = { ...s.rules, [id]: ruleBlank() }
       return patch
     })
 
@@ -452,8 +473,8 @@ export function deriveVals(state, setState) {
     // Which kind of card this is decides what the middle of it holds, and it is
     // read before the snapshot below so Cancel can put the rule back too.
     const kind = typeOf(c)
-    const isRule = kind === 'rule'
-    const rule = isRule ? ruleOf(c.id) : null
+    const isExact = kind === 'exact'
+    const rule = isExact ? ruleOf(c.id) : null
     // A check that has examined a case is referenced by the findings it produced
     // and by any refusal advice quoting them. Deleting it orphans that record, so
     // only a draft that never ran can be deleted; everything else is retired.
@@ -464,10 +485,10 @@ export function deriveVals(state, setState) {
     // What Cancel puts back. The rule travels with it — without that, undoing an
     // edit restored the title and left the conditions rewritten.
     const snapNow = { title, severity, refs: [...refs], body, fields: [...fields], docs: [...docs] }
-    const snapRule = isRule ? JSON.parse(JSON.stringify(rule)) : null
+    const snapRule = isExact ? JSON.parse(JSON.stringify(rule)) : null
     const takeSnap = (s) => ({
       editSnap: s.editSnap[c.id] !== undefined ? s.editSnap : { ...s.editSnap, [c.id]: snapNow },
-      ruleSnap: !isRule || s.ruleSnap[c.id] !== undefined ? s.ruleSnap : { ...s.ruleSnap, [c.id]: snapRule },
+      ruleSnap: !isExact || s.ruleSnap[c.id] !== undefined ? s.ruleSnap : { ...s.ruleSnap, [c.id]: snapRule },
     })
     const startEdit = () => {
       if (S.editingId === c.id) return
@@ -508,10 +529,10 @@ export function deriveVals(state, setState) {
     // ---- card type ---------------------------------------------------------
     const meta = CARD_TYPES[kind]
     // A rule states its operands in its own rows, so the chip rows and the
-    // plain-language body belong to requirement cards only.
-    const showFieldRows = !isRule
+    // plain-language body belong to judged rules only.
+    const showFieldRows = !isExact
     const patchRule = (fn) => { setRule(c.id, fn); startEdit() }
-    const issues = isRule && editing ? ruleIssues(rule) : []
+    const issues = isExact && editing ? ruleIssues(rule) : []
 
     const operandVM = (gid, r, side) => {
       const o = (side === 'l' ? r.l : r.r) || {}
@@ -566,7 +587,7 @@ export function deriveVals(state, setState) {
 
     return {
       id: c.id, title, body, bodySegments: hl(body), dictFields: dictFieldList.map((f) => ({ name: f.name, docs: fieldDocHint(f.name) })), severity,
-      kind, isRule, isRequirement: !isRule,
+      kind, isExact, isJudged: !isExact,
       typeLabel: meta.label, typeIcon: meta.icon, typeColor: meta.color, typeBg: meta.bg, typeHint: meta.hint,
       showFieldRows,
       ruleScope: rule ? rule.scope || '' : '', onChangeScope: (e) => { const scope = e.target.value; patchRule((ru) => ({ ...ru, scope })) },
@@ -576,7 +597,7 @@ export function deriveVals(state, setState) {
       // The structure controls only appear once you are editing, and until now
       // the only way in was to click into a field — so a finished rule offered
       // no way to add a condition to it. This is that way in.
-      showEditEntry: isRule && !editing,
+      showEditEntry: isExact && !editing,
       onStartEdit: () => startEdit(),
       sevColor: (SEV_META[severity] || SEV_META.MAJOR).color,
       onChangeSev: (e) => write('severity', e.target.value),
@@ -600,7 +621,7 @@ export function deriveVals(state, setState) {
       casesLabel: c.cases + (c.cases === 1 ? ' linked case' : ' linked cases'),
       draft: !!c.draft,
       commentCount: cc.length, hasComments: cc.length > 0,
-      editing, showBody: showBody && !isRule, expanded, showPreview: compactMode && !expanded && !editing, preview: isRule ? rule.message || rule.scope || '' : preview,
+      editing, showBody: showBody && !isExact, expanded, showPreview: compactMode && !expanded && !editing, preview: isExact ? rule.message || rule.scope || '' : preview,
       showExpand: compactMode, expandIcon: expanded ? 'chevron-up' : 'chevron-down',
       onToggleExpand: () => setState((s) => ({ expandedIds: { ...s.expandedIds, [c.id]: !s.expandedIds[c.id] } })),
       cardBorder: editing ? 'var(--me-blue-20)' : 'var(--me-grey-15)',
@@ -675,7 +696,7 @@ export function deriveVals(state, setState) {
         const es = { ...s.editSnap }; delete es[c.id]
         const rules = { ...s.rules }
         const rs = { ...s.ruleSnap }
-        if (isRule && rs[c.id] !== undefined) rules[c.id] = rs[c.id]
+        if (isExact && rs[c.id] !== undefined) rules[c.id] = rs[c.id]
         delete rs[c.id]
         return { editingId: null, createdId: null, refsOpenId: null, helpOpenId: null, operandOpen: null, overrides: ov, editSnap: es, rules, ruleSnap: rs }
       }),
@@ -743,7 +764,7 @@ export function deriveVals(state, setState) {
   // fields it compares, the documents they are read from and what it raises.
   const searchText = (c) => {
     const base = valueOf(c, 'title') + ' ' + valueOf(c, 'body') + ' ' + (valueOf(c, 'refs') || []).join(' ')
-    if (typeOf(c) !== 'rule') return base
+    if (typeOf(c) !== 'exact') return base
     const r = ruleOf(c.id)
     const rows = r.groups.flatMap((g) => g.rows).flatMap((x) => [x.l && x.l.field, x.l && x.l.doc, x.r && x.r.field, x.r && x.r.doc, x.r && x.r.literal])
     return base + ' ' + r.scope + ' ' + r.message + ' ' + rows.filter(Boolean).join(' ')
@@ -795,8 +816,8 @@ export function deriveVals(state, setState) {
       })()
   const typeFilters = [
     { id: 'all', label: 'All' },
-    { id: 'rule', label: 'Rule cards' },
-    { id: 'requirement', label: 'Requirement cards' },
+    { id: 'exact', label: 'Exact' },
+    { id: 'judged', label: 'Judged' },
   ].map((t) => ({
     ...t,
     count: t.id === 'all' ? matchedChecks.length : matchedChecks.filter((c) => typeOf(c) === t.id).length,
@@ -852,8 +873,8 @@ export function deriveVals(state, setState) {
   const exportMd = allChecks().map((c) => {
     const t = valueOf(c, 'title'); const sv = valueOf(c, 'severity') || 'MAJOR'; const rf = (valueOf(c, 'refs') || []).join(', ')
     const kind = typeOf(c)
-    const bd = kind === 'rule' ? ruleMd(c) : valueOf(c, 'body') || ''
-    return `${CARD_TYPES[kind].label.toUpperCase()} CARD: ${c.id} — ${t}\nSeverity: ${sv}\n\n${bd}${rf ? '\n\nReference: ' + rf : ''}`
+    const bd = kind === 'exact' ? ruleMd(c) : valueOf(c, 'body') || ''
+    return `${CARD_TYPES[kind].label.toUpperCase()} RULE: ${c.id} — ${t}\nSeverity: ${sv}\n\n${bd}${rf ? '\n\nReference: ' + rf : ''}`
   }).join('\n\n---\n\n')
   const usedByArt = (code) => allChecks().filter((c) => (valueOf(c, 'refs') || []).includes(code)).length
   const books = S.books || seedBooks()
@@ -911,13 +932,13 @@ export function deriveVals(state, setState) {
   const setDD = (fn) => setState((s) => ({ dictDocs: fn(s.dictDocs || seedDocTypes()) }))
   const docNames = docNameBook
   const bindingDocs = (f) => (f.bindings || []).map((b) => b.doc)
-  // A field counts as used when a check names it — as a chip on a requirement
+  // A field counts as used when a rule names it — as a chip on a judged
   // card, as a braced token in its wording, or as an operand of a rule row.
   const fieldUsed = (name) =>
     allChecks().filter((c) => {
       const fs = valueOf(c, 'fields') || (CHECK_DEFAULTS[c.id] || {}).fields || []
       if (fs.includes(name)) return true
-      if (typeOf(c) === 'rule') return ruleFieldsOf(c.id).includes(name)
+      if (typeOf(c) === 'exact') return ruleFieldsOf(c.id).includes(name)
       return (valueOf(c, 'body') || '').includes('{' + name + '}')
     }).length
   const dq = (S.dictSearch || '').toLowerCase()
@@ -1134,12 +1155,12 @@ export function deriveVals(state, setState) {
     newMenuOpen: S.newMenuOpen,
     toggleNewMenu: () => setState((s) => ({ newMenuOpen: !s.newMenuOpen })),
     closeNewMenu: () => setState({ newMenuOpen: false }),
-    newTypes: ['rule', 'requirement'].map((t) => ({
-      id: t, label: CARD_TYPES[t].label + ' card', desc: CARD_TYPES[t].hint,
+    newTypes: ['exact', 'judged'].map((t) => ({
+      id: t, label: CARD_TYPES[t].label + ' rule', desc: CARD_TYPES[t].hint,
       icon: CARD_TYPES[t].icon, color: CARD_TYPES[t].color, bg: CARD_TYPES[t].bg,
       onPick: guard(() => newCheck(t)),
     })),
-    newCheck: guard(() => newCheck('requirement')),
+    newCheck: guard(() => newCheck('judged')),
 
     // Agents list
     newAgent: guard(() => setState((s) => { const id = uid('agent'); const a = { id, name: 'New agent', cat: 'Uncategorised', status: 'Draft', statusTone: 'neutral', cov: '', covColor: 'var(--me-grey-70)', summary: 'What this agent reads.', eyebrow: '', description: '', domainId: '', owner: '', version: '', icon: 'bot', accent: '#525355', behavior: '', config: { tools: [] } }; return { extraAgents: [...s.extraAgents, a], section: 'agents', view: 'detail', activeAgentId: id, detailTab: 'checkpoints', panel: null } })),

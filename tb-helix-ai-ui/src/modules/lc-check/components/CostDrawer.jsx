@@ -59,8 +59,8 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
               than one section among six. Reading and planning are the fixed cost of
               accepting the file; the examination itself divides by card kind, and the
               two halves could not be less alike. An officer weighing whether to let
-              the requirements run after a rule has already failed is asking exactly
-              this.
+              the judged half run after an exact rule has already failed is asking
+              exactly this.
 
               What used to sit around it, and why it is gone:
 
@@ -76,7 +76,7 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
                   the cases list already answers it there. Here it competed with the
                   cut that leads to a decision. */}
           {cost.byKind.length ? (
-            <Section name="Where It Went" note="Read, plan, then the two kinds of card. Rule cards are free; requirement cards are the bill.">
+            <Section name="Where It Went" note="Read, plan, then the two tiers. Exact rules are free; judged rules are the bill.">
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {cost.byKind.map((k) => (
                   <KindRow key={k.key} kind={k} pagesRead={cost.pagesRead} pageCount={pageCount} />
@@ -84,7 +84,7 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
               </div>
               {cost.cardsFree ? (
                 <p style={{ margin: '10px 0 0', fontSize: 11.5, lineHeight: 1.55, color: 'var(--me-grey-70)' }}>
-                  {cost.cardsFree} of {cost.cardsSettled} cards were settled without asking a model
+                  {cost.cardsFree} of {cost.cardsSettled} rules were settled without asking a model
                   anything — {percent((cost.cardsFree / cost.cardsSettled) * 100)} of the examination,
                   at no cost and with the same answer every time.
                 </p>
@@ -179,12 +179,12 @@ function Metric({ label, value, note }) {
 // A free part says "no model" rather than "$0.00". The zero is the interesting fact
 // and a currency-formatted zero reads as a rounding artefact or a missing figure.
 function KindRow({ kind: k, pagesRead, pageCount }) {
-  const RULE_TONE = { rule: 'var(--me-blue-deep)', requirement: '#1F7A00' }
+  const RULE_TONE = { exact: 'var(--me-blue-deep)', judged: '#1F7A00' }
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--me-grey-08)' }}>
       <span style={{ display: 'flex', marginTop: 2, flexShrink: 0, color: RULE_TONE[k.key] ?? 'var(--me-grey-50)' }}>
         <Icon
-          name={k.key === 'rule' ? 'equal' : k.key === 'requirement' ? 'list-checks' : k.key === 'read' ? 'scan-text' : 'route'}
+          name={k.key === 'exact' ? 'equal' : k.key === 'judged' ? 'list-checks' : k.key === 'read' ? 'scan-text' : 'route'}
           size={13}
           color="currentColor"
         />
@@ -193,7 +193,7 @@ function KindRow({ kind: k, pagesRead, pageCount }) {
         <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--me-ink)' }}>{k.label}</span>
         <span style={{ fontSize: 11, lineHeight: 1.45, color: 'var(--me-grey-70)' }}>{k.note}</span>
         <span style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 12px', fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--me-grey-70)' }}>
-          {k.checks ? <span>{plural(k.checks, 'card')}</span> : null}
+          {k.checks ? <span>{plural(k.checks, 'rule')}</span> : null}
           {/* The reading row settles no cards, so its slot says what it did read —
               which is where "pages read" lived before Coverage was cut. */}
           {k.key === 'read' && pageCount ? <span>{pagesRead} of {pageCount} pages</span> : null}

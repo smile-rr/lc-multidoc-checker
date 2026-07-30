@@ -7,8 +7,8 @@ import Chip from '@shared/ds/Chip'
 import IconButton from '@shared/ds/IconButton'
 import { Menu, MenuItem, MenuHeader, MenuEmpty } from '@shared/ds/Menu'
 import { useNewItemFocus } from '@shared/lib/useNewItemFocus'
-import RuleCard from './RuleCard'
-import RequirementCard from './RequirementCard'
+import ExactBody from './ExactBody'
+import JudgedBody from './JudgedBody'
 
 // The check card shell. Everything a check has whatever kind it is — id, title,
 // severity, references, which agent it sits in — lives here; the middle of the
@@ -16,7 +16,7 @@ import RequirementCard from './RequirementCard'
 //
 //   Rule card         rows comparing a field on one document with a field on
 //                     another, run deterministically
-//   Requirement card  requirements in plain language, read out of a clause of
+//   Judged rule       requirements in plain language, read out of a clause of
 //                     the credit or as standing practice
 //
 // `check` is the view-model produced by store.buildCheck().
@@ -153,11 +153,11 @@ export default function Check({ check }) {
       </div>
 
       {/* ---- Rule card ---- */}
-      {check.isRule && <RuleCard check={check} />}
+      {check.isRule && <ExactBody check={check} />}
 
-      {/* ---- Requirement card: which fields and documents it reads ----
+      {/* ---- Judged rule: which fields and documents it reads ----
           A rule states its operands in its own rows, so these chips belong to
-          requirement cards only. */}
+          judged rules only. */}
       {check.showFieldRows && (
         <>
           <ChipRow
@@ -205,7 +205,7 @@ export default function Check({ check }) {
         </>
       )}
 
-      {check.showBody && <RequirementCard check={check} />}
+      {check.showBody && <JudgedBody check={check} />}
 
       {check.editing && (
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, marginTop: 10 }}>

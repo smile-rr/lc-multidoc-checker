@@ -45,7 +45,7 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
   // A rule carries its rows and its resolved operands; a requirement carries a
   // compiled prompt. Which one this is decides what the card can honestly show.
   const rd = check.ruleDef
-  const isRule = check.kind === 'rule' && !!rd
+  const isExact = check.tier === 'exact' && !!rd
   const src = SOURCE_META[check.source] ?? SOURCE_META.credit
 
   return (
@@ -95,13 +95,13 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
 
       {/* Which kind of check this is, stated before its content — the two cards
           share a shell, so the shell has to say which one you are reading. */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '10px 20px', background: isRule ? 'var(--me-blue-20)' : 'var(--me-green-20)', borderBottom: '1px solid var(--me-grey-15)', flexWrap: 'wrap' }}>
-        <Chip size="sm" tone={isRule ? 'blue' : 'green'}>
-          <Icon name={isRule ? 'equal' : 'list-checks'} size={11} />
-          {isRule ? 'Rule' : 'Requirement'}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '10px 20px', background: isExact ? 'var(--me-blue-20)' : 'var(--me-green-20)', borderBottom: '1px solid var(--me-grey-15)', flexWrap: 'wrap' }}>
+        <Chip size="sm" tone={isExact ? 'blue' : 'green'}>
+          <Icon name={isExact ? 'equal' : 'list-checks'} size={11} />
+          {isExact ? 'Rule' : 'Requirement'}
         </Chip>
-        <span style={{ fontSize: 11.5, lineHeight: 1.45, color: isRule ? 'var(--me-blue-deep)' : '#1F7A00' }}>
-          {isRule
+        <span style={{ fontSize: 11.5, lineHeight: 1.45, color: isExact ? 'var(--me-blue-deep)' : '#1F7A00' }}>
+          {isExact
             ? 'Evaluated here on extracted fields. No model reads it, and it answers the same way every time.'
             : 'Read against the presentation by an agent, which forms a view you can question.'}
         </span>
@@ -117,7 +117,7 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
           // equivalent thing an officer needs in order to trust it is the values
           // it compared and where each came from. Same promise, same place, the
           // artefact that actually exists for this kind of check.
-          { id: 'plan', label: isRule ? 'Inputs' : 'Execution Plan' },
+          { id: 'plan', label: isExact ? 'Inputs' : 'Execution Plan' },
           { id: 'result', label: 'Result' },
         ]}
       />
@@ -135,7 +135,7 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
             <Field label="Trigger">
               <span style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--me-ink)' }}>{check.appliesBecause}.</span>
             </Field>
-            {isRule ? (
+            {isExact ? (
               <>
                 <Field label="Applies to">
                   <span style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--me-ink)' }}>{rd.scope}</span>
@@ -158,7 +158,7 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
                 </Field>
               </>
             ) : null}
-            {isRule ? null : (
+            {isExact ? null : (
             <Field label="Rule">
               {spec.rule ? (
                 <RuleText text={spec.rule} />
@@ -175,7 +175,7 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
           </div>
         ) : null}
 
-        {tab === 'plan' && isRule ? (
+        {tab === 'plan' && isExact ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <span style={{ fontSize: 12.5, lineHeight: 1.6, color: 'var(--me-grey-70)' }}>
               Nothing is sent anywhere: this check is evaluated here, on the fields below. It gives
@@ -208,7 +208,7 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
           </div>
         ) : null}
 
-        {tab === 'plan' && !isRule ? (
+        {tab === 'plan' && !isExact ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <span style={{ fontSize: 12.5, lineHeight: 1.6, color: 'var(--me-grey-70)' }}>
               The request that executes this check, verbatim — not a description of it.

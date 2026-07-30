@@ -16,10 +16,12 @@ import PendingNotice from '../components/PendingNotice'
 
 // Checks library — Cards (layer-1 inline edit) or List (rows → detail page).
 //
-// Two kinds of card live here. Rule cards compare a field on one document with
-// a field on another, deterministically. Requirement cards hold requirements in
-// plain language — read out of a clause of the credit (46A, 47A) or as standing
-// practice against the whole presentation.
+// **Every card here is a Rule card**, as the service has it — one catalogue, keyed
+// `rules:`, each entry carrying a `check_type`. What differs is the tier: an *exact*
+// rule compares a field on one document with a field on another, deterministically; a
+// *judged* rule holds requirements in plain language for an agent to read against the
+// presentation. There is no second kind of card, and "Requirement" belongs to what
+// the credit requires — see the plan screen.
 export default function ChecksSection({ v }) {
   return (
     // Detail tier, not list: the cards view puts full rule cards on this page,

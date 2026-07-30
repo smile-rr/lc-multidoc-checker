@@ -3,7 +3,7 @@ import { MODELS, RUN_STEPS } from '../data/fixtures.js'
 // What a run cost, derived from raw usage.
 //
 // Priced per model, because a run is not one model: a vision model reads the
-// pages, a cheap text model plans, the main model executes the rules, and their
+// pages, a cheap text model plans, the main model reads the judged rules, and their
 // prices differ by more than an order of magnitude. A single blended figure hides
 // the only thing worth knowing — which model the money went to.
 //
@@ -36,17 +36,17 @@ const add = (acc, s) => ({
  * The four things a run spends time on, in the order it spends it.
  *
  * This is the split that decides anything. Reading and planning are fixed costs of
- * accepting the file; then the examination itself divides by **card kind**, and the
- * two halves could not be less alike — Rule cards are free and instant, Requirement
- * cards are the entire bill. An officer weighing whether to let the requirements run
- * after a rule has already failed is asking exactly this question, and a single
- * blended total cannot answer it.
+ * accepting the file; then the examination itself divides by **tier**, and the two
+ * halves could not be less alike — exact rules are free and instant, judged rules are
+ * the entire bill. An officer weighing whether to let the judged half run after an
+ * exact rule has already failed is asking exactly this question, and a single blended
+ * total cannot answer it.
  */
 export const RUN_KINDS = [
   { key: 'read', label: 'Reading the pages', note: 'A vision model renders and reads every page once. Cached across cases.' },
-  { key: 'plan', label: 'Planning the checks', note: 'Which cards this credit brings into play, and which of its conditions no card covers.' },
-  { key: 'rule', label: 'Rule cards', note: 'Field against field. No model, no tokens, same answer every time.' },
-  { key: 'requirement', label: 'Requirement cards', note: 'An agent reads the documents and forms a view. This is where the money goes.' },
+  { key: 'plan', label: 'Planning the checks', note: 'Which rules this credit brings into play, and which of its requirements no rule covers.' },
+  { key: 'exact', label: 'Exact rules', note: 'Field against field. No model, no tokens, same answer every time.' },
+  { key: 'judged', label: 'Judged rules', note: 'An agent reads the documents and forms a view. This is where the money goes.' },
 ]
 
 const weightedCache = (steps) => {
@@ -55,10 +55,10 @@ const weightedCache = (steps) => {
 }
 
 /**
- * What one Requirement card costs, before it runs.
+ * What one judged rule costs, before it runs.
  *
- * The plan screen has to price the requirement half *before* anything runs, so that
- * an officer choosing to stop on a rule failure can see what stopping saves. It used
+ * The plan screen has to price the judged half *before* anything runs, so that an
+ * officer choosing to stop on an exact-rule failure can see what stopping saves. It used
  * to multiply by a hand-written 4.9k, which was three times under what this table
  * actually reports — so the plan promised a saving a third of the real one, and the
  * drawer afterwards contradicted it.
@@ -66,8 +66,8 @@ const weightedCache = (steps) => {
  * Derived from the same steps the drawer prices, so the estimate and the invoice
  * cannot disagree.
  */
-export function requirementCardCost(cardCount, steps = RUN_STEPS) {
-  const reqs = steps.filter((s) => s.kind === 'requirement')
+export function judgedRuleCost(cardCount, steps = RUN_STEPS) {
+  const reqs = steps.filter((s) => s.kind === 'judged')
   const cards = reqs.reduce((a, s) => a + (s.checks ?? 0), 0)
   if (!cards) return { tokens: 0, cost: 0, seconds: 0 }
   const tokens = reqs.reduce((a, s) => a + s.tokensIn + s.tokensOut, 0)
@@ -137,7 +137,7 @@ export function summariseRun(steps, completedCount, pageCount) {
     })
     .filter(Boolean)
 
-  const examining = byKind.filter((k) => k.key === 'rule' || k.key === 'requirement')
+  const examining = byKind.filter((k) => k.key === 'exact' || k.key === 'judged')
 
   return {
     ...totals,
@@ -145,7 +145,7 @@ export function summariseRun(steps, completedCount, pageCount) {
     wallClock,
     byKind,
     // How much of the examination was settled without asking a model anything. The
-    // one number that says what the Rule/Requirement split is worth.
+    // one number that says what the exact/judged split is worth.
     cardsSettled: examining.reduce((a, k) => a + k.checks, 0),
     cardsFree: examining.filter((k) => k.free).reduce((a, k) => a + k.checks, 0),
     cacheHitPct: weightedCache(done),
@@ -215,7 +215,7 @@ export function summariseSpend(cases, steps, baselinePages = 6) {
   return {
     casesExamined: examined.length,
     // What the deterministic half does for the bill, per case. Not scaled by pages:
-    // a Rule card costs nothing on a six-page bundle and nothing on a sixty-page one.
+    // an exact rule costs nothing on a six-page bundle and nothing on a sixty-page one.
     cardsPerCase: base.cardsSettled,
     freeCardsPerCase: base.cardsFree,
     freeCardPct: base.cardsSettled ? (base.cardsFree / base.cardsSettled) * 100 : 0,

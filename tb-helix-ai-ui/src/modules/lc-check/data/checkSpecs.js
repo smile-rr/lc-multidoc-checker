@@ -30,7 +30,7 @@
 //   SOURCE     where the obligation comes from — the credit's own text, UCP 600
 //              and ISBP 821, or the bank's policy. This is what you cite when
 //              you refuse, and who may change the check.
-//   KIND       how it is settled — the system comparing extracted fields, or an
+//   TIER       how it is settled — an expression over extracted fields, or an
 //              agent reading prose. This is what it costs and how far it can be
 //              trusted.
 //
@@ -40,9 +40,9 @@
 // documents beyond those called for" is *practice* (ISBP A31) and needs
 // judgement. "Parties screened" is *policy*.
 //
-// So: source groups the plan, because an examiner works outward from the credit
-// and a refusal advice is written that way. Kind is a marker on the row, because
-// it is a property of the check, not a section of the work.
+// So: source is what you cite; tier is what it costs and how far to trust it.
+// Both are properties of the rule, and neither is a kind of card — there is only
+// one kind of card.
 // ---------------------------------------------------------------------------
 
 export const SOURCES = ['credit', 'practice', 'policy']
@@ -92,19 +92,48 @@ const SOURCE_OF = {
 // is grouped by who added it, not by what it cites.
 export const checkSource = (id) => SOURCE_OF[id] ?? 'credit'
 
-// Which kind of card the check came from, and therefore who executes it.
+// **Every card in the dictionary is a Rule card.** What differs is the tier it is
+// evaluated at, and that is the service's own model: `catalog.yml` holds one list,
+// keyed `rules:`, each entry carrying a `check_type`. There is no second kind of
+// card in the thing this is a UI for, and inventing one here was the mistake — a
+// rule settled by an agent reading is no less a rule than one settled by comparing
+// two fields. Both are standing instructions the bank authored and approved; only
+// the evaluation differs.
 //
-// A Rule card is rows over named fields: the system evaluates it, in
-// milliseconds, for nothing, and the same inputs always give the same answer. A
-// Requirement card is prose read against the presentation by an agent: it costs
-// tokens and seconds and its answer is a judgement.
-//
-// This is the same split Governance authors, carried through unchanged. Anything
-// not named here is a requirement — the same default a check is born with.
-export const RULE_CHECKS = ['DATE-44C', 'DATE-48', 'DATE-31D', 'AMT-30A', 'AMT-C6', 'XD-A23']
-export const checkKind = (id) => (RULE_CHECKS.includes(id) ? 'rule' : 'requirement')
+// Four tiers, escalating in cost and autonomy, exactly as the service declares them.
+export const CHECK_TYPES = {
+  'REQ-46A': 'AGENT', 'REQ-31D': 'AGENT', 'REQ-40E': 'AGENT',
+  'DOCSET-14A': 'AGENT', 'DOCSET-17': 'AGENT', 'DOCSET-03': 'AGENT', 'DOCSET-A31': 'AGENT',
+  'DATE-44C': 'PROGRAMMATIC', 'DATE-48': 'PROGRAMMATIC', 'DATE-31D': 'PROGRAMMATIC',
+  'GOODS-18C': 'AGENT', 'AMT-30A': 'PROGRAMMATIC', 'AMT-C6': 'PROGRAMMATIC',
+  'TRANS-20': 'AGENT', 'TRANS-43P': 'AGENT_TOOL', 'TRANS-43T': 'AGENT',
+  'COND-47A': 'AGENTIC', 'XD-A23': 'PROGRAMMATIC', 'GEN-01': 'AGENT',
+  'PARTY-FC04': 'AGENT', 'TRANS-22': 'AGENT', 'CERT-28': 'AGENT_TOOL',
+}
 
-// The rows a Rule card evaluates, and the field each side reads. `factLabel` and
+// What each tier means, in the words the service uses. Shown on a card's detail and
+// in the cost drawer, where AGENT against AGENTIC is the difference in the bill.
+export const TIER_META = {
+  PROGRAMMATIC: { label: 'Programmatic', note: 'An expression over extracted fields. Under 100ms, no model, deterministic.' },
+  AGENT: { label: 'Agent', note: 'One structured model call. No tools.' },
+  AGENT_TOOL: { label: 'Agent + tools', note: 'A model call with date, amount and currency tools. Three calls at most.' },
+  AGENTIC: { label: 'Agentic', note: 'A multi-iteration tool-using loop, hard-capped. One rule, many sub-results.' },
+}
+
+// What the *officer* needs from the tier, which is one bit rather than four: did a
+// model form a view?
+//
+//   exact   the answer is reproducible. Check the arithmetic and move on.
+//   judged  a view was formed. Read it before you rely on it, and it cost money.
+//
+// Not "static / dynamic": both are equally static as authored artefacts — neither
+// changes per credit, both are versioned text in the dictionary. The genuinely
+// dynamic thing in this system is a requirement read out of :47A:, which is
+// different on every credit, so that word is needed elsewhere.
+export const checkType = (id) => CHECK_TYPES[id] ?? 'AGENT'
+export const checkTier = (id) => (checkType(id) === 'PROGRAMMATIC' ? 'exact' : 'judged')
+
+// The rows an *exact* rule evaluates, and the field each side reads. `factLabel` and
 // `factDoc` are the join between the dictionary's vocabulary and what Interpret
 // actually produced — the label it was extracted under, and the document it came
 // off.
@@ -116,7 +145,7 @@ export const checkKind = (id) => (RULE_CHECKS.includes(id) ? 'rule' : 'requireme
 // A rule is only answerable if every operand resolved. When one did not, the
 // plan says so before anything runs, and the result is "not covered" — never a
 // pass. A missing input is not evidence of compliance.
-export const RULE_ROWS = {
+export const EXACT_ROWS = {
   'DATE-44C': {
     scope: 'When the credit states a latest shipment date',
     message: 'Shipment was effected after the latest shipment date stated in the credit.',
@@ -169,7 +198,7 @@ export const RULE_ROWS = {
  * showing this in the plan: it is knowable before a single token is spent.
  */
 export function resolveRuleInputs(id, facts = []) {
-  const def = RULE_ROWS[id]
+  const def = EXACT_ROWS[id]
   if (!def) return null
   // Label *and* document. A rule reads a named field off a named document, and two
   // documents routinely carry the same field name — that is the whole point of a

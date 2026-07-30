@@ -7,7 +7,7 @@ import IconButton from '@shared/ds/IconButton'
 import Spinner from '@shared/ds/Spinner'
 import { ellipsis } from '@shared/ds/text'
 import { plural, thousands, usd, durationShort } from '@shared/lib/format'
-import { requirementCardCost } from '../state/runCost'
+import { judgedRuleCost } from '../state/runCost'
 import { severityMeta } from '../state/severity'
 import { SOURCE_META } from '../data/checkSpecs'
 import CheckSpecCard from '../components/CheckSpecCard'
@@ -117,7 +117,7 @@ export default function ChecksScreen({ onOpenFinding }) {
     if (!executing) return 'planned'
     // A rule is arithmetic over fields already extracted: it settles in the same
     // tick the run starts, so it is never queued behind an agent reading pages.
-    if (check.kind === 'rule') return 'done'
+    if (check.tier === 'exact') return 'done'
     if (run.completedAreaIds.includes(check.areaId)) return 'done'
     if (run.activeAreaId === check.areaId) return 'running'
     return 'queued'
@@ -127,21 +127,21 @@ export default function ChecksScreen({ onOpenFinding }) {
     statusOf(check) === 'done' && check.findingId ? data.findings.find((f) => f.id === check.findingId) ?? null : null
 
   const runnable = allChecks.filter((c) => c.areaId || c.addedByOfficer)
-  const rules = runnable.filter((c) => c.kind === 'rule')
-  const reqs = runnable.filter((c) => c.kind !== 'rule')
+  const exact = runnable.filter((c) => c.tier === 'exact')
+  const judged = runnable.filter((c) => c.tier !== 'exact')
   const skipped = allChecks.filter((c) => !c.areaId && !c.addedByOfficer)
-  const blocked = rules.filter((c) => c.ruleDef && !c.ruleDef.ready)
+  const blocked = exact.filter((c) => c.ruleDef && !c.ruleDef.ready)
   // Priced from the same table the cost drawer invoices against, so the estimate a
   // stop-on-rule-failure decision is made on and the figure reported afterwards
   // cannot disagree. It used to be `reqs.length * 4.9`, a hand-written constant
   // three times under what the run actually reports.
-  const est = requirementCardCost(reqs.length)
+  const est = judgedRuleCost(judged.length)
 
   // A critical failure found on the figures is the case where reading on may be
   // waste: the presentation is refused whatever :47A: says. Whether to stop is a
   // policy chosen before the run, so Auto never surprises you — and it sits on
   // the group it governs instead of in a banner of its own.
-  const criticalRuleFailures = rules
+  const criticalRuleFailures = exact
     .map((c) => (statusOf(c) === 'done' && c.findingId ? data.findings.find((f) => f.id === c.findingId) : null))
     .filter((f) => f && f.severity === 'discrepancy')
   const halted = officer.stopOnRuleFailure && executing && !run.finished && criticalRuleFailures.length > 0
@@ -161,23 +161,23 @@ export default function ChecksScreen({ onOpenFinding }) {
 
   const sections = [
     {
-      key: 'rule',
+      key: 'exact',
       icon: 'equal',
       tone: 'blue',
-      label: 'Rule',
-      count: rules.length,
-      note: 'The system compares fields already extracted. No model, no cost, same answer every time.',
-      checks: rules,
+      label: 'Exact',
+      count: exact.length,
+      note: 'An expression over fields already extracted. No model, no cost, same answer every time.',
+      checks: exact,
       aside: blocked.length ? { warn: true, text: `${plural(blocked.length, 'rule')} needs a field that was not extracted` } : null,
     },
     {
-      key: 'requirement',
+      key: 'judged',
       icon: 'list-checks',
       tone: 'green',
-      label: 'Requirement',
-      count: reqs.length,
+      label: 'Judged',
+      count: judged.length,
       note: 'An agent reads it against the presentation and forms a view.',
-      checks: reqs,
+      checks: judged,
       aside: { text: `about ${thousands(est.tokens, 0)} tokens · ${usd(est.cost)}` },
       policy: true,
     },
@@ -238,7 +238,7 @@ export default function ChecksScreen({ onOpenFinding }) {
           <div style={{ margin: '12px 16px 0', border: '1px solid #E9C97A', background: '#FBEFCF', borderRadius: 10, padding: '10px 13px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <Icon name="circle-pause" size={15} color="#946400" />
             <span style={{ flex: 1, minWidth: 200, fontSize: 12, lineHeight: 1.5, color: '#946400' }}>
-              Stopped on {criticalRuleFailures.map((f) => f.checkId).join(', ')}. The {reqs.length} requirement cards have not
+              Stopped on {criticalRuleFailures.map((f) => f.checkId).join(', ')}. The {judged.length} judged rules have not
               run — about {thousands(est.tokens, 0)} tokens, {usd(est.cost)} and {durationShort(est.seconds)} of agent time not spent.
             </span>
             <button onClick={() => actions.dispatch({ type: 'stop_on_rule_failure', on: false })} style={{ ...linkBtn, color: '#946400', fontWeight: 600 }}>Read on anyway</button>
