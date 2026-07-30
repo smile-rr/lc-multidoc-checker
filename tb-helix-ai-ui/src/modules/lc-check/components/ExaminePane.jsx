@@ -12,6 +12,7 @@ import { usePageBar } from '@shared/ds/DocumentSurface'
 import { ellipsis } from '@shared/ds/text'
 import { plural } from '@shared/lib/format'
 import BundleViewer from './BundleViewer'
+import { WORKBENCH_H } from './paneHeight'
 import { useCase } from '../state/CaseContext'
 
 // Examine the documents yourself.
@@ -54,9 +55,8 @@ import { useCase } from '../state/CaseContext'
 // something looked odd; buried in a list that is a risk nobody reads. Surfaced as
 // "2 readings we are not sure of" it becomes a directed task — the shortest path to
 // the discrepancies our extraction is likeliest to have fumbled.
-// Tall enough to read a page in, short enough that the columns beside it stay on
-// screen. Matches the other viewers rather than inventing a third height.
-const VIEWPORT = 'calc(100vh - var(--case-header-h, 240px) - 168px)'
+// Shared with the findings split — see `paneHeight`.
+const VIEWPORT = WORKBENCH_H
 
 export default function ExaminePane({ findings, onOpenFinding }) {
   const { data, run, actions } = useCase()

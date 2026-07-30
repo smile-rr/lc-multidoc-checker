@@ -154,33 +154,51 @@ export default function DecisionScreen({ onOpenFinding }) {
 
             return (
               <div key={f.id} style={{ borderBottom: '1px solid var(--me-grey-08)' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '11px 18px' }}>
+                {/* Two lines, and only two: reference and citation on the first,
+                    the finding itself on the second. This list is worked all the way
+                    down, so every line a row spends on itself is a row fewer on the
+                    screen — the marks that were on a third line now sit inline on the
+                    first, which is where the eye already is. */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '7px 18px' }}>
                   <button
                     onClick={() => toggle(f.id)}
                     aria-expanded={isOpen}
                     title={isOpen ? 'Collapse' : 'Expand'}
-                    style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', marginTop: 3, color: 'var(--me-grey-50)' }}
+                    style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', marginTop: 2, color: 'var(--me-grey-50)' }}
                   >
                     <Icon name={isOpen ? 'chevron-down' : 'chevron-right'} size={15} />
                   </button>
 
-                  <span style={{ width: 7, height: 7, borderRadius: 999, background: sev.dot, flex: '0 0 7px', marginTop: 8 }} />
+                  <span title={sev.label} style={{ width: 7, height: 7, borderRadius: 999, background: sev.dot, flex: '0 0 7px', marginTop: 6 }} />
 
-                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                      {/* Check reference first: it is the unique handle for this
-                          finding, and what gets quoted in the advice and the file.
-                          Where there is none, Review's two words for why — a card
-                          nobody authored, or a finding that was never a check's. */}
+                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+                      {/* How it was settled — the same mark Review uses, from the
+                          same definition. An icon rather than the line of prose it
+                          used to have: the group heading already spells it out. */}
+                      <span title={mark.title} style={{ display: 'flex', flexShrink: 0, color: mark.color }}>
+                        <Icon name={mark.icon} size={11} color="currentColor" />
+                      </span>
+                      {/* Check reference: the unique handle for this finding, and
+                          what gets quoted in the advice and the file. Where there is
+                          none, Review's two words for why — a card nobody authored,
+                          or a finding that was never a check's. */}
                       <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: f.checkId || f.raisedByOfficer ? 'var(--me-grey-70)' : '#946400', whiteSpace: 'nowrap' }}>
                         {f.checkId ?? (f.raisedByOfficer ? 'yours' : 'no card')}
                       </span>
                       {/* Not the area name for an officer's finding — that reads
                           "Raised by you" directly under a heading already saying so.
                           The document is the useful thing to know instead. */}
-                      <span style={{ fontSize: 12, color: 'var(--me-grey-70)', minWidth: 0, ...ellipsis }}>
+                      <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)', minWidth: 0, ...ellipsis }}>
                         {check?.name ?? docById[f.docId]?.docType ?? f.area}
                       </span>
+                      {/* What it is cited against, which decides whether it can go on
+                          a refusal advice at all. */}
+                      {CITE[f.source] ? (
+                        <span style={{ fontSize: 10.5, color: 'var(--me-grey-70)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                          · {CITE[f.source]}
+                        </span>
+                      ) : null}
                     </div>
                     <span
                       onClick={() => toggle(f.id)}
@@ -188,26 +206,15 @@ export default function DecisionScreen({ onOpenFinding }) {
                     >
                       {f.title}
                     </span>
-                    {/* Same marks as Review, from the same definition: how it was
-                        settled, and what it is cited against. The officer arrives
-                        from that screen and should not have to relearn the list. */}
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                      <span title={mark.title} style={{ display: 'flex', color: mark.color }}>
-                        <Icon name={mark.icon} size={11} color="currentColor" />
-                      </span>
-                      <span style={{ fontSize: 10.5, color: 'var(--me-grey-70)', whiteSpace: 'nowrap' }}>
-                        {CITE[f.source] ?? (f.raisedByOfficer ? 'yours' : '')}
-                      </span>
-                    </span>
                   </div>
 
                   {/* Fixed width: the label changes from "Open" to "Not one" as
                       the officer decides, and a shrinking label slid the chips
                       out from under the cursor mid-click. */}
-                  <span style={{ flex: '0 0 62px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', marginTop: 4, color: d ? toneOf(d === 'agreed' ? 'success' : d === 'parked' ? 'warning' : 'error').text : 'var(--me-grey-70)' }}>
+                  <span style={{ flex: '0 0 62px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', marginTop: 3, color: d ? toneOf(d === 'agreed' ? 'success' : d === 'parked' ? 'warning' : 'error').text : 'var(--me-grey-70)' }}>
                     {dispositionLabel(d)}
                   </span>
-                  <div style={{ marginTop: 1 }}>
+                  <div style={{ marginTop: 0 }}>
                     <DispositionChips value={d} onPick={(next) => actions.decide(f.id, next)} />
                   </div>
                 </div>

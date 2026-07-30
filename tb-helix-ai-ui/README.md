@@ -683,6 +683,38 @@ same heading with the same mark in both, or the list they just worked through st
 being the list they sign. Two copies of that definition would have drifted on the
 first change to either screen.
 
+### A list you can trust to hold still
+
+Focus mode is a **bounded split**: `WORKBENCH_H` (shared with the Examine pane, so
+the two modes of the same screen are the same height), the page itself does not
+scroll, and each column scrolls itself. With one shared scrollbar, reading to the
+bottom of a long analysis slid the list you navigate with off the top of the screen.
+
+The rail's rows are built on one rule: **a row's height must not depend on selection
+or on the call you have made.** The card that used to sit here let its title wrap
+freely and grew a decision label once you decided, so the list reflowed under the
+cursor — you would decide one finding and find the next one somewhere else. Now:
+
+- the title is clamped to two lines, so a row has a ceiling
+- selection is a wash and a 3px left edge, never a border or shadow that adds size,
+  and never a heavier font (a bolder line wraps where the lighter one did not)
+- a decision is a tick in a fixed slot that is rendered whether it holds one or not
+- **no disposition chips in the rail** — deciding happens in the detail header. The
+  rail navigates; the pane beside it is where the call is made
+
+The group bands are the same bands the overview uses, so the list you clicked from
+and the list you land in are recognisably one list.
+
+### Two lines per finding on Decision
+
+This list is worked all the way down, so every line a row spends on itself is a row
+fewer on screen. Each finding gets exactly two: reference and citation on the first,
+the finding on the second.
+
+The settled-by mark and *cited as* used to sit on a third line of their own. They are
+now inline on the first — where the eye already is — and the mark is an icon without
+its prose, because the group heading above already spells the kind out.
+
 ### A rule has three outcomes, and "possible" is not one of them
 
 A Rule card compares extracted fields, so it can only **pass**, **fail**, or be

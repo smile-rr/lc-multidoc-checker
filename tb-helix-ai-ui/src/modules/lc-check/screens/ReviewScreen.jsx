@@ -8,12 +8,12 @@ import Tabs from '@shared/ds/Tabs'
 import SegmentedControl from '@shared/ds/SegmentedControl'
 import { PROVENANCE_HIGHLIGHT } from '@shared/lib/tone'
 import Chip from '@shared/ds/Chip'
-import { ellipsis } from '@shared/ds/text'
+import { ellipsis, clampLines } from '@shared/ds/text'
 import { plural } from '@shared/lib/format'
-import FindingCard from '../components/FindingCard'
 import MarkdownDoc from '@shared/ds/MarkdownDoc'
 import BundleViewer from '../components/BundleViewer'
 import ExaminePane from '../components/ExaminePane'
+import { WORKBENCH_H } from '../components/paneHeight'
 import DiscrepancyStatement from '../components/DiscrepancyStatement'
 import DispositionChips from '../components/DispositionChips'
 import { severityMeta, dispositionLabel } from '../state/severity'
@@ -163,7 +163,13 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
         <ExaminePane findings={visible.findings} onOpenFinding={(id) => { onSelect(id); setMode('findings'); setTab('analysis') }} />
       ) : (
 
-      <div style={{ display: 'grid', gridTemplateColumns: selected ? 'minmax(280px,340px) minmax(460px,1fr)' : 'minmax(0,1fr)', gap: 16, alignItems: 'start' }}>
+      // Focus mode is a bounded split: each column scrolls itself, the page does
+      // not. One shared scrollbar meant reading down a finding slid the list you
+      // navigate with off the top of the screen.
+      <div style={selected
+        ? { display: 'grid', gridTemplateColumns: 'minmax(272px,316px) minmax(460px,1fr)', gap: 16, height: WORKBENCH_H, minHeight: 0, alignItems: 'stretch' }
+        : { display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', gap: 16, alignItems: 'start' }}
+      >
         {selected ? null : (
           <FindingsTable
             groups={groups}
@@ -176,74 +182,81 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
           />
         )}
         {selected ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {/* The way back. Focus mode had no exit, so selecting a finding made the
-              overview unreachable — and the overview is the default state. */}
-          <button
-            onClick={() => onSelect(null)}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 7, alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, color: 'var(--me-blue)' }}
-          >
-            <Icon name="arrow-left" size={14} />
-            All findings
-          </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Eyebrow size="sm">Grouped by</Eyebrow>
-            <SegmentedControl size="sm" value={grouping} onChange={setGrouping} items={[{ id: 'kind', label: 'Kind' }, { id: 'doc', label: 'Document' }]} />
-          </div>
-          {groups.map((g) => (
-            <div key={g.label} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '2px 2px 0' }}>
-                <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
-                  <Eyebrow size="sm">{g.label}</Eyebrow>
-                  {g.note ? <span style={{ fontSize: 11, color: 'var(--me-grey-70)' }}>{g.note}</span> : null}
-                </span>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--me-grey-70)', flexShrink: 0 }}>{plural(g.items.length, 'item')}</span>
-              </div>
-              {g.items.map((f) => (
-                <FindingCard
-                  key={f.id}
-                  finding={f}
-                  kind={f.settledBy}
-                  subtitle={subtitleFor(f)}
-                  selected={f.id === selected.id}
-                  decision={officer.decisions[f.id]}
-                  onSelect={() => { onSelect(f.id); setTab('analysis') }}
-                  onDecide={(d) => actions.decide(f.id, d)}
-                />
-              ))}
+        <div style={{ ...cardSurface(12), boxShadow: 'none', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+          {/* Fixed head: the way back and the grouping. Both have to stay reachable
+              while the list under them scrolls, and neither should move when you
+              pick a different finding. */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', borderBottom: '1px solid var(--me-grey-15)', flexShrink: 0 }}>
+            <button
+              onClick={() => onSelect(null)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 7, alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, color: 'var(--me-blue)' }}
+            >
+              <Icon name="arrow-left" size={14} />
+              All findings
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Eyebrow size="sm">Grouped by</Eyebrow>
+              <SegmentedControl size="sm" value={grouping} onChange={setGrouping} items={[{ id: 'kind', label: 'Kind' }, { id: 'doc', label: 'Document' }]} />
             </div>
-          ))}
+          </div>
 
-          {visible.clean.length ? (
-            <>
-              <button
-                onClick={() => setShowClean((s) => !s)}
-                style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '10px 12px', background: '#fff', border: '1px solid var(--me-grey-15)', borderRadius: 10, cursor: 'pointer', fontSize: 12.5, color: 'var(--me-grey)', textAlign: 'left' }}
-              >
-                <Icon name={showClean ? 'chevron-down' : 'chevron-right'} size={15} color="var(--me-grey-70)" />
-                <span>{showClean ? 'Hide' : 'Show'} the {visible.clean.length} areas that came back clean</span>
-              </button>
-              {showClean ? (
-                <div style={{ display: 'flex', flexDirection: 'column', background: '#fff', border: '1px solid var(--me-grey-15)', borderRadius: 10, overflow: 'hidden' }}>
-                  {visible.clean.map((f) => (
-                    <button
-                      key={f.id}
-                      onClick={() => { onSelect(f.id); setTab('analysis') }}
-                      style={{ display: 'flex', gap: 9, alignItems: 'flex-start', textAlign: 'left', padding: '9px 12px', borderBottom: '1px solid var(--me-grey-08)', border: 'none', background: 'none', cursor: 'pointer' }}
-                    >
-                      <Icon name="check" size={13} color="var(--status-success)" />
-                      <span style={{ fontSize: 12.5, color: 'var(--me-ink)', lineHeight: 1.4 }}>{f.title}</span>
-                    </button>
-                  ))}
+          {/* The list, and the only thing in this column that scrolls. */}
+          <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+            {groups.map((g) => (
+              <div key={g.label}>
+                {/* The same band the overview uses, so the list you clicked from and
+                    the list you land in are recognisably one list. */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', background: 'var(--me-grey-08)', borderBottom: '1px solid var(--me-grey-15)', position: 'sticky', top: 0, zIndex: 1 }}>
+                  <Chip size="sm" tone={g.tone ?? 'neutral'}>
+                    {g.icon ? <Icon name={g.icon} size={11} /> : null}
+                    {g.label}
+                  </Chip>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>{g.items.length}</span>
                 </div>
-              ) : null}
-            </>
-          ) : null}
+                {g.items.map((f) => (
+                  <RailRow
+                    key={f.id}
+                    finding={f}
+                    subtitle={subtitleFor(f)}
+                    selected={f.id === selected.id}
+                    decision={officer.decisions[f.id]}
+                    onSelect={() => { onSelect(f.id); setTab('analysis') }}
+                  />
+                ))}
+              </div>
+            ))}
+
+            {visible.clean.length ? (
+              <>
+                <button
+                  onClick={() => setShowClean((s) => !s)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', padding: '8px 12px', background: 'var(--me-grey-08)', border: 'none', borderTop: '1px solid var(--me-grey-15)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 11.5, color: 'var(--me-grey-70)', textAlign: 'left' }}
+                >
+                  <Icon name={showClean ? 'chevron-down' : 'chevron-right'} size={14} color="var(--me-grey-50)" />
+                  <span>{plural(visible.clean.length, 'area')} came back clean</span>
+                </button>
+                {showClean
+                  ? visible.clean.map((f) => (
+                    <RailRow
+                      key={f.id}
+                      finding={f}
+                      subtitle={subtitleFor(f)}
+                      selected={f.id === selected.id}
+                      decision={officer.decisions[f.id]}
+                      onSelect={() => { onSelect(f.id); setTab('analysis') }}
+                    />
+                  ))
+                  : null}
+              </>
+            ) : null}
+          </div>
         </div>
         ) : null}
 
         {selected ? (
-        <div style={{ ...cardSurface(12), boxShadow: '0 2px 8px rgba(27,28,30,.06)', overflow: 'hidden' }}>
+        // The finding's own scroller. `auto`, not the page's — reading to the bottom
+        // of a long analysis must not take the list with it.
+        <div style={{ ...cardSurface(12), boxShadow: '0 2px 8px rgba(27,28,30,.06)', overflowX: 'hidden', overflowY: 'auto', minHeight: 0 }}>
           <div style={{ padding: '18px 22px 14px', display: 'flex', flexDirection: 'column', gap: 10, borderBottom: '1px solid var(--me-grey-15)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -345,6 +358,57 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
       </div>
       )}
     </section>
+  )
+}
+
+// One finding in the focus-mode rail.
+//
+// Two lines, always the same two, and — the point of it — **a height that does not
+// depend on selection or on the call you have made.** The card that used to sit here
+// let its title wrap freely and grew a decision label once you decided, so the list
+// reflowed under the cursor: you would decide one finding and find the next one
+// somewhere else. Selection is a wash and a left edge; a decision is a tick in a
+// slot that is there whether it holds one or not.
+//
+// Deciding happens in the detail header, which is why there are no disposition chips
+// here. The rail navigates; the pane beside it is where the call is made.
+function RailRow({ finding, subtitle, selected, decision, onSelect }) {
+  const sev = severityMeta(finding.severity)
+  const mark = kindMark(kindOf(finding))
+  return (
+    <button
+      onClick={onSelect}
+      title={finding.title}
+      style={{
+        display: 'flex', flexDirection: 'column', gap: 3, width: '100%', textAlign: 'left',
+        padding: '8px 12px 8px 9px', border: 'none', borderBottom: '1px solid var(--me-grey-08)',
+        borderLeft: `3px solid ${selected ? 'var(--me-blue)' : 'transparent'}`,
+        background: selected ? 'var(--surface-blue-wash)' : '#fff',
+        cursor: 'pointer', fontFamily: 'inherit',
+      }}
+    >
+      <span style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+        <span title={sev.label} style={{ width: 7, height: 7, borderRadius: 999, background: sev.dot, flex: '0 0 7px' }} />
+        {finding.gap ? (
+          <span title={finding.gap === 'no card' ? 'No card in the dictionary covers this' : 'A card ran and could not conclude'} style={{ display: 'flex', flexShrink: 0, color: '#946400' }}><Icon name="circle-alert" size={11} color="currentColor" /></span>
+        ) : (
+          <span title={mark.title} style={{ display: 'flex', flexShrink: 0, color: mark.color }}><Icon name={mark.icon} size={11} color="currentColor" /></span>
+        )}
+        <span style={{ ...ellipsis, flex: 1, minWidth: 0, fontFamily: 'var(--font-mono)', fontSize: 10, color: finding.checkId || finding.raisedByOfficer ? 'var(--me-grey-70)' : '#946400' }}>
+          {finding.checkId ?? (finding.raisedByOfficer ? 'yours' : 'no card')}
+        </span>
+        {/* Always rendered, so a decision does not change the row's width or height. */}
+        <span style={{ flex: '0 0 13px', display: 'flex', justifyContent: 'flex-end' }}>
+          {decision ? <Icon name="check" size={13} color="var(--status-success)" /> : null}
+        </span>
+      </span>
+      {/* Not bolder when selected: a heavier line can wrap where the lighter one
+          did not, which is the row growing by a line under the cursor again. */}
+      <span style={{ ...clampLines(2), fontSize: 12.5, lineHeight: 1.35, color: 'var(--me-ink)' }}>
+        {finding.title}
+      </span>
+      <span style={{ ...ellipsis, fontSize: 10.5, color: 'var(--me-grey-70)' }}>{subtitle}</span>
+    </button>
   )
 }
 
