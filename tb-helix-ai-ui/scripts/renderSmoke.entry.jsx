@@ -83,7 +83,8 @@ function stageCases(value, tag) {
     [`${tag} intake`, <IntakeScreen />],
     [`${tag} interpret`, <InterpretScreen />],
     [`${tag} checks`, <ChecksScreen onOpenFinding={noop} />],
-    [`${tag} review`, <ReviewScreen selectedId={null} onSelect={noop} onJumpToRead={noop} />],
+    [`${tag} review (overview)`, <ReviewScreen selectedId={null} onSelect={noop} onJumpToInterpret={noop} />],
+    [`${tag} review (focused)`, <ReviewScreen selectedId={value.visible.findings[0]?.id ?? null} onSelect={noop} onJumpToInterpret={noop} />],
     [`${tag} decision`, <DecisionScreen onOpenFinding={noop} />],
     [
       `${tag} header`,

@@ -627,6 +627,30 @@ Instead, once the run produces anything the plan states its coverage
 (*14 passed · 2 could not be answered · 3 not brought into play*) and hands over:
 **3 findings need your decision →**.
 
+### Review is shaped like the plan, on purpose
+
+Same groups, same two densities, same words — learning one screen should teach you
+the other.
+
+**Grouped by kind, by default**, for the reasons it groups the plan: no expertise
+needed to read it, the same on every credit, and it is the most useful sweep an
+officer has (rule findings are arithmetic and go quickly; agent findings are where
+the reading time belongs). **Not covered leads**, always, under either grouping —
+an officer must not be able to work top-to-bottom and come away thinking everything
+was checked.
+
+**One alternative, not three.** *By review area* is gone: an area is which of our
+agents ran the check — a fact about our implementation that means nothing to a
+reader who does not know our agent names. *By document* stays, because it answers a
+question an examiner actually asks ("what is wrong with the bill of lading?") and it
+is a thing you can point at on a desk.
+
+**Two densities.** Nothing selected: the whole findings list, one line each, with
+**Your call** as a column so progress is readable without opening anything — blank
+says *needs you* rather than nothing, because an empty cell is work outstanding.
+Selecting one: the list becomes a 340px rail and the finding gets the room. It used
+to auto-select the first item, which saves a click and costs the overview.
+
 ### A finding carries how it was settled
 
 `settledBy` (rule or requirement), `source` (credit / practice / policy), and for a

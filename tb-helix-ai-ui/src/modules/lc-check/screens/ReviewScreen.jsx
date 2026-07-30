@@ -7,13 +7,15 @@ import Icon from '@shared/ds/Icon'
 import Tabs from '@shared/ds/Tabs'
 import SegmentedControl from '@shared/ds/SegmentedControl'
 import { PROVENANCE_HIGHLIGHT } from '@shared/lib/tone'
+import Chip from '@shared/ds/Chip'
+import { ellipsis } from '@shared/ds/text'
 import { plural } from '@shared/lib/format'
 import FindingCard from '../components/FindingCard'
 import MarkdownDoc from '@shared/ds/MarkdownDoc'
 import BundleViewer from '../components/BundleViewer'
 import DiscrepancyStatement from '../components/DiscrepancyStatement'
 import DispositionChips from '../components/DispositionChips'
-import { severityMeta } from '../state/severity'
+import { severityMeta, dispositionLabel } from '../state/severity'
 import { useCase } from '../state/CaseContext'
 
 // Stage 4 — the findings.
@@ -22,27 +24,36 @@ import { useCase } from '../state/CaseContext'
 // ordering is the point: an officer must not be able to work top-to-bottom and
 // come away thinking everything was checked. What we didn't check leads.
 //
-// The plan's vocabulary carries through: a finding inherits the **kind** of the
-// check that produced it, and "By how it was settled" is a grouping here for the
-// same reason it is the grouping there — it needs no expertise to read and it does
-// not change shape from one credit to the next. It is also the most useful sweep
-// an officer has: findings a rule produced are arithmetic and can be agreed or
-// rejected quickly; findings an agent formed a view on are the ones worth the
-// reading time. Grouping by it puts the fast work in one place.
+// The plan's structure carries through, deliberately: same groups, same two
+// densities, same words. Learning one screen should teach you the other.
 //
-// This screen stays rail + content rather than a full-width table, because the job
-// is different: on the plan you ask "is this right and what is missing", which is a
-// question about the whole list; here you work findings one at a time and each one
-// is long.
+// **Grouped by kind, by default.** A finding inherits the kind of the check that
+// settled it, and that is the grouping for the same reasons it is on the plan: it
+// needs no expertise to read, and it is the same on every credit. It is also the
+// most useful sweep an officer has — rule findings are arithmetic and can be agreed
+// or rejected quickly, agent findings are where the reading time belongs, so
+// grouping by it puts the fast work in one place.
+//
+// One alternative, not three. "By review area" is gone: an area is which of our
+// agents ran the check, which is a fact about our implementation and means nothing
+// to a reader who does not already know our agent names. "By document" stays,
+// because it answers a real question an examiner asks — *what is wrong with the
+// bill of lading?* — and it is a thing you can point at on a desk.
+//
+// **Not covered leads, always, under either grouping.** An officer must not be able
+// to work top-to-bottom and come away thinking everything was checked.
 export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }) {
   const { data, visible, officer, actions } = useCase()
-  const [grouping, setGrouping] = useState('area')
+  const [grouping, setGrouping] = useState('kind')
   const [tab, setTab] = useState('analysis')
   const [showClean, setShowClean] = useState(false)
 
   const docById = useMemo(() => Object.fromEntries(data.documents.map((d) => [d.id, d])), [data.documents])
 
-  const selected = visible.findings.find((f) => f.id === selectedId) ?? visible.attention[0] ?? visible.findings[0]
+  // Optional now. Nothing selected is a state worth being in — the whole list at
+  // once, which is how you see how much is left and what shape it is. It used to
+  // auto-select the first item, which saves a click and costs the overview.
+  const selected = selectedId ? visible.findings.find((f) => f.id === selectedId) ?? null : null
 
   const groups = useMemo(() => {
     const attention = visible.attention
@@ -56,17 +67,13 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
         ? data.documents
             .map((d) => ({ label: d.docType, items: rest.filter((f) => f.docId === d.id) }))
             .filter((g) => g.items.length)
-        : grouping === 'kind'
-          ? [
-              { label: 'Computed by a rule', note: 'Arithmetic on extracted fields — the same answer every time.', items: rest.filter((f) => kindOf(f) === 'rule') },
-              { label: 'Read by an agent', note: 'A view formed against the presentation, open to question.', items: rest.filter((f) => kindOf(f) !== 'rule') },
-            ].filter((g) => g.items.length)
-          : data.areas
-              .map((a) => ({ label: a.name, items: rest.filter((f) => f.areaId === a.id) }))
-              .filter((g) => g.items.length)
+        : [
+            { label: 'Rule', icon: 'equal', tone: 'blue', note: 'The system compared fields. Same answer every time.', items: rest.filter((f) => kindOf(f) === 'rule') },
+            { label: 'Requirement', icon: 'list-checks', tone: 'green', note: 'An agent read it and formed a view.', items: rest.filter((f) => kindOf(f) !== 'rule') },
+          ].filter((g) => g.items.length)
 
     return [
-      ...(manual.length ? [{ label: 'Not Covered', items: manual }] : []),
+      ...(manual.length ? [{ label: 'Not covered', icon: 'circle-alert', tone: 'warning', note: 'No check settled these. They are yours to judge.', items: manual }] : []),
       ...body,
     ]
   }, [visible.attention, grouping, data.documents, data.areas, data.checks])
@@ -78,7 +85,7 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
     clean: visible.clean.length,
   }
 
-  if (!selected) {
+  if (!visible.findings.length) {
     return (
       <section className="helix-screen" style={{ padding: '26px 32px' }}>
         <p style={{ margin: 0, fontSize: 13, color: 'var(--me-grey-70)' }}>
@@ -88,15 +95,15 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
     )
   }
 
-  const sev = severityMeta(selected.severity)
-  const doc = docById[selected.docId]
+  const sev = selected ? severityMeta(selected.severity) : null
+  const doc = selected ? docById[selected.docId] : null
   const credit = data.documents.find((d) => d.role === 'credit')
-  const draft = officer.drafts[selected.id]
-  const savedNote = officer.notes[selected.id] ?? ''
+  const draft = selected ? officer.drafts[selected.id] : undefined
+  const savedNote = selected ? officer.notes[selected.id] ?? '' : ''
   const noteValue = draft ?? savedNote
   const noteDirty = draft !== undefined && draft !== savedNote
 
-  const isCreditFinding = selected.docId === 'mt700'
+  const isCreditFinding = selected?.docId === 'mt700'
 
   const subtitleFor = (f) => (grouping === 'doc' ? f.area : docById[f.docId]?.docType ?? f.quoteSource)
 
@@ -118,14 +125,23 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
           value={grouping}
           onChange={setGrouping}
           items={[
-            { id: 'area', label: 'By review area' },
-            { id: 'kind', label: 'By how it was settled' },
+            { id: 'kind', label: 'By kind' },
             { id: 'doc', label: 'By document' },
           ]}
         />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px,364px) minmax(460px,1fr)', gap: 16, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: selected ? 'minmax(280px,340px) minmax(460px,1fr)' : 'minmax(0,1fr)', gap: 16, alignItems: 'start' }}>
+        {selected ? null : (
+          <FindingsTable
+            groups={groups}
+            clean={visible.clean}
+            decisions={officer.decisions}
+            docById={docById}
+            onSelect={(id) => { onSelect(id); setTab('analysis') }}
+          />
+        )}
+        {selected ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {groups.map((g) => (
             <div key={g.label} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -177,8 +193,10 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
             </>
           ) : null}
         </div>
+        ) : null}
 
-        <div style={{ ...cardSurface(12), boxShadow: 'none', boxShadow: '0 2px 8px rgba(27,28,30,.06)', overflow: 'hidden' }}>
+        {selected ? (
+        <div style={{ ...cardSurface(12), boxShadow: '0 2px 8px rgba(27,28,30,.06)', overflow: 'hidden' }}>
           <div style={{ padding: '18px 22px 14px', display: 'flex', flexDirection: 'column', gap: 10, borderBottom: '1px solid var(--me-grey-15)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -276,6 +294,7 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
             </div>
           ) : null}
         </div>
+        ) : null}
       </div>
     </section>
   )
@@ -345,3 +364,108 @@ function SourcePane({ title, meta, children }) {
     </div>
   )
 }
+
+// The whole findings list, one line each — the same shape the plan uses, for the
+// same reason: seeing how much is left, and what kind of work it is, is a question
+// about the list rather than about any one item. Your call is a column, so progress
+// is readable without opening anything.
+const FCOLS = {
+  display: 'grid',
+  gridTemplateColumns: '22px 96px minmax(0,1.7fr) minmax(0,1fr) minmax(0,0.8fr) 104px',
+  gap: 14,
+  alignItems: 'center',
+}
+
+function FindingsTable({ groups, clean, decisions, docById, onSelect }) {
+  const [showClean, setShowClean] = useState(false)
+  return (
+    <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden', minWidth: 0 }}>
+      <div style={{ ...FCOLS, padding: '9px 16px', borderBottom: '1px solid var(--me-grey-15)' }}>
+        <span />
+        <Eyebrow size="sm">Check</Eyebrow>
+        <Eyebrow size="sm">Finding</Eyebrow>
+        <Eyebrow size="sm">On</Eyebrow>
+        <Eyebrow size="sm">Cited as</Eyebrow>
+        <Eyebrow size="sm">Your call</Eyebrow>
+      </div>
+
+      {groups.map((g) => (
+        <div key={g.label}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 16px', background: 'var(--me-grey-08)', borderBottom: '1px solid var(--me-grey-15)', flexWrap: 'wrap' }}>
+            <Chip size="sm" tone={g.tone ?? 'neutral'}>
+              {g.icon ? <Icon name={g.icon} size={11} /> : null}
+              {g.label}
+            </Chip>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>{g.items.length}</span>
+            {g.note ? <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>{g.note}</span> : null}
+          </div>
+          {g.items.map((f) => (
+            <FindingRow key={f.id} finding={f} decision={decisions[f.id]} docById={docById} onSelect={() => onSelect(f.id)} />
+          ))}
+        </div>
+      ))}
+
+      {clean.length ? (
+        <div>
+          <button onClick={() => setShowClean((v) => !v)} style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '9px 16px', border: 'none', borderTop: '1px solid var(--me-grey-15)', background: 'var(--me-grey-08)', cursor: 'pointer', fontFamily: 'inherit' }}>
+            <Icon name={showClean ? 'chevron-down' : 'chevron-right'} size={14} color="var(--me-grey-50)" />
+            <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>{plural(clean.length, 'area')} came back clean</span>
+          </button>
+          {showClean
+            ? clean.map((f) => <FindingRow key={f.id} finding={f} decision={decisions[f.id]} docById={docById} onSelect={() => onSelect(f.id)} />)
+            : null}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function FindingRow({ finding, decision, docById, onSelect }) {
+  const sev = severityMeta(finding.severity)
+  const kind = finding.settledBy
+  return (
+    <button
+      onClick={onSelect}
+      title={finding.title}
+      style={{ ...FCOLS, width: '100%', textAlign: 'left', padding: '10px 16px', border: 'none', borderBottom: '1px solid var(--me-grey-08)', background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}
+    >
+      <span title={sev.label} style={{ width: 9, height: 9, borderRadius: '50%', background: sev.dot, justifySelf: 'center' }} />
+
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+        {kind ? (
+          <span title={kind === 'rule' ? 'Computed by a rule' : 'Read by an agent'} style={{ display: 'flex', flexShrink: 0, color: kind === 'rule' ? 'var(--me-blue-deep)' : '#1F7A00' }}>
+            <Icon name={kind === 'rule' ? 'equal' : 'list-checks'} size={11} color="currentColor" />
+          </span>
+        ) : null}
+        <span style={{ ...ellipsis, fontFamily: 'var(--font-mono)', fontSize: 11, color: finding.checkId ? 'var(--me-grey-70)' : '#946400' }}>
+          {finding.checkId ?? 'no check'}
+        </span>
+      </span>
+
+      <span style={{ ...ellipsis, fontSize: 12.5, color: 'var(--me-ink)' }}>{finding.title}</span>
+
+      <span style={{ ...ellipsis, fontSize: 11.5, color: 'var(--me-grey-70)' }}>
+        {docById[finding.docId]?.docType ?? finding.quoteSource ?? '—'}
+      </span>
+
+      <span style={{ ...ellipsis, fontSize: 11.5, color: 'var(--me-grey-70)' }}>
+        {finding.source ? SOURCE_LABEL[finding.source] : '—'}
+      </span>
+
+      {/* The one column that is about you rather than the finding. Blank is not
+          "no opinion" — it is work outstanding, so it says so. */}
+      <span style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
+        {decision ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--me-ink)' }}>
+            <Icon name="check" size={12} color="var(--status-success)" />
+            {dispositionLabel(decision)}
+          </span>
+        ) : (
+          <span style={{ color: 'var(--me-blue)' }}>needs you</span>
+        )}
+      </span>
+    </button>
+  )
+}
+
+const SOURCE_LABEL = { credit: 'the credit', practice: 'UCP / ISBP', policy: 'bank policy' }
