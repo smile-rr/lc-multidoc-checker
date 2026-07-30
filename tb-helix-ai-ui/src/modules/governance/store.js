@@ -167,7 +167,11 @@ export const initialState = {
   // the edit snapshot.
   createdId: null,
   // Sort is per surface: a list is read by column, so it remembers a column.
-  checkSort: { key: 'id', dir: 'asc' }, dictSort: { key: 'name', dir: 'asc' },
+  // Sorted by kind first, so the list opens with the exact rules together and the
+  // judged ones together. Id order is arbitrary to a reader — the prefix is a concern
+  // (DATE, AMT, DOCSET), not a rank — whereas kind is the first thing that changes how
+  // a row is read, and a list that opens sorted by it needs no click to be useful.
+  checkSort: { key: 'kind', dir: 'asc' }, dictSort: { key: 'name', dir: 'asc' },
   // Cards are browsed rather than compared, so they group instead.
   checkGroupBy: 'none',
   density: 'list', expandedIds: {}, placements: {}, activeCheckId: null,
@@ -463,7 +467,21 @@ export function deriveVals(state, setState) {
         body: isExact ? '' : 'Say what must be true, one requirement per dash line.\n\n- ',
         timeline: [{ color: 'var(--me-blue)', label: 'Created', date: 'just now', detail: 'New ' + CARD_TYPES[isExact ? 'exact' : 'judged'].label.toLowerCase() + ' rule card.' }],
       }
-      const patch = { extraChecks: prepend(s.extraChecks, nc), newSeq: s.newSeq + 1, editingId: id, createdId: id, section: 'checks', newMenuOpen: false, typeFilter: 'all', density: 'cards' }
+      // Adding respects the view you are in.
+      //
+      // In cards, the editor is on the card, so a new one is prepended and you are
+      // already looking at it. In list, a row has no editor — it used to switch the
+      // whole section to cards, which is the view changing under you as a side effect
+      // of adding one thing. So list opens the new item on its own page, which is
+      // where a row goes when you click it and where there is room to fill it in.
+      const toList = s.density === 'list'
+      const patch = {
+        extraChecks: prepend(s.extraChecks, nc), newSeq: s.newSeq + 1,
+        editingId: id, createdId: id, section: 'checks', newMenuOpen: false, typeFilter: 'all',
+        ...(toList
+          ? { activeCheckId: id, checkFrom: { section: s.section, view: s.view, activeAgentId: s.activeAgentId } }
+          : {}),
+      }
       if (isExact) patch.rules = { ...s.rules, [id]: ruleBlank() }
       return patch
     })
@@ -1136,8 +1154,25 @@ export function deriveVals(state, setState) {
     dictSearch: S.dictSearch, setDictSearch: (e) => setState({ dictSearch: e.target.value }),
     fieldRows, docRows, isDictDetail: !!dictDetail, dictDetail, dictSortCol,
     dictCountLabel: (S.dictTab === 'doctypes' ? docRows.length : fieldRows.length) + ' of ' + (S.dictTab === 'doctypes' ? dictDocs.length : dictFields.length),
-    addField: guard(() => { const id = uid('f'); setDF((fs) => prepend(fs, { id, name: '', description: '', bindings: [] })); setState({ dictView: 'cards', createdId: id, dictSort: { key: 'none', dir: 'asc' } }) }),
-    addDoc: guard(() => { const id = uid('d'); setDD((ds) => prepend(ds, { id, key: '', name: '', description: '' })); setState({ dictView: 'cards', createdId: id, dictSort: { key: 'none', dir: 'asc' } }) }),
+    // Same rule as the checks list — see `newCheck`. From cards, prepend and edit in
+    // place; from list, open the new row on its own page rather than switching the
+    // section to cards underneath the person who pressed Add.
+    addField: guard(() => {
+      const id = uid('f')
+      setDF((fs) => prepend(fs, { id, name: '', description: '', bindings: [] }))
+      setState((s) => ({
+        createdId: id, dictSort: { key: 'none', dir: 'asc' },
+        ...(s.dictView === 'list' ? { dictDetail: { kind: 'field', id } } : {}),
+      }))
+    }),
+    addDoc: guard(() => {
+      const id = uid('d')
+      setDD((ds) => prepend(ds, { id, key: '', name: '', description: '' }))
+      setState((s) => ({
+        createdId: id, dictSort: { key: 'none', dir: 'asc' },
+        ...(s.dictView === 'list' ? { dictDetail: { kind: 'doc', id } } : {}),
+      }))
+    }),
 
     // Nav state
     navChecksBorder: section === 'checks' ? 'var(--me-blue)' : 'transparent', navChecksColor: section === 'checks' ? 'var(--me-ink)' : 'var(--me-grey-70)', navChecksWeight: section === 'checks' ? 700 : 500,

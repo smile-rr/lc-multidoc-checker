@@ -153,7 +153,7 @@ export default function Check({ check }) {
       </div>
 
       {/* ---- Rule card ---- */}
-      {check.isRule && <ExactBody check={check} />}
+      {check.isExact && <ExactBody check={check} />}
 
       {/* ---- Judged rule: which fields and documents it reads ----
           A rule states its operands in its own rows, so these chips belong to
