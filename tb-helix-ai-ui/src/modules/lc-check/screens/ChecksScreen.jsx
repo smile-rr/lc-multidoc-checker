@@ -6,7 +6,8 @@ import Eyebrow from '@shared/ds/Eyebrow'
 import IconButton from '@shared/ds/IconButton'
 import Spinner from '@shared/ds/Spinner'
 import { ellipsis } from '@shared/ds/text'
-import { plural } from '@shared/lib/format'
+import { plural, thousands, usd, durationShort } from '@shared/lib/format'
+import { requirementCardCost } from '../state/runCost'
 import { severityMeta } from '../state/severity'
 import { SOURCE_META } from '../data/checkSpecs'
 import CheckSpecCard from '../components/CheckSpecCard'
@@ -130,7 +131,11 @@ export default function ChecksScreen({ onOpenFinding }) {
   const reqs = runnable.filter((c) => c.kind !== 'rule')
   const skipped = allChecks.filter((c) => !c.areaId && !c.addedByOfficer)
   const blocked = rules.filter((c) => c.ruleDef && !c.ruleDef.ready)
-  const estTokens = Math.round(reqs.length * 4.9)
+  // Priced from the same table the cost drawer invoices against, so the estimate a
+  // stop-on-rule-failure decision is made on and the figure reported afterwards
+  // cannot disagree. It used to be `reqs.length * 4.9`, a hand-written constant
+  // three times under what the run actually reports.
+  const est = requirementCardCost(reqs.length)
 
   // A critical failure found on the figures is the case where reading on may be
   // waste: the presentation is refused whatever :47A: says. Whether to stop is a
@@ -173,7 +178,7 @@ export default function ChecksScreen({ onOpenFinding }) {
       count: reqs.length,
       note: 'An agent reads it against the presentation and forms a view.',
       checks: reqs,
-      aside: { text: `about ${estTokens}k tokens` },
+      aside: { text: `about ${thousands(est.tokens, 0)} tokens · ${usd(est.cost)}` },
       policy: true,
     },
   ].filter((s) => s.count)
@@ -233,7 +238,8 @@ export default function ChecksScreen({ onOpenFinding }) {
           <div style={{ margin: '12px 16px 0', border: '1px solid #E9C97A', background: '#FBEFCF', borderRadius: 10, padding: '10px 13px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <Icon name="circle-pause" size={15} color="#946400" />
             <span style={{ flex: 1, minWidth: 200, fontSize: 12, lineHeight: 1.5, color: '#946400' }}>
-              Stopped on {criticalRuleFailures.map((f) => f.checkId).join(', ')}. The {reqs.length} requirements have not run — about {estTokens}k tokens.
+              Stopped on {criticalRuleFailures.map((f) => f.checkId).join(', ')}. The {reqs.length} requirement cards have not
+              run — about {thousands(est.tokens, 0)} tokens, {usd(est.cost)} and {durationShort(est.seconds)} of agent time not spent.
             </span>
             <button onClick={() => actions.dispatch({ type: 'stop_on_rule_failure', on: false })} style={{ ...linkBtn, color: '#946400', fontWeight: 600 }}>Read on anyway</button>
             <button onClick={() => onOpenFinding?.(criticalRuleFailures[0].id)} style={{ ...linkBtn, color: '#946400', fontWeight: 600 }}>Take it to the report</button>

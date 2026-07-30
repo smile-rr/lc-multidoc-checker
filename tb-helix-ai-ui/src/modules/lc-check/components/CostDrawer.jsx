@@ -1,7 +1,8 @@
 import Eyebrow from '@shared/ds/Eyebrow'
 import Drawer from '@shared/ds/Drawer'
 import Badge from '@shared/ds/Badge'
-import { duration, durationShort, thousands, usd, percent } from '@shared/lib/format'
+import Icon from '@shared/ds/Icon'
+import { duration, durationShort, thousands, usd, percent, plural } from '@shared/lib/format'
 
 // Run cost — what the review spent, in time and money, and where it went.
 //
@@ -39,10 +40,33 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
             </div>
           </Section>
 
+          {/* The split that decides anything, directly under the total. Reading and
+              planning are the fixed cost of accepting the file; the examination
+              itself divides by card kind, and the two halves could not be less
+              alike. An officer weighing whether to let the requirements run after a
+              rule has already failed is asking exactly this. */}
+          {cost.byKind.length ? (
+            <Section name="Where It Went" note="Read, plan, then the two kinds of card. Rule cards are free; requirement cards are the bill.">
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                {cost.byKind.map((k) => (
+                  <KindRow key={k.key} kind={k} />
+                ))}
+              </div>
+              {cost.cardsFree ? (
+                <p style={{ margin: '10px 0 0', fontSize: 11.5, lineHeight: 1.55, color: 'var(--me-grey-70)' }}>
+                  {cost.cardsFree} of {cost.cardsSettled} cards were settled without asking a model
+                  anything — {percent((cost.cardsFree / cost.cardsSettled) * 100)} of the examination,
+                  at no cost and with the same answer every time.
+                </p>
+              ) : null}
+            </Section>
+          ) : null}
+
           <Section name="Coverage" note="How much reading actually happened.">
             <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 16, rowGap: 8 }}>
               <Row term="Pages read" value={`${cost.pagesRead} of ${pageCount}`} />
-              <Row term="Model calls" value={cost.calls ? String(cost.calls) : 'not recorded'} />
+              <Row term="Cards settled" value={cost.cardsSettled ? `${cost.cardsSettled}, ${cost.cardsFree} without a model` : 'none yet'} />
+              <Row term="Model calls" value={cost.calls ? String(cost.calls) : 'none'} />
               <Row term="Cache hit" value={cost.cacheHitPct ? percent(cost.cacheHitPct) : 'none'} />
               <Row term="Repairs" value={cost.retries ? `${cost.retries} step${cost.retries === 1 ? '' : 's'} retried` : 'none'} />
               <Row term="Steps" value={`${completedCount} of ${stepCount} returned`} />
@@ -52,7 +76,7 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
           {cost.byModel.length ? (
             <Section
               name="By Model"
-              note="GPT-4o reads the pages, Qwen plans and routes, Sonnet applies the rules. Their prices differ by an order of magnitude, so the total on its own says little."
+              note="GPT-4o reads the pages, Qwen plans and screens, Sonnet reads the requirement cards. Their prices differ by an order of magnitude — and the engine, which settles the rule cards, is not a model at all."
             >
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 {cost.byModel.map((m) => (
@@ -114,6 +138,43 @@ function Row({ term, value }) {
   )
 }
 
+// One part of the run: what it settled, what it took, what it cost.
+//
+// A free part says "no model" rather than "$0.00". The zero is the interesting fact
+// and a currency-formatted zero reads as a rounding artefact or a missing figure.
+function KindRow({ kind: k }) {
+  const RULE_TONE = { rule: 'var(--me-blue-deep)', requirement: '#1F7A00' }
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--me-grey-08)' }}>
+      <span style={{ display: 'flex', marginTop: 2, flexShrink: 0, color: RULE_TONE[k.key] ?? 'var(--me-grey-50)' }}>
+        <Icon
+          name={k.key === 'rule' ? 'equal' : k.key === 'requirement' ? 'list-checks' : k.key === 'read' ? 'scan-text' : 'route'}
+          size={13}
+          color="currentColor"
+        />
+      </span>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--me-ink)' }}>{k.label}</span>
+        <span style={{ fontSize: 11, lineHeight: 1.45, color: 'var(--me-grey-70)' }}>{k.note}</span>
+        <span style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 12px', fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--me-grey-70)' }}>
+          {k.checks ? <span>{plural(k.checks, 'card')}</span> : null}
+          <span>{k.calls ? plural(k.calls, 'call') : 'no calls'}</span>
+          <span>{k.tokens ? `${thousands(k.tokens, 1)} tok` : 'no tokens'}</span>
+          <span>{durationShort(k.seconds)}</span>
+        </span>
+      </div>
+      <div style={{ textAlign: 'right', whiteSpace: 'nowrap', flexShrink: 0 }}>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: k.free ? 'var(--status-success)' : 'var(--me-ink)' }}>
+          {k.free ? 'no model' : usd(k.cost)}
+        </div>
+        <div style={{ fontSize: 10.5, color: 'var(--me-grey-70)' }}>
+          {k.free ? 'free' : `${percent(k.costShare * 100)} of spend`}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ModelRow({ model: m }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
@@ -163,10 +224,15 @@ function StepList({ cost, completedCount }) {
             <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: done ? 'var(--me-ink)' : running ? 'var(--me-blue-deep)' : 'var(--me-grey-50)' }}>
               {r.name}
               <span style={{ marginLeft: 7, fontSize: 11, color: 'var(--me-grey-50)' }}>{r.modelLabel}</span>
+              {/* Why a step cost nothing. Without it, a $0.00 row reads as a step
+                  that failed to report rather than one that had no model to call. */}
+              {r.note ? (
+                <span style={{ display: 'block', fontSize: 10.5, lineHeight: 1.45, color: 'var(--me-grey-70)' }}>{r.note}</span>
+              ) : null}
             </span>
             {done ? (
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)', whiteSpace: 'nowrap' }}>
-                {durationShort(r.seconds)} · {usd(r.cost)}
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: r.cost ? 'var(--me-grey-70)' : 'var(--status-success)', whiteSpace: 'nowrap' }}>
+                {r.cost ? `${durationShort(r.seconds)} · ${usd(r.cost)}` : 'no model'}
               </span>
             ) : (
               <Badge tone={running ? 'blue' : 'neutral'}>{running ? 'running' : 'queued'}</Badge>

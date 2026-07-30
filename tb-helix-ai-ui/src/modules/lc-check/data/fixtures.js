@@ -115,13 +115,27 @@ const CHECK_CATALOG = [
 
 // ---- Run telemetry ---------------------------------------------------------
 
-// A run is not one model. Vision extraction, planning and rule execution have
-// different jobs, different context sizes and very different prices, so cost has
-// to be attributed per model or the total tells you nothing you can act on.
+// A run is not one model, and part of it is not a model at all.
 //
-// Mirrors the v3 service's split: a VLM reads the pages, a cheap text model
-// plans and routes, the main model executes the rules.
+// Vision extraction, planning and requirement reading have different jobs, context
+// sizes and prices — an order of magnitude apart — so cost has to be attributed per
+// model or the total tells you nothing you can act on.
+//
+// And `engine` is here deliberately, listed beside the models it costs nothing like.
+// A Rule card is settled by comparing two extracted fields: no call, no tokens, no
+// money, the same answer every time. Leaving it out of the breakdown would make the
+// spend look like the whole of the examination, when a third of the cards on a
+// typical credit are settled before a model is asked anything. The role this used to
+// give the main model — "rule execution" — was exactly backwards.
 export const MODELS = {
+  engine: {
+    id: 'engine',
+    label: 'The engine',
+    role: 'Rule cards · field against field',
+    inPerMillion: 0,
+    outPerMillion: 0,
+    host: 'in-process',
+  },
   'gpt-4o': {
     id: 'gpt-4o',
     label: 'GPT-4o',
@@ -133,7 +147,7 @@ export const MODELS = {
   'qwen3-32b': {
     id: 'qwen3-32b',
     label: 'Qwen3 32B',
-    role: 'Planner · routing',
+    role: 'Planner · routing and screening',
     inPerMillion: 0.4,
     outPerMillion: 1.2,
     host: 'DashScope',
@@ -141,7 +155,7 @@ export const MODELS = {
   'claude-sonnet-4-6': {
     id: 'claude-sonnet-4-6',
     label: 'Claude Sonnet 4.6',
-    role: 'Main · rule execution',
+    role: 'Requirement cards · reading and judgement',
     inPerMillion: 3.0,
     outPerMillion: 15.0,
     host: 'Anthropic',
@@ -151,24 +165,50 @@ export const MODELS = {
 /** @deprecated kept so older callers keep resolving; use MODELS. */
 export const TOKEN_RATES = { inPerMillion: 3.0, outPerMillion: 15.0 }
 
-// Durations are what the work actually takes, not what a demo takes. A vision
-// model reading six scanned pages is well over a minute on its own; a rule check
-// is an LLM call carrying document context, and the :47A: conditions run an
-// agentic loop. Six pages and twenty-odd checks land near six minutes of agent
-// time, which parallelises down to roughly three minutes on the clock.
+// Durations are what the work actually takes, not what a demo takes. A vision model
+// reading six scanned pages is well over a minute on its own; a Requirement card is
+// an LLM call carrying document context, and the :47A: conditions run an agentic
+// loop. Six pages and twenty-odd cards land near five minutes of agent time, which
+// parallelises down to under three minutes on the clock.
 //
 // The animated run on screen is deliberately faster — nobody demos a three-minute
 // spinner — but every number reported anywhere comes from this table.
+//
+// **The shape follows the flow and the two card kinds.** Read, plan, then settle the
+// Rule cards, then read the Requirement cards area by area. `kind` is what makes the
+// cost legible: `rule` work is free and instant, `requirement` work is where all the
+// money is, and an officer deciding whether to let the requirements run after a rule
+// failure needs those two totals apart.
+//
+// Two things this table used to get wrong, both of which flattered the model:
+//
+//   · a "driver · sequencing, retries, merge" step billing 14k planner tokens for
+//     orchestration. Sequencing is code. Its slot in the run is now the Rule cards,
+//     which is what actually happens there, and rules run first because a critical
+//     rule failure can make the requirement half unnecessary.
+//   · "Dates & Shipment" billing 3 calls and 21k tokens. All three of its checks —
+//     DATE-44C, DATE-48, DATE-31D — are Rule cards. The area costs nothing, and the
+//     run said it cost more than any other area but two.
+//
+// `checks` is how many cards the step settled, so the per-kind roll-up can say "6
+// cards, no model" rather than only reporting calls.
 const RUN_STEPS = [
-  { id: 'r1', name: 'Interpret & segment the file', role: 'interpret · OCR + layout', model: 'gpt-4o', calls: 6, seconds: 108, tokensIn: 38000, tokensOut: 3100, cachePct: 0, retries: 0 },
-  { id: 'r2', name: 'Plan the review', role: 'planner · picks areas & order', model: 'qwen3-32b', calls: 1, seconds: 7.5, tokensIn: 11000, tokensOut: 1700, cachePct: 0, retries: 0 },
-  { id: 'r3', name: 'Run the plan', role: 'driver · sequencing, retries, merge', model: 'qwen3-32b', calls: 3, seconds: 6.2, tokensIn: 14000, tokensOut: 2200, cachePct: 71, retries: 0 },
-  { id: 'r4', name: 'Requirements', role: 'review agent', model: 'claude-sonnet-4-6', calls: 3, seconds: 21, tokensIn: 26000, tokensOut: 3200, cachePct: 14, retries: 0 },
-  { id: 'r5', name: 'Presentation & Completeness', role: 'review agent', model: 'claude-sonnet-4-6', calls: 4, seconds: 47, tokensIn: 51000, tokensOut: 5400, cachePct: 46, retries: 1 },
-  { id: 'r6', name: 'Dates & Shipment', role: 'review agent', model: 'claude-sonnet-4-6', calls: 3, seconds: 25, tokensIn: 21000, tokensOut: 2100, cachePct: 63, retries: 0 },
-  { id: 'r7', name: 'Goods, Amounts & Tolerance', role: 'review agent', model: 'claude-sonnet-4-6', calls: 3, seconds: 33, tokensIn: 33000, tokensOut: 3600, cachePct: 55, retries: 0 },
-  { id: 'r8', name: 'General Review', role: 'review agent · agentic on :47A:', model: 'claude-sonnet-4-6', calls: 6, seconds: 96, tokensIn: 96000, tokensOut: 9700, cachePct: 42, retries: 1 },
-  { id: 'r9', name: 'Sanctions & Parties', role: 'review agent', model: 'qwen3-32b', calls: 1, seconds: 9, tokensIn: 12000, tokensOut: 800, cachePct: 68, retries: 0 },
+  { id: 'r1', name: 'Read the pages', kind: 'read', role: 'vision · OCR, layout, segmentation', model: 'gpt-4o', checks: 0, calls: 6, seconds: 108, tokensIn: 38000, tokensOut: 3100, cachePct: 0, retries: 0 },
+  { id: 'r2', name: 'Plan the checks', kind: 'plan', role: 'planner · triggers, order, conditions with no card', model: 'qwen3-32b', checks: 0, calls: 1, seconds: 7.5, tokensIn: 11000, tokensOut: 1700, cachePct: 0, retries: 0 },
+  { id: 'r3', name: 'Rule cards', kind: 'rule', role: 'engine · six comparisons over extracted fields', model: 'engine', checks: 6, calls: 0, seconds: 0.4, tokensIn: 0, tokensOut: 0, cachePct: 0, retries: 0, note: 'No model asked. Same answer every time.' },
+  { id: 'r4', name: 'Requirements', kind: 'requirement', role: 'agent · reads 46A and 47A into a list', model: 'claude-sonnet-4-6', checks: 3, calls: 3, seconds: 21, tokensIn: 26000, tokensOut: 3200, cachePct: 14, retries: 0 },
+  { id: 'r5', name: 'Presentation & Completeness', kind: 'requirement', role: 'agent · four cards over the whole set', model: 'claude-sonnet-4-6', checks: 4, calls: 4, seconds: 47, tokensIn: 51000, tokensOut: 5400, cachePct: 46, retries: 1 },
+  // `checks: 0`, not 3. Its three cards are Rule cards and are counted once, on r3
+  // where they were settled — counting them again here made the run claim 9 free
+  // cards when the catalogue holds 6. The step stays in the list because "this area
+  // ran and cost nothing" is the striking fact, not something to hide.
+  { id: 'r6', name: 'Dates & Shipment', kind: 'rule', role: 'settled by rule — nothing left to read', model: 'engine', checks: 0, calls: 0, seconds: 0, tokensIn: 0, tokensOut: 0, cachePct: 0, retries: 0, note: 'All three cards here are rules, settled above.' },
+  { id: 'r7', name: 'Goods, Amounts & Tolerance', kind: 'requirement', role: 'agent · one card; the two amount cards are rules', model: 'claude-sonnet-4-6', checks: 1, calls: 1, seconds: 14, tokensIn: 15000, tokensOut: 1500, cachePct: 55, retries: 0 },
+  // Seven cards, not five: five from the dictionary plus the two the planner wrote
+  // for this credit's own :47A: conditions. Ten calls because one of the seven is
+  // agentic and loops, and one call was retried.
+  { id: 'r8', name: 'General Review', kind: 'requirement', role: 'agent + tools · agentic loop on the 47A conditions', model: 'claude-sonnet-4-6', checks: 7, calls: 10, seconds: 96, tokensIn: 96000, tokensOut: 9700, cachePct: 42, retries: 1 },
+  { id: 'r9', name: 'Sanctions & Parties', kind: 'requirement', role: 'agent · list screening against policy FC-04', model: 'qwen3-32b', checks: 1, calls: 1, seconds: 9, tokensIn: 12000, tokensOut: 800, cachePct: 68, retries: 0 },
 ]
 
 const ALL_AREA_IDS = AREAS.map((a) => a.id)
@@ -1402,6 +1442,15 @@ export const AI_PERFORMANCE = {
   documentsRead: 61,
 
   // Detector outcomes, this period and last.
+  //
+  // Split by card kind, because the two halves fail for unrelated reasons and the
+  // fixes are unrelated too. A Rule card is deterministic: it cannot be wrong about
+  // the comparison, so when one raises something that does not stand, either the
+  // *extraction* misread a field or the card was authored wrongly — a dictionary job,
+  // reproducible, and it stays fixed. A Requirement card is a model reading prose;
+  // when it is wrong the fix is the prompt, the reference, or accepting that the
+  // question needs a person. Reporting one blended rate hides which of those two
+  // conversations to have, and the per-kind counts reconcile to the totals exactly.
   quality: {
     current: {
       truePositive: 383,
@@ -1410,12 +1459,20 @@ export const AI_PERFORMANCE = {
       conditionsCoveredPct: 86,
       falseNegativeNote: 'two insurance cover, one charter-party wording',
       falsePositiveTopCause: 'insurance cover',
+      byKind: {
+        rule: { truePositive: 168, falsePositive: 4, falseNegative: 0, cause: 'all four were misread fields, not the comparison' },
+        requirement: { truePositive: 215, falsePositive: 30, falseNegative: 3, cause: 'judgement on document wording' },
+      },
     },
     previous: {
       truePositive: 341,
       falsePositive: 47,
       falseNegative: 6,
       conditionsCoveredPct: 79,
+      byKind: {
+        rule: { truePositive: 150, falsePositive: 9, falseNegative: 1 },
+        requirement: { truePositive: 191, falsePositive: 38, falseNegative: 5 },
+      },
     },
   },
 }

@@ -1,4 +1,4 @@
-import { MODELS } from '../data/fixtures.js'
+import { MODELS, RUN_STEPS } from '../data/fixtures.js'
 
 // What a run cost, derived from raw usage.
 //
@@ -20,7 +20,7 @@ const stepCost = (step) => {
   return (step.tokensIn * r.inPerMillion + step.tokensOut * r.outPerMillion) / 1e6
 }
 
-const zero = () => ({ seconds: 0, tokensIn: 0, tokensOut: 0, cost: 0, retries: 0, calls: 0 })
+const zero = () => ({ seconds: 0, tokensIn: 0, tokensOut: 0, cost: 0, retries: 0, calls: 0, checks: 0 })
 
 const add = (acc, s) => ({
   seconds: acc.seconds + s.seconds,
@@ -29,11 +29,55 @@ const add = (acc, s) => ({
   cost: acc.cost + stepCost(s),
   retries: acc.retries + s.retries,
   calls: acc.calls + (s.calls ?? 1),
+  checks: acc.checks + (s.checks ?? 0),
 })
+
+/**
+ * The four things a run spends time on, in the order it spends it.
+ *
+ * This is the split that decides anything. Reading and planning are fixed costs of
+ * accepting the file; then the examination itself divides by **card kind**, and the
+ * two halves could not be less alike — Rule cards are free and instant, Requirement
+ * cards are the entire bill. An officer weighing whether to let the requirements run
+ * after a rule has already failed is asking exactly this question, and a single
+ * blended total cannot answer it.
+ */
+export const RUN_KINDS = [
+  { key: 'read', label: 'Reading the pages', note: 'A vision model renders and reads every page once. Cached across cases.' },
+  { key: 'plan', label: 'Planning the checks', note: 'Which cards this credit brings into play, and which of its conditions no card covers.' },
+  { key: 'rule', label: 'Rule cards', note: 'Field against field. No model, no tokens, same answer every time.' },
+  { key: 'requirement', label: 'Requirement cards', note: 'An agent reads the documents and forms a view. This is where the money goes.' },
+]
 
 const weightedCache = (steps) => {
   const tin = steps.reduce((a, s) => a + s.tokensIn, 0)
   return tin ? steps.reduce((a, s) => a + s.tokensIn * s.cachePct, 0) / tin : 0
+}
+
+/**
+ * What one Requirement card costs, before it runs.
+ *
+ * The plan screen has to price the requirement half *before* anything runs, so that
+ * an officer choosing to stop on a rule failure can see what stopping saves. It used
+ * to multiply by a hand-written 4.9k, which was three times under what this table
+ * actually reports — so the plan promised a saving a third of the real one, and the
+ * drawer afterwards contradicted it.
+ *
+ * Derived from the same steps the drawer prices, so the estimate and the invoice
+ * cannot disagree.
+ */
+export function requirementCardCost(cardCount, steps = RUN_STEPS) {
+  const reqs = steps.filter((s) => s.kind === 'requirement')
+  const cards = reqs.reduce((a, s) => a + (s.checks ?? 0), 0)
+  if (!cards) return { tokens: 0, cost: 0, seconds: 0 }
+  const tokens = reqs.reduce((a, s) => a + s.tokensIn + s.tokensOut, 0)
+  const cost = reqs.reduce((a, s) => a + stepCost(s), 0)
+  const seconds = reqs.reduce((a, s) => a + s.seconds, 0)
+  return {
+    tokens: (tokens / cards) * cardCount,
+    cost: (cost / cards) * cardCount,
+    seconds: (seconds / cards) * cardCount,
+  }
 }
 
 /**
@@ -76,10 +120,34 @@ export function summariseRun(steps, completedCount, pageCount) {
     })
     .sort((a, b) => b.cost - a.cost)
 
+  // Per-kind rollup, in run order rather than by size — this one is read as a
+  // sequence ("what did each part of the examination cost"), not as a ranking.
+  const byKind = RUN_KINDS
+    .map((k) => {
+      const steps = done.filter((s) => s.kind === k.key)
+      if (!steps.length) return null
+      const agg = steps.reduce(add, zero())
+      return {
+        ...k,
+        ...agg,
+        tokens: agg.tokensIn + agg.tokensOut,
+        costShare: totals.cost ? agg.cost / totals.cost : 0,
+        free: agg.cost === 0,
+      }
+    })
+    .filter(Boolean)
+
+  const examining = byKind.filter((k) => k.key === 'rule' || k.key === 'requirement')
+
   return {
     ...totals,
     tokens,
     wallClock,
+    byKind,
+    // How much of the examination was settled without asking a model anything. The
+    // one number that says what the Rule/Requirement split is worth.
+    cardsSettled: examining.reduce((a, k) => a + k.checks, 0),
+    cardsFree: examining.filter((k) => k.free).reduce((a, k) => a + k.checks, 0),
     cacheHitPct: weightedCache(done),
     pagesRead: Math.min(pageCount, completedCount * 2),
     costPerPage: pageCount ? totals.cost / pageCount : 0,
@@ -146,6 +214,11 @@ export function summariseSpend(cases, steps, baselinePages = 6) {
 
   return {
     casesExamined: examined.length,
+    // What the deterministic half does for the bill, per case. Not scaled by pages:
+    // a Rule card costs nothing on a six-page bundle and nothing on a sixty-page one.
+    cardsPerCase: base.cardsSettled,
+    freeCardsPerCase: base.cardsFree,
+    freeCardPct: base.cardsSettled ? (base.cardsFree / base.cardsSettled) * 100 : 0,
     costAvoided: avoidedPerBaseline * pageFactor,
     cachedInputPct: base.cacheHitPct,
     casesTotal: cases.length,

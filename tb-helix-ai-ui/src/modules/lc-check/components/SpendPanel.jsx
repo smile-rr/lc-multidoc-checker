@@ -39,6 +39,7 @@ export default function SpendPanel({ spend }) {
   const p = b.quality.previous
   const now = qualityRates(q)
   const then = qualityRates(p)
+  const paid = spend.byModel.filter((m) => m.cost > 0)
 
   return (
     <div style={shell}>
@@ -75,7 +76,7 @@ export default function SpendPanel({ spend }) {
 
             <Split>
               <Unit label="pages read" value={String(spend.totalPages)} tip="Bundle pages rendered and read by the vision model across all cases examined this period." />
-              <Unit label="checks run" value={String(spend.checksRun)} tip="Rule checks executed. Excludes checks whose trigger the credit did not meet — those are recorded as not applicable, not as passes." />
+              <Unit label="cards run" value={String(spend.checksRun)} tip="Rule and Requirement cards executed. Excludes cards whose trigger the credit did not meet — those are recorded as not applicable, never as passes." />
               <Unit label="findings" value={String(spend.findingsRaised)} tip="Conclusions returned with quoted evidence and a citation, of every severity — discrepancies, possible discrepancies, clean results and items left for a person." />
             </Split>
 
@@ -111,9 +112,14 @@ export default function SpendPanel({ spend }) {
               <Unit label="per 100" value={usd(spend.avgCostPerCase * 100)} tip="Cost per hundred cases, at the current rate. A scale-free figure to budget and forecast with." />
             </Split>
 
-            <Bar models={spend.byModel} />
+            {/* Only what costs something. The engine that settles the rule cards is
+                in `byModel` because it did work, but a 0% slice is an invisible bar
+                and a 0% legend row reads as a model that failed to report. Its
+                contribution is stated as a sentence below instead, which is the more
+                interesting form anyway. */}
+            <Bar models={paid} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 6 }}>
-              {spend.byModel.map((m) => (
+              {paid.map((m) => (
                 <div
                   key={m.modelId}
                   title={`${m.label} — ${m.role}. ${percent(m.costShare * 100)} of spend, ${usd(m.cost)}.`}
@@ -127,6 +133,13 @@ export default function SpendPanel({ spend }) {
             </div>
 
             <Rule />
+            <Line
+              label="Settled Without a Model"
+              value={`${spend.freeCardsPerCase} / ${spend.cardsPerCase}`}
+              tone="var(--status-success)"
+              tip="Rule cards per case: settled by comparing extracted fields, with no model call, no tokens and no cost. They give the same answer every time and their cost does not grow with the size of the bundle. The rest are Requirement cards, which an agent reads — that is the whole of the spend above."
+              note={`cards per case settled by comparison — ${percent(spend.freeCardPct)} of the examination, at no cost and identical on every run.`}
+            />
             <Line
               label="Kept off the Bill"
               value={usd(spend.costAvoided)}
@@ -188,12 +201,21 @@ export default function SpendPanel({ spend }) {
               />
               <Count
                 label="Conditions Covered"
-                tip="Share of the conditions in these credits that a rule in the dictionary was able to test. The remainder were surfaced as open questions for a person — never passed silently."
+                tip="Share of the conditions in these credits that a card in the dictionary was able to test. The remainder were surfaced as open questions for a person — never passed silently."
                 value={q.conditionsCoveredPct}
                 previous={p.conditionsCoveredPct}
                 suffix="%"
               />
             </div>
+
+            {/* Which half the errors are in — the question that decides what to do
+                about them. A Rule card cannot be wrong about its comparison, so when
+                one does not stand it is the extraction or the authoring: a dictionary
+                job, reproducible, and it stays fixed. A Requirement card is a model
+                reading prose, where the fix is the prompt or accepting that the
+                question needs a person. One blended rate hides which conversation to
+                have. */}
+            {q.byKind ? <KindSplit current={q.byKind} previous={p.byKind} /> : null}
           </Cell>
         </div>
       ) : null}
@@ -202,6 +224,62 @@ export default function SpendPanel({ spend }) {
 }
 
 // ---------------------------------------------------------------- pieces ----
+
+/**
+ * Errors by card kind.
+ *
+ * Deliberately not two more precision/recall pairs — that would double the rates on
+ * the panel and invite someone to quote whichever is higher. Three counts each, in
+ * the columns that matter: what stood, what did not, and what was missed.
+ */
+function KindSplit({ current, previous }) {
+  const rows = [
+    { key: 'rule', label: 'Rule cards', icon: 'equal', colour: 'var(--me-blue-deep)', tip: 'Cards settled by comparing extracted fields. Deterministic — the comparison cannot be wrong, so a finding that does not stand means a misread field or a mis-authored card.' },
+    { key: 'requirement', label: 'Requirement cards', icon: 'list-checks', colour: '#1F7A00', tip: 'Cards an agent reads and forms a view on. Where judgement lives, and where the misses are.' },
+  ]
+  return (
+    <div style={{ marginTop: 10, paddingTop: 9, borderTop: '1px solid var(--me-grey-08)', display: 'flex', flexDirection: 'column', gap: 7 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 42px 42px 42px', gap: 6, fontSize: 10, color: 'var(--me-grey-50)' }}>
+        <span>by card kind</span>
+        <span style={{ textAlign: 'right' }} title="Findings that stood on review">stood</span>
+        <span style={{ textAlign: 'right' }} title="Raised, then set aside on review">set aside</span>
+        <span style={{ textAlign: 'right' }} title="Real discrepancies not raised, found downstream">missed</span>
+      </div>
+      {rows.map((r) => {
+        const c = current[r.key]
+        const was = previous?.[r.key]
+        if (!c) return null
+        return (
+          <div key={r.key} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 42px 42px 42px', gap: 6, alignItems: 'baseline' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0, fontSize: 11.5, color: 'var(--me-ink)' }}>
+                <span style={{ display: 'flex', flexShrink: 0, color: r.colour }}><Icon name={r.icon} size={11} color="currentColor" /></span>
+                <span style={{ minWidth: 0, ...ellipsis }}>
+                  <InfoTip label={r.label} title={r.label}>{r.tip}</InfoTip>
+                </span>
+              </span>
+              <Num value={c.truePositive} />
+              <Num value={c.falsePositive} was={was?.falsePositive} />
+              <Num value={c.falseNegative} was={was?.falseNegative} tone={c.falseNegative ? 'var(--status-error)' : 'var(--status-success)'} />
+            </div>
+            {c.cause ? (
+              <span style={{ fontSize: 10, color: 'var(--me-grey-70)', paddingLeft: 16, lineHeight: 1.4 }}>{c.cause}</span>
+            ) : null}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+const Num = ({ value, was, tone }) => (
+  <span
+    title={was == null ? undefined : `was ${was} in the previous period`}
+    style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: tone || 'var(--me-ink)', textAlign: 'right', cursor: was == null ? 'default' : 'help' }}
+  >
+    {value}
+  </span>
+)
 
 // One colour per model, in the order the cost roll-up returns them.
 const PALETTE = ['var(--me-blue)', 'var(--me-green)', 'var(--me-navy)', 'var(--me-blue-50)']

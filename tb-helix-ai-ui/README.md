@@ -1044,9 +1044,46 @@ are three numbers, the model breakdown is the part that changes decisions, and
 the step list is reference detail most people never open. Tabs also hid whichever
 section was empty, when *"we did not record that"* is itself worth seeing.
 
-Now one scroll with named bands — **Totals · Coverage · By model · By step · Run
-detail** — each rendering only when it has data and saying so when it does not,
-rather than a grid of em-dashes.
+Now one scroll with named bands — **Totals · Where it went · Coverage · By model ·
+By step · Run detail** — each rendering only when it has data and saying so when it
+does not, rather than a grid of em-dashes.
+
+### The cost model follows the two card kinds
+
+*Where it went* sits directly under the total because it is the split that decides
+anything. Reading and planning are the fixed cost of accepting the file; then the
+examination divides by **card kind**, and the two halves could not be less alike:
+
+| | Settles | Costs |
+|---|---|---|
+| **Rule cards** | 6 of the 22 cards a typical credit brings into play | nothing. No call, no tokens, and the same answer every time |
+| **Requirement cards** | the other 16 | ~87% of the run |
+
+A free part reports **"no model"**, never `$0.00` — the zero is the interesting fact,
+and a currency-formatted zero reads as a rounding artefact or a figure that failed to
+arrive. `engine` is listed in `MODELS` beside the models it costs nothing like, for
+the same reason: leaving it out would make the spend look like the whole of the
+examination.
+
+Four things the telemetry had wrong, all of which flattered the model:
+
+- the main model's role read **"Main · rule execution"** — exactly backwards. Rules
+  are the one thing it never touches
+- a **"driver · sequencing, retries, merge"** step billed 14k planner tokens for
+  orchestration. Sequencing is code. That slot in the run is now the Rule cards,
+  which is what actually happens there — and they run first, because a critical rule
+  failure can make the requirement half unnecessary
+- **Dates & Shipment** billed 3 calls and 21k tokens. All three of its cards are Rule
+  cards. The area costs nothing, and the run had it as the third most expensive
+- the plan screen priced the requirement half at a hand-written **4.9k tokens a
+  card**, a third of what the run reports. So the saving offered on a
+  stop-on-rule-failure decision was a third of the real one, and the drawer
+  afterwards contradicted the plan. Both now derive from `requirementCardCost`
+
+Every figure reconciles: `byKind` and `byModel` each sum to the total, and the run
+table's card counts match the plan the officer actually reads (6 rule + 16
+requirement — the 16 including the two the planner writes for this credit's own
+`:47A:` conditions).
 
 ### Nothing moves because of a scrollbar
 
@@ -1070,10 +1107,12 @@ good it is**.
 TURNAROUND              SPEND                     QUALITY
 3 min 12 s              $4.28                     92%
 median to findings      total for the period      383 of 417 upheld
-24 pages · 82 checks    $1.07/case  $0.18/page    34  raised, not upheld
-41 findings evidenced   $107 per 100 cases         3  MISSED
-6.2 h to decision       ▉▉▉▉▉ 97% Sonnet          86% conditions covered
-74% of window free      kept off the bill $1.09
+24 pages · 88 cards     $1.00/case  $0.17/page    34  raised, not upheld
+41 findings evidenced   $100 per 100 cases         3  MISSED
+6.2 h to decision       ▉▉▉▉▉ 86% Sonnet          86% conditions covered
+74% of window free      no model  6 / 22 cards       by card kind
+                        kept off the bill $1.09     ═ rule         168  4  0
+                                                    ☰ requirement  215 30  3
 ```
 
 The title is **AI performance** and nothing cleverer. A draft called it the
@@ -1093,7 +1132,21 @@ So value is stated from the system's own side:
 
 - **Turnaround leads**, because being decision-ready before a case is opened is
   the thing the assistant actually delivers. The supporting numbers are work
-  completed — pages read, checks run, findings evidenced.
+  completed — pages read, cards run, findings evidenced.
+- **The free half is stated as a sentence, not a slice.** 6 of the 22 cards a credit
+  brings into play are settled without asking a model anything, and unlike the rest
+  that does not grow with the size of the bundle. It is in `byModel` because it did
+  work, but a 0% bar is invisible and a 0% legend row reads as a model that failed to
+  report, so the cost cell says it in words.
+- **Errors are split by card kind**, because the two halves fail for unrelated
+  reasons and the fixes are unrelated too. A Rule card cannot be wrong about its
+  comparison — when one does not stand it is a misread field or a mis-authored card,
+  which is a dictionary job, reproducible, and it stays fixed. A Requirement card is a
+  model reading prose, where the fix is the prompt or accepting that the question
+  needs a person. One blended rate hides which conversation to have. Deliberately
+  three counts each rather than two more precision/recall pairs: doubling the rates on
+  the panel would invite someone to quote whichever is higher. The per-kind counts
+  reconcile to the totals exactly.
 - **The run takes minutes, and says so.** Step durations describe the work: a
   vision model reading six scanned pages is over a minute on its own, and the
   `:47A:` conditions run an agentic loop. Six pages and twenty-odd checks come to
