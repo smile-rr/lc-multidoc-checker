@@ -10,6 +10,49 @@
 
 import { focusItem } from '@shared/lib/useNewItemFocus'
 import seed from './data/seed.json' with { type: 'json' }
+import { hydrateSeed } from './api/hydrate'
+import * as gov from './api/governanceApi'
+
+// Fills `seed` in place from the service, before anything below reads it.
+//
+// In place, because the constants under this line bind parts of the seed at
+// import and are read from a hundred call sites; refilling the arrays keeps
+// every one of those references valid. Called by GovernanceModule before its
+// first render, so the store never sees a half-loaded catalogue.
+export function loadCatalog(data) {
+  hydrateSeed(seed, data)
+}
+
+// Writing an authored check back.
+//
+// Fire and forget: the store is already the source of truth for the session, and
+// blocking the edit slot on a round trip would make saving feel like submitting a
+// form. A failure surfaces as a toast through apiClient's `api-error` event —
+// which is the same path every other failure in the app takes.
+function persistCheck(check, rule) {
+  const payload = {
+    id: check.id,
+    title: check.title,
+    body: check.body,
+    domain: check.domain,
+    severity: check.severity,
+    checkType: check.checkType,
+    citedAs: check.citedAs ?? 'practice',
+    agentId: check.agentId ?? null,
+    groupId: check.groupId ?? null,
+    refs: check.refs ?? [],
+    fields: check.fields ?? [],
+    docs: check.docs ?? [],
+    status: check.draft ? 'DRAFT' : 'ACTIVE',
+  }
+  gov.saveCheck(payload).catch(() => {})
+  // An exact rule's conditions are a separate document, and saving them is what
+  // recomputes gate eligibility server-side — so it goes even when unchanged.
+  if (rule && rule.groups) {
+    gov.saveCheckRule(check.id, { scope: rule.scope, message: rule.message, groups: rule.groups })
+      .catch(() => {})
+  }
+}
 
 const START_SECTION = 'checks'
 
@@ -748,6 +791,10 @@ export function deriveVals(state, setState) {
       issues, canSave: !issues.length,
       onSave: () => {
         if (issues.length) return
+        // Write through to the service before the edit slot closes. Under mock this
+        // resolves without doing anything, which is honest: the store already holds
+        // the edit, and persistence is the only thing missing.
+        persistCheck({ ...c, title: (title || '').trim(), body: (body || '').trim() }, rule)
         setState((s) => {
           const es = { ...s.editSnap }; delete es[c.id]
           const rs = { ...s.ruleSnap }; delete rs[c.id]

@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useLayoutEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { initialState, deriveVals } from './store'
+import { initialState, deriveVals, loadCatalog } from './store'
+import { loadAll } from './api/governanceApi'
+import { isApi } from '@shared/lib/dataSource'
 import { Z } from '@shared/ds/z'
 import ConfirmDialog from '@shared/ds/ConfirmDialog'
 import ChecksSection from './sections/ChecksSection'
@@ -30,6 +32,24 @@ export default function GovernanceModule() {
 
   // Seed the section from the URL rather than syncing it after mount, so a deep
   // link renders its own section immediately instead of flashing Checks first.
+  // The catalogue has to be in `seed` before initialState is built, because the
+  // store binds parts of it at import. So nothing renders until the load settles —
+  // under mock that is one tick, and under the API it is one request.
+  //
+  // A failed load falls through to the fixture rather than to an error screen: the
+  // seed IS what the service was seeded from, so an offline authoring session shows
+  // real rules rather than an apology. The banner says which one you are looking at.
+  const [catalog, setCatalog] = useState(() => (isApi ? { state: 'loading' } : { state: 'ready' }))
+
+  useEffect(() => {
+    if (!isApi) return
+    let live = true
+    loadAll()
+      .then((data) => { if (live) { loadCatalog(data); setCatalog({ state: 'ready' }) } })
+      .catch((error) => { if (live) setCatalog({ state: 'ready', error }) })
+    return () => { live = false }
+  }, [])
+
   const [state, setRaw] = useState(() => ({ ...initialState, section: validSection(urlSection) }))
   const setState = (partial) =>
     setRaw((prev) => ({ ...prev, ...(typeof partial === 'function' ? partial(prev) : partial) }))
@@ -86,8 +106,28 @@ export default function GovernanceModule() {
     e.preventDefault()
   }
 
+  // After every hook, so the hook order never changes between renders.
+  if (catalog.state === 'loading') {
+    return (
+      <div className="helix-screen" style={{ minHeight: '100vh', background: 'var(--me-grey-08)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ fontSize: 13, color: 'var(--me-grey-70)' }}>Loading the catalogue…</span>
+      </div>
+    )
+  }
+
   return (
     <div className="helix-screen" style={{ minHeight: '100vh', background: 'var(--me-grey-08)' }}>
+      {/* Which catalogue you are looking at, when it is not the live one.
+          A governance surface that silently shows a fixture is a surface where an
+          author spends an afternoon on rules nobody will ever run. */}
+      {catalog.error && (
+        <div style={{ padding: '7px 16px', background: '#FBEFCF', color: '#946400',
+          fontSize: 12, borderBottom: '1px solid #E8D9A8' }}>
+          Showing the built-in catalogue — the service did not answer ({catalog.error.message}).
+          Nothing you save here will be kept.
+        </div>
+      )}
       {/* Floating review/assistant drawer — sits beside the card that opened it:
           vertical from the opener icon, horizontal just right of that card with
           a 16px gutter, both clamped on-screen. */}

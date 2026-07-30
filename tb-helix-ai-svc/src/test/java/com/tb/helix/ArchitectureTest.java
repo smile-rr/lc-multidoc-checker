@@ -199,6 +199,24 @@ class ArchitectureTest {
     }
 
     @Test
+    @DisplayName("controllers do not reach past their service")
+    void controllersDoNotReachPastTheirService() {
+        // A controller decides routes and status codes. The moment it can see the store it
+        // starts assembling responses out of database rows, and the wire format quietly
+        // becomes the schema — so a column rename turns into a breaking API change.
+        //
+        // Governance is exempt: it is CRUD over its own tables, and interposing a service
+        // that only forwards would be ceremony. lc-check is not, because assembling a case
+        // from six tables is real work with a real place to live.
+        noClasses()
+                .that().resideInAPackage("com.tb.helix.lccheck.api..")
+                .should().dependOnClassesThat().resideInAPackage("com.tb.helix.lccheck.persistence..")
+                .because("assembling a response from rows belongs in a service, not a controller")
+                .allowEmptyShould(true)
+                .check(classes);
+    }
+
+    @Test
     @DisplayName("controllers live in their module's api package")
     void controllersLiveInApiPackages() {
         noClasses()
