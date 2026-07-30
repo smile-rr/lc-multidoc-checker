@@ -13,7 +13,7 @@ import { plural } from '@shared/lib/format'
 import MarkdownDoc from '@shared/ds/MarkdownDoc'
 import BundleViewer from '../components/BundleViewer'
 import ExaminePane from '../components/ExaminePane'
-import { WORKBENCH_H } from '../components/paneHeight'
+import { PANE_FILL } from '../components/paneHeight'
 import DiscrepancyStatement from '../components/DiscrepancyStatement'
 import DispositionChips from '../components/DispositionChips'
 import { severityMeta, dispositionLabel } from '../state/severity'
@@ -132,8 +132,8 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
   const subtitleFor = (f) => (grouping === 'doc' ? f.area : docById[f.docId]?.docType ?? f.quoteSource)
 
   return (
-    <section className="helix-screen" style={{ padding: '18px 32px 32px' }}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px 20px', paddingBottom: 14 }}>
+    <section className="helix-screen" style={{ padding: '18px 32px 16px', ...PANE_FILL, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px 20px', paddingBottom: 14, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--me-ink)' }}>Findings</h2>
           <span style={{ fontSize: 13, color: 'var(--me-grey-70)' }}>
@@ -163,12 +163,17 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
         <ExaminePane findings={visible.findings} onOpenFinding={(id) => { onSelect(id); setMode('findings'); setTab('analysis') }} />
       ) : (
 
-      // Focus mode is a bounded split: each column scrolls itself, the page does
-      // not. One shared scrollbar meant reading down a finding slid the list you
-      // navigate with off the top of the screen.
-      <div style={selected
-        ? { display: 'grid', gridTemplateColumns: 'minmax(272px,316px) minmax(460px,1fr)', gap: 16, height: WORKBENCH_H, minHeight: 0, alignItems: 'stretch' }
-        : { display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', gap: 16, alignItems: 'start' }}
+      // Both modes fill to the foot of the window and scroll inside themselves —
+      // focus mode as two independent columns, the overview as one long table. One
+      // shared scrollbar meant reading down a finding slid the list you navigate
+      // with off the top of the screen.
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: selected ? 'minmax(272px,316px) minmax(460px,1fr)' : 'minmax(0,1fr)',
+        gap: 16,
+        alignItems: 'stretch',
+        ...PANE_FILL,
+      }}
       >
         {selected ? null : (
           <FindingsTable
@@ -491,8 +496,15 @@ const FCOLS = {
 function FindingsTable({ groups, clean, decisions, docById, grouping, setGrouping, onSelect }) {
   const [showClean, setShowClean] = useState(false)
   return (
-    <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden', minWidth: 0 }}>
-      <div style={{ ...FCOLS, padding: '9px 16px', borderBottom: '1px solid var(--me-grey-15)' }}>
+    <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden', minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {/* The control that arranges this list, on the list — and here in the overview
+          as well as in the focus rail. It was only ever rendered in the rail, so the
+          default view of the findings had no way to regroup them. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px', borderBottom: '1px solid var(--me-grey-15)', flexShrink: 0 }}>
+        <Eyebrow size="sm">Grouped by</Eyebrow>
+        <SegmentedControl size="sm" value={grouping} onChange={setGrouping} items={[{ id: 'kind', label: 'Kind' }, { id: 'doc', label: 'Document' }]} />
+      </div>
+      <div style={{ ...FCOLS, padding: '9px 16px', borderBottom: '1px solid var(--me-grey-15)', flexShrink: 0 }}>
         <span />
         <Eyebrow size="sm">Check</Eyebrow>
         <Eyebrow size="sm">Finding</Eyebrow>
@@ -501,6 +513,8 @@ function FindingsTable({ groups, clean, decisions, docById, grouping, setGroupin
         <Eyebrow size="sm">Your call</Eyebrow>
       </div>
 
+      {/* The rows, and the only thing here that scrolls. */}
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
       {groups.map((g) => (
         <div key={g.label}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 16px', background: 'var(--me-grey-08)', borderBottom: '1px solid var(--me-grey-15)', flexWrap: 'wrap' }}>
@@ -528,6 +542,7 @@ function FindingsTable({ groups, clean, decisions, docById, grouping, setGroupin
             : null}
         </div>
       ) : null}
+      </div>
     </div>
   )
 }

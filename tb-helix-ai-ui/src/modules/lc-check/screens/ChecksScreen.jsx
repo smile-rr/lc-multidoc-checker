@@ -10,6 +10,7 @@ import { plural } from '@shared/lib/format'
 import { severityMeta } from '../state/severity'
 import { SOURCE_META } from '../data/checkSpecs'
 import CheckSpecCard from '../components/CheckSpecCard'
+import { PANE_FILL } from '../components/paneHeight'
 import { useCase } from '../state/CaseContext'
 
 // Stage 3 — the plan, and it running.
@@ -181,18 +182,22 @@ export default function ChecksScreen({ onOpenFinding }) {
     <section
       className="helix-screen"
       style={{
-        padding: '16px 24px 28px',
+        padding: '16px 24px 16px',
         display: 'grid',
         gridTemplateColumns: selected ? 'minmax(280px,340px) minmax(460px,1fr)' : 'minmax(0,1fr)',
         gap: 16,
-        alignItems: 'start',
+        // Both columns reach the foot of the window and scroll themselves. The plan
+        // is long and the selected check is long; on one page scroll, reading either
+        // moved the other.
+        alignItems: 'stretch',
+        ...PANE_FILL,
       }}
     >
-      <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden', minWidth: 0 }}>
+      <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden', minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         {/* One line of state. What each half costs, which rules are blocked and
             whether to stop all moved onto the group they belong to — the plan
             itself is what needed the vertical room. */}
-        <div style={{ padding: '11px 16px', borderBottom: '1px solid var(--me-grey-15)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ padding: '11px 16px', borderBottom: '1px solid var(--me-grey-15)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', flexShrink: 0 }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)' }}>Check plan</span>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>
             {run.finished ? 'complete' : executing ? `${run.completedAreaIds.length} of ${data.areas.length} areas` : planned ? 'planned — not run' : 'not planned yet'}
@@ -236,7 +241,7 @@ export default function ChecksScreen({ onOpenFinding }) {
         )}
 
         {!selected && (
-          <div style={{ ...COLS, padding: '9px 16px', borderBottom: '1px solid var(--me-grey-15)' }}>
+          <div style={{ ...COLS, padding: '9px 16px', borderBottom: '1px solid var(--me-grey-15)', flexShrink: 0 }}>
             <span />
             <Eyebrow size="sm">ID</Eyebrow>
             <Eyebrow size="sm">Check</Eyebrow>
@@ -246,6 +251,8 @@ export default function ChecksScreen({ onOpenFinding }) {
           </div>
         )}
 
+        {/* The plan itself, and the only thing in this column that scrolls. */}
+        <div style={{ ...PANE_FILL, overflow: 'auto' }}>
         {sections.map((sec) => (
           <div key={sec.key}>
             {/* The group header *is* the kind indicator, and it carries that
@@ -295,10 +302,13 @@ export default function ChecksScreen({ onOpenFinding }) {
               : null}
           </div>
         ) : null}
+        </div>
       </div>
 
       {selected ? (
-        <div style={{ position: 'sticky', top: 'calc(var(--case-header-h, 240px) + 16px)', minWidth: 0 }}>
+        // Its own scroller now, rather than sticky against the page scroll — there is
+        // no page scroll to be sticky in.
+        <div style={{ minWidth: 0, minHeight: 0, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <Eyebrow size="sm">Selected check</Eyebrow>
             <div style={{ flex: 1 }} />

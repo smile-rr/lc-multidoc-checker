@@ -683,12 +683,37 @@ same heading with the same mark in both, or the list they just worked through st
 being the list they sign. Two copies of that definition would have drifted on the
 first change to either screen.
 
-### A list you can trust to hold still
+### The workbench is one viewport, and panes fill it
 
-Focus mode is a **bounded split**: `WORKBENCH_H` (shared with the Examine pane, so
-the two modes of the same screen are the same height), the page itself does not
-scroll, and each column scrolls itself. With one shared scrollbar, reading to the
-bottom of a long analysis slid the list you navigate with off the top of the screen.
+**The case screen does not scroll.** It is `100vh`, the header takes what it needs,
+and the stage is a flex sibling that takes the rest. Every pane inside reaches the
+bottom of the window because its parent ends there — `PANE_FILL` (`flex: 1;
+min-height: 0`) rather than a height.
+
+That replaced three `calc(100vh - …)` expressions which each subtracted a *guess* at
+the sum of everything above them — the case header, the screen's padding, a section
+heading, a row of tabs. They disagreed (44px in one, 168px in another), so panes on
+different stages stopped at different places, and any change above a pane left dead
+air under it. No arithmetic can be right for every stage at every window width.
+
+`--case-header-h` is gone with them: it existed only to be subtracted, so the
+`ResizeObserver` that measured the header and the variable it published are both
+deleted.
+
+Scrolling now belongs to **named panes**, one per column:
+
+| Stage | Scrolls |
+|---|---|
+| Intake · Interpret | the rail, the document, the facts panel — three, independently |
+| Checks | the plan; and the selected check beside it (it was `sticky` against a page scroll that no longer exists) |
+| Review, overview | the findings table, under a fixed head |
+| Review, focused | the rail and the finding, independently |
+| Decision | **the findings only.** The right column is where the officer signs — verdict, note, submit. That is one act, not a list to work through, so it stays under the hand whichever finding is on screen. It gives way only if the window is genuinely too short for it, rather than clipping Submit off the bottom |
+
+With one shared scrollbar, reading to the bottom of a long analysis slid the list you
+navigate with off the top of the screen.
+
+### A list you can trust to hold still
 
 The rail's rows are built on one rule: **a row's height must not depend on selection
 or on the call you have made.** The card that used to sit here let its title wrap

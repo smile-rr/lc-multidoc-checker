@@ -12,7 +12,7 @@ import { usePageBar } from '@shared/ds/DocumentSurface'
 import { ellipsis } from '@shared/ds/text'
 import { plural } from '@shared/lib/format'
 import BundleViewer from './BundleViewer'
-import { WORKBENCH_H } from './paneHeight'
+import { PANE_FILL } from './paneHeight'
 import { useCase } from '../state/CaseContext'
 
 // Examine the documents yourself.
@@ -55,8 +55,6 @@ import { useCase } from '../state/CaseContext'
 // something looked odd; buried in a list that is a risk nobody reads. Surfaced as
 // "2 readings we are not sure of" it becomes a directed task — the shortest path to
 // the discrepancies our extraction is likeliest to have fumbled.
-// Shared with the findings split — see `paneHeight`.
-const VIEWPORT = WORKBENCH_H
 
 export default function ExaminePane({ findings, onOpenFinding }) {
   const { data, run, actions } = useCase()
@@ -124,10 +122,10 @@ export default function ExaminePane({ findings, onOpenFinding }) {
   const creditDoc = data.documents.find((d) => d.role === 'credit')
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, ...PANE_FILL }}>
       {/* Documents across the top: switching document is navigation, not a
           column, and a vertical rail was spending 240px of the desk on it. */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', flexShrink: 0 }}>
         {data.documents.map((d) => {
           const on = d.id === doc.id
           const doubt = data.facts.filter((f) => f.docId === d.id && ((f.confidence && f.confidence !== 'HIGH') || f.flag)).length
@@ -150,11 +148,14 @@ export default function ExaminePane({ findings, onOpenFinding }) {
         })}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px,320px) minmax(320px,1fr) minmax(300px,360px)', gap: 14, alignItems: 'start' }}>
+      {/* Three columns, each the full height of the desk and each scrolling itself.
+          `stretch`, not `start`: a column that stops at its content leaves the desk
+          half empty and puts its own foot in a different place from its neighbours'. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px,320px) minmax(320px,1fr) minmax(300px,360px)', gap: 14, alignItems: 'stretch', ...PANE_FILL }}>
       <CreditColumn demands={demands} facts={creditFacts} docFacts={docFacts} creditLines={creditDoc?.lines} isCredit={isCredit} />
 
-      <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: '1px solid var(--me-grey-15)', flexWrap: 'wrap' }}>
+      <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: '1px solid var(--me-grey-15)', flexWrap: 'wrap', flexShrink: 0 }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)' }}>{doc.docType}</span>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>{doc.reference}</span>
           <div style={{ flex: 1 }} />
@@ -168,7 +169,7 @@ export default function ExaminePane({ findings, onOpenFinding }) {
           )}
         </div>
         {!isCredit && pageBarVisible ? (
-          <div style={{ borderBottom: '1px solid var(--me-grey-15)' }}>
+          <div style={{ borderBottom: '1px solid var(--me-grey-15)', flexShrink: 0 }}>
             {/* Every page of the bundle, not just the ones we filed under this
                 document. Restricting the strip to the document's own pages is the
                 same cage in a nicer shape: reaching page 5 from page 1 should be
@@ -180,7 +181,7 @@ export default function ExaminePane({ findings, onOpenFinding }) {
         {/* The document scrolls, not the page it sits on. Without a height here the
             viewer rendered at full size and pushed the whole screen down, which puts
             the two side panels off-screen — the one thing this layout exists for. */}
-        <div style={{ height: VIEWPORT, overflow: 'auto', background: isCredit ? '#fff' : 'var(--me-grey-08)' }}>
+        <div style={{ ...PANE_FILL, overflow: 'auto', background: isCredit ? '#fff' : 'var(--me-grey-08)' }}>
           {isCredit ? (
             <div style={{ padding: '14px 16px', fontFamily: 'var(--font-mono)', fontSize: 11.5, lineHeight: 1.85, color: 'var(--me-ink)' }}>
               {doc.lines?.map((l) => (
@@ -193,7 +194,9 @@ export default function ExaminePane({ findings, onOpenFinding }) {
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Reference, and it scrolls on its own: the PDF beside it must not move
+          because this column is long. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, overflow: 'auto' }}>
         {/* Raising comes first in this column, and stays *in* it.
             
             It was a dialog, which covered the two things an officer is actually
@@ -288,8 +291,9 @@ function CreditColumn({ demands, facts, docFacts, creditLines, isCredit }) {
     )
   }
   return (
-    <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--me-blue-20)', borderBottom: '1px solid var(--me-grey-15)' }}>
+    // The credit column: switch stays put, the reading under it scrolls.
+    <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--me-blue-20)', borderBottom: '1px solid var(--me-grey-15)', flexShrink: 0 }}>
         <Icon name="file-text" size={14} color="var(--me-blue-deep)" />
         <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: 'var(--me-blue-deep)' }}>
           {view === 'needs' ? 'Requirements' : 'The credit'}
@@ -308,7 +312,7 @@ function CreditColumn({ demands, facts, docFacts, creditLines, isCredit }) {
         />
       </div>
       {view === 'fields' ? (
-        <div style={{ maxHeight: VIEWPORT, overflow: 'auto' }}>
+        <div style={{ ...PANE_FILL, overflow: 'auto' }}>
           {facts.map((f, i) => (
             <div key={i} style={{ padding: '8px 14px', borderBottom: '1px solid var(--me-grey-08)', display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span style={{ fontSize: 11, color: 'var(--me-grey-70)' }}>{f.label}{f.source ? ` · ${f.source}` : ''}</span>
@@ -317,13 +321,13 @@ function CreditColumn({ demands, facts, docFacts, creditLines, isCredit }) {
           ))}
         </div>
       ) : view === 'text' ? (
-        <div style={{ maxHeight: VIEWPORT, overflow: 'auto', padding: '12px 14px', fontFamily: 'var(--font-mono)', fontSize: 11, lineHeight: 1.8, color: 'var(--me-ink)' }}>
+        <div style={{ ...PANE_FILL, overflow: 'auto', padding: '12px 14px', fontFamily: 'var(--font-mono)', fontSize: 11, lineHeight: 1.8, color: 'var(--me-ink)' }}>
           {creditLines?.map((l) => (
             <div key={l.id} style={{ whiteSpace: 'pre-wrap' }}>{l.text}</div>
           ))}
         </div>
       ) : (
-        <>
+        <div style={{ ...PANE_FILL, overflow: 'auto' }}>
       {!demands ? (
         <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12, color: '#946400' }}>
@@ -388,7 +392,7 @@ function CreditColumn({ demands, facts, docFacts, creditLines, isCredit }) {
           ) : null}
         </div>
       )}
-        </>
+        </div>
       )}
     </div>
   )

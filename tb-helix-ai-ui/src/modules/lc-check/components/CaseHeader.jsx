@@ -31,7 +31,6 @@ export default function CaseHeader({
   actionLabel,
   actionDisabled,
   onAction,
-  headerRef,
 }) {
   // The facts strip is the reference an officer re-reads while working, but it
   // is also a band of chrome above every stage, and once the credit is in your
@@ -62,7 +61,6 @@ export default function CaseHeader({
 
   return (
     <header
-      ref={headerRef}
       style={{ background: '#fff', borderBottom: '1px solid var(--me-grey-15)', padding: '18px 32px 0', position: 'sticky', top: 0, zIndex: 20 }}
     >
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: '12px 28px' }}>

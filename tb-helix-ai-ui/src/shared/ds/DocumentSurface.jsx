@@ -8,14 +8,17 @@ import { usePersistedState } from '../lib/usePersistedState'
 // gives both the same chrome, the same page width and the same viewport height,
 // wherever they appear.
 //
-// Height fills to the bottom of the window rather than being content-driven: a
-// 4-line certificate and a 40-line credit should occupy the same space, and
-// leaving dead air under a document viewer wastes the one thing a reading screen
-// needs. `--case-header-h` is published by the case workbench.
+// Height fills its parent rather than being content-driven: a 4-line certificate
+// and a 40-line credit should occupy the same space, and leaving dead air under a
+// document viewer wastes the one thing a reading screen needs.
+//
+// `100%` and not a `calc()` off `100vh`. It used to subtract a guess at everything
+// above it, which disagreed with the other panes' guesses and left a gap under the
+// viewer. The screen that places this is responsible for being bounded; this fills
+// what it is given.
 //
 // Page width is not set here — both viewers measure their own pane through
 // `viewerChrome.useFitWidth`, so a page is as wide as the space it was given.
-export const DOC_VIEWPORT_HEIGHT = 'calc(100vh - var(--case-header-h, 240px) - 44px)'
 
 /**
  * One preference, every viewer.
@@ -35,7 +38,7 @@ export default function DocumentSurface({
   header,
   toolbar,
   notice,
-  height = DOC_VIEWPORT_HEIGHT,
+  height = '100%',
   pageBarVisible = true,
   onTogglePageBar,
   children,

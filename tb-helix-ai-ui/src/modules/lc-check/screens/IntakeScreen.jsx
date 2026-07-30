@@ -2,10 +2,11 @@ import { ellipsis } from '@shared/ds/text'
 import { useState } from 'react'
 import Icon from '@shared/ds/Icon'
 import PageStrip from '@shared/ds/PageStrip'
-import DocumentSurface, { DOC_VIEWPORT_HEIGHT, usePageBar } from '@shared/ds/DocumentSurface'
+import DocumentSurface, { usePageBar } from '@shared/ds/DocumentSurface'
 import BundleViewer from '../components/BundleViewer'
 import Mt700TextViewer from '../components/Mt700TextViewer'
 import { INTAKE_SLOTS } from '../data/fixtures.js'
+import { PANE_FILL } from '../components/paneHeight'
 import { useCase } from '../state/CaseContext'
 
 // Stage 1 — what came in.
@@ -33,8 +34,8 @@ export default function IntakeScreen() {
   ]
 
   return (
-    <section className="helix-screen" style={{ padding: '16px 24px 20px' }}>
-      <div style={{ display: 'flex', alignItems: 'stretch', gap: 14, height: DOC_VIEWPORT_HEIGHT }}>
+    <section className="helix-screen" style={{ padding: '16px 24px 16px', ...PANE_FILL, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: 14, ...PANE_FILL }}>
         <div style={{ width: 240, flex: '0 0 240px', display: 'flex', flexDirection: 'column', gap: 12, overflow: 'auto' }}>
           {slots.map((s) => {
             const on = slot === s.id

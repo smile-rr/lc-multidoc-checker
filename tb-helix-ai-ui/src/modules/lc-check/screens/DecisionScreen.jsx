@@ -10,6 +10,7 @@ import DispositionChips from '../components/DispositionChips'
 import DiscrepancyStatement from '../components/DiscrepancyStatement'
 import { severityMeta, dispositionLabel, VERDICTS } from '../state/severity'
 import { groupByKind, kindOf, kindMark } from '../state/findingKinds'
+import { PANE_FILL } from '../components/paneHeight'
 import { useCase } from '../state/CaseContext'
 
 // Stage 5 — the officer's decision.
@@ -69,8 +70,14 @@ export default function DecisionScreen({ onOpenFinding }) {
   ]
 
   return (
-    <section className="helix-screen" style={{ padding: '18px 32px 40px', display: 'grid', gridTemplateColumns: 'minmax(360px,1fr) minmax(320px,400px)', gap: 16, alignItems: 'start' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    // The findings scroll; the decision does not.
+    //
+    // The right column is where the officer signs: the verdict, the note, the submit.
+    // Those are not a list to work through — they are one act, and they should be
+    // under the hand whichever finding is on screen. So the left column is the only
+    // scroller here, and the panel stays put beside it.
+    <section className="helix-screen" style={{ padding: '18px 32px 16px', display: 'grid', gridTemplateColumns: 'minmax(360px,1fr) minmax(320px,400px)', gap: 16, alignItems: 'stretch', ...PANE_FILL }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, overflow: 'auto' }}>
       {/* Held, not refused. A sanctions or policy hold stops the payment without
           being a discrepancy: the documents may comply perfectly. It cannot be
           stated to the presenting bank under art. 16(c), so it is above the
@@ -262,8 +269,11 @@ export default function DecisionScreen({ onOpenFinding }) {
       </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ ...cardSurface(12), boxShadow: 'none', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* Sign-off. Does not scroll with the findings — but does give way if the
+          window is genuinely too short for it, rather than clipping the Submit
+          button off the bottom. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, overflowY: 'auto' }}>
+        <div style={{ ...cardSurface(12), boxShadow: 'none', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14, flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
             <Button onClick={actions.submit} disabled={officer.submitted}>{officer.submitted ? 'Submitted' : 'Submit'}</Button>
             <Button variant="secondary" size="sm" onClick={() => actions.flash('Findings exported as Excel.')}>Export to Excel</Button>

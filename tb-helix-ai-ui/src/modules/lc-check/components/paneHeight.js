@@ -1,11 +1,15 @@
-// The height a working pane gets on the case screen.
+// How a working pane gets its height on the case screen.
 //
-// Tall enough to read a page in, short enough that the columns beside it stay on
-// screen — and the same in every mode, because Review's two modes sit in the same
-// place under the same header and a pane that changes height when you switch reads
-// as a different screen.
+// **It fills.** The workbench is exactly one viewport tall: the header takes what it
+// needs and the stage gets the rest, so a pane reaches the bottom of the window
+// because its parent ends there — not because it subtracted a number from `100vh`.
 //
-// It also means what it says structurally: a pane with a bounded height gives its
-// columns their own scrollbars. Without one, the whole page scrolls and the list you
-// are navigating with slides away with the content you are reading.
-export const WORKBENCH_H = 'calc(100vh - var(--case-header-h, 240px) - 168px)'
+// Those subtractions were the bug. Three of them existed, they disagreed (44px in
+// one place, 168px in another), and each was a guess at the sum of everything above
+// the pane: the case header, the screen's padding, a section heading, a row of tabs.
+// Any of those changing left dead air under the pane or pushed its foot off-screen,
+// and no arithmetic can be right for every stage at every window width.
+//
+// So the rule is: a bounded parent, and `PANE_FILL` on the thing that should reach
+// the bottom of it. Scrolling then belongs to a named pane rather than to the page.
+export const PANE_FILL = { flex: 1, minHeight: 0 }

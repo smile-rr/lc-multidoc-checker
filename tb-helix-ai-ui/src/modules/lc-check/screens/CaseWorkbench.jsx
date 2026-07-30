@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Toast from '@shared/ds/Toast'
 import { plural } from '@shared/lib/format'
@@ -31,21 +31,6 @@ function WorkbenchBody() {
   const { stage } = useParams()
   const navigate = useNavigate()
   const [selectedFindingId, setSelectedFindingId] = useState(null)
-
-  // Interpret is a full-height three-pane layout, so it needs to know how tall the
-  // header is. Published as a CSS variable and kept current with a
-  // ResizeObserver — the facts strip wraps at narrow widths.
-  const headerRef = useRef(null)
-  useLayoutEffect(() => {
-    const el = headerRef.current
-    if (!el) return undefined
-    const publish = () => document.documentElement.style.setProperty('--case-header-h', `${el.offsetHeight}px`)
-    publish()
-    if (typeof ResizeObserver === 'undefined') return undefined
-    const ro = new ResizeObserver(publish)
-    ro.observe(el)
-    return () => ro.disconnect()
-  })
 
   const activeStage = STAGES.some((s) => s.id === stage) ? stage : 'intake'
   const goStage = (id) => navigate(`/lc-check/cases/${caseId}/${id}`)
@@ -141,9 +126,12 @@ function WorkbenchBody() {
         : { tone: 'neutral', label: 'Awaiting Check' }
 
   return (
-    <>
+    // One viewport, bounded. The header takes what it needs, the stage gets the rest,
+    // and every pane inside reaches the bottom of the window because its parent ends
+    // there. Nothing here scrolls — the panes do, which is what makes a list and the
+    // document beside it independently scrollable.
+    <div style={{ height: '100vh', minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <CaseHeader
-        headerRef={headerRef}
         caseId={caseId}
         detail={data}
         status={status}
@@ -162,13 +150,17 @@ function WorkbenchBody() {
         onAction={action?.run}
       />
 
-      {activeStage === 'intake' ? <IntakeScreen /> : null}
-      {activeStage === 'interpret' ? <InterpretScreen /> : null}
-      {activeStage === 'checks' ? <ChecksScreen onOpenFinding={openFinding} /> : null}
-      {activeStage === 'review' ? (
-        <ReviewScreen selectedId={selectedFindingId} onSelect={setSelectedFindingId} onJumpToInterpret={jumpToInterpret} />
-      ) : null}
-      {activeStage === 'decide' ? <DecisionScreen onOpenFinding={openFinding} /> : null}
+      {/* The stage area. Each screen is a flex column that fills this and owns its
+          own scrolling — see `components/paneHeight`. */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        {activeStage === 'intake' ? <IntakeScreen /> : null}
+        {activeStage === 'interpret' ? <InterpretScreen /> : null}
+        {activeStage === 'checks' ? <ChecksScreen onOpenFinding={openFinding} /> : null}
+        {activeStage === 'review' ? (
+          <ReviewScreen selectedId={selectedFindingId} onSelect={setSelectedFindingId} onJumpToInterpret={jumpToInterpret} />
+        ) : null}
+        {activeStage === 'decide' ? <DecisionScreen onOpenFinding={openFinding} /> : null}
+      </div>
 
       <AskDrawer
         open={ui.askOpen}
@@ -189,6 +181,6 @@ function WorkbenchBody() {
       />
 
       <Toast message={ui.toast} />
-    </>
+    </div>
   )
 }

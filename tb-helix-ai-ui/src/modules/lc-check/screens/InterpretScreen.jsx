@@ -2,13 +2,14 @@ import { ellipsis } from '@shared/ds/text'
 import { useState, useMemo } from 'react'
 import PageStrip from '@shared/ds/PageStrip'
 import ResizeHandle from '@shared/ds/ResizeHandle'
-import DocumentSurface, { DOC_VIEWPORT_HEIGHT, usePageBar } from '@shared/ds/DocumentSurface'
+import DocumentSurface, { usePageBar } from '@shared/ds/DocumentSurface'
 import Icon from '@shared/ds/Icon'
 import { pageRange } from '@shared/lib/format'
 import DocRail from '../components/DocRail'
 import BundleViewer from '../components/BundleViewer'
 import Mt700TextViewer from '../components/Mt700TextViewer'
 import FactsPanel from '../components/FactsPanel'
+import { PANE_FILL } from '../components/paneHeight'
 import { useCase } from '../state/CaseContext'
 
 // Stage 2 — what we made of it.
@@ -57,8 +58,8 @@ export default function InterpretScreen() {
   }
 
   return (
-    <section className="helix-screen" style={{ padding: '16px 24px 20px' }}>
-      <div style={{ display: 'flex', alignItems: 'stretch', gap: 14, height: DOC_VIEWPORT_HEIGHT }}>
+    <section className="helix-screen" style={{ padding: '16px 24px 16px', ...PANE_FILL, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: 14, ...PANE_FILL }}>
         <div style={{ width: 240, flex: '0 0 240px', overflow: 'auto' }}>
           <DocRail
             documents={data.documents}
