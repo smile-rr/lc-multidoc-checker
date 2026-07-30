@@ -1,54 +1,79 @@
-import { cardSurface } from '@shared/ds/Card'
 import { useMemo, useState } from 'react'
+import { cardSurface } from '@shared/ds/Card'
 import Icon from '@shared/ds/Icon'
-import Spinner from '@shared/ds/Spinner'
-import { plural } from '@shared/lib/format'
 import Chip from '@shared/ds/Chip'
-import Button from '@shared/ds/Button'
+import Eyebrow from '@shared/ds/Eyebrow'
+import IconButton from '@shared/ds/IconButton'
+import Spinner from '@shared/ds/Spinner'
+import { ellipsis } from '@shared/ds/text'
+import { plural } from '@shared/lib/format'
 import { severityMeta } from '../state/severity'
-import { SOURCE_META, SOURCES } from '../data/checkSpecs'
+import { SOURCE_META } from '../data/checkSpecs'
 import CheckSpecCard from '../components/CheckSpecCard'
 import { useCase } from '../state/CaseContext'
 
 // Stage 3 — the plan, and it running.
 //
 // The plan is a real artefact, not a progress bar with labels: every check the
-// credit brings into play is listed before anything executes, grouped by the
-// agent that owns it, and each one carries the rule it will apply plus the
-// request that will be sent to apply it.
+// credit brings into play is listed before anything executes, and each carries
+// the rule it will apply plus the request that will be sent to apply it. Checks
+// the credit does NOT trigger are listed too, with the reason — "we did not check
+// that" must never be discovered after signing.
 //
-// Three things are deliberate here:
-//   · checks the credit does NOT trigger are listed, with the reason — "we didn't
-//     check that" must never be discovered after signing
-//   · checks the planner wrote for this credit's own :47A: conditions are shown
-//     as such, because they did not come from the dictionary and carry different
-//     weight
-//   · a condition the planner found but no rule covers is marked not covered
-//     rather than quietly omitted
+// ---------------------------------------------------------------------------
+// Why this is grouped by KIND, and not by where the obligation comes from.
 //
-// Two kinds of check now arrive from Governance, and the plan is where the
-// difference has to be legible — not in the pipeline. Adding a stage for the
-// deterministic pass would make an officer track four steps to understand a
-// division of labour that belongs to the checks themselves:
+// A check varies along two axes: its **kind** (the system computes it, or an
+// agent reads it) and its **source** (the credit's own terms, UCP 600 / ISBP 821,
+// or bank policy). Both are real. Only one can structure the screen, and an
+// earlier pass structured it by source — which was wrong for two reasons that
+// have nothing to do with which axis is more interesting:
 //
-//   Rule cards         the system evaluates rows over extracted fields. No
-//                      model, no tokens, milliseconds. Answerable or not, and
-//                      which it is is knowable from this screen before the run.
-//   Requirement cards  an agent reads prose against the presentation. Tokens,
-//                      seconds, judgement.
+//   · Kind needs no expertise. "The system computes these, an agent reads those"
+//     is legible to anyone. Grouping by source asks the reader to already know
+//     why field 46A and article 20 are different kinds of authority — precisely
+//     the knowledge a new checker has not got yet.
+//   · Kind is the same on every deal. There are always exactly two groups. Source
+//     groups appear and vanish with the credit, so the page moves under you from
+//     one case to the next and nothing is where you left it.
 //
-// So: one `execute` step as before, the kind marked on every row, the economics
-// of each stated in the header, and the deterministic ones simply resolving the
-// instant the run starts — because you do not pace work that takes no time.
+// Source is not lost: it is the *Cited as* column. The domain knowledge is there
+// for whoever wants it and costs nothing to whoever does not. Structure by what
+// everyone can read; put what experts need in the data.
+// ---------------------------------------------------------------------------
+//
+// The list takes the full width so the plan can be *overviewed* — one line per
+// check, the whole plan at once, rows comparable down a column. Selecting one
+// opens it beside the list rather than instead of it: reading the plan and
+// studying one check are different jobs, and the screen should not make you
+// choose between them.
+const COLS = {
+  display: 'grid',
+  gridTemplateColumns: '26px 96px minmax(0,1.4fr) minmax(0,1.9fr) minmax(0,0.9fr) 88px',
+  gap: 14,
+  alignItems: 'center',
+}
+
+// Operators shortened for the column. The spec card spells them out; here the
+// point is that twenty rows stay readable side by side.
+const OPS = {
+  'is on or before': '≤',
+  'is on or after': '≥',
+  'is at most': '≤',
+  'is at least': '≥',
+  equals: '=',
+  'equals (amount)': '=',
+  'is within': 'within',
+  'does not conflict with': 'no conflict with',
+  'is the same party as': 'same party as',
+}
+
 export default function ChecksScreen({ onOpenFinding }) {
   const { data, run, officer, actions } = useCase()
-
   const allChecks = useMemo(() => [...data.checks, ...officer.addedChecks], [data.checks, officer.addedChecks])
   const [selectedId, setSelectedId] = useState(null)
+  const [showSkipped, setShowSkipped] = useState(false)
 
-  // Nothing here is running until the execute step is. Planning is its own step,
-  // so between the two the plan sits complete and untouched — which is the whole
-  // point of separating them.
   const executing = run.activeStep === 'execute' || run.done.includes('execute')
   const planned = run.done.includes('plan')
 
@@ -56,7 +81,7 @@ export default function ChecksScreen({ onOpenFinding }) {
     if (!check.areaId) return check.addedByOfficer ? (run.finished ? 'done' : executing ? 'running' : 'planned') : 'skipped'
     if (!executing) return 'planned'
     // A rule is arithmetic over fields already extracted: it settles in the same
-    // tick the run starts, so it is never "queued behind" an agent reading pages.
+    // tick the run starts, so it is never queued behind an agent reading pages.
     if (check.kind === 'rule') return 'done'
     if (run.completedAreaIds.includes(check.areaId)) return 'done'
     if (run.activeAreaId === check.areaId) return 'running'
@@ -64,252 +89,260 @@ export default function ChecksScreen({ onOpenFinding }) {
   }
 
   const findingFor = (check) =>
-    statusOf(check) === 'done' && check.findingId
-      ? data.findings.find((f) => f.id === check.findingId) ?? null
-      : null
+    statusOf(check) === 'done' && check.findingId ? data.findings.find((f) => f.id === check.findingId) ?? null : null
 
-  // Grouped by where the obligation comes from, in the order an examiner works:
-  // outward from the credit's own terms to standing practice to the bank's own
-  // concerns — which is also the order a refusal advice is written in.
-  //
-  // It used to be grouped by agent domain, which is a fact about our
-  // implementation, not about the examination. That is also what put a group
-  // called "Requirements" next to a badge called "Requirement".
-  //
-  // Within a group, rules lead: they are the cheap certainties.
-  const byKind = (a, b) => (a.kind === b.kind ? 0 : a.kind === 'rule' ? -1 : 1)
-  const runnable = allChecks.filter((c) => c.areaId && !c.addedByOfficer)
-  const groups = [
-    ...SOURCES.map((src) => ({
-      key: src,
-      label: SOURCE_META[src].label,
-      note: SOURCE_META[src].note,
-      icon: SOURCE_META[src].icon,
-      color: SOURCE_META[src].color,
-      checks: runnable.filter((c) => c.source === src).sort(byKind),
-    })),
-    ...(officer.addedChecks.length
-      ? [{ key: 'added', label: 'Added by you', note: 'Not called for by the credit or by practice. Recorded against your name.', icon: 'user-check', color: 'var(--me-grey)', checks: officer.addedChecks }]
-      : []),
-    {
-      key: 'skipped',
-      label: 'Not brought into play',
-      note: 'Listed so that "we did not check that" is never discovered after signing.',
-      icon: 'minus-circle',
-      color: 'var(--me-grey-70)',
-      checks: allChecks.filter((c) => !c.areaId && !c.addedByOfficer),
-    },
-  ].filter((g) => g.checks.length)
-
-  const selected = allChecks.find((c) => c.id === selectedId) ?? groups[0]?.checks[0] ?? allChecks[0]
-
-  const areaCount = data.areas.length
-  const doneCount = run.completedAreaIds.length
-  const progressPct = Math.round((doneCount / areaCount) * 100)
-  const willRun = allChecks.filter((c) => c.areaId).length
-  const wontRun = allChecks.length - willRun
-  const running = allChecks.filter((c) => c.areaId)
-  const rules = running.filter((c) => c.kind === 'rule')
-  const reqs = running.filter((c) => c.kind !== 'rule')
+  const runnable = allChecks.filter((c) => c.areaId || c.addedByOfficer)
+  const rules = runnable.filter((c) => c.kind === 'rule')
+  const reqs = runnable.filter((c) => c.kind !== 'rule')
+  const skipped = allChecks.filter((c) => !c.areaId && !c.addedByOfficer)
   const blocked = rules.filter((c) => c.ruleDef && !c.ruleDef.ready)
-  // A rough estimate, and labelled as one. An exact number here would be a lie
-  // with a decimal point on it.
-  const estTokens = Math.round((reqs.length * 4.9) * 1000)
+  const estTokens = Math.round(reqs.length * 4.9)
 
-  // The gate the officer sets before pressing go, not a surprise mid-run.
-  //
-  // A critical failure found by arithmetic is exactly the case where reading on
-  // may be waste: if the invoice overdraws the credit, the presentation is
-  // refused whatever :47A: says. But it is a policy, not a rule of nature — some
-  // banks want the complete picture for the applicant's waiver request — so it is
-  // a choice, made here, where its cost is stated.
+  // A critical failure found on the figures is the case where reading on may be
+  // waste: the presentation is refused whatever :47A: says. Whether to stop is a
+  // policy chosen before the run, so Auto never surprises you — and it sits on
+  // the group it governs instead of in a banner of its own.
   const criticalRuleFailures = rules
     .map((c) => (statusOf(c) === 'done' && c.findingId ? data.findings.find((f) => f.id === c.findingId) : null))
     .filter((f) => f && f.severity === 'discrepancy')
   const halted = officer.stopOnRuleFailure && executing && !run.finished && criticalRuleFailures.length > 0
 
+  const selected = selectedId ? allChecks.find((c) => c.id === selectedId) : null
+  const pick = (id) => setSelectedId((cur) => (cur === id ? null : id))
+
+  const sections = [
+    {
+      key: 'rule',
+      icon: 'equal',
+      tone: 'blue',
+      label: 'Rule',
+      count: rules.length,
+      note: 'The system compares fields already extracted. No model, no cost, same answer every time.',
+      checks: rules,
+      aside: blocked.length ? { warn: true, text: `${plural(blocked.length, 'rule')} needs a field that was not extracted` } : null,
+    },
+    {
+      key: 'requirement',
+      icon: 'list-checks',
+      tone: 'green',
+      label: 'Requirement',
+      count: reqs.length,
+      note: 'An agent reads it against the presentation and forms a view.',
+      checks: reqs,
+      aside: { text: `about ${estTokens}k tokens` },
+      policy: true,
+    },
+  ].filter((s) => s.count)
+
   return (
-    <section className="helix-screen" style={{ padding: '16px 24px 28px', display: 'grid', gridTemplateColumns: 'minmax(330px,400px) minmax(460px,1fr)', gap: 16, alignItems: 'start' }}>
-      <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - var(--case-header-h, 240px) - 64px)' }}>
-        <div style={{ padding: '13px 15px', borderBottom: '1px solid var(--me-grey-15)', display: 'flex', flexDirection: 'column', gap: 9, flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)' }}>Check Plan</span>
-            {executing ? null : (
-              <button
-                onClick={actions.addCheck}
-                title="Add a check the credit does not call for — it runs with the rest and is recorded against your name"
-                style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--me-blue)', cursor: 'pointer', background: 'none', border: 'none', padding: 0, whiteSpace: 'nowrap' }}
-              >
-                <Icon name="plus" size={14} />
-                Add a check
-              </button>
-            )}
-          </div>
-
+    <section
+      className="helix-screen"
+      style={{
+        padding: '16px 24px 28px',
+        display: 'grid',
+        gridTemplateColumns: selected ? 'minmax(0,1fr) minmax(390px,430px)' : 'minmax(0,1fr)',
+        gap: 16,
+        alignItems: 'start',
+      }}
+    >
+      <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden', minWidth: 0 }}>
+        {/* One line of state. What each half costs, which rules are blocked and
+            whether to stop all moved onto the group they belong to — the plan
+            itself is what needed the vertical room. */}
+        <div style={{ padding: '11px 16px', borderBottom: '1px solid var(--me-grey-15)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)' }}>Check plan</span>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>
-            {run.finished
-              ? 'complete'
-              : executing
-                ? `${doneCount} of ${areaCount} areas`
-                : planned
-                  ? 'planned — not run'
-                  : 'not planned yet'}
-            {' · '}{willRun} to run{wontRun ? ` · ${wontRun} not applicable` : ''}
+            {run.finished ? 'complete' : executing ? `${run.completedAreaIds.length} of ${data.areas.length} areas` : planned ? 'planned — not run' : 'not planned yet'}
+            {' · '}
+            {runnable.length} to run
           </span>
-
-          {/* What each half of the plan costs. An officer deciding whether to run
-              this is deciding how to spend, and the two halves are orders of
-              magnitude apart — so the number is on the screen, not in a drawer. */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 11.5, color: 'var(--me-grey)' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-              <Chip size="sm" tone="blue"><Icon name="equal" size={11} />Rule</Chip>
-              <span><strong style={{ color: 'var(--me-ink)' }}>{rules.length}</strong> evaluated on extracted fields — no model, no cost</span>
-            </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-              <Chip size="sm" tone="green"><Icon name="list-checks" size={11} />Requirement</Chip>
-              <span><strong style={{ color: 'var(--me-ink)' }}>{reqs.length}</strong> read by an agent — about {Math.round(estTokens / 1000)}k tokens</span>
-            </span>
-            {blocked.length ? (
-              <span style={{ display: 'flex', alignItems: 'flex-start', gap: 6, color: '#946400' }}>
-                <Icon name="circle-alert" size={13} color="currentColor" />
-                <span>{plural(blocked.length, 'rule')} cannot be answered — a field it reads was not extracted. {blocked.length === 1 ? 'It' : 'They'} will be reported as not covered, never as a pass.</span>
-              </span>
-            ) : null}
-          </div>
-
+          <div style={{ flex: 1 }} />
           {!executing && (
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 11.5, lineHeight: 1.45, color: 'var(--me-grey)', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={officer.stopOnRuleFailure}
-                onChange={(e) => actions.dispatch({ type: 'stop_on_rule_failure', on: e.target.checked })}
-                style={{ marginTop: 1, flexShrink: 0 }}
-              />
-              <span>Stop before the agent pass if a rule fails critically — the presentation is refused either way, so reading on may be spend for nothing.</span>
-            </label>
+            <button onClick={actions.addCheck} title="Add a check the credit does not call for — it runs with the rest and is recorded against your name" style={linkBtn}>
+              <Icon name="plus" size={14} />
+              Add a check
+            </button>
           )}
-
-          <div style={{ height: 4, borderRadius: 999, background: 'var(--me-grey-15)', overflow: 'hidden' }}>
-            <div style={{ height: '100%', borderRadius: 999, background: 'var(--me-blue)', width: `${progressPct}%`, transition: 'width 520ms var(--ease-standard)' }} />
-          </div>
         </div>
 
         {halted && (
-          <div style={{ margin: '11px 15px 0', border: '1px solid #E9C97A', background: '#FBEFCF', borderRadius: 10, padding: '11px 13px', display: 'flex', flexDirection: 'column', gap: 9, flexShrink: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-              <Icon name="circle-pause" size={15} color="#946400" />
-              <div style={{ fontSize: 12, lineHeight: 1.5, color: '#946400' }}>
-                Stopped: {criticalRuleFailures.map((f) => f.checkId).join(', ')} failed on the figures.
-                The {reqs.length} agent requirements have not run — about {Math.round(estTokens / 1000)}k tokens.
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <Button variant="secondary" size="sm" onClick={() => actions.dispatch({ type: 'stop_on_rule_failure', on: false })}>Read on anyway</Button>
-              <Button variant="ghost" size="sm" onClick={() => onOpenFinding?.(criticalRuleFailures[0].id)}>Take it to the report</Button>
-            </div>
+          <div style={{ margin: '12px 16px 0', border: '1px solid #E9C97A', background: '#FBEFCF', borderRadius: 10, padding: '10px 13px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <Icon name="circle-pause" size={15} color="#946400" />
+            <span style={{ flex: 1, minWidth: 200, fontSize: 12, lineHeight: 1.5, color: '#946400' }}>
+              Stopped on {criticalRuleFailures.map((f) => f.checkId).join(', ')}. The {reqs.length} requirements have not run — about {estTokens}k tokens.
+            </span>
+            <button onClick={() => actions.dispatch({ type: 'stop_on_rule_failure', on: false })} style={{ ...linkBtn, color: '#946400', fontWeight: 600 }}>Read on anyway</button>
+            <button onClick={() => onOpenFinding?.(criticalRuleFailures[0].id)} style={{ ...linkBtn, color: '#946400', fontWeight: 600 }}>Take it to the report</button>
           </div>
         )}
 
-        <div style={{ overflow: 'auto', flex: 1 }}>
-          {groups.map((g) => (
-            <div key={g.key}>
-              <div style={{ padding: '8px 15px', background: 'var(--me-grey-08)', borderBottom: '1px solid var(--me-grey-15)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                  <Icon name={g.icon} size={13} color={g.color} />
-                  <span style={{ flex: 1, fontSize: 11.5, fontWeight: 600, color: 'var(--me-ink)' }}>{g.label}</span>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>{g.checks.length}</span>
-                </div>
-                {g.note ? <span style={{ fontSize: 11, color: 'var(--me-grey-70)', lineHeight: 1.4 }}>{g.note}</span> : null}
-              </div>
-
-              {g.checks.map((c) => {
-                const st = statusOf(c)
-                const f = findingFor(c)
-                const on = c.id === selected?.id
-                const sev = f ? severityMeta(f.severity) : null
-                return (
-                  <button
-                    key={c.id}
-                    onClick={() => setSelectedId(c.id)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: 9,
-                      width: '100%',
-                      textAlign: 'left',
-                      padding: '9px 15px',
-                      border: 'none',
-                      borderBottom: '1px solid var(--me-grey-08)',
-                      borderLeft: `2px solid ${on ? 'var(--me-blue)' : 'transparent'}`,
-                      cursor: 'pointer',
-                      background: on ? 'var(--me-blue-20)' : '#fff',
-                    }}
-                  >
-                    <span style={{ width: 15, height: 16, flex: '0 0 15px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {st === 'running' ? (
-                        <Spinner />
-                      ) : (
-                        <Icon
-                          name={st === 'done' ? 'check' : st === 'skipped' ? 'minus' : 'circle-dashed'}
-                          size={14}
-                          color={st === 'done' ? (f && f.severity !== 'clean' ? 'var(--status-warning)' : 'var(--status-success)') : 'var(--me-grey-50)'}
-                        />
-                      )}
-                    </span>
-                    <span
-                      title={c.kind === 'rule' ? 'Rule — the system compares fields, no model involved' : 'Requirement — an agent reads it against the presentation'}
-                      style={{ flex: '0 0 14px', height: 16, display: 'flex', alignItems: 'center', color: c.kind === 'rule' ? 'var(--me-blue-deep)' : '#1F7A00' }}
-                    >
-                      <Icon name={c.kind === 'rule' ? 'equal' : 'list-checks'} size={13} color="currentColor" />
-                    </span>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, lineHeight: '16px', color: 'var(--me-grey-70)', flex: '0 0 58px' }}>{c.id}</span>
-                    <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                      <span style={{ fontSize: 12.5, fontWeight: on ? 600 : 400, color: on ? 'var(--me-blue-deep)' : st === 'skipped' || st === 'queued' ? 'var(--me-grey-70)' : 'var(--me-ink)' }}>
-                        {c.name}
-                      </span>
-                      {/* A rule states itself. This is the comparison it will
-                          make, in the dictionary's own words — no prompt, no
-                          paraphrase, nothing to take on trust. */}
-                      {c.ruleDef ? (
-                        <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                          {c.ruleDef.rows.map((r, i) => (
-                            <span key={i} style={{ fontSize: 11, lineHeight: 1.45, color: 'var(--me-grey-70)' }}>
-                              <span style={{ fontWeight: 600, color: 'var(--me-grey)' }}>{r.l.field}</span>
-                              <span style={{ opacity: 0.75 }}>{' @ '}{r.l.doc}</span>
-                              <span style={{ color: 'var(--me-blue-deep)' }}>{' '}{r.op}{' '}</span>
-                              <span style={{ fontWeight: 600, color: 'var(--me-grey)' }}>{r.r.field ?? r.r.literal}</span>
-                              {r.r.doc ? <span style={{ opacity: 0.75 }}>{' @ '}{r.r.doc}</span> : null}
-                              {r.tol ? <span style={{ fontFamily: 'var(--font-mono)', opacity: 0.8 }}>{' ('}{r.tol}{')'}</span> : null}
-                            </span>
-                          ))}
-                        </span>
-                      ) : null}
-                    </span>
-                    {c.ruleDef && !c.ruleDef.ready ? (
-                      <span title={`Not extracted: ${c.ruleDef.missing.map((m) => `${m.field} @ ${m.doc}`).join(', ')}`} style={{ fontSize: 11, lineHeight: '16px', color: '#946400', whiteSpace: 'nowrap' }}>needs a field</span>
-                    ) : c.notCovered ? (
-                      <span title="No rule covers this condition" style={{ fontSize: 11, color: '#946400', whiteSpace: 'nowrap' }}>not covered</span>
-                    ) : sev && f.severity !== 'clean' ? (
-                      <span style={{ fontSize: 11, color: sev.text, whiteSpace: 'nowrap' }}>
-                        {f.severity === 'discrepancy' ? 'discrepancy' : 'to decide'}
-                      </span>
-                    ) : null}
-                  </button>
-                )
-              })}
-            </div>
-          ))}
+        <div style={{ ...COLS, padding: '9px 16px', borderBottom: '1px solid var(--me-grey-15)' }}>
+          <span />
+          <Eyebrow size="sm">ID</Eyebrow>
+          <Eyebrow size="sm">Check</Eyebrow>
+          <Eyebrow size="sm">What it reads</Eyebrow>
+          <Eyebrow size="sm">Cited as</Eyebrow>
+          <Eyebrow size="sm">State</Eyebrow>
         </div>
+
+        {sections.map((sec) => (
+          <div key={sec.key}>
+            {/* The group header *is* the kind indicator, and it carries that
+                kind's economics — so no row has to repeat either. */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 16px', background: 'var(--me-grey-08)', borderBottom: '1px solid var(--me-grey-15)', flexWrap: 'wrap' }}>
+              <Chip size="sm" tone={sec.tone}>
+                <Icon name={sec.icon} size={11} />
+                {sec.label}
+              </Chip>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>{sec.count}</span>
+              <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>{sec.note}</span>
+              <div style={{ flex: 1 }} />
+              {sec.aside ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: sec.aside.warn ? '#946400' : 'var(--me-grey-70)', whiteSpace: 'nowrap' }}>
+                  {sec.aside.warn ? <Icon name="circle-alert" size={12} color="currentColor" /> : null}
+                  {sec.aside.text}
+                </span>
+              ) : null}
+              {sec.policy && !executing ? (
+                <label
+                  title="A critical failure on the figures refuses the presentation whatever the conditions say, so reading on may be spend for nothing"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--me-grey)', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                >
+                  <input type="checkbox" checked={officer.stopOnRuleFailure} onChange={(e) => actions.dispatch({ type: 'stop_on_rule_failure', on: e.target.checked })} />
+                  skip if a rule fails
+                </label>
+              ) : null}
+            </div>
+
+            {sec.checks.map((c) => (
+              <Row key={c.id} check={c} status={statusOf(c)} finding={findingFor(c)} on={c.id === selectedId} onSelect={() => pick(c.id)} />
+            ))}
+          </div>
+        ))}
+
+        {/* Reference, not work — one line until you ask for it. */}
+        {skipped.length ? (
+          <div>
+            <button onClick={() => setShowSkipped((v) => !v)} style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '9px 16px', border: 'none', borderTop: '1px solid var(--me-grey-15)', background: 'var(--me-grey-08)', cursor: 'pointer', fontFamily: 'inherit' }}>
+              <Icon name={showSkipped ? 'chevron-down' : 'chevron-right'} size={14} color="var(--me-grey-50)" />
+              <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>
+                {plural(skipped.length, 'check')} not brought into play by this credit — listed so nothing is silently absent
+              </span>
+            </button>
+            {showSkipped
+              ? skipped.map((c) => <Row key={c.id} check={c} status="skipped" finding={null} on={c.id === selectedId} onSelect={() => pick(c.id)} />)
+              : null}
+          </div>
+        ) : null}
       </div>
 
       {selected ? (
-        <CheckSpecCard
-          check={selected}
-          status={statusOf(selected)}
-          finding={findingFor(selected)}
-          onOpenFinding={onOpenFinding}
-        />
+        <div style={{ position: 'sticky', top: 'calc(var(--case-header-h, 240px) + 16px)', minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <Eyebrow size="sm">Selected check</Eyebrow>
+            <div style={{ flex: 1 }} />
+            <IconButton icon="x" size="sm" title="Close, and read the whole plan" onClick={() => setSelectedId(null)} />
+          </div>
+          <CheckSpecCard check={selected} status={statusOf(selected)} finding={findingFor(selected)} onOpenFinding={onOpenFinding} />
+        </div>
       ) : null}
     </section>
   )
 }
+
+function Row({ check, status, finding, on, onSelect }) {
+  const sev = finding ? severityMeta(finding.severity) : null
+  const src = SOURCE_META[check.source] ?? SOURCE_META.credit
+  const rd = check.ruleDef
+  const needsField = rd && !rd.ready
+  const muted = status === 'skipped' || status === 'queued'
+  const refs = check.spec?.refs ?? []
+
+  // What this check looks at, said the same way for both kinds: for a rule the
+  // comparison itself, for a requirement the credit fields it is handed. A rule
+  // whose condition you cannot read is a label, not a rule.
+  // When both sides name the same field the documents *are* the comparison —
+  // "Goods description no conflict with Goods description" says nothing. Name them
+  // only then, so the column stays short where the field names already differ.
+  const reads = rd
+    ? rd.rows
+        .map((r) => {
+          const right = r.r.field ?? r.r.literal
+          const same = r.l.field === r.r.field
+          const l = same ? `${r.l.field} @ ${r.l.doc}` : r.l.field
+          const rr = same ? `@ ${r.r.doc}` : right
+          return `${l} ${OPS[r.op] ?? r.op} ${rr}`
+        })
+        .join('   ·   ')
+    : creditFieldsOf(check).length
+      ? creditFieldsOf(check).map((t) => `:${t}:`).join(' ')
+      : 'the whole presentation'
+
+  return (
+    <button
+      onClick={onSelect}
+      title={reads}
+      style={{
+        ...COLS,
+        width: '100%',
+        textAlign: 'left',
+        padding: '10px 16px',
+        border: 'none',
+        borderBottom: '1px solid var(--me-grey-08)',
+        borderLeft: `2px solid ${on ? 'var(--me-blue)' : 'transparent'}`,
+        background: on ? 'var(--me-blue-20)' : '#fff',
+        cursor: 'pointer',
+        fontFamily: 'inherit',
+      }}
+    >
+      <span style={{ display: 'flex', justifyContent: 'center' }}>
+        {status === 'running' ? (
+          <Spinner />
+        ) : (
+          <Icon
+            name={status === 'done' ? 'check' : status === 'skipped' ? 'minus' : 'circle-dashed'}
+            size={14}
+            color={status === 'done' ? (finding && finding.severity !== 'clean' ? 'var(--status-warning)' : 'var(--status-success)') : 'var(--me-grey-50)'}
+          />
+        )}
+      </span>
+
+      <span style={{ ...ellipsis, fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--me-grey-70)' }}>{check.id}</span>
+
+      <span style={{ ...ellipsis, fontSize: 12.5, fontWeight: on ? 600 : 400, color: on ? 'var(--me-blue-deep)' : muted ? 'var(--me-grey-70)' : 'var(--me-ink)' }}>
+        {check.name}
+      </span>
+
+      <span style={{ ...ellipsis, fontSize: 11.5, color: rd ? 'var(--me-grey)' : 'var(--me-grey-70)', fontFamily: rd ? 'inherit' : 'var(--font-mono)' }}>{reads}</span>
+
+      <span title={`${src.label}${refs.length ? ` — ${refs.join(', ')}` : ''}`} style={{ ...ellipsis, fontSize: 11.5, color: 'var(--me-grey-70)' }}>
+        {refs.join(', ') || src.cite}
+      </span>
+
+      <span style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
+        {needsField ? (
+          <span title={`Not extracted: ${rd.missing.map((m) => `${m.field} @ ${m.doc}`).join(', ')}`} style={{ color: '#946400' }}>needs a field</span>
+        ) : check.notCovered ? (
+          <span title="No rule covers this condition" style={{ color: '#946400' }}>not covered</span>
+        ) : sev && finding.severity !== 'clean' ? (
+          <span style={{ color: sev.text }}>{finding.severity === 'discrepancy' ? 'discrepancy' : 'to decide'}</span>
+        ) : status === 'done' ? (
+          <span style={{ color: 'var(--status-success)' }}>passed</span>
+        ) : (
+          <span style={{ color: 'var(--me-grey-50)' }}>{status}</span>
+        )}
+      </span>
+    </button>
+  )
+}
+
+/** The credit fields a requirement is handed, read off its own rule text. */
+function creditFieldsOf(check) {
+  const seen = []
+  const re = /\{(\d{2}[A-Z]?)\}/g
+  let m
+  while ((m = re.exec(check.spec?.rule ?? '')) !== null) if (!seen.includes(m[1])) seen.push(m[1])
+  return seen.slice(0, 4)
+}
+
+const linkBtn = { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--me-blue)', cursor: 'pointer', background: 'none', border: 'none', padding: 0, fontFamily: 'inherit', whiteSpace: 'nowrap' }

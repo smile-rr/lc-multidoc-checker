@@ -527,14 +527,27 @@ corresponds" is also the credit's (field 45A) but needs **judgement**. "No
 documents beyond those called for" is **practice** (ISBP A31) and needs judgement.
 "Parties screened" is **policy** and is not a UCP discrepancy at all.
 
-**Source groups the plan**, because an examiner works outward from the credit's own
-terms to standing practice to the bank's own concerns — and because that is the
-order a refusal advice is written in. Classification follows where the *content* of
-the obligation sits, not which article describes how to examine it: when you write
-"documents required by field 46A not presented" you are citing the credit; UCP
-14(a) is the standard you applied, not the requirement you applied it to.
+**Kind groups the plan**, for two reasons that have nothing to do with which axis
+is more interesting:
 
-**Kind marks the row.** It is a property of the check, not a section of the work.
+- **It needs no expertise.** "The system computes these, an agent reads those" is
+  legible to anyone. Grouping by source asks the reader to already know why field
+  46A and article 20 are different kinds of authority — precisely the knowledge a
+  new checker has not got yet.
+- **It is the same on every deal.** There are always exactly two groups. Source
+  groups appear and vanish with the credit, so the page moves under you from one
+  case to the next and nothing is where you left it.
+
+**Source is the *Cited as* column** — the domain knowledge is there for whoever
+wants it and costs nothing to whoever does not. Classification follows where the
+*content* of the obligation sits, not which article describes how to examine it:
+"documents required by field 46A not presented" cites the credit; UCP 14(a) is the
+standard applied, not the requirement applied. Structure by what everyone can
+read; put what experts need in the data.
+
+The group header **is** the kind indicator, and it carries that kind's economics
+and its policy — so nothing has to be repeated per row and no summary block sits
+above the plan eating the space the plan needs.
 
 Two things that are neither axis, and so are their own groups: **Added by you**
 (provenance — the officer's, not the credit's) and **Not brought into play**
@@ -542,10 +555,26 @@ Two things that are neither axis, and so are their own groups: **Added by you**
 after signing). There is no need for an "other" kind: what looks like one always
 resolves into source, kind, or provenance.
 
-A rule states its comparison **in the plan list itself** — `On-board date @ Bill of
-lading is on or before Latest shipment date @ Letter of credit`. A rule's whole
-claim on your trust is that you can read it; leaving that behind a click made
-"Rule" a label with nothing under it.
+### The plan is a table, and it takes the width
+
+One line per check, the whole plan at once, rows comparable down a column — which
+is what "overview" means and what a 380px rail cannot give you. Selecting a check
+opens it *beside* the list, not instead of it: reading the plan and studying one
+check are different jobs and the screen should not make you choose. Close the panel
+and the list is full width again.
+
+| | |
+|---|---|
+| **What it reads** | For a rule, the comparison itself — `On-board date ≤ Latest shipment date`. A rule's whole claim on your trust is that you can read it; behind a click it is a label with nothing under it. For a requirement, the credit fields it is handed. Same column, same question. |
+| **Cited as** | The article or the policy. This is the source axis, as data. |
+| **State** | planned · queued · running · passed · discrepancy · **needs a field** · not covered |
+
+Where both sides of a comparison name the same field, the *documents* are the
+comparison — so they are named only then. "Goods description no conflict with Goods
+description" says nothing; `Goods description @ Commercial invoice no conflict with
+@ Letter of credit` says the thing.
+
+Not-brought-into-play collapses to one line: it is reference, not work.
 
 ### Two kinds of check, one execute step
 

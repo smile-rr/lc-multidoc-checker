@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import MarkdownDoc from '@shared/ds/MarkdownDoc'
 import Badge from '@shared/ds/Badge'
+import Chip from '@shared/ds/Chip'
 import Icon from '@shared/ds/Icon'
 import RuleText from '@shared/ds/RuleText'
 import Tabs from '@shared/ds/Tabs'
@@ -90,6 +91,20 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
             </>
           ) : null}
         </div>
+      </div>
+
+      {/* Which kind of check this is, stated before its content — the two cards
+          share a shell, so the shell has to say which one you are reading. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '10px 20px', background: isRule ? 'var(--me-blue-20)' : 'var(--me-green-20)', borderBottom: '1px solid var(--me-grey-15)', flexWrap: 'wrap' }}>
+        <Chip size="sm" tone={isRule ? 'blue' : 'green'}>
+          <Icon name={isRule ? 'equal' : 'list-checks'} size={11} />
+          {isRule ? 'Rule' : 'Requirement'}
+        </Chip>
+        <span style={{ fontSize: 11.5, lineHeight: 1.45, color: isRule ? 'var(--me-blue-deep)' : '#1F7A00' }}>
+          {isRule
+            ? 'Evaluated here on extracted fields. No model reads it, and it answers the same way every time.'
+            : 'Read against the presentation by an agent, which forms a view you can question.'}
+        </span>
       </div>
 
       <Tabs
