@@ -111,7 +111,7 @@ helix:
         "[default]": 90d
         "[convert.tiff_pdf]": 0       # 0 = never
         "[render.pages]": 30d
-        "[parse.mt700]": 0
+        "[extract.credit]": 0       # deterministic at temperature 0
         "[segment.bundle]": 90d
         "[extract.doc]": 90d
         "[plan.requirements]": 30d
@@ -233,11 +233,12 @@ helix:
   # Domain code asks for a role, never a slot. More than one slot on a role means
   # consensus: they run in parallel and vote, first slot breaking ties.
   roles:
-    segment: [vlm-1]
-    extract: [vlm-1]
-    plan:    [llm-1]
-    judge:   [llm-1]
-    narrate: [llm-1]
+    segment:   [vlm-1]
+    read-text: [llm-1]
+    extract:   [vlm-1]
+    plan:      [llm-1]
+    judge:     [llm-1]
+    narrate:   [llm-1]
 
   # --- lc-check -----------------------------------------------------------
   check:

@@ -158,7 +158,7 @@ public class CaseAssembler {
     }
 
     public List<?> creditLines(CaseStore store, String caseId) {
-        return store.stepResult(caseId, "intake", "mt700")
+        return store.stepResult(caseId, "intake", "swift")
                 .map(r -> (List<?>) r.getOrDefault("lines", List.of()))
                 .orElse(List.of());
     }

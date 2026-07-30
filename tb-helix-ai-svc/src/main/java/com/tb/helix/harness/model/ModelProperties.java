@@ -83,6 +83,11 @@ public record ModelProperties(Models models, Map<String, List<String>> roles) {
      * at startup rather than a null model reference halfway through a run.
      */
     public List<String> slotsFor(ModelRole role) {
-        return roles.getOrDefault(role.name().toLowerCase(), List.of());
+        String snake = role.name().toLowerCase();
+        // YAML prefers read-text, the enum is READ_TEXT, and Spring binds a map key
+        // verbatim — so both spellings are accepted rather than making the config file
+        // adopt Java's naming.
+        List<String> found = roles.get(snake.replace('_', '-'));
+        return found != null ? found : roles.getOrDefault(snake, List.of());
     }
 }

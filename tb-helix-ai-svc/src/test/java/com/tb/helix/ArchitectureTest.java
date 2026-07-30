@@ -75,11 +75,13 @@ class ArchitectureTest {
                 // Capability. Uses infrastructure; must not learn what a letter of credit is.
                 .whereLayer("harness").mayOnlyAccessLayers("infra")
 
-                // The two products are siblings, not a hierarchy.
-                .whereLayer("lccheck").mayOnlyAccessLayers("harness", "infra")
-                .whereLayer("lccheck").mayOnlyBeAccessedByLayers("app")
+                // Governance is upstream: it authors the rules lc-check runs. Modelling
+                // that as two siblings meant a port in one and an adapter in `app`, which
+                // dressed a real dependency up as an absent one. lc-check depends on
+                // governance — but only on its model, which the rule below pins.
                 .whereLayer("governance").mayOnlyAccessLayers("harness", "infra")
-                .whereLayer("governance").mayOnlyBeAccessedByLayers("app")
+                .whereLayer("lccheck").mayOnlyAccessLayers("governance", "harness", "infra")
+                .whereLayer("lccheck").mayOnlyBeAccessedByLayers("app")
 
                 .check(classes);
     }
@@ -164,13 +166,22 @@ class ArchitectureTest {
     }
 
     @Test
-    @DisplayName("lc-check and governance never reach into each other")
-    void businessModulesAreSiblings() {
+    @DisplayName("lc-check sees governance's model, not its machinery")
+    void lcCheckSeesOnlyTheGovernanceModel() {
+        // The dependency is real — an examination runs authored rules — so it is declared
+        // rather than hidden behind a port. What is bounded is its width: lc-check reads
+        // `governance.domain` and nothing else, so governance can change how it stores or
+        // serves a check without an examination noticing, and could move behind a network
+        // boundary by reimplementing one interface.
         noClasses()
                 .that().resideInAPackage("com.tb.helix.lccheck..")
-                .should().dependOnClassesThat().resideInAPackage("com.tb.helix.governance..")
-                .because("lc-check reads the rulebook through a port it declares, so governance "
-                        + "can move behind a network boundary without lc-check changing")
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        "com.tb.helix.governance.api..",
+                        "com.tb.helix.governance.persistence..",
+                        "com.tb.helix.governance.service..",
+                        "com.tb.helix.governance.seed..")
+                .because("an examination reads the rulebook's model; how it is authored, "
+                        + "stored or served is none of its business")
                 .allowEmptyShould(true)
                 .check(classes);
 

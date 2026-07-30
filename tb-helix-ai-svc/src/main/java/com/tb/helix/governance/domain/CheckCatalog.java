@@ -1,4 +1,4 @@
-package com.tb.helix.lccheck.catalog;
+package com.tb.helix.governance.domain;
 
 import java.util.List;
 
@@ -13,7 +13,7 @@ import java.util.List;
  * <p>It is also why the two business modules never reference each other, which the build
  * enforces.
  */
-public interface CatalogPort {
+public interface CheckCatalog {
 
     /**
      * One authored check, flattened to what an examination needs.

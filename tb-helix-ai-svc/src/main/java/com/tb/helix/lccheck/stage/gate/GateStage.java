@@ -1,6 +1,7 @@
-package com.tb.helix.lccheck.stage;
+package com.tb.helix.lccheck.stage.gate;
 
-import com.tb.helix.lccheck.catalog.CatalogPort;
+import com.tb.helix.lccheck.persistence.Rows;
+import com.tb.helix.governance.domain.CheckCatalog;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.pipeline.*;
 import org.slf4j.Logger;
@@ -28,10 +29,10 @@ public class GateStage implements Stage {
 
     private static final Logger log = LoggerFactory.getLogger(GateStage.class);
 
-    private final CatalogPort catalog;
+    private final CheckCatalog catalog;
     private final CaseStore cases;
 
-    public GateStage(CatalogPort catalog, CaseStore cases) {
+    public GateStage(CheckCatalog catalog, CaseStore cases) {
         this.catalog = catalog;
         this.cases = cases;
     }
@@ -44,7 +45,7 @@ public class GateStage implements Stage {
     @Override
     public StageOutcome execute(StageContext ctx) {
         Map<String, Object> row = cases.find(ctx.caseId()).orElseThrow();
-        List<CatalogPort.CheckCard> gates = catalog.gates();
+        List<CheckCatalog.CheckCard> gates = catalog.gates();
 
         // An override is the officer saying "I have seen this ground and I am continuing
         // anyway". The finding stays — it is still a discrepancy and still belongs in the
@@ -65,7 +66,7 @@ public class GateStage implements Stage {
         LocalDate expiry = date(row.get("expiry"));
         LocalDate presented = presentationDate(ctx, row);
 
-        for (CatalogPort.CheckCard gate : gates) {
+        for (CheckCatalog.CheckCard gate : gates) {
             cases.upsertPlanCheck(ctx.caseId(), Rows.of(
                     "id", gate.id(), "origin", "DICTIONARY", "tier", "EXACT",
                     "checkType", gate.checkType(), "gate", true, "citedAs", "practice",

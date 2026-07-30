@@ -1,4 +1,4 @@
-package com.tb.helix.lccheck.stage;
+package com.tb.helix.governance.domain;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -6,16 +6,20 @@ import java.util.Map;
 /**
  * The presented document types this examination knows.
  *
- * <p>Codes match what the UI addresses documents by and what facts and findings cite, so
- * they are part of the wire format rather than an internal detail.
+ * <p>Shared vocabulary: Governance binds dictionary fields to these documents and marks
+ * which are available before a presentation is read; lc-check classifies pages into them
+ * and cites them on every fact and finding. One list, or the two modules drift.
+ *
+ * <p>Codes are part of the wire format — the UI addresses a document by its code — so they
+ * are stable, not an internal detail to be renamed.
  *
  * <p>{@code CS} is the covering schedule — the presenting bank's letter, not a document the
  * credit calls for. It carries the presentation date, which is why it earns a place here
  * despite nobody examining it: a hard check on expiry cannot run without it.
  */
-public final class DocTypes {
+public final class DocType {
 
-    private DocTypes() {
+    private DocType() {
     }
 
     public record Def(String code, String label, String abbr, String icon) {

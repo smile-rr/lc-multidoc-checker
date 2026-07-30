@@ -1,5 +1,7 @@
-package com.tb.helix.lccheck.stage;
+package com.tb.helix.lccheck.stage.interpret;
 
+import com.tb.helix.governance.domain.DocType;
+import com.tb.helix.lccheck.persistence.Rows;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tb.helix.harness.doc.PageRenderer;
 import com.tb.helix.harness.doc.RenderProperties;
@@ -128,7 +130,7 @@ public class InterpretStage implements Stage {
                         Integer page = asInt(m.get("page"));
                         Object raw = m.get("docType");
                         String type = raw == null ? "UNKNOWN" : String.valueOf(raw);
-                        if (page != null) out.put(page, DocTypes.ALL.containsKey(type) ? type : "UNKNOWN");
+                        if (page != null) out.put(page, DocType.ALL.containsKey(type) ? type : "UNKNOWN");
                     }
                 }
             }
@@ -145,7 +147,7 @@ public class InterpretStage implements Stage {
 
         int ordinal = 1;
         for (var entry : grouped.entrySet()) {
-            var def = DocTypes.of(entry.getKey());
+            var def = DocType.of(entry.getKey());
             List<Integer> pages = entry.getValue().stream().sorted().toList();
             cases.upsertDocument(ctx.caseId(), def.code(), Rows.of(
                     "role", "presented", "docType", def.label(), "abbr", def.abbr(),
@@ -154,7 +156,7 @@ public class InterpretStage implements Stage {
                     "pages", pages, "extraction", "ocr", "ordinal", ordinal++));
         }
         byPage.forEach((page, code) ->
-                cases.setBundlePage(ctx.caseId(), page, code, DocTypes.of(code).label()));
+                cases.setBundlePage(ctx.caseId(), page, code, DocType.of(code).label()));
     }
 
     // --- Extraction ---------------------------------------------------------
@@ -252,7 +254,7 @@ public class InterpretStage implements Stage {
             not from what you expect the order to be.
 
             Document types:
-            """ + DocTypes.vocabulary() + """
+            """ + DocType.vocabulary() + """
 
             If a page does not clearly belong to any of these, use UNKNOWN. Guessing is worse
             than saying so: a wrong type sends the wrong rules at the document.
@@ -264,7 +266,7 @@ public class InterpretStage implements Stage {
             """;
 
     private static String extractPrompt(String code) {
-        var def = DocTypes.of(code);
+        var def = DocType.of(code);
         return """
                 Read this %s and return the fields written on it.
 

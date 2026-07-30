@@ -1,5 +1,6 @@
-package com.tb.helix.lccheck.stage;
+package com.tb.helix.lccheck.stage.intake;
 
+import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.harness.doc.DocumentConverter;
 import com.tb.helix.harness.doc.PageRenderer;
 import com.tb.helix.infra.blob.BlobOwner;
@@ -35,15 +36,17 @@ public class IntakeStage implements Stage {
     private final BlobStore blobs;
     private final DocumentConverter converter;
     private final PageRenderer renderer;
-    private final Mt700Parser mt700;
+    private final SwiftReader swift;
+    private final CreditReader creditReader;
     private final CaseStore cases;
 
     public IntakeStage(BlobStore blobs, DocumentConverter converter, PageRenderer renderer,
-                       Mt700Parser mt700, CaseStore cases) {
+                       SwiftReader swift, CreditReader creditReader, CaseStore cases) {
         this.blobs = blobs;
         this.converter = converter;
         this.renderer = renderer;
-        this.mt700 = mt700;
+        this.swift = swift;
+        this.creditReader = creditReader;
         this.cases = cases;
     }
 
@@ -66,16 +69,28 @@ public class IntakeStage implements Stage {
             blobs.reference(stored.sha256(), BlobOwner.CASE, caseId, "credit");
             patch.put("credit_text_sha", stored.sha256());
 
-            var parsed = mt700.parse(new String(creditText, java.nio.charset.StandardCharsets.UTF_8));
-            patch.putAll(creditColumns(parsed.credit()));
-            cases.recordStep(caseId, "intake", "mt700", "OK",
-                    Map.of("tags", parsed.tags(), "credit", parsed.credit(), "lines", parsed.lines()),
-                    null, false, null);
+            SwiftMessage message = swift.read(
+                    new String(creditText, java.nio.charset.StandardCharsets.UTF_8));
+            Map<String, Object> credit = creditReader.read(message);
+
+            // An amendment changes terms rather than establishing them, so only what it
+            // actually states is written — CreditReader has already dropped the rest, and a
+            // field absent from a 707 means "unchanged", never "cleared".
+            patch.putAll(creditColumns(credit));
+
+            cases.recordStep(caseId, "intake", "swift", "OK", Map.of(
+                    "messageType", message.type().code(),
+                    "messageLabel", message.type().label(),
+                    "tags", message.tags(),
+                    "credit", credit,
+                    "lines", message.lines()), null, false, null);
 
             cases.upsertDocument(caseId, "mt700", Rows.of(
-                    "role", "credit", "docType", "Letter of credit", "abbr", "LC",
+                    "role", "credit",
+                    "docType", message.type().isCredit() ? "Letter of credit" : message.type().label(),
+                    "abbr", message.type().isCredit() ? "LC" : message.type().code(),
                     "icon", "file-text", "fileName", creditName,
-                    "reference", String.valueOf(parsed.credit().getOrDefault("creditRef", "")),
+                    "reference", String.valueOf(credit.getOrDefault("creditRef", "")),
                     "extraction", "text", "ordinal", 0));
         }
 
@@ -125,13 +140,13 @@ public class IntakeStage implements Stage {
         put(out, "issued_date", date(c.get("issuedDate")));
         put(out, "applicant", c.get("applicant"));
         put(out, "beneficiary", c.get("beneficiary"));
-        put(out, "currency", c.get("currency"));
-        put(out, "amount", c.get("amount"));
-        put(out, "tolerance_pct", c.get("tolerancePct"));
+        put(out, "currency", trim(c.get("currency"), 3));
+        put(out, "amount", decimal(c.get("amount")));
+        put(out, "tolerance_pct", decimal(c.get("tolerancePct")));
         put(out, "latest_shipment", date(c.get("latestShipment")));
         put(out, "expiry", date(c.get("expiry")));
         put(out, "expiry_place", c.get("expiryPlace"));
-        put(out, "presentation_days", c.get("presentationDays"));
+        put(out, "presentation_days", integer(c.get("presentationDays")));
         put(out, "tenor", c.get("tenor"));
         put(out, "goods", c.get("goods"));
         return out;
@@ -151,6 +166,62 @@ public class IntakeStage implements Stage {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /**
+     * A number, however it was written.
+     *
+     * <p>SWIFT uses the comma as the decimal separator: {@code :32B:GBP100,00} is one
+     * hundred pounds, not ten thousand. Stripping the comma — which is what a naive
+     * "keep digits and dots" clean does — multiplies the credit by a hundred, and the
+     * examination then measures every invoice against the wrong amount without anything
+     * looking broken.
+     *
+     * <p>So the separators are read rather than removed: whichever of {@code .} or
+     * {@code ,} appears last is the decimal point, and everything before it is grouping.
+     */
+    private java.math.BigDecimal decimal(Object value) {
+        if (value == null) return null;
+        if (value instanceof Number n) return new java.math.BigDecimal(n.toString());
+
+        String s = String.valueOf(value).strip().replaceAll("[^0-9.,\\-]", "");
+        if (s.isBlank()) return null;
+
+        int lastDot = s.lastIndexOf('.');
+        int lastComma = s.lastIndexOf(',');
+        int decimalAt = Math.max(lastDot, lastComma);
+
+        String normalised;
+        if (decimalAt < 0) {
+            normalised = s;
+        } else {
+            // A trailing group of three digits after the only separator is ambiguous —
+            // 1,000 is a thousand in one convention and one in the other. SWIFT amounts
+            // always carry their decimals, so treat it as grouping only when it is the
+            // sole separator and leaves exactly three digits.
+            String tail = s.substring(decimalAt + 1);
+            boolean grouping = tail.length() == 3 && lastDot < 0 != lastComma < 0;
+            normalised = grouping
+                    ? s.replaceAll("[.,]", "")
+                    : s.substring(0, decimalAt).replaceAll("[.,]", "") + "." + tail;
+        }
+        try {
+            return new java.math.BigDecimal(normalised);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private Integer integer(Object value) {
+        java.math.BigDecimal d = decimal(value);
+        return d == null ? null : d.intValue();
+    }
+
+    /** A fixed-width column will not take an over-long value; CHAR(3) means CHAR(3). */
+    private String trim(Object value, int max) {
+        if (value == null) return null;
+        String s = String.valueOf(value).strip();
+        return s.isEmpty() ? null : s.substring(0, Math.min(s.length(), max));
     }
 
     // A null must stay out of the patch entirely, or it overwrites a value parsed earlier.

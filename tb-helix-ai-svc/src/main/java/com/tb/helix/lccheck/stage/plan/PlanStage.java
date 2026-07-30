@@ -1,5 +1,6 @@
-package com.tb.helix.lccheck.stage;
+package com.tb.helix.lccheck.stage.plan;
 
+import com.tb.helix.lccheck.persistence.Rows;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tb.helix.harness.model.ModelGateway;
 import com.tb.helix.harness.model.ModelRole;
@@ -7,7 +8,7 @@ import com.tb.helix.harness.model.TextRequest;
 import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
-import com.tb.helix.lccheck.catalog.CatalogPort;
+import com.tb.helix.governance.domain.CheckCatalog;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.pipeline.*;
 import org.slf4j.Logger;
@@ -37,13 +38,13 @@ public class PlanStage implements Stage {
 
     private static final Logger log = LoggerFactory.getLogger(PlanStage.class);
 
-    private final CatalogPort catalog;
+    private final CheckCatalog catalog;
     private final CaseStore cases;
     private final ModelGateway models;
     private final DerivationCache cache;
     private final ObjectMapper json;
 
-    public PlanStage(CatalogPort catalog, CaseStore cases, ModelGateway models,
+    public PlanStage(CheckCatalog catalog, CaseStore cases, ModelGateway models,
                      DerivationCache cache, ObjectMapper json) {
         this.catalog = catalog;
         this.cases = cases;
@@ -64,7 +65,7 @@ public class PlanStage implements Stage {
 
         int ordinal = 1;
         int planned = 0;
-        for (CatalogPort.CheckCard card : catalog.activeChecks()) {
+        for (CheckCatalog.CheckCard card : catalog.activeChecks()) {
             if (card.isGate()) continue;   // already run, already recorded
 
             // A trigger that is not met records NOT_APPLICABLE with a reason. "We did not
@@ -101,7 +102,7 @@ public class PlanStage implements Stage {
      * cases under the same credit share the reading.
      */
     private int planRequirements(StageContext ctx, Map<String, Object> row, int ordinal) {
-        Optional<Map<String, Object>> parsed = cases.stepResult(ctx.caseId(), "intake", "mt700");
+        Optional<Map<String, Object>> parsed = cases.stepResult(ctx.caseId(), "intake", "swift");
         if (parsed.isEmpty()) return 0;
 
         @SuppressWarnings("unchecked")
@@ -160,7 +161,7 @@ public class PlanStage implements Stage {
     }
 
     // Areas group checks so the UI can report progress per group rather than per check.
-    private String area(CatalogPort.CheckCard card) {
+    private String area(CheckCatalog.CheckCard card) {
         String d = card.domain() == null ? "" : card.domain().toLowerCase();
         if (d.contains("time") || d.contains("expiry")) return "a1";
         if (d.contains("transport") || d.contains("shipment")) return "a2";

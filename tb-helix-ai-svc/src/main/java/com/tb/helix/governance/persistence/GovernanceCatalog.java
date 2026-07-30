@@ -1,7 +1,7 @@
-package com.tb.helix.app;
+package com.tb.helix.governance.persistence;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tb.helix.lccheck.catalog.CatalogPort;
+import com.tb.helix.governance.domain.CheckCatalog;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -11,22 +11,22 @@ import java.util.Map;
 /**
  * The rulebook, served to lc-check.
  *
- * <p>Implements a port lc-check declared, over tables governance owns — so it belongs to
- * neither module and lives in {@code app}, the one layer allowed to know both. Putting it
- * on the governance side would have made governance depend on lc-check, which is exactly
- * the coupling the port exists to prevent, and the build says so.
+ * <p>In {@code persistence} because that is what it is — a query over governance's own
+ * tables. It reads live {@code check_def} today; when the pin mode becomes RELEASE it reads
+ * the frozen snapshot instead, so the rule that ran is the rule as it stood, and lc-check
+ * does not change either way.
  *
  * <p>Reads live {@code check_def} today. When {@code helix.check.catalog.pin-mode} becomes
  * RELEASE this reads the pinned snapshot instead — the rule that ran is the rule as it
  * stood — and lc-check does not change.
  */
 @Component
-public class GovernanceCatalogAdapter implements CatalogPort {
+public class GovernanceCatalog implements CheckCatalog {
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
 
-    public GovernanceCatalogAdapter(JdbcTemplate jdbc, ObjectMapper json) {
+    public GovernanceCatalog(JdbcTemplate jdbc, ObjectMapper json) {
         this.jdbc = jdbc;
         this.json = json;
     }

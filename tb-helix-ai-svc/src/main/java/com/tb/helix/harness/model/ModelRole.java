@@ -27,6 +27,14 @@ public enum ModelRole {
     /** Read fields off a document's pages. Vision, and the dominant cost of a run. */
     EXTRACT,
 
+    /**
+     * Read structured text into fields — a SWIFT message, a covering schedule.
+     *
+     * <p>Distinct from {@link #EXTRACT}, which reads images: the same job one layer down,
+     * and rendering text to a picture to read it back would be absurd.
+     */
+    READ_TEXT,
+
     /** Read this credit's 46A/47A into requirement cards. Text. */
     PLAN,
 

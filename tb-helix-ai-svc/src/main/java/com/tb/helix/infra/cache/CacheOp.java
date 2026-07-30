@@ -32,9 +32,14 @@ public final class CacheOp {
     public static final String RENDER_PAGES = "render.pages";
     public static final int    RENDER_PAGES_V = 1;
 
-    /** MT700 text to structured credit terms. Pure parsing; never expires. */
-    public static final String PARSE_MT700 = "parse.mt700";
-    public static final int    PARSE_MT700_V = 1;
+    /**
+     * A SWIFT message to its terms.
+     *
+     * <p>Keyed on the message digest and its type, so the same credit is read once ever and
+     * an amendment is a separate entry from the credit it amends.
+     */
+    public static final String EXTRACT_CREDIT = "extract.credit";
+    public static final int    EXTRACT_CREDIT_V = 1;
 
     /** Bundle pages to document types and page ranges. */
     public static final String SEGMENT_BUNDLE = "segment.bundle";

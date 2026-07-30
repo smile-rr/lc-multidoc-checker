@@ -1,13 +1,16 @@
 package com.tb.helix.lccheck.service;
 
+import com.tb.helix.lccheck.stage.intake.CreditReader;
+import com.tb.helix.lccheck.stage.intake.IntakeStage;
+import com.tb.helix.lccheck.stage.intake.SwiftReader;
 import com.tb.helix.infra.blob.BlobStore;
 import com.tb.helix.infra.error.NotFoundException;
 import com.tb.helix.harness.doc.PageRenderer;
 import com.tb.helix.lccheck.domain.*;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.pipeline.StageId;
-import com.tb.helix.lccheck.stage.IntakeStage;
-import com.tb.helix.lccheck.stage.Mt700Parser;
+import com.tb.helix.lccheck.stage.intake.CreditReader;
+import com.tb.helix.lccheck.stage.intake.SwiftReader;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -34,16 +37,19 @@ public class CaseService {
     private final IntakeStage intake;
     private final BlobStore blobs;
     private final PageRenderer renderer;
-    private final Mt700Parser mt700;
+    private final SwiftReader swift;
+    private final CreditReader creditReader;
 
     public CaseService(CaseStore store, CaseAssembler assembler, IntakeStage intake,
-                       BlobStore blobs, PageRenderer renderer, Mt700Parser mt700) {
+                       BlobStore blobs, PageRenderer renderer,
+                       SwiftReader swift, CreditReader creditReader) {
         this.store = store;
         this.assembler = assembler;
         this.intake = intake;
         this.blobs = blobs;
         this.renderer = renderer;
-        this.mt700 = mt700;
+        this.swift = swift;
+        this.creditReader = creditReader;
     }
 
     // --- Reading ------------------------------------------------------------
@@ -120,7 +126,7 @@ public class CaseService {
     }
 
     public List<Map<String, String>> peek(byte[] creditText) {
-        return assembler.peek(mt700.parse(new String(creditText, StandardCharsets.UTF_8)).credit());
+        return assembler.peek(creditReader.read(swift.read(new String(creditText, StandardCharsets.UTF_8))));
     }
 
     public void decide(String ref, String findingRef, String disposition, String note, String officerId) {

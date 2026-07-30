@@ -1,5 +1,7 @@
-package com.tb.helix.lccheck.stage;
+package com.tb.helix.lccheck.stage.execute;
 
+import com.tb.helix.governance.domain.DocType;
+import com.tb.helix.lccheck.persistence.Rows;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tb.helix.harness.model.ModelGateway;
 import com.tb.helix.harness.model.ModelRole;
@@ -8,7 +10,7 @@ import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
 import com.tb.helix.infra.stream.HelixEvent;
-import com.tb.helix.lccheck.catalog.CatalogPort;
+import com.tb.helix.governance.domain.CheckCatalog;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.pipeline.*;
 import org.slf4j.Logger;
@@ -33,13 +35,13 @@ public class ExecuteStage implements Stage {
 
     private static final Logger log = LoggerFactory.getLogger(ExecuteStage.class);
 
-    private final CatalogPort catalog;
+    private final CheckCatalog catalog;
     private final CaseStore cases;
     private final ModelGateway models;
     private final DerivationCache cache;
     private final ObjectMapper json;
 
-    public ExecuteStage(CatalogPort catalog, CaseStore cases, ModelGateway models,
+    public ExecuteStage(CheckCatalog catalog, CaseStore cases, ModelGateway models,
                         DerivationCache cache, ObjectMapper json) {
         this.catalog = catalog;
         this.cases = cases;
@@ -179,7 +181,7 @@ public class ExecuteStage implements Stage {
         for (Map<String, Object> f : cases.facts(ctx.caseId())) {
             String doc = String.valueOf(f.get("doc_code"));
             if (!doc.equals(current)) {
-                sb.append("  ").append(DocTypes.of(doc).label()).append(" (").append(doc).append(")\n");
+                sb.append("  ").append(DocType.of(doc).label()).append(" (").append(doc).append(")\n");
                 current = doc;
             }
             sb.append("    ").append(f.get("label")).append(": ").append(f.get("value"));
