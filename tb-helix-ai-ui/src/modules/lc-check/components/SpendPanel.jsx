@@ -1,4 +1,5 @@
 import { cardSurface } from '@shared/ds/Card'
+import { ellipsis } from '@shared/ds/text'
 import Eyebrow from '@shared/ds/Eyebrow'
 import Icon from '@shared/ds/Icon'
 import InfoTip from '@shared/ds/InfoTip'
@@ -22,29 +23,6 @@ import { qualityRates } from '../data/fixtures.js'
 // good it is — and **every number carries a tooltip saying what it measures**.
 // An unexplained metric in a governance panel is worse than no metric: someone
 // will quote it in a meeting having guessed at its definition.
-//
-// ---------------------------------------------------------------------------
-// **One headline and one or two lines a cell. Nothing else.**
-//
-// This panel had grown to about twenty-five numbers, which is not a panel — it is a
-// report, and a report nobody reads past the first row. The test applied to every
-// figure was: *does it move, and does moving it change what somebody does?*
-//
-// Cut for not moving (structural facts, true this month and next, better stated once
-// in the docs than reported daily): the per-model cost bar and its legend, cost per
-// page, cost per hundred cases, what caching kept off the bill.
-//
-// Cut for being volume rather than performance: pages read, cards run, findings
-// evidenced. They say the queue was busy, not that the examination was good.
-//
-// Cut for saying the same thing twice: the "raised, not upheld" count, which is
-// precision in another unit and sat directly beneath it; and the slowest-case bar,
-// which drew the sentence next to it.
-//
-// The rule/requirement economics survive as **one line, not two** — a table of them
-// in the quality cell was the single densest thing here and its finding compresses
-// to a clause: *all three misses are in the judged half*.
-// ---------------------------------------------------------------------------
 export default function SpendPanel({ spend }) {
   const [open, setOpen] = usePersistedState('lcCheck.spendPanel', true)
 
@@ -55,32 +33,13 @@ export default function SpendPanel({ spend }) {
   const b = spend.benchmark
   const windowHours = b.examinationWindowDays * 24
   const headroom = (1 - b.slowestHoursToDecision / windowHours) * 100
+  const reusePct = b.documentsRead ? (b.documentsReused / b.documentsRead) * 100 : 0
 
   const q = b.quality.current
   const p = b.quality.previous
   const now = qualityRates(q)
   const then = qualityRates(p)
-
-  // Which half the misses are in, as a clause rather than a table.
-  //
-  // It is the most decision-relevant fact about quality and it was a four-column
-  // grid — the densest thing on the panel for a finding that fits in six words. A
-  // Rule card cannot be wrong about its comparison, so a rule that misses or
-  // over-raises means a misread field or a mis-authored card: a dictionary job,
-  // reproducible, and it stays fixed. A Requirement card is a model reading prose,
-  // where the fix is the prompt or accepting the question needs a person.
-  // One clause, one separator. "rules missed none" is what "all in requirement
-  // cards" already says, and `Count` puts a `·` before the note, so a second one
-  // inside it made the line read as three fragments.
-  const kinds = q.byKind
-  const missedNote = [
-    kinds && q.falseNegative
-      ? kinds.rule.falseNegative === 0
-        ? 'all in requirement cards'
-        : `${kinds.rule.falseNegative} in rule cards, ${kinds.requirement.falseNegative} in requirement`
-      : null,
-    q.falseNegativeNote,
-  ].filter(Boolean).join(' — ')
+  const paid = spend.byModel.filter((m) => m.cost > 0)
 
   return (
     <div style={shell}>
@@ -110,49 +69,83 @@ export default function SpendPanel({ spend }) {
           {/* ---- 1. What you get ---------------------------------------- */}
           <Cell>
             <Eyebrow size="sm">Turnaround</Eyebrow>
-            <Big title="Time to findings" tip="Wall-clock time for the automated examination itself: from the file being accepted to every card having returned. Machine time only — it does not include anyone reading the result.">
+            <Big title="Time to findings" tip="Wall-clock time for the automated examination itself: from the file being accepted to every check having returned. Machine time only — it does not include anyone reading the result.">
               {duration(spend.medianWallClock)}
             </Big>
             <Note>median time to findings — a case is decision-ready before it is opened</Note>
 
+            <Split>
+              <Unit label="pages read" value={String(spend.totalPages)} tip="Bundle pages rendered and read by the vision model across all cases examined this period." />
+              <Unit label="cards run" value={String(spend.checksRun)} tip="Rule and Requirement cards executed. Excludes cards whose trigger the credit did not meet — those are recorded as not applicable, never as passes." />
+              <Unit label="findings" value={String(spend.findingsRaised)} tip="Conclusions returned with quoted evidence and a citation, of every severity — discrepancies, possible discrepancies, clean results and items left for a person." />
+            </Split>
+
             <Rule />
-            {/* The one figure here with regulatory teeth: under art. 16(f) a bank
-                that misses the window is precluded from calling the documents
-                non-compliant at all. The bar that used to sit under this drew the
-                same fact the sentence states. */}
             <Line
               label="Presentation to Decision"
               value={`${b.medianHoursToDecision} h`}
               tip="Elapsed time from documents arriving at the counter to the officer's decision being recorded. This is the whole process — queueing, examination and review — not machine time. It is here because UCP 600 art. 14(b) allows five banking days and a missed window forfeits the right to refuse."
-              note={`median. Slowest ${b.slowestHoursToDecision} h of the ${windowHours} h art. 14(b) allows — ${percent(headroom)} of the window still free.`}
+              note={`median. Slowest ${b.slowestHoursToDecision} h against the ${b.examinationWindowDays}-banking-day limit in art. 14(b) — ${percent(headroom)} of the window still free.`}
             />
+            <div
+              title={`The slowest case this period used ${b.slowestHoursToDecision} h of the ${windowHours} h the rules allow.`}
+              style={{ display: 'flex', height: 6, borderRadius: 999, overflow: 'hidden', background: 'var(--me-grey-15)', marginTop: 8, cursor: 'help' }}
+            >
+              <div style={{ width: `${(b.slowestHoursToDecision / windowHours) * 100}%`, background: 'var(--me-blue)' }} />
+            </div>
+            <span style={{ fontSize: 10.5, color: 'var(--me-grey-70)', marginTop: 4 }}>
+              slowest case against the {b.examinationWindowDays}-day window
+            </span>
           </Cell>
 
           {/* ---- 2. What it costs --------------------------------------- */}
           <Cell>
             <Eyebrow size="sm">Spend</Eyebrow>
-            {/* Per case leads and the total is demoted to its note.
-
-                This reverses an earlier call that led with the total because that is
-                the number a budget holder gets asked for. The same paragraph
-                defending it conceded that a total only ever rises and so cannot show
-                a regression — which, on a panel cut to the figures that move,
-                decides it. The total is still here, one line down, for whoever needs
-                to quote it. */}
-            <Big title="Cost per case" tip="Model spend divided by cases examined this period. Watch this rather than the total: a total only ever rises, so it cannot show a regression.">
-              {usd(spend.avgCostPerCase)}
+            <Big title="Spend" tip="Total model spend for every case examined this period, priced per model at its own input and output rates.">
+              {usd(spend.totalCost)}
             </Big>
-            <Note>
-              per case · {plural(spend.casesExamined, 'case')} examined · {usd(spend.totalCost)} for the period
-            </Note>
+            <Note>total for the period · {plural(spend.casesExamined, 'case')} checked · {spend.totalPages} pages</Note>
+
+            <Split>
+              <Unit label="per case" value={usd(spend.avgCostPerCase)} tip="Total divided by cases examined. Watch this rather than the total: a total only ever rises, so it cannot show a regression." />
+              <Unit label="per page" value={usd(spend.avgCostPerPage)} tip="Total divided by pages read. The fairest unit to compare bundles of different sizes." />
+              <Unit label="per 100" value={usd(spend.avgCostPerCase * 100)} tip="Cost per hundred cases, at the current rate. A scale-free figure to budget and forecast with." />
+            </Split>
+
+            {/* Only what costs something. The engine that settles the rule cards is
+                in `byModel` because it did work, but a 0% slice is an invisible bar
+                and a 0% legend row reads as a model that failed to report. Its
+                contribution is stated as a sentence below instead, which is the more
+                interesting form anyway. */}
+            <Bar models={paid} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 6 }}>
+              {paid.map((m) => (
+                <div
+                  key={m.modelId}
+                  title={`${m.label} — ${m.role}. ${percent(m.costShare * 100)} of spend, ${usd(m.cost)}.`}
+                  style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 11, cursor: 'help' }}
+                >
+                  <span style={{ width: 7, height: 7, borderRadius: 2, background: modelColour(m.modelId), flexShrink: 0 }} />
+                  <span style={{ color: 'var(--me-grey)', flex: 1, minWidth: 0, ...ellipsis }}>{m.label}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--me-grey-70)' }}>{percent(m.costShare * 100)}</span>
+                </div>
+              ))}
+            </div>
 
             <Rule />
             <Line
               label="Settled Without a Model"
               value={`${spend.freeCardsPerCase} / ${spend.cardsPerCase}`}
               tone="var(--status-success)"
-              tip="Rule cards per case: settled by comparing extracted fields, with no model call, no tokens and no cost. They give the same answer every time and, unlike the rest, their cost does not grow with the size of the bundle. The remainder are Requirement cards, which an agent reads — that is the whole of the spend above."
+              tip="Rule cards per case: settled by comparing extracted fields, with no model call, no tokens and no cost. They give the same answer every time and their cost does not grow with the size of the bundle. The rest are Requirement cards, which an agent reads — that is the whole of the spend above."
               note={`cards per case settled by comparison — ${percent(spend.freeCardPct)} of the examination, at no cost and identical on every run.`}
+            />
+            <Line
+              label="Kept off the Bill"
+              value={usd(spend.costAvoided)}
+              tone="var(--status-success)"
+              tip="Money not spent because work was reused: documents already read are served from the extract cache without re-rendering or re-calling the model, and repeated prompt context is billed at a fraction of full rate. Derived from the same usage as the spend above, so the two reconcile."
+              note={`${b.documentsReused} of ${b.documentsRead} documents served from cache, ${percent(spend.cachedInputPct)} of input tokens reused — ${percent(reusePct)} of the reading not repeated.`}
             />
           </Cell>
 
@@ -196,12 +189,16 @@ export default function SpendPanel({ spend }) {
                 lowerIsBetter
                 tone={q.falseNegative ? 'var(--status-error)' : 'var(--status-success)'}
                 emphasise
-                note={missedNote}
+                note={q.falseNegativeNote}
               />
-              {/* "Raised, not upheld" was here as a count. It is precision in
-                  another unit, sitting directly beneath precision — the same fact
-                  twice, and precision's own detail line already carries the raw
-                  numbers. */}
+              <Count
+                label="Raised, Not Upheld"
+                tip="False positives. We flagged it, review set it aside. Costs an officer attention but nothing else."
+                value={q.falsePositive}
+                previous={p.falsePositive}
+                lowerIsBetter
+                note={`most often ${q.falsePositiveTopCause}`}
+              />
               <Count
                 label="Conditions Covered"
                 tip="Share of the conditions in these credits that a card in the dictionary was able to test. The remainder were surfaced as open questions for a person — never passed silently."
@@ -210,6 +207,15 @@ export default function SpendPanel({ spend }) {
                 suffix="%"
               />
             </div>
+
+            {/* Which half the errors are in — the question that decides what to do
+                about them. A Rule card cannot be wrong about its comparison, so when
+                one does not stand it is the extraction or the authoring: a dictionary
+                job, reproducible, and it stays fixed. A Requirement card is a model
+                reading prose, where the fix is the prompt or accepting that the
+                question needs a person. One blended rate hides which conversation to
+                have. */}
+            {q.byKind ? <KindSplit current={q.byKind} previous={p.byKind} /> : null}
           </Cell>
         </div>
       ) : null}
@@ -218,6 +224,80 @@ export default function SpendPanel({ spend }) {
 }
 
 // ---------------------------------------------------------------- pieces ----
+
+/**
+ * Errors by card kind.
+ *
+ * Deliberately not two more precision/recall pairs — that would double the rates on
+ * the panel and invite someone to quote whichever is higher. Three counts each, in
+ * the columns that matter: what stood, what did not, and what was missed.
+ */
+function KindSplit({ current, previous }) {
+  const rows = [
+    { key: 'rule', label: 'Rule cards', icon: 'equal', colour: 'var(--me-blue-deep)', tip: 'Cards settled by comparing extracted fields. Deterministic — the comparison cannot be wrong, so a finding that does not stand means a misread field or a mis-authored card.' },
+    { key: 'requirement', label: 'Requirement cards', icon: 'list-checks', colour: '#1F7A00', tip: 'Cards an agent reads and forms a view on. Where judgement lives, and where the misses are.' },
+  ]
+  return (
+    <div style={{ marginTop: 10, paddingTop: 9, borderTop: '1px solid var(--me-grey-08)', display: 'flex', flexDirection: 'column', gap: 7 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 42px 42px 42px', gap: 6, fontSize: 10, color: 'var(--me-grey-50)' }}>
+        <span>by card kind</span>
+        <span style={{ textAlign: 'right' }} title="Findings that stood on review">stood</span>
+        <span style={{ textAlign: 'right' }} title="Raised, then set aside on review">set aside</span>
+        <span style={{ textAlign: 'right' }} title="Real discrepancies not raised, found downstream">missed</span>
+      </div>
+      {rows.map((r) => {
+        const c = current[r.key]
+        const was = previous?.[r.key]
+        if (!c) return null
+        return (
+          <div key={r.key} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 42px 42px 42px', gap: 6, alignItems: 'baseline' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0, fontSize: 11.5, color: 'var(--me-ink)' }}>
+                <span style={{ display: 'flex', flexShrink: 0, color: r.colour }}><Icon name={r.icon} size={11} color="currentColor" /></span>
+                <span style={{ minWidth: 0, ...ellipsis }}>
+                  <InfoTip label={r.label} title={r.label}>{r.tip}</InfoTip>
+                </span>
+              </span>
+              <Num value={c.truePositive} />
+              <Num value={c.falsePositive} was={was?.falsePositive} />
+              <Num value={c.falseNegative} was={was?.falseNegative} tone={c.falseNegative ? 'var(--status-error)' : 'var(--status-success)'} />
+            </div>
+            {c.cause ? (
+              <span style={{ fontSize: 10, color: 'var(--me-grey-70)', paddingLeft: 16, lineHeight: 1.4 }}>{c.cause}</span>
+            ) : null}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+const Num = ({ value, was, tone }) => (
+  <span
+    title={was == null ? undefined : `was ${was} in the previous period`}
+    style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: tone || 'var(--me-ink)', textAlign: 'right', cursor: was == null ? 'default' : 'help' }}
+  >
+    {value}
+  </span>
+)
+
+// One colour per model, in the order the cost roll-up returns them.
+const PALETTE = ['var(--me-blue)', 'var(--me-green)', 'var(--me-navy)', 'var(--me-blue-50)']
+const ORDER = new Map()
+const modelColour = (id) => {
+  if (!ORDER.has(id)) ORDER.set(id, ORDER.size)
+  return PALETTE[ORDER.get(id) % PALETTE.length]
+}
+
+function Bar({ models }) {
+  return (
+    <div style={{ display: 'flex', height: 8, borderRadius: 999, overflow: 'hidden', background: 'var(--me-grey-15)', marginTop: 12 }}>
+      {models.map((m) => (
+        <div key={m.modelId} title={`${m.label} — ${percent(m.costShare * 100)}`} style={{ width: `${m.costShare * 100}%`, background: modelColour(m.modelId) }} />
+      ))}
+    </div>
+  )
+}
 
 /**
  * Movement against the previous period.
@@ -332,7 +412,20 @@ const Note = ({ children }) => (
   <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)', lineHeight: 1.45, marginTop: 2 }}>{children}</span>
 )
 
+const Split = ({ children }) => (
+  <div style={{ display: 'flex', gap: 14, marginTop: 10, paddingTop: 9, borderTop: '1px solid var(--me-grey-08)' }}>{children}</div>
+)
+
 const Rule = () => <div style={{ marginTop: 10, paddingTop: 9, borderTop: '1px solid var(--me-grey-08)' }} />
+
+const Unit = ({ label, value, tip }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
+    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13.5, color: 'var(--me-ink)', whiteSpace: 'nowrap' }}>{value}</span>
+    <span style={{ fontSize: 11, color: 'var(--me-grey-70)' }}>
+      <InfoTip label={label} title={label}>{tip}</InfoTip>
+    </span>
+  </div>
+)
 
 const Line = ({ label, value, note, tip, tone }) => (
   <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
