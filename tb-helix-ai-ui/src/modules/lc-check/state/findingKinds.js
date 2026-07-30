@@ -27,7 +27,9 @@
 // The tier — exact or judged — rides on the row as a mark rather than splitting the
 // list, because it answers a different question: not *who can answer for this* but
 // *how far can I trust it and what did it cost*. The cost drawer groups by tier for
-// exactly that reason.
+// exactly that reason. One component renders it on all four surfaces
+// (`components/TierTag`), because a mark meaning "trust this differently" must not
+// look different from screen to screen.
 export const KIND_GROUPS = [
   {
     key: 'rule',
@@ -71,12 +73,6 @@ export function kindMark(key) {
   return { icon: 'list-checks', color: '#1F7A00', title: "A Requirement card, read out of this credit's own text" }
 }
 
-/** The tier mark: how it was settled, and therefore how far to trust it. */
-export function tierMark(tier) {
-  return tier === 'exact'
-    ? { label: 'exact', color: 'var(--me-blue-deep)', title: 'Fields compared. No model, same answer every time.' }
-    : { label: 'judged', color: '#1F7A00', title: 'An agent read it and formed a view. Read it before you rely on it.' }
-}
 
 /**
  * Group findings by kind, dropping empty groups.

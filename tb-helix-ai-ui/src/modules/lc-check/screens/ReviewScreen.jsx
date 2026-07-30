@@ -17,7 +17,8 @@ import { PANE_FILL } from '../components/paneHeight'
 import DiscrepancyStatement from '../components/DiscrepancyStatement'
 import DispositionChips from '../components/DispositionChips'
 import { severityMeta, dispositionLabel } from '../state/severity'
-import { groupByKind, kindOf, kindMark, tierMark } from '../state/findingKinds'
+import { groupByKind, kindOf, kindMark } from '../state/findingKinds'
+import TierTag from '../components/TierTag'
 import { useCase } from '../state/CaseContext'
 
 // Stage 4 — the findings.
@@ -395,6 +396,7 @@ function RailRow({ finding, subtitle, selected, decision, onSelect }) {
         <span style={{ ...ellipsis, flex: 1, minWidth: 0, fontFamily: 'var(--font-mono)', fontSize: 10, color: finding.checkId || finding.raisedByOfficer ? 'var(--me-grey-70)' : '#946400' }}>
           {finding.checkId ?? (finding.raisedByOfficer ? 'yours' : 'no rule')}
         </span>
+        <TierTag tier={finding.settledBy} checkType={finding.checkType} size="dot" />
         {/* Always rendered, so a decision does not change the row's width or height. */}
         <span style={{ flex: '0 0 13px', display: 'flex', justifyContent: 'flex-end' }}>
           {decision ? <Icon name="check" size={13} color="var(--status-success)" /> : null}
@@ -559,11 +561,7 @@ function FindingRow({ finding, decision, docById, onSelect }) {
         </span>
         {/* How it was settled, which the group no longer says — the list is grouped
             by where the card came from. */}
-        {finding.settledBy ? (
-          <span title={tierMark(finding.settledBy).title} style={{ fontSize: 10, color: tierMark(finding.settledBy).color, whiteSpace: 'nowrap' }}>
-            {tierMark(finding.settledBy).label}
-          </span>
-        ) : null}
+        <TierTag tier={finding.settledBy} checkType={finding.checkType} />
         <span style={{ ...ellipsis, fontSize: 10, color: '#946400' }}>
           {finding.gap === 'not settled' ? 'not settled' : ''}
         </span>

@@ -1282,6 +1282,7 @@ function withProvenance(findings, checksById, facts) {
     return {
       ...f,
       settledBy,
+      checkType: check ? check.checkType : null,
       origin,
       source: check ? check.source : null,
       comparison: settledBy === 'exact' ? ruleOutcome(f.checkId, facts, failedRow) : null,

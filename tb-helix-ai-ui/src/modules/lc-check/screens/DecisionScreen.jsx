@@ -10,6 +10,7 @@ import DispositionChips from '../components/DispositionChips'
 import DiscrepancyStatement from '../components/DiscrepancyStatement'
 import { severityMeta, dispositionLabel, VERDICTS } from '../state/severity'
 import { groupByKind, kindOf, kindMark } from '../state/findingKinds'
+import TierTag from '../components/TierTag'
 import { PANE_FILL } from '../components/paneHeight'
 import { useCase } from '../state/CaseContext'
 
@@ -199,6 +200,9 @@ export default function DecisionScreen({ onOpenFinding }) {
                       <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)', minWidth: 0, ...ellipsis }}>
                         {check?.name ?? docById[f.docId]?.docType ?? f.area}
                       </span>
+                      {/* How it was settled. On this screen it decides whether the
+                          statement can go out as written or has to be read first. */}
+                      <TierTag tier={f.settledBy} checkType={f.checkType} />
                       {/* What it is cited against, which decides whether it can go on
                           a refusal advice at all. */}
                       {CITE[f.source] ? (

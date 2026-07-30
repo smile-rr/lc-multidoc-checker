@@ -11,6 +11,7 @@ import { judgedRuleCost } from '../state/runCost'
 import { severityMeta } from '../state/severity'
 import { SOURCE_META } from '../data/checkSpecs'
 import CheckSpecCard from '../components/CheckSpecCard'
+import TierTag from '../components/TierTag'
 import { PANE_FILL } from '../components/paneHeight'
 import { useCase } from '../state/CaseContext'
 
@@ -386,7 +387,7 @@ function Row({ check, status, finding, on, dense, onSelect }) {
         </span>
         <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-            <TierDot tier={check.tier} checkType={check.checkType} />
+            <TierTag tier={check.tier} checkType={check.checkType} size="dot" />
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--me-grey-70)', flexShrink: 0 }}>{check.id}</span>
             <span style={{ ...ellipsis, fontSize: 12.5, fontWeight: on ? 600 : 400, color: on ? 'var(--me-blue-deep)' : muted ? 'var(--me-grey-70)' : 'var(--me-ink)' }}>{check.name}</span>
           </span>
@@ -419,7 +420,7 @@ function Row({ check, status, finding, on, dense, onSelect }) {
       </span>
 
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-        <TierDot tier={check.tier} checkType={check.checkType} />
+        <TierTag tier={check.tier} checkType={check.checkType} />
         <span style={{ ...ellipsis, fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--me-grey-70)' }}>{check.id}</span>
       </span>
 
@@ -435,28 +436,6 @@ function Row({ check, status, finding, on, dense, onSelect }) {
 
       <StateLabel check={check} status={status} finding={finding} sev={sev} rd={rd} needsField={needsField} />
     </button>
-  )
-}
-
-// How a card is settled, as one mark rather than a section of the list.
-//
-// The list is grouped by where a card came from — who can answer for it — and this
-// answers the other question: how far can I trust it, and what did it cost. An exact
-// card is arithmetic you can check in seconds; a judged one is a view somebody has to
-// read. The service's own tier is in the tooltip, because AGENT against AGENTIC is
-// the difference in the bill and a card's detail should not be the only place to see
-// it.
-function TierDot({ tier, checkType }) {
-  const exact = tier === 'exact'
-  return (
-    <span
-      title={exact
-        ? `Exact · ${checkType ?? 'PROGRAMMATIC'} — an expression over extracted fields. No model, same answer every time.`
-        : `Judged · ${checkType ?? 'AGENT'} — an agent reads it and forms a view.`}
-      style={{ display: 'flex', flexShrink: 0, color: exact ? 'var(--me-blue-deep)' : '#1F7A00' }}
-    >
-      <Icon name={exact ? 'equal' : 'list-checks'} size={11} color="currentColor" />
-    </span>
   )
 }
 
