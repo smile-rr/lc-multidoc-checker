@@ -55,6 +55,7 @@ export default function Check({ check }) {
           {check.id}
         </span>
         <TypeBadge check={check} />
+        <GateBadge check={check} />
         <input
           ref={titleRef}
           className="inline-edit"
@@ -240,6 +241,23 @@ export default function Check({ check }) {
 
 // Which of the two kinds this card is — the first thing to read on it, because
 // it says whether a model is in the loop at all.
+// A hard check is visible without opening the body, because "this one can end the
+// examination on its own" is not a detail — it changes how the whole plan reads.
+// Shared with the list view, so the same fact does not get two shapes.
+export function GateBadge({ check, size = 'md' }) {
+  if (!check.gateOn) return null
+  const sm = size === 'sm'
+  return (
+    <span
+      title="Hard check — runs before anything is read, and a failure ends the examination."
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, fontSize: sm ? 10 : 11, fontWeight: 700, letterSpacing: '0.03em', color: '#946400', background: '#FBEFCF', borderRadius: 6, padding: sm ? '2px 7px' : '3px 9px 3px 8px' }}
+    >
+      <Icon name="shield-alert" size={sm ? 11 : 13} color="currentColor" />
+      HARD
+    </span>
+  )
+}
+
 export function TypeBadge({ check, size = 'md' }) {
   const sm = size === 'sm'
   return (

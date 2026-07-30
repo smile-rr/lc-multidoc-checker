@@ -21,6 +21,59 @@ import { ellipsis } from '@shared/ds/text'
 // The structural controls (add, remove, reorder) appear only while editing, so
 // a saved rule reads as a statement rather than a form. "Edit rule" in the
 // header is the way in.
+// Hard check — "run this before anything is read, and stop if it fails".
+//
+// It sits under *Applies to* because that is the same question: when does this rule
+// run. Two things decide it, and only one is the author's:
+//
+//   whether it *can* run first is derived from the operands — a rule that reads the
+//   bill of lading cannot run before the bill of lading has been read
+//   whether it *should* stop is the assertion the author is making
+//
+// When it cannot, the control is disabled **with the reason showing**, not hidden.
+// An author who wants a gate needs to know what would make one, and a control that
+// vanishes teaches nothing.
+//
+// The consequence is stated on the control rather than left to the run: under UCP 600
+// art. 16(c) a refusing bank gives one notice stating every discrepancy, so stopping
+// early means the notice carries this ground alone.
+function GateSwitch({ check }) {
+  const on = check.gateOn
+  const can = check.gateEligible
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'flex-start', gap: 9, padding: '8px 11px',
+      borderBottom: '1px solid var(--me-grey-15)',
+      background: on ? '#FBEFCF' : 'transparent',
+    }}>
+      <button
+        onClick={check.onToggleGate ?? undefined}
+        disabled={!can}
+        aria-pressed={on}
+        title={can ? undefined : check.gateWhy}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 7, flexShrink: 0,
+          background: 'none', border: 'none', padding: 0, marginTop: 1,
+          cursor: can ? 'pointer' : 'not-allowed', fontFamily: 'inherit',
+          fontSize: 12, fontWeight: 600,
+          color: !can ? 'var(--me-grey-50)' : on ? '#946400' : 'var(--me-grey)',
+          opacity: can ? 1 : 0.75,
+        }}
+      >
+        <Icon name={on ? 'toggle-right' : 'toggle-left'} size={20} color="currentColor" />
+        Hard check
+      </button>
+      <span style={{ flex: 1, minWidth: 0, fontSize: 11, lineHeight: 1.5, color: on ? '#946400' : 'var(--me-grey-70)' }}>
+        {!can
+          ? check.gateWhy
+          : on
+            ? 'Runs before anything is read, and a failure ends the examination. The refusal notice will state this ground alone — under UCP 600 art. 16(c) there is only one notice.'
+            : check.gateWhy}
+      </span>
+    </div>
+  )
+}
+
 export default function ExactBody({ check }) {
   return (
     <div style={{ marginTop: 10, border: '1px solid var(--me-grey-15)', borderRadius: 10 }}>
@@ -44,6 +97,8 @@ export default function ExactBody({ check }) {
           </button>
         )}
       </div>
+
+      <GateSwitch check={check} />
 
       <div style={{ padding: '9px 11px 10px', display: 'flex', flexDirection: 'column', gap: 5 }}>
         {check.ruleGroups.map((g) => (

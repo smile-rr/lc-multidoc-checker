@@ -2,7 +2,7 @@ import Icon from '@shared/ds/Icon'
 import Badge from '@shared/ds/Badge'
 import Chip from '@shared/ds/Chip'
 import { ellipsis } from '@shared/ds/text'
-import { TypeBadge } from './Check'
+import { TypeBadge, GateBadge } from './Check'
 
 const SEV_TONE = { CRITICAL: 'error', MAJOR: 'warning', MINOR: 'neutral' }
 const SEV_LABEL = { CRITICAL: 'Critical', MAJOR: 'Major', MINOR: 'Minor' }
@@ -22,7 +22,10 @@ export default function CheckRow({ check }) {
     >
       <span style={{ width: 9, height: 9, borderRadius: '50%', background: check.sevColor }} />
       <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--me-ink)', whiteSpace: 'nowrap' }}>{check.id}</span>
-      <span><TypeBadge check={check} size="sm" /></span>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+        <TypeBadge check={check} size="sm" />
+        <GateBadge check={check} size="sm" />
+      </span>
       <span style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ fontSize: 14, color: 'var(--me-ink)', ...ellipsis }}>{check.title}</span>
         {check.draft && <Chip size="sm" style={statePill}>Draft</Chip>}

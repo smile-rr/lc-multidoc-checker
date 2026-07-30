@@ -444,8 +444,8 @@
         "UCP600 Art.14",
         "UCP600 Art.29"
       ],
-      "suggestion": "You handle cross-border couriers but not electronic presentation (eUCP). Add a condition to skip the buffer when documents are presented electronically.",
-      "title": "Expiry buffer for presentation",
+      "suggestion": "Runs before anything is read. If it fails, nothing in the documents can cure it.",
+      "title": "Presented before the credit expired",
       "body": "Check whether the beneficiary has enough time to present documents before the LC expires. The key factor is whether the presentation location matches where the beneficiary is based — not simply whether it says \"any bank.\"\n\nFields to look at: {Place of presentation}, {Expiry date}, {Beneficiary name}, {Latest shipment date}, {Presentation period}\n\n- If the presentation location is in the beneficiary's own country: no extra buffer needed. {Expiry date} just needs to be later than the date documents would realistically be ready.\n- If the presentation location is in a different country from the beneficiary (this can happen even with a nominated bank, not just \"any bank\"): add roughly 3-5 working days as a buffer, since documents need to be couriered cross-border.\n- If it says \"any bank\" with no country specified: treat this the same as a local presentation — no buffer needed.\n\nNote: the buffer is an operational risk flag, not a UCP requirement — don't treat it as a hard discrepancy, just something to warn about.",
       "timeline": [
         {
@@ -467,7 +467,8 @@
           "detail": "Cross-border buffer added by Amara Osei."
         }
       ],
-      "checkType": "AGENT"
+      "checkType": "PROGRAMMATIC",
+      "gate": true
     },
     {
       "id": "DOCSET-42C",
@@ -925,13 +926,15 @@
       "id": "d0",
       "key": "LETTER_OF_CREDIT",
       "name": "Letter of credit",
-      "description": "The credit as received by wire — tagged fields and free-text blocks."
+      "description": "The credit as received by wire — tagged fields and free-text blocks.",
+      "beforeReading": true
     },
     {
       "id": "d1",
       "key": "COVERING_SCHEDULE",
       "name": "Covering schedule",
-      "description": "The presenting bank's covering letter and receipt stamp."
+      "description": "The presenting bank's covering letter and receipt stamp.",
+      "beforeReading": true
     },
     {
       "id": "d2",
@@ -1527,6 +1530,39 @@
           "tol": "",
           "r": {
             "field": "Currency",
+            "doc": "Letter of credit"
+          }
+        }
+      ]
+    },
+    "DATE-31D": {
+      "scope": "Every presentation",
+      "logic": "all",
+      "message": "Documents were presented after the credit expired.",
+      "rows": [
+        {
+          "id": "r1",
+          "l": {
+            "field": "Presentation date",
+            "doc": "Covering schedule"
+          },
+          "op": "d_lte",
+          "tol": "",
+          "r": {
+            "field": "Expiry date",
+            "doc": "Letter of credit"
+          }
+        },
+        {
+          "id": "r2",
+          "l": {
+            "field": "Place of presentation",
+            "doc": "Covering schedule"
+          },
+          "op": "eq",
+          "tol": "",
+          "r": {
+            "field": "Place of expiry",
             "doc": "Letter of credit"
           }
         }

@@ -366,6 +366,46 @@ export function deriveVals(state, setState) {
   // ---- Rule cards ----------------------------------------------------------
   const ruleOf = (id) => normaliseRule(S.rules[id] || RULE_SEEDS[id])
 
+  // ---- Hard checks (gates) -------------------------------------------------
+  //
+  // A gate runs before the presentation has been read, and a failure ends the
+  // examination there. Two properties have to hold and only one of them is the
+  // author's to assert:
+  //
+  //   CAN it run first?   Derived. Every operand must read a document that exists
+  //                       before anything is examined — the credit itself, or the
+  //                       covering schedule the presentation arrived under. A rule
+  //                       that reads the bill of lading cannot run before the bill of
+  //                       lading has been read, and no amount of intent changes that.
+  //                       So the toggle is disabled, with the reason, rather than
+  //                       hidden: an author who wants a gate needs to know what would
+  //                       make one.
+  //   SHOULD it stop?     The author's call, and the toggle. It says: nothing in the
+  //                       presentation could make this pass, so reading on answers a
+  //                       question already answered.
+  //
+  // Judged rules are never eligible. An agent reading documents cannot run before the
+  // documents are read, whatever its operands say.
+  //
+  // Which documents exist before reading is authored in the dictionary
+  // (`beforeReading`), not hardcoded here, so adding a pre-presentation document type
+  // makes its rules eligible without a code change.
+  const beforeReadingDocs = () => new Set((S.dictDocs ?? seedDocTypes()).filter((d) => d.beforeReading).map((d) => d.name))
+
+  function gateEligibility(c) {
+    const kind = hasConditions(c) ? 'exact' : typeOf(c)
+    if (kind !== 'exact') return { ok: false, why: 'Only an exact rule can run first — an agent cannot read documents before they are read.' }
+    const rule = ruleOf(c.id)
+    const rows = (rule.groups ?? []).flatMap((g) => g.rows ?? [])
+    if (!rows.length) return { ok: false, why: 'Add a condition first — there is nothing to run.' }
+    const pre = beforeReadingDocs()
+    const outside = [...new Set(rows.flatMap((r) => [r.l, r.r]).map((o) => o && o.doc).filter((d) => d && !pre.has(d)))]
+    if (outside.length) {
+      return { ok: false, why: `Reads ${outside.join(' and ')}, which ${outside.length > 1 ? 'are' : 'is'} not available until the presentation has been read.` }
+    }
+    return { ok: true, why: 'Every operand comes from the credit or the covering schedule, so this can run before anything is examined.' }
+  }
+
   // A card with authored conditions is an exact rule, whatever its `checkType` says.
   //
   // This is a guard rather than a preference. Retiering CERT-28 to AGENT_TOOL in a
@@ -503,6 +543,8 @@ export function deriveVals(state, setState) {
     const kind = hasConditions(c) ? 'exact' : typeOf(c)
     const isExact = kind === 'exact'
     const rule = isExact ? ruleOf(c.id) : null
+    const gate = gateEligibility(c)
+    const isGateOn = !!valueOf(c, 'gate') && gate.ok
     // A check that has examined a case is referenced by the findings it produced
     // and by any refusal advice quoting them. Deleting it orphans that record, so
     // only a draft that never ran can be deleted; everything else is retired.
@@ -616,6 +658,15 @@ export function deriveVals(state, setState) {
     return {
       id: c.id, title, body, bodySegments: hl(body), dictFields: dictFieldList.map((f) => ({ name: f.name, docs: fieldDocHint(f.name) })), severity,
       kind, isExact, isJudged: !isExact,
+      // Hard check. `gateOn` is the stored intent narrowed by what is possible, so a
+      // rule that stops being eligible (an operand moved to a presented document)
+      // stops being a gate rather than silently claiming to run first.
+      gateOn: isGateOn,
+      gateEligible: gate.ok,
+      gateWhy: gate.why,
+      onToggleGate: gate.ok
+        ? () => setState((st) => ({ overrides: { ...st.overrides, [c.id]: { ...st.overrides[c.id], gate: !isGateOn } }, editingId: st.editingId ?? c.id }))
+        : null,
       typeLabel: meta.label, typeIcon: meta.icon, typeColor: meta.color, typeBg: meta.bg, typeHint: meta.hint,
       showFieldRows,
       ruleScope: rule ? rule.scope || '' : '', onChangeScope: (e) => { const scope = e.target.value; patchRule((ru) => ({ ...ru, scope })) },

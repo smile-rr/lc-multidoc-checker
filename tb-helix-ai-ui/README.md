@@ -598,6 +598,45 @@ and both halves are standing instructions the bank approved. A requirement the p
 found no rule for is still a Requirement card — a gap in the rulebook, not a third
 group.
 
+### Authoring a hard check
+
+A hard check runs **before the presentation has been read**, and a failure ends the
+examination there. Two properties have to hold, and only one of them is the author's
+to assert — so only one of them is a control:
+
+| | Who decides | How |
+|---|---|---|
+| **Can it run first?** | derived | every operand must read a document that exists before anything is examined — the credit, or the covering schedule it arrived under |
+| **Should it stop?** | the author | the toggle. It asserts that nothing in the presentation could make this pass |
+
+A rule that reads the bill of lading cannot run before the bill of lading has been
+read, and no amount of intent changes that — so on those the toggle is **disabled with
+the reason showing**, not hidden. An author who wants a gate needs to know what would
+make one, and a control that vanishes teaches nothing:
+
+```
+Applies to   Every presentation
+[◉] Hard check   Runs before anything is read, and a failure ends the examination.
+                 The refusal notice will state this ground alone — under UCP 600
+                 art. 16(c) there is only one notice.
+
+Applies to   When the credit calls for an insurance document
+[○] Hard check   Reads Insurance document and Bill of lading, which are not
+                 available until the presentation has been read.
+```
+
+Judged rules are never eligible: an agent reading documents cannot run before the
+documents are read, whatever its operands say. Of eleven seeded cards exactly one
+qualifies, which is the right shape — gates are a small precious set.
+
+**Which documents exist before reading is authored in the dictionary**
+(`beforeReading` on a document type), not hardcoded, so adding a pre-presentation
+document type makes its rules eligible without a code change.
+
+`gateOn` is the stored intent **narrowed by what is possible**. Move an operand onto a
+presented document and the rule stops being a gate, rather than silently claiming to
+run first.
+
 ### The tier is a mark, not a section
 
 How a card is settled rides on the row:
