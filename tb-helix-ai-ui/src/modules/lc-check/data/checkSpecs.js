@@ -21,6 +21,77 @@
 // Here both are fixtures with the same shape.
 // ===========================================================================
 
+// ---------------------------------------------------------------------------
+// A check varies along two axes, and they are independent. Conflating them is
+// what made the plan screen read as nonsense: it had a group called
+// "Requirements" (an agent's domain) sitting next to a badge called
+// "Requirement" (a kind of card), which are not the same thing at all.
+//
+//   SOURCE     where the obligation comes from — the credit's own text, UCP 600
+//              and ISBP 821, or the bank's policy. This is what you cite when
+//              you refuse, and who may change the check.
+//   KIND       how it is settled — the system comparing extracted fields, or an
+//              agent reading prose. This is what it costs and how far it can be
+//              trusted.
+//
+// They cross freely. "Shipment on or before the latest date" is the *credit's*
+// requirement (field 44C) settled *deterministically*. "Goods description
+// corresponds" is also the credit's (field 45A) but needs *judgement*. "No
+// documents beyond those called for" is *practice* (ISBP A31) and needs
+// judgement. "Parties screened" is *policy*.
+//
+// So: source groups the plan, because an examiner works outward from the credit
+// and a refusal advice is written that way. Kind is a marker on the row, because
+// it is a property of the check, not a section of the work.
+// ---------------------------------------------------------------------------
+
+export const SOURCES = ['credit', 'practice', 'policy']
+
+export const SOURCE_META = {
+  credit: {
+    label: 'From this credit',
+    note: "The applicant's own terms — fields 46A and 47A and the credit's data. Different on every case, and only the applicant can waive them.",
+    icon: 'file-text',
+    color: 'var(--me-blue-deep)',
+    cite: 'the credit',
+  },
+  practice: {
+    label: 'UCP 600 & ISBP 821',
+    note: 'Standing practice. Applies to every credit unless this one excludes it (UCP 600 art. 1).',
+    icon: 'scale',
+    color: 'var(--me-navy)',
+    cite: 'UCP 600 / ISBP 821',
+  },
+  policy: {
+    label: 'Bank policy',
+    note: "Ours, not the credit's. A hold here is not a UCP discrepancy and is not waivable by the applicant.",
+    icon: 'shield-check',
+    color: '#946400',
+    cite: 'internal policy',
+  },
+}
+
+// Classified by where the *content* of the obligation sits, not by which article
+// describes how to examine it. When you write "documents required by field 46A
+// not presented" you are citing the credit; UCP 14(a) is the standard you
+// applied, not the requirement you applied it to.
+const SOURCE_OF = {
+  'REQ-46A': 'credit', 'REQ-31D': 'credit', 'DOCSET-14A': 'credit', 'DOCSET-17': 'credit',
+  'DATE-44C': 'credit', 'DATE-48': 'credit', 'DATE-31D': 'credit', 'AMT-30A': 'credit',
+  'GOODS-18C': 'credit', 'COND-47A': 'credit', 'TRANS-43P': 'credit', 'TRANS-43T': 'credit',
+  'CERT-28': 'credit',
+
+  'REQ-40E': 'practice', 'DOCSET-03': 'practice', 'DOCSET-A31': 'practice',
+  'TRANS-20': 'practice', 'TRANS-22': 'practice', 'XD-A23': 'practice',
+  'AMT-C6': 'practice', 'GEN-01': 'practice',
+
+  'PARTY-FC04': 'policy',
+}
+// A check the planner wrote for one of this credit's own 47A conditions is the
+// credit's by definition; an officer-added one is the officer's own concern and
+// is grouped by who added it, not by what it cites.
+export const checkSource = (id) => SOURCE_OF[id] ?? 'credit'
+
 // Which kind of card the check came from, and therefore who executes it.
 //
 // A Rule card is rows over named fields: the system evaluates it, in

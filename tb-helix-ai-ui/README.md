@@ -510,6 +510,43 @@ vocabulary. Checks reference a field by its name, both in a braced token and as
 a rule operand, so renaming one is a dictionary edit with a usage count beside
 it rather than a hunt through the catalogue.
 
+### A check varies along two axes, not one
+
+Conflating them is what made the plan screen read as nonsense: a group called
+**Requirements** (an agent's domain) sat next to a badge called **Requirement** (a
+kind of card), and they are not the same thing.
+
+| | | Answers |
+|---|---|---|
+| **Source** | the credit · UCP 600 & ISBP 821 · bank policy | *what am I held to, and by whom?* |
+| **Kind** | Rule · Requirement | *how was it settled, at what cost, how far can I trust it?* |
+
+They cross freely. "Shipment on or before the latest date" is the **credit's**
+requirement (field 44C) settled **deterministically**. "Goods description
+corresponds" is also the credit's (field 45A) but needs **judgement**. "No
+documents beyond those called for" is **practice** (ISBP A31) and needs judgement.
+"Parties screened" is **policy** and is not a UCP discrepancy at all.
+
+**Source groups the plan**, because an examiner works outward from the credit's own
+terms to standing practice to the bank's own concerns — and because that is the
+order a refusal advice is written in. Classification follows where the *content* of
+the obligation sits, not which article describes how to examine it: when you write
+"documents required by field 46A not presented" you are citing the credit; UCP
+14(a) is the standard you applied, not the requirement you applied it to.
+
+**Kind marks the row.** It is a property of the check, not a section of the work.
+
+Two things that are neither axis, and so are their own groups: **Added by you**
+(provenance — the officer's, not the credit's) and **Not brought into play**
+(status — trigger unmet, listed so "we did not check that" is never discovered
+after signing). There is no need for an "other" kind: what looks like one always
+resolves into source, kind, or provenance.
+
+A rule states its comparison **in the plan list itself** — `On-board date @ Bill of
+lading is on or before Latest shipment date @ Letter of credit`. A rule's whole
+claim on your trust is that you can read it; leaving that behind a click made
+"Rule" a label with nothing under it.
+
 ### Two kinds of check, one execute step
 
 Governance authors two kinds of card, and they are executed by different things:

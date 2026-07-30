@@ -6,6 +6,7 @@ import { plural } from '@shared/lib/format'
 import Chip from '@shared/ds/Chip'
 import Button from '@shared/ds/Button'
 import { severityMeta } from '../state/severity'
+import { SOURCE_META, SOURCES } from '../data/checkSpecs'
 import CheckSpecCard from '../components/CheckSpecCard'
 import { useCase } from '../state/CaseContext'
 
@@ -67,29 +68,36 @@ export default function ChecksScreen({ onOpenFinding }) {
       ? data.findings.find((f) => f.id === check.findingId) ?? null
       : null
 
+  // Grouped by where the obligation comes from, in the order an examiner works:
+  // outward from the credit's own terms to standing practice to the bank's own
+  // concerns — which is also the order a refusal advice is written in.
+  //
+  // It used to be grouped by agent domain, which is a fact about our
+  // implementation, not about the examination. That is also what put a group
+  // called "Requirements" next to a badge called "Requirement".
+  //
+  // Within a group, rules lead: they are the cheap certainties.
+  const byKind = (a, b) => (a.kind === b.kind ? 0 : a.kind === 'rule' ? -1 : 1)
+  const runnable = allChecks.filter((c) => c.areaId && !c.addedByOfficer)
   const groups = [
-    ...data.areas.map((area) => ({
-      key: area.id,
-      label: area.name,
-      note: area.purpose,
-      checks: allChecks
-        .filter((c) => c.areaId === area.id && !c.plannedByLlm)
-        .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'rule' ? -1 : 1)),
+    ...SOURCES.map((src) => ({
+      key: src,
+      label: SOURCE_META[src].label,
+      note: SOURCE_META[src].note,
+      icon: SOURCE_META[src].icon,
+      color: SOURCE_META[src].color,
+      checks: runnable.filter((c) => c.source === src).sort(byKind),
     })),
-    {
-      key: 'planner',
-      label: 'Planner-written',
-      note: 'One per condition in :47A:. Not in the dictionary.',
-      checks: allChecks.filter((c) => c.plannedByLlm),
-    },
     ...(officer.addedChecks.length
-      ? [{ key: 'added', label: 'Officer-added', note: 'Recorded against your name.', checks: officer.addedChecks }]
+      ? [{ key: 'added', label: 'Added by you', note: 'Not called for by the credit or by practice. Recorded against your name.', icon: 'user-check', color: 'var(--me-grey)', checks: officer.addedChecks }]
       : []),
     {
       key: 'skipped',
-      label: 'Not Applicable',
-      note: 'This credit does not bring them into play.',
-      checks: allChecks.filter((c) => !c.areaId && !c.addedByOfficer && !c.plannedByLlm),
+      label: 'Not brought into play',
+      note: 'Listed so that "we did not check that" is never discovered after signing.',
+      icon: 'minus-circle',
+      color: 'var(--me-grey-70)',
+      checks: allChecks.filter((c) => !c.areaId && !c.addedByOfficer),
     },
   ].filter((g) => g.checks.length)
 
@@ -206,8 +214,9 @@ export default function ChecksScreen({ onOpenFinding }) {
           {groups.map((g) => (
             <div key={g.key}>
               <div style={{ padding: '8px 15px', background: 'var(--me-grey-08)', borderBottom: '1px solid var(--me-grey-15)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                  <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--me-ink)' }}>{g.label}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <Icon name={g.icon} size={13} color={g.color} />
+                  <span style={{ flex: 1, fontSize: 11.5, fontWeight: 600, color: 'var(--me-ink)' }}>{g.label}</span>
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>{g.checks.length}</span>
                 </div>
                 {g.note ? <span style={{ fontSize: 11, color: 'var(--me-grey-70)', lineHeight: 1.4 }}>{g.note}</span> : null}
@@ -224,7 +233,7 @@ export default function ChecksScreen({ onOpenFinding }) {
                     onClick={() => setSelectedId(c.id)}
                     style={{
                       display: 'flex',
-                      alignItems: 'center',
+                      alignItems: 'flex-start',
                       gap: 9,
                       width: '100%',
                       textAlign: 'left',
@@ -236,7 +245,7 @@ export default function ChecksScreen({ onOpenFinding }) {
                       background: on ? 'var(--me-blue-20)' : '#fff',
                     }}
                   >
-                    <span style={{ width: 15, height: 15, flex: '0 0 15px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ width: 15, height: 16, flex: '0 0 15px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {st === 'running' ? (
                         <Spinner />
                       ) : (
@@ -249,16 +258,35 @@ export default function ChecksScreen({ onOpenFinding }) {
                     </span>
                     <span
                       title={c.kind === 'rule' ? 'Rule — the system compares fields, no model involved' : 'Requirement — an agent reads it against the presentation'}
-                      style={{ flex: '0 0 14px', display: 'flex', color: c.kind === 'rule' ? 'var(--me-blue-deep)' : '#1F7A00' }}
+                      style={{ flex: '0 0 14px', height: 16, display: 'flex', alignItems: 'center', color: c.kind === 'rule' ? 'var(--me-blue-deep)' : '#1F7A00' }}
                     >
                       <Icon name={c.kind === 'rule' ? 'equal' : 'list-checks'} size={13} color="currentColor" />
                     </span>
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)', flex: '0 0 58px' }}>{c.id}</span>
-                    <span style={{ fontSize: 12.5, flex: 1, minWidth: 0, fontWeight: on ? 600 : 400, color: on ? 'var(--me-blue-deep)' : st === 'skipped' || st === 'queued' ? 'var(--me-grey-70)' : 'var(--me-ink)' }}>
-                      {c.name}
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, lineHeight: '16px', color: 'var(--me-grey-70)', flex: '0 0 58px' }}>{c.id}</span>
+                    <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      <span style={{ fontSize: 12.5, fontWeight: on ? 600 : 400, color: on ? 'var(--me-blue-deep)' : st === 'skipped' || st === 'queued' ? 'var(--me-grey-70)' : 'var(--me-ink)' }}>
+                        {c.name}
+                      </span>
+                      {/* A rule states itself. This is the comparison it will
+                          make, in the dictionary's own words — no prompt, no
+                          paraphrase, nothing to take on trust. */}
+                      {c.ruleDef ? (
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          {c.ruleDef.rows.map((r, i) => (
+                            <span key={i} style={{ fontSize: 11, lineHeight: 1.45, color: 'var(--me-grey-70)' }}>
+                              <span style={{ fontWeight: 600, color: 'var(--me-grey)' }}>{r.l.field}</span>
+                              <span style={{ opacity: 0.75 }}>{' @ '}{r.l.doc}</span>
+                              <span style={{ color: 'var(--me-blue-deep)' }}>{' '}{r.op}{' '}</span>
+                              <span style={{ fontWeight: 600, color: 'var(--me-grey)' }}>{r.r.field ?? r.r.literal}</span>
+                              {r.r.doc ? <span style={{ opacity: 0.75 }}>{' @ '}{r.r.doc}</span> : null}
+                              {r.tol ? <span style={{ fontFamily: 'var(--font-mono)', opacity: 0.8 }}>{' ('}{r.tol}{')'}</span> : null}
+                            </span>
+                          ))}
+                        </span>
+                      ) : null}
                     </span>
                     {c.ruleDef && !c.ruleDef.ready ? (
-                      <span title={`Not extracted: ${c.ruleDef.missing.map((m) => `${m.field} @ ${m.doc}`).join(', ')}`} style={{ fontSize: 11, color: '#946400', whiteSpace: 'nowrap' }}>needs a field</span>
+                      <span title={`Not extracted: ${c.ruleDef.missing.map((m) => `${m.field} @ ${m.doc}`).join(', ')}`} style={{ fontSize: 11, lineHeight: '16px', color: '#946400', whiteSpace: 'nowrap' }}>needs a field</span>
                     ) : c.notCovered ? (
                       <span title="No rule covers this condition" style={{ fontSize: 11, color: '#946400', whiteSpace: 'nowrap' }}>not covered</span>
                     ) : sev && f.severity !== 'clean' ? (

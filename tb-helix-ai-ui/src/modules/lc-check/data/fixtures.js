@@ -16,7 +16,7 @@
 
 import { SAMPLES, DOC_TYPES } from './samples/index.js'
 import { parseMt700Lines, tagValue } from '../lib/mt700.js'
-import { checkSpec, buildExecutionPlan, checkKind, resolveRuleInputs } from './checkSpecs.js'
+import { checkSpec, buildExecutionPlan, checkKind, checkSource, resolveRuleInputs } from './checkSpecs.js'
 
 /** @typedef {import('./contracts.js').CaseDetail} CaseDetail */
 
@@ -869,6 +869,7 @@ function buildChecks(def, lines, credit, documents, facts) {
     ...check,
     spec,
     kind: checkKind(check.id),
+    source: checkSource(check.id),
     // A Rule card has no request to compile: what it needs is its operands
     // resolved against what Interpret produced, which is also what makes its
     // answerability knowable before the run.

@@ -8,6 +8,7 @@ import Icon from '@shared/ds/Icon'
 import RuleText from '@shared/ds/RuleText'
 import Tabs from '@shared/ds/Tabs'
 import { toneOf } from '@shared/lib/tone'
+import { SOURCE_META } from '../data/checkSpecs'
 
 
 // One side of a condition: a dictionary field read off a named document, or a
@@ -44,6 +45,7 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
   // compiled prompt. Which one this is decides what the card can honestly show.
   const rd = check.ruleDef
   const isRule = check.kind === 'rule' && !!rd
+  const src = SOURCE_META[check.source] ?? SOURCE_META.credit
 
   return (
     <div style={{ ...cardSurface(12), boxShadow: 'none', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -108,6 +110,13 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
       <div style={{ padding: '16px 20px 20px' }}>
         {tab === 'rule' ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <Field label="Cited as">
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 13, color: 'var(--me-ink)' }}>
+                <Icon name={src.icon} size={14} color={src.color} />
+                {src.label}
+                <span style={{ color: 'var(--me-grey-70)' }}>· {spec.refs.join(', ') || 'no article recorded'}</span>
+              </span>
+            </Field>
             <Field label="Trigger">
               <span style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--me-ink)' }}>{check.appliesBecause}.</span>
             </Field>
@@ -134,13 +143,15 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
                 </Field>
               </>
             ) : null}
-            <Field label={isRule ? 'Authored as' : 'Rule'}>
+            {isRule ? null : (
+            <Field label="Rule">
               {spec.rule ? (
                 <RuleText text={spec.rule} />
               ) : (
                 <span style={{ fontSize: 13, color: 'var(--me-grey-70)', fontStyle: 'italic' }}>No rule text recorded.</span>
               )}
             </Field>
+            )}
             {check.notCovered ? (
               <div style={{ padding: '10px 12px', borderRadius: 9, background: '#FBEFCF', fontSize: 12.5, color: '#946400', lineHeight: 1.55 }}>
                 No rule in the dictionary tests this condition, so it was not examined. It is passed to you as an open question.
