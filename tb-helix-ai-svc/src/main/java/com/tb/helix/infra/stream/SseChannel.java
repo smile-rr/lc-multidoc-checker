@@ -45,7 +45,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * progress has been defeated by its own telemetry.
  */
 @Component
-public class SseChannel implements EventBus {
+public class SseChannel implements EventBus, EventStream {
 
     private static final Logger log = LoggerFactory.getLogger(SseChannel.class);
 
@@ -90,6 +90,7 @@ public class SseChannel implements EventBus {
      *
      * @param lastSeq the client's last received sequence; 0 replays the whole run so far
      */
+    @Override
     public SseEmitter subscribe(String caseId, long lastSeq) {
         SseEmitter emitter = new SseEmitter(0L);   // no server-side timeout; the heartbeat holds it
         subscribers.computeIfAbsent(caseId, k -> new CopyOnWriteArrayList<>()).add(emitter);
@@ -108,6 +109,7 @@ public class SseChannel implements EventBus {
     }
 
     /** Everything recorded for a case — for a client that would rather poll than stream. */
+    @Override
     public List<Map<String, Object>> history(String caseId, long afterSeq) {
         return jdbc.query("""
                 SELECT seq, event::text FROM helix_check.lc_event

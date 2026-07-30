@@ -165,7 +165,7 @@ helix:
       llm-1:
         enabled: true
         base-url: ${LLM_1_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
-        api-key: ${LLM_1_API_KEY:${LLM_API_KEY:}}
+        api-key: ${LLM_1_API_KEY:${VISION_1_API_KEY:}}
         model: ${LLM_1_MODEL:qwen3.7-flash}
         # Zero, always, for anything cacheable. A cached answer from a sampling
         # call is a lie about repeatability.
@@ -194,7 +194,7 @@ helix:
         enabled: true
         base-url: ${VLM_1_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
         api-key: ${VLM_1_API_KEY:${VISION_1_API_KEY:}}
-        model: ${VLM_1_MODEL:qwen3.7-vl-flash}
+        model: ${VLM_1_MODEL:qwen3.7-flash}
         temperature: 0
         max-tokens: 4096
         connect-timeout: 10s

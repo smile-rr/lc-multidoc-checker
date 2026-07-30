@@ -92,10 +92,19 @@ class ArchitectureTest {
         //
         // harness is absent from the `that()` clause on purpose: it is where PDFBox and
         // the HTTP client legitimately live. That is what makes it the harness.
+        // `..persistence..` is exempt, and the exemption is narrow on purpose. The rule
+        // protects against a *swappable provider* leaking into domain code — a model, a
+        // cache, a blob store. A module's own SQL over its own tables is not that: nobody
+        // is going to substitute a different implementation of lc_case, and hiding it
+        // behind a port would be the false abstraction this layout was reorganised to
+        // avoid. Everything else in the module still cannot see JDBC.
         noClasses()
                 .that().resideInAnyPackage(
                         "com.tb.helix.lccheck..",
                         "com.tb.helix.governance..")
+                .and().resideOutsideOfPackages(
+                        "com.tb.helix.lccheck.persistence..",
+                        "com.tb.helix.governance.persistence..")
                 .should().dependOnClassesThat().resideInAnyPackage(
                         "org.springframework.web.client..",   // RestClient / RestTemplate
                         "org.springframework.jdbc..",         // JdbcTemplate
@@ -118,12 +127,22 @@ class ArchitectureTest {
         //
         // The practical payoff: adding a DB blob store touches one package. Nothing in
         // lc-check can have named DiskBlobStore, so nothing in lc-check has to change.
+        // Scoped to beans in infra and harness. A module collaborating with its own
+        // components is not the problem this guards against — the problem is a stage
+        // naming DiskBlobStore or OpenAiCompatGateway, which pins a choice that belongs
+        // to configuration. Adding a DB blob store must touch one package, and it does
+        // only if nothing in lc-check ever named the disk one.
         noClasses()
                 .that().resideInAnyPackage(
                         "com.tb.helix.lccheck..",
                         "com.tb.helix.governance..")
-                .should().dependOnClassesThat()
-                .areAnnotatedWith(org.springframework.stereotype.Component.class)
+                .should().dependOnClassesThat(
+                        com.tngtech.archunit.base.DescribedPredicate.describe(
+                                "are @Component beans in infra or harness",
+                                (com.tngtech.archunit.core.domain.JavaClass c) ->
+                                        (c.getPackageName().startsWith("com.tb.helix.infra")
+                                                || c.getPackageName().startsWith("com.tb.helix.harness"))
+                                        && c.isAnnotatedWith(org.springframework.stereotype.Component.class)))
                 .because("an adapter is chosen by wiring; naming one in domain code pins it")
                 .allowEmptyShould(true)
                 .check(classes);

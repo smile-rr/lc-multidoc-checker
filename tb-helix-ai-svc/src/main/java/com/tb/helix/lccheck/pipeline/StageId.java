@@ -77,6 +77,21 @@ public enum StageId {
         return i < 0 || i + 1 >= ORDER.size() ? Optional.empty() : Optional.of(ORDER.get(i + 1));
     }
 
+    /**
+     * The next stage the officer can actually ask for.
+     *
+     * <p>Distinct from {@link #next()} because {@link #GATE} is in the pipeline but not on
+     * the workbench — it runs when the officer asks for {@link #PLAN}. Parking a case at
+     * "waiting for gate" would leave it waiting for a button that does not exist.
+     */
+    public Optional<StageId> nextOfficerStage() {
+        int i = ORDER.indexOf(this);
+        for (int j = i + 1; j >= 0 && j < ORDER.size(); j++) {
+            if (OFFICER_TRIGGERED.contains(ORDER.get(j))) return Optional.of(ORDER.get(j));
+        }
+        return Optional.empty();
+    }
+
     /** Stages after this one — what a rerun has to clear. */
     public List<StageId> downstream() {
         return ORDER.subList(Math.min(ORDER.indexOf(this) + 1, ORDER.size()), ORDER.size());
