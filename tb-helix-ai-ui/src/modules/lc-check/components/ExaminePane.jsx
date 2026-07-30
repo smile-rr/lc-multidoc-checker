@@ -6,9 +6,10 @@ import Eyebrow from '@shared/ds/Eyebrow'
 import Icon from '@shared/ds/Icon'
 import IconButton from '@shared/ds/IconButton'
 import TextArea from '@shared/ds/TextArea'
-import Select from '@shared/ds/Select'
+import SegmentedControl from '@shared/ds/SegmentedControl'
 import Modal from '@shared/ds/Modal'
 import PageStrip from '@shared/ds/PageStrip'
+import { usePageBar } from '@shared/ds/DocumentSurface'
 import { ellipsis } from '@shared/ds/text'
 import { plural } from '@shared/lib/format'
 import BundleViewer from './BundleViewer'
@@ -41,11 +42,23 @@ import { useCase } from '../state/CaseContext'
 // Showing the whole credit beside every page would be technically complete and
 // practically useless — the examiner would filter it in their head, every time.
 //
+// Is that filtering real? Per-document requirements come from parsing 46A, which is
+// a list of documents with their originals, copies and conditions — extractable, and
+// the same parse the requirement cards for 46A already rely on. But it is a parse,
+// so it can be wrong or absent, and a column that silently shows nothing when the
+// parse fails is worse than no column. So the panel has two states you switch
+// between: what we made of the credit for this document, and the credit itself. The
+// second is always available and never wrong.
+//
 // Our own uncertainty is promoted to the top of the right column, and that is the
 // idea the pane turns on. We already record a confidence per reading and a flag when
 // something looked odd; buried in a list that is a risk nobody reads. Surfaced as
 // "2 readings we are not sure of" it becomes a directed task — the shortest path to
 // the discrepancies our extraction is likeliest to have fumbled.
+// Tall enough to read a page in, short enough that the columns beside it stay on
+// screen. Matches the other viewers rather than inventing a third height.
+const VIEWPORT = 'calc(100vh - var(--case-header-h, 240px) - 168px)'
+
 export default function ExaminePane({ findings, onOpenFinding }) {
   const { data, run, actions } = useCase()
   // Opens on the first *presented* document, not the credit. Examining is reading
@@ -56,6 +69,10 @@ export default function ExaminePane({ findings, onOpenFinding }) {
   )
   const [page, setPage] = useState(() => (data.documents.find((d) => d.role === 'presented')?.pageRange?.[0] ?? 1))
   const [draft, setDraft] = useState(null)
+  // The page row is a workspace preference, shared with the other viewers, and off
+  // by default here: paging is in the header, and a row of numbers you rarely use
+  // costs the page it sits on.
+  const { pageBarVisible, togglePageBar } = usePageBar()
 
   // Our segmentation decides which document a tab *means*, and it can be wrong —
   // a page filed under the invoice may belong to the packing list. So the tabs are
@@ -93,8 +110,7 @@ export default function ExaminePane({ findings, onOpenFinding }) {
   // came from without anyone having to retype it.
   const startDraft = (fact) =>
     setDraft({
-      title: '',
-      detail: '',
+      text: '',
       severity: 'possible',
       docId: doc?.id ?? null,
       page: fact?.page ?? page,
@@ -106,6 +122,7 @@ export default function ExaminePane({ findings, onOpenFinding }) {
 
   const demands = data.creditDemands?.[doc.id] ?? null
   const creditFacts = data.facts.filter((f) => f.docId === 'mt700')
+  const creditDoc = data.documents.find((d) => d.role === 'credit')
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -135,15 +152,23 @@ export default function ExaminePane({ findings, onOpenFinding }) {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px,320px) minmax(320px,1fr) minmax(300px,360px)', gap: 14, alignItems: 'start' }}>
-      <CreditColumn demands={demands} facts={creditFacts} docFacts={docFacts} isCredit={isCredit} />
+      <CreditColumn demands={demands} facts={creditFacts} docFacts={docFacts} creditLines={creditDoc?.lines} isCredit={isCredit} />
 
       <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: '1px solid var(--me-grey-15)', flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)' }}>{doc.docType}</span>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>{doc.reference}</span>
           <div style={{ flex: 1 }} />
+          {isCredit ? null : (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <IconButton icon="chevron-left" size="sm" title="Previous page" onClick={() => goPage(page - 1)} disabled={page <= 1} />
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)', minWidth: 52, textAlign: 'center' }}>{page} / {data.totalPages}</span>
+              <IconButton icon="chevron-right" size="sm" title="Next page" onClick={() => goPage(page + 1)} disabled={page >= data.totalPages} />
+              <IconButton icon={pageBarVisible ? 'rows-3' : 'rows-2'} size="sm" title={pageBarVisible ? 'Hide the page row' : 'Show every page'} onClick={togglePageBar} />
+            </span>
+          )}
         </div>
-        {isCredit ? null : (
+        {!isCredit && pageBarVisible ? (
           <div style={{ borderBottom: '1px solid var(--me-grey-15)' }}>
             {/* Every page of the bundle, not just the ones we filed under this
                 document. Restricting the strip to the document's own pages is the
@@ -152,16 +177,21 @@ export default function ExaminePane({ findings, onOpenFinding }) {
                 already answered by the tab, which follows the page. */}
             <PageStrip pages={data.totalPages} activePage={page} onPage={goPage} docLabel={doc.docType} />
           </div>
-        )}
-        {isCredit ? (
-          <div style={{ maxHeight: 620, overflow: 'auto', padding: '14px 16px', fontFamily: 'var(--font-mono)', fontSize: 11.5, lineHeight: 1.85, color: 'var(--me-ink)' }}>
-            {doc.lines?.map((l) => (
-              <div key={l.id} style={{ whiteSpace: 'pre-wrap' }}>{l.text}</div>
-            ))}
-          </div>
-        ) : (
-          <BundleViewer pdfUrl={data.pdfUrl} page={page} />
-        )}
+        ) : null}
+        {/* The document scrolls, not the page it sits on. Without a height here the
+            viewer rendered at full size and pushed the whole screen down, which puts
+            the two side panels off-screen — the one thing this layout exists for. */}
+        <div style={{ height: VIEWPORT, overflow: 'auto', background: isCredit ? '#fff' : 'var(--me-grey-08)' }}>
+          {isCredit ? (
+            <div style={{ padding: '14px 16px', fontFamily: 'var(--font-mono)', fontSize: 11.5, lineHeight: 1.85, color: 'var(--me-ink)' }}>
+              {doc.lines?.map((l) => (
+                <div key={l.id} style={{ whiteSpace: 'pre-wrap' }}>{l.text}</div>
+              ))}
+            </div>
+          ) : (
+            <BundleViewer pdfUrl={data.pdfUrl} page={page} />
+          )}
+        </div>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -171,9 +201,7 @@ export default function ExaminePane({ findings, onOpenFinding }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: doubtful.length ? '#FBEFCF' : 'var(--me-grey-08)', borderBottom: '1px solid var(--me-grey-15)' }}>
             <Icon name={doubtful.length ? 'circle-alert' : 'circle-check'} size={14} color={doubtful.length ? '#946400' : 'var(--status-success)'} />
             <span style={{ fontSize: 12, fontWeight: 600, color: doubtful.length ? '#946400' : 'var(--me-grey)' }}>
-              {doubtful.length
-                ? `${plural(doubtful.length, 'reading')} we are not sure of`
-                : 'We read every field on this document confidently'}
+              {doubtful.length ? `Unsure · ${doubtful.length}` : 'Nothing unsure'}
             </span>
           </div>
           {doubtful.length ? (
@@ -188,10 +216,7 @@ export default function ExaminePane({ findings, onOpenFinding }) {
         {/* Everything else we read, so a human can disagree with any of it. */}
         <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid var(--me-grey-15)' }}>
-            <span style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              <Eyebrow size="sm">Read off this document</Eyebrow>
-              <span style={{ fontSize: 11, color: 'var(--me-grey-70)' }}>Our reading of the page — disagree with any of it</span>
-            </span>
+            <Eyebrow size="sm">Extracted</Eyebrow>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>{confident.length}</span>
             <div style={{ flex: 1 }} />
             <Button variant="secondary" size="sm" onClick={() => startDraft(null)}>
@@ -209,7 +234,7 @@ export default function ExaminePane({ findings, onOpenFinding }) {
         {docFindings.length ? (
           <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid var(--me-grey-15)' }}>
-              <Eyebrow size="sm">Already found on this document</Eyebrow>
+              <Eyebrow size="sm">Findings here</Eyebrow>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>{docFindings.length}</span>
             </div>
             {docFindings.map((f) => (
@@ -227,7 +252,6 @@ export default function ExaminePane({ findings, onOpenFinding }) {
       <RaiseModal
         draft={draft}
         setDraft={setDraft}
-        refs={demands?.refs ?? []}
         onCancel={() => setDraft(null)}
         onRaise={(d) => { const f = actions.raiseFinding(d); setDraft(null); onOpenFinding(f.id) }}
       />
@@ -237,7 +261,8 @@ export default function ExaminePane({ findings, onOpenFinding }) {
 
 // What the credit demands of the document in front of you, and the practice that
 // governs how to read it. This is the hand an examiner cannot work without.
-function CreditColumn({ demands, facts, docFacts, isCredit }) {
+function CreditColumn({ demands, facts, docFacts, creditLines, isCredit }) {
+  const [view, setView] = useState('needs')
   const byLabel = (label) => facts.find((f) => f.label === label)
   const docByLabel = (label) => (label ? docFacts.find((f) => f.label === label) : null)
   if (isCredit) {
@@ -256,11 +281,39 @@ function CreditColumn({ demands, facts, docFacts, isCredit }) {
     <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--me-blue-20)', borderBottom: '1px solid var(--me-grey-15)' }}>
         <Icon name="file-text" size={14} color="var(--me-blue-deep)" />
-        <span style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--me-blue-deep)' }}>Required by the credit</span>
-          <span style={{ fontSize: 11, color: 'var(--me-blue-deep)', opacity: 0.85 }}>What this document has to satisfy</span>
+        <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: 'var(--me-blue-deep)' }}>
+          {view === 'needs' ? 'Requirements' : 'The credit'}
         </span>
+        {/* Two states, not a fallback that hides a failed parse: what we made of the
+            credit for this document, or the credit as it arrived. */}
+        <SegmentedControl
+          size="sm"
+          value={view}
+          onChange={setView}
+          items={[
+            { id: 'needs', label: 'Needs', tip: 'What the credit demands of this document, from its 46A and 47A' },
+            { id: 'fields', label: 'Fields', tip: 'Every field we read from the credit' },
+            { id: 'text', label: 'Text', tip: 'The credit exactly as it arrived' },
+          ]}
+        />
       </div>
+      {view === 'fields' ? (
+        <div style={{ maxHeight: VIEWPORT, overflow: 'auto' }}>
+          {facts.map((f, i) => (
+            <div key={i} style={{ padding: '8px 14px', borderBottom: '1px solid var(--me-grey-08)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ fontSize: 11, color: 'var(--me-grey-70)' }}>{f.label}{f.source ? ` · ${f.source}` : ''}</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, lineHeight: 1.5, color: 'var(--me-ink)', whiteSpace: 'pre-wrap' }}>{f.value}</span>
+            </div>
+          ))}
+        </div>
+      ) : view === 'text' ? (
+        <div style={{ maxHeight: VIEWPORT, overflow: 'auto', padding: '12px 14px', fontFamily: 'var(--font-mono)', fontSize: 11, lineHeight: 1.8, color: 'var(--me-ink)' }}>
+          {creditLines?.map((l) => (
+            <div key={l.id} style={{ whiteSpace: 'pre-wrap' }}>{l.text}</div>
+          ))}
+        </div>
+      ) : (
+        <>
       {!demands ? (
         <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12, color: '#946400' }}>
@@ -325,6 +378,8 @@ function CreditColumn({ demands, facts, docFacts, isCredit }) {
           ) : null}
         </div>
       )}
+        </>
+      )}
     </div>
   )
 }
@@ -360,117 +415,68 @@ function FactRow({ fact, doubtful, onRaise, onGo }) {
   )
 }
 
-// Raising a discrepancy is a deliberate, recorded act, so it gets a surface of its
-// own rather than a corner of a column. Crammed into the panel it read as a nervous
-// afterthought — and a form that feels like an afterthought produces findings that
-// look like one, which is the wrong signal on something that ends up in a refusal
-// advice.
+// Raising a discrepancy: one box, one choice, one button.
 //
-// Where it was seen is pre-filled from where the officer was standing: a finding
-// whose provenance was typed from memory is worth less than one the interface
-// recorded. The article being relied on is offered, not demanded — an examiner often
-// knows a document is wrong before they know which article says so, and forcing the
-// citation first would either block the finding or invite a guess.
-function RaiseModal({ draft, setDraft, refs, onCancel, onRaise }) {
+// The first version asked two questions — a headline and then the reasoning — plus a
+// severity select and an optional article. An examiner mid-bundle has no time to
+// answer a questionnaire, and splitting one thought across two boxes makes them write
+// the same thing twice. So: one field, two lines to start and as many as it takes.
+// The first line becomes the headline because that is how people write anyway.
+function RaiseModal({ draft, setDraft, onCancel, onRaise }) {
   if (!draft) return null
-  const set = (k) => (e) => setDraft({ ...draft, [k]: e.target.value })
-  const ready = draft.title.trim().length > 2
-  const toggleRef = (r) =>
-    setDraft({ ...draft, refs: (draft.refs ?? []).includes(r) ? draft.refs.filter((x) => x !== r) : [...(draft.refs ?? []), r] })
-
+  const text = draft.text ?? ''
+  const firstLine = text.split('\n')[0].trim()
+  const ready = firstLine.length > 2
   return (
     <Modal
       open
       onClose={onCancel}
-      width={620}
-      title="Raise a finding of your own"
-      subtitle="It joins the findings marked as yours, with no check behind it — which is the honest record."
+      width={560}
+      title="Raise a finding"
+      subtitle={draft.quoteSource ? `On ${draft.quoteSource}` : undefined}
       footer={
         <>
-          <span style={{ fontSize: 11.5, color: ready ? 'var(--me-grey-70)' : '#946400' }}>
-            {ready ? 'Recorded against your name, with the document and page it came from.' : 'Say what is wrong before raising it — the line goes on the record.'}
+          {/* Severity is two words, not a dropdown: there are two answers and a
+              select would cost a click to see them. */}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+            {[
+              { id: 'discrepancy', label: 'Discrepancy' },
+              { id: 'possible', label: 'To decide' },
+            ].map((o) => (
+              <Chip
+                key={o.id}
+                size="md"
+                tone={draft.severity === o.id ? 'blue' : 'plain'}
+                onClick={() => setDraft({ ...draft, severity: o.id })}
+              >
+                {draft.severity === o.id ? <Icon name="check" size={11} /> : null}
+                {o.label}
+              </Chip>
+            ))}
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
             <button onClick={onCancel} style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, color: 'var(--me-grey-70)' }}>Cancel</button>
-            <Button variant="primary" size="md" onClick={() => onRaise(draft)} disabled={!ready}>Raise it</Button>
+            <Button variant="primary" size="md" onClick={() => onRaise({ ...draft, title: firstLine, detail: text.slice(firstLine.length).trim() })} disabled={!ready}>Raise</Button>
           </span>
         </>
       }
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* Provenance, stated rather than asked for. */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '11px 13px', background: 'var(--me-grey-08)', borderRadius: 10 }}>
-          <Eyebrow size="sm">Seen on</Eyebrow>
-          <span style={{ fontSize: 12.5, color: 'var(--me-ink)' }}>{draft.quoteSource || 'this document'}</span>
-          {draft.quote ? (
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, lineHeight: 1.6, color: 'var(--me-grey)', whiteSpace: 'pre-wrap' }}>{draft.quote}</span>
-          ) : (
-            <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>No reading cited — you can quote one by raising from a row on the right.</span>
-          )}
-        </div>
-
-        <Field label="What is wrong" hint="One line, as it would read on a refusal advice.">
-          <input
-            value={draft.title}
-            onChange={set('title')}
-            autoFocus
-            placeholder="e.g. Invoice does not quote the contract number required by 47A"
-            style={{ width: '100%', height: 42, border: '1px solid var(--me-grey-20)', borderRadius: 9, padding: '0 12px', fontFamily: 'inherit', fontSize: 13.5, color: 'var(--me-ink)', outline: 'none' }}
-          />
-        </Field>
-
-        <Field label="Why it matters" hint="What the credit or the rules require, and what the document shows instead.">
-          <TextArea
-            value={draft.detail}
-            onChange={set('detail')}
-            placeholder="The credit requires… the document shows… so…"
-            maxLines={8}
-            maxLength={900}
-            style={{ width: '100%', border: '1px solid var(--me-grey-20)', borderRadius: 9, padding: '10px 12px', fontFamily: 'inherit', fontSize: 13, lineHeight: 1.65, color: 'var(--me-ink)', outline: 'none' }}
-          />
-        </Field>
-
-        {refs.length ? (
-          <Field label="Relying on" hint="Optional — the practice governing this document. Add it if you know it.">
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
-              {refs.map((r) => {
-                const on = (draft.refs ?? []).includes(r)
-                return (
-                  <Chip key={r} size="md" mono tone={on ? 'blue' : 'plain'} onClick={() => toggleRef(r)}>
-                    {on ? <Icon name="check" size={11} /> : null}
-                    {r}
-                  </Chip>
-                )
-              })}
-            </div>
-          </Field>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {draft.quote ? (
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, lineHeight: 1.6, color: 'var(--me-grey)', background: 'var(--me-grey-08)', borderRadius: 8, padding: '9px 11px', whiteSpace: 'pre-wrap' }}>
+            {draft.quote}
+          </span>
         ) : null}
-
-        <Field label="How you would call it">
-          <Select
-            size="md"
-            value={draft.severity}
-            onChange={set('severity')}
-            options={[
-              { value: 'discrepancy', label: 'A discrepancy — the presentation does not comply' },
-              { value: 'possible', label: 'To decide — worth a second look before it is called' },
-            ]}
-            style={{ width: '100%' }}
-          />
-        </Field>
+        <TextArea
+          value={text}
+          onChange={(e) => setDraft({ ...draft, text: e.target.value })}
+          autoFocus
+          placeholder={'What is wrong.\nAnything more you want on the record.'}
+          maxLines={10}
+          maxLength={900}
+          style={{ width: '100%', minHeight: 58, border: '1px solid var(--me-grey-20)', borderRadius: 9, padding: '10px 12px', fontFamily: 'inherit', fontSize: 13.5, lineHeight: 1.6, color: 'var(--me-ink)', outline: 'none' }}
+        />
       </div>
     </Modal>
-  )
-}
-
-function Field({ label, hint, children }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--me-ink)' }}>{label}</span>
-        {hint ? <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>{hint}</span> : null}
-      </span>
-      {children}
-    </div>
   )
 }

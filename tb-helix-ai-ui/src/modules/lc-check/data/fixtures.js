@@ -1105,6 +1105,9 @@ function buildFindings(def) {
       area: f.area,
       areaId: f.areaId,
       checkId: f.checkId,
+      // This builder names every field it keeps, which silently dropped
+      // `raisedByOfficer` and filed a seeded officer finding under Requirement.
+      raisedByOfficer: !!f.raisedByOfficer,
       docId: f.docId,
       page: f.page ?? null,
       anchorId: null,
