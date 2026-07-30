@@ -68,6 +68,10 @@ const initial = {
     // any model spend. Set in the plan, before pressing go, so Auto keeps its
     // promise not to surprise you — you chose this.
     stopOnRuleFailure: true,
+    // Findings a person raised. Kept apart from the engine's own, because the two
+    // carry different weight and a refusal advice has to be able to say which is
+    // which — an officer's observation is not a check's output.
+    raised: [],
     verdict: 'refuse',
     reviewNote: '',
     submitted: false,
@@ -173,6 +177,10 @@ function reducer(state, action) {
           reviewNote: [state.officer.reviewNote, `${action.title} — ${action.text}`].filter(Boolean).join('\n'),
         },
       }
+    case 'raise_finding':
+      return { ...state, officer: { ...state.officer, raised: [...state.officer.raised, action.finding] } }
+    case 'unraise_finding':
+      return { ...state, officer: { ...state.officer, raised: state.officer.raised.filter((f) => f.id !== action.id) } }
     case 'stop_on_rule_failure':
       return { ...state, officer: { ...state.officer, stopOnRuleFailure: action.on } }
     case 'add_check':
@@ -301,6 +309,44 @@ export function CaseProvider({ caseId, children }) {
     flash('Check added to the plan — it runs with the rest.')
   }, [caseId, state.officer.addedChecks.length, flash])
 
+  // Raise what the engine did not. An officer examining the pages themselves is
+  // the backstop for everything OCR mangled, every box we read the wrong way and
+  // every condition no card covers — so the tool has to be there, and what it
+  // produces has to be marked as theirs.
+  const raiseFinding = useCallback(
+    (draft) => {
+      const n = state.officer.raised.length + 1
+      const finding = {
+        id: `officer-${n}`,
+        severity: draft.severity ?? 'possible',
+        title: draft.title,
+        detail: draft.detail ?? '',
+        statement: (draft.title ?? '').toUpperCase(),
+        docId: draft.docId ?? null,
+        page: draft.page ?? null,
+        area: 'Raised by you',
+        areaId: null,
+        checkId: null,
+        creditTag: null,
+        quote: draft.quote ?? '',
+        quoteSource: draft.quoteSource ?? '',
+        reason: draft.detail ?? '',
+        raisedByOfficer: true,
+        settledBy: null,
+        source: null,
+        comparison: null,
+        statementSource: 'officer',
+        analysis: { requirement: '', presented: draft.quote ?? '', why: draft.detail ?? '', options: [] },
+        analysisMarkdown: draft.detail ?? '',
+        trace: [{ key: 'raised by', value: 'the examining officer' }],
+      }
+      dispatch({ type: 'raise_finding', finding })
+      flash('Raised. It sits with the rest of the findings, marked as yours.')
+      return finding
+    },
+    [state.officer.raised.length, flash],
+  )
+
   const submit = useCallback(async () => {
     const { routedTo } = await api.submitCase(caseId, { verdict: state.officer.verdict, note: state.officer.reviewNote })
     dispatch({ type: 'submitted' })
@@ -324,10 +370,12 @@ export function CaseProvider({ caseId, children }) {
     const data = state.data
     if (!data) return { findings: [], attention: [], clean: [], manual: [] }
     const done = new Set(state.run.completedAreaIds)
-    const findings = data.findings.filter((f) => {
-      if (f.severity === 'manual') return state.run.finished
-      return f.areaId ? done.has(f.areaId) : state.run.finished
-    })
+    const findings = data.findings
+      .filter((f) => {
+        if (f.severity === 'manual') return state.run.finished
+        return f.areaId ? done.has(f.areaId) : state.run.finished
+      })
+      .concat(state.officer.raised)
     return {
       findings,
       attention: findings.filter(needsAction),
@@ -342,9 +390,9 @@ export function CaseProvider({ caseId, children }) {
       caseId,
       visible,
       stages: STAGES,
-      actions: { flash, runNext, decide, saveNote, addCheck, submit, askQuestion, dispatch },
+      actions: { flash, runNext, decide, saveNote, addCheck, raiseFinding, submit, askQuestion, dispatch },
     }),
-    [state, caseId, visible, flash, runNext, decide, saveNote, addCheck, submit, askQuestion],
+    [state, caseId, visible, flash, runNext, decide, saveNote, addCheck, raiseFinding, submit, askQuestion],
   )
 
   return <CaseContext.Provider value={value}>{children}</CaseContext.Provider>

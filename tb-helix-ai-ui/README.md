@@ -651,6 +651,59 @@ says *needs you* rather than nothing, because an empty cell is work outstanding.
 Selecting one: the list becomes a 340px rail and the finding gets the room. It used
 to auto-select the first item, which saves a click and costs the overview.
 
+### "Not covered" was never a category
+
+If a finding belongs to no rule card and no requirement card, where did it come
+from? It used to be a group in Review, and that was wrong. The answer is that the
+planner read a condition out of the credit and found nothing in the dictionary that
+covers it — so it **is** a requirement, one we have no card for. Making it a category
+dressed a **gap in the catalogue** up as a legitimate third kind of finding.
+
+It is now a flag, and the two gaps behind it are told apart because they call for
+different fixes:
+
+| | Means | Fix |
+|---|---|---|
+| **no card** | nothing in the dictionary covers this | author a card in Governance |
+| **not settled** | a card ran and could not conclude, so it handed the question to a person | the card is too weak, or the data was not there |
+
+Both lead their group, because both are the engine admitting something, and an
+officer must not be able to work top-to-bottom and come away thinking everything was
+checked.
+
+The third group is **provenance, not kind**: *Raised by you*. Not "user" — this
+interface speaks in the first person — and not "manual", which in trade finance
+means a person examining documents and would make the label sound like the whole
+job. So: **Rule · Requirement · Raised by you**.
+
+### Examine the documents yourself
+
+The engine's findings are a head start, not the examination. Under UCP 600 art. 14(a)
+the *bank* examines the documents; a list of what our checks happened to look at is
+not that. Three things a finding list structurally cannot cover:
+
+- OCR read a box wrong, or could not read it at all
+- we read the right box and drew the wrong conclusion
+- the credit states something no card covers
+
+So Review has a second **mode** — not a grouping, because neither job contains the
+other. *Findings* is checking what we found; *Examine the documents* inverts the
+flow to document-led: the bundle on the left, the page in the middle, and what we
+made of that page on the right.
+
+**Our own uncertainty is promoted to the top of that panel**, and that is the whole
+idea. We already record a confidence per reading and a flag when something looked
+odd; buried in a list, that is a risk nobody reads. Surfaced as *"2 readings we are
+not sure of"*, it becomes a directed task — the shortest path to the discrepancies
+our extraction is likeliest to have fumbled. On case 01 that is 8 readings across 7
+documents, one of which ("Drawee", faint scan) we could not read at all.
+
+Every reading carries **Raise** — not only the doubtful ones, because a confident
+misreading is still a misreading and the officer decides which of our readings to
+trust. Raising pre-fills the document, the page and the quote from where you were
+standing: a finding whose provenance was typed from memory is worth less than one
+the interface recorded.
+
 ### A finding carries how it was settled
 
 `settledBy` (rule or requirement), `source` (credit / practice / policy), and for a

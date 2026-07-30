@@ -38,7 +38,10 @@ export default function FindingCard({ finding, kind, subtitle, selected, decisio
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--me-grey-70)' }}>{finding.checkId}</span>
           </span>
         ) : (
-          <span title="No check covered this" style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#946400', whiteSpace: 'nowrap' }}>no check</span>
+          <span title={finding.raisedByOfficer ? 'You raised this — no check produced it' : 'No card in the dictionary covers this. It is a gap in the catalogue, not a kind of finding.'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: finding.raisedByOfficer ? 'var(--me-grey-70)' : '#946400', whiteSpace: 'nowrap' }}>
+            <Icon name={finding.raisedByOfficer ? 'flag' : 'circle-alert'} size={11} color="currentColor" />
+            {finding.raisedByOfficer ? 'yours' : 'no card'}
+          </span>
         )}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

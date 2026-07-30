@@ -43,7 +43,7 @@ function finishedCaseValue() {
       decisions: { 'f-date': 'agreed', 'f-cert': 'parked' },
       notes: { 'f-date': 'Applicant contacted.' },
       drafts: {},
-      addedChecks: [], stopOnRuleFailure: true,
+      addedChecks: [], raised: [], stopOnRuleFailure: true,
       verdict: 'refuse',
       reviewNote: 'Shipment is late — raising it.',
       submitted: false,
@@ -57,7 +57,7 @@ function finishedCaseValue() {
     },
     stages: STAGES,
     actions: {
-      flash() {}, startRun() {}, advanceRun() {}, decide() {}, saveNote() {}, dispatch() {},
+      flash() {}, startRun() {}, advanceRun() {}, decide() {}, saveNote() {}, dispatch() {}, raiseFinding() {},
       addCheck() {}, submit() {}, askQuestion() {}, dispatch() {},
     },
   }
