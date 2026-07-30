@@ -1,4 +1,4 @@
-package com.tb.helix.lccheck.pipeline;
+package com.tb.helix.lccheck.domain;
 
 import java.util.List;
 import java.util.Optional;
@@ -10,6 +10,12 @@ import java.util.Optional;
  * {@code awaiting_officer} until a person asks for it. That pacing is the product: this
  * is a regulated examination, and a pipeline that ran to completion on upload would be
  * presenting conclusions nobody chose to reach.
+ *
+ * <p>In {@code domain} rather than beside the runner because it is a noun, not part of the
+ * contract: a stage name appears in a URL, in a database column, in a clear-downstream call.
+ * {@code Stage}, {@code StageContext} and {@code StageOutcome} stayed in {@code pipeline} —
+ * those three are one contract split across three files, and only the runner and the stages
+ * themselves ever speak it.
  *
  * <p>{@link #GATE} is a stage in the code and a step on the wire, but it is triggered by
  * the same officer action as {@link #PLAN} — so the workbench keeps three run buttons

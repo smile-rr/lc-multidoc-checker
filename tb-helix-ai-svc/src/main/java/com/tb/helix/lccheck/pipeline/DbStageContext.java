@@ -1,5 +1,6 @@
 package com.tb.helix.lccheck.pipeline;
 
+import com.tb.helix.lccheck.domain.StageId;
 import com.tb.helix.infra.stream.EventBus;
 import com.tb.helix.infra.stream.HelixEvent;
 import com.tb.helix.lccheck.persistence.CaseStore;

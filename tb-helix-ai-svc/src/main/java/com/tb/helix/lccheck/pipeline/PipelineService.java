@@ -1,5 +1,6 @@
 package com.tb.helix.lccheck.pipeline;
 
+import com.tb.helix.lccheck.domain.StageId;
 import com.tb.helix.infra.error.ConflictException;
 import com.tb.helix.infra.error.NotFoundException;
 import com.tb.helix.infra.stream.EventBus;

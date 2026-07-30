@@ -8,7 +8,7 @@ import com.tb.helix.lccheck.api.dto.DecisionRequest;
 import com.tb.helix.lccheck.api.dto.NewCheckRequest;
 import com.tb.helix.lccheck.api.dto.SignoffRequest;
 import com.tb.helix.lccheck.pipeline.PipelineService;
-import com.tb.helix.lccheck.pipeline.StageId;
+import com.tb.helix.lccheck.domain.StageId;
 import com.tb.helix.lccheck.service.CaseService;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;

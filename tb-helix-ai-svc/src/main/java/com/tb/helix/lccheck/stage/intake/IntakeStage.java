@@ -8,7 +8,7 @@ import com.tb.helix.infra.blob.BlobStore;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.pipeline.Stage;
 import com.tb.helix.lccheck.pipeline.StageContext;
-import com.tb.helix.lccheck.pipeline.StageId;
+import com.tb.helix.lccheck.domain.StageId;
 import com.tb.helix.lccheck.pipeline.StageOutcome;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

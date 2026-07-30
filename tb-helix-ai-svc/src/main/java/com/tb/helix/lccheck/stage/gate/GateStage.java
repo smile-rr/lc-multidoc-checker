@@ -1,5 +1,6 @@
 package com.tb.helix.lccheck.stage.gate;
 
+import com.tb.helix.lccheck.domain.StageId;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.governance.domain.CheckCatalog;
 import com.tb.helix.lccheck.persistence.CaseStore;

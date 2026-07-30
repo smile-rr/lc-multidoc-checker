@@ -1,5 +1,6 @@
 package com.tb.helix.lccheck.stage.execute;
 
+import com.tb.helix.lccheck.domain.StageId;
 import com.tb.helix.harness.llm.LlmGateway;
 import com.tb.helix.harness.llm.LlmRole;
 import com.tb.helix.harness.llm.text.TextRequest;
