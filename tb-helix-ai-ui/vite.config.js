@@ -19,7 +19,10 @@ export default defineConfig({
     port: 5174,
     strictPort: true,
     proxy: {
-      '/api': { target: 'http://127.0.0.1:9082', changeOrigin: true },
+      // tb-helix-ai-svc. Only used when VITE_DATA_SOURCE=api; the default mock
+      // source makes no requests at all, so a proxy with nothing behind it is
+      // harmless rather than a broken dev server.
+      '/api': { target: 'http://127.0.0.1:9090', changeOrigin: true },
     },
   },
   build: {

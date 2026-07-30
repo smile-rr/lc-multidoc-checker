@@ -2,235 +2,30 @@
 // lc-check — data access.
 //
 // The single seam between the module and its data. Screens call these functions
-// and nothing else; they never import fixtures. Every call is async and returns
-// contract shapes, so pointing this file at lc-checker-v2-svc is a rewrite of
-// the bodies only — no screen changes, no prop changes.
+// and nothing else; they never import fixtures.
 //
-// The real endpoints these stand in for (base `/api/v2`, proxied in dev):
-//   listCases        GET    /sessions
-//   getCase          GET    /sessions/{id}
-//   createCase       POST   /sessions                     (multipart: credit + bundle)
-//   runStage         POST   /sessions/{id}/stages/{stage}/run
-//   recordDecision   POST   /sessions/{id}/findings/{fid}/decision
-//   addCheck         POST   /sessions/{id}/checks
-//   submitCase       POST   /sessions/{id}/signoff
-//   ask              POST   /sessions/{id}/ask
-//   getSpend         GET    /metrics/spend?period=30d
+// Two implementations sit behind it, chosen by VITE_DATA_SOURCE:
 //
-// The bundle PDF is served today from `public/samples/`; against the service it
-// becomes `GET /sessions/{id}/documents/{docId}/pdf`. `CaseDetail.pdfUrl` is the
-// only place that changes.
+//   mock (default)  ../data fixtures — demos, layout review, exact reproduction
+//   api             tb-helix-ai-svc on :9090
 //
-// Stage progress arrives over SSE in the real service (`/sessions/{id}/stream`).
-// `runPipelineStep` below has the same callback shape an EventSource wrapper
-// will have, so the run engine does not care which is behind it.
+// Per-function rather than per-module on purpose. The backend arrives one
+// endpoint at a time, and a function with no `api` entry below simply keeps
+// using the mock — so a half-migrated module is a working module rather than a
+// broken one. Move a line when its endpoint is real.
 // ===========================================================================
 
-import { CASE_LIST, caseDetailFor, ASK_SUGGESTIONS, AI_PERFORMANCE, RUN_STEPS } from '../data/fixtures.js'
-import { summariseSpend } from '../state/runCost.js'
+import { pick } from '@shared/lib/dataSource.js'
+import * as mock from './mockAdapter.js'
+import * as http from './httpAdapter.js'
 
-/** Simulated service latency, ms. Kept visible so loading states get exercised. */
-const LATENCY = { list: 160, detail: 220, mutate: 110 }
-
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-
-// Deep clone on the way out so a screen mutating a result cannot corrupt the
-// fixture — the same isolation a real HTTP response gives you for free.
-const clone = (value) => JSON.parse(JSON.stringify(value))
-
-/**
- * @param {{ scope?: 'all'|'mine'|'due' }} [params]
- * @returns {Promise<import('../data/contracts.js').CaseSummary[]>}
- */
-export async function listCases({ scope = 'all' } = {}) {
-  await wait(LATENCY.list)
-  const rows = clone(CASE_LIST)
-  if (scope === 'mine') return rows.filter((r) => r.mine)
-  if (scope === 'due') return rows.filter((r) => r.replyDueDays === 0)
-  return rows
-}
-
-/**
- * @param {string} caseId
- * @returns {Promise<import('../data/contracts.js').CaseDetail>}
- */
-export async function getCase(caseId) {
-  await wait(LATENCY.detail)
-  const detail = caseDetailFor(caseId)
-  if (!detail) throw new Error(`No such case: ${caseId}`)
-  return detail
-}
-
-/**
- * Opens a case from an uploaded credit and presentation bundle.
- * @param {{ creditFile: string, bundleFile: string }} files
- * @returns {Promise<{ caseId: string }>}
- */
-export async function createCase(files) {
-  await wait(LATENCY.mutate)
-  void files
-  // A new case starts unexamined — the fresh fixture.
-  return { caseId: 'CHK-25-0128-011' }
-}
-
-/**
- * What the credit tells us before a case exists — shown in the New check dialog
- * as soon as the MT700 is dropped.
- * @returns {Promise<{ label: string, value: string }[]>}
- */
-export async function peekCredit() {
-  await wait(LATENCY.mutate)
-  const detail = caseDetailFor('CHK-25-0128-011')
-  const c = detail.credit
-  return [
-    { label: 'Check', value: detail.id },
-    { label: 'Credit', value: `${c.creditRef} · expires ${c.expiry}` },
-    { label: 'Amount', value: `${c.currency} ${c.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}${c.tolerancePct ? ` ±${c.tolerancePct}%` : ''}` },
-    { label: 'Beneficiary', value: c.beneficiary },
-  ]
-}
-
-/**
- * Portfolio AI spend, for the cases list.
- *
- * Aggregated server-side in production — the browser must not have to pull every
- * case to add up a number.
- *
- * @returns {Promise<object>}
- */
-export async function getSpendSummary() {
-  await wait(LATENCY.list)
-  const cases = CASE_LIST.map((c) => ({
-    id: c.id,
-    pageCount: c.pageCount,
-    // Only examined cases have spent anything.
-    examined: c.status !== 'awaiting_check',
-  }))
-  // Work completed ahead of review — the concrete output of the pre-check.
-  const done = cases.filter((c) => c.examined).map((c) => caseDetailFor(c.id))
-  const checksRun = done.reduce((a, d) => a + d.checks.filter((c) => c.areaId).length, 0)
-  const findingsRaised = done.reduce((a, d) => a + d.findings.length, 0)
-
-  return {
-    ...summariseSpend(cases, RUN_STEPS),
-    checksRun,
-    findingsRaised,
-    benchmark: AI_PERFORMANCE,
-  }
-}
-
-/**
- * Adds an officer-authored check to a case's plan. Recorded against their name.
- * @param {string} caseId
- * @param {{ name: string }} check
- * @returns {Promise<import('../data/contracts.js').PlanCheck>}
- */
-export async function addCheck(caseId, { name }) {
-  await wait(LATENCY.mutate)
-  void caseId
-  return {
-    id: `USER-${String((Math.abs(hash(name)) % 89) + 1).padStart(2, '0')}`,
-    name,
-    areaId: null,
-    appliesBecause: 'You added it to this case',
-    ruleRef: 'Your judgement — recorded against your name',
-    findingId: null,
-    addedByOfficer: true,
-  }
-}
-
-/**
- * @param {string} caseId
- * @param {string} findingId
- * @param {{ disposition: import('../data/contracts.js').Disposition, note?: string }} decision
- */
-export async function recordDecision(caseId, findingId, decision) {
-  await wait(LATENCY.mutate)
-  void [caseId, findingId, decision]
-}
-
-/**
- * @param {string} caseId
- * @param {{ verdict: import('../data/contracts.js').Verdict, note: string }} signoff
- * @returns {Promise<{ routedTo: string }>}
- */
-export async function submitCase(caseId, signoff) {
-  await wait(LATENCY.mutate)
-  void signoff
-  return { routedTo: caseDetailFor(caseId)?.authoriser ?? 'the checker' }
-}
-
-/**
- * @param {string} caseId
- * @param {string} question
- * @returns {Promise<{ answer: string }>}
- */
-export async function ask(caseId, question) {
-  await wait(LATENCY.detail)
-  void caseId
-  const hit = ASK_SUGGESTIONS.find((s) => s.label === question)
-  return {
-    answer:
-      hit?.answer ??
-      'I can only answer from what is in this presentation and the rule books behind the checks. Ask about a finding, whether something can be cured, or what a rule says.',
-  }
-}
-
-// ---- Run progress ----------------------------------------------------------
-
-/**
- * Runs one pipeline step, emitting progress the same way the service's SSE
- * stream will. Returns an unsubscribe function; call it to stop a step in
- * flight.
- *
- * This knows nothing about run mode. Whether the officer is running straight
- * through or a stage at a time is a decision about who asks for the next step,
- * and belongs to the caller — putting it here once meant the transport decided
- * how much of the pipeline ran, which is not the transport's business.
- *
- * Events:
- *   interpret  { type: 'segment', done, total } ×n, then { type: 'step_done' }
- *   plan       { type: 'step_done' }
- *   execute    { type: 'area_started'|'area_done', areaId } ×n, then { type: 'step_done' }
- *
- * @param {string} caseId
- * @param {'interpret'|'plan'|'execute'} stepId
- * @param {{ areas: import('../data/contracts.js').CheckArea[], segmentTotal: number }} plan
- * @param {(event: object) => void} onEvent
- * @returns {() => void} unsubscribe
- */
-export function runPipelineStep(caseId, stepId, { areas = [], segmentTotal = 6 }, onEvent) {
-  void caseId
-  const timers = []
-  const at = (ms, fn) => timers.push(setTimeout(fn, ms))
-  const done = (ms) => at(ms, () => onEvent({ type: 'step_done', stepId }))
-
-  // Paced so a run reads as work happening without making a demo wait.
-  const SEGMENT_EVERY = 130
-  const AREA_EVERY = 800
-  const PLAN_MS = 900
-
-  if (stepId === 'interpret') {
-    for (let i = 1; i <= segmentTotal; i += 1) {
-      at(i * SEGMENT_EVERY, () => onEvent({ type: 'segment', done: i, total: segmentTotal }))
-    }
-    done(segmentTotal * SEGMENT_EVERY + 160)
-  } else if (stepId === 'plan') {
-    done(PLAN_MS)
-  } else if (stepId === 'execute') {
-    areas.forEach((area, i) => {
-      at(i * AREA_EVERY + 120, () => onEvent({ type: 'area_started', areaId: area.id }))
-      at((i + 1) * AREA_EVERY, () => onEvent({ type: 'area_done', areaId: area.id }))
-    })
-    done(areas.length * AREA_EVERY + 160)
-  }
-
-  return () => timers.forEach(clearTimeout)
-}
-
-// Small stable hash so a generated check id is deterministic for a given name.
-function hash(s) {
-  let h = 0
-  for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) | 0
-  return h
-}
+export const listCases = pick(mock.listCases, http.listCases)
+export const getCase = pick(mock.getCase, http.getCase)
+export const createCase = pick(mock.createCase, http.createCase)
+export const peekCredit = pick(mock.peekCredit, http.peekCredit)
+export const getSpendSummary = pick(mock.getSpendSummary, http.getSpendSummary)
+export const addCheck = pick(mock.addCheck, http.addCheck)
+export const recordDecision = pick(mock.recordDecision, http.recordDecision)
+export const submitCase = pick(mock.submitCase, http.submitCase)
+export const ask = pick(mock.ask, http.ask)
+export const runPipelineStep = pick(mock.runPipelineStep, http.runPipelineStep)
