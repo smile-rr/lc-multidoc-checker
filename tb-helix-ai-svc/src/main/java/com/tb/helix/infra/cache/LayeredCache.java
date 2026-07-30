@@ -1,9 +1,6 @@
 package com.tb.helix.infra.cache;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tb.helix.core.cache.CacheTier;
-import com.tb.helix.core.cache.DerivationCache;
-import com.tb.helix.core.cache.DerivationKey;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;

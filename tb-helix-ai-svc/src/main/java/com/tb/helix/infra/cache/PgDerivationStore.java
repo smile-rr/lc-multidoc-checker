@@ -1,8 +1,6 @@
 package com.tb.helix.infra.cache;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tb.helix.core.cache.DerivationCache;
-import com.tb.helix.core.cache.DerivationKey;
 import com.tb.helix.infra.config.CacheProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -1,0 +1,38 @@
+package com.tb.helix.harness.model;
+
+/**
+ * What a model is being asked to do.
+ *
+ * <p>Domain code names a <em>role</em>, never a slot and never a provider. "Extract the
+ * fields from these pages" is a statement about the work; "send this to qwen3.7-vl-flash
+ * at dashscope" is a statement about a deployment, and stages have no business making it.
+ *
+ * <p>Configuration maps roles to slots:
+ *
+ * <pre>
+ *   helix.roles:
+ *     extract: [vlm-1, vlm-2]     # two slots — they run in parallel and vote
+ *     judge:   [llm-1]
+ * </pre>
+ *
+ * <p>So changing provider, model or consensus width is a configuration edit. No stage,
+ * rule or controller mentions any of them, and the ArchUnit boundary makes that
+ * structural rather than aspirational.
+ */
+public enum ModelRole {
+
+    /** Identify which document each page of a bundle belongs to. Vision. */
+    SEGMENT,
+
+    /** Read fields off a document's pages. Vision, and the dominant cost of a run. */
+    EXTRACT,
+
+    /** Read this credit's 46A/47A into requirement cards. Text. */
+    PLAN,
+
+    /** Decide whether a judged rule is satisfied. Text, sometimes with tools. */
+    JUDGE,
+
+    /** Draft officer-facing prose — a discrepancy statement, an answer to a question. */
+    NARRATE
+}

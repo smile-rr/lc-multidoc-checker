@@ -120,14 +120,37 @@ helix:
 
   # --- Document handling --------------------------------------------------
   render:
-    dpi: 200
-    max-pages: 12
-    max-long-edge-px: 2048
-    # Rendered pages are VLM input; the browser never sees one. A page render is
-    # ~1.5 s against a 30 s model call, and the cache is consulted before the
-    # render — so persisting 1.5 MB per page buys almost nothing. Turn this on
-    # for a "show me what the model saw" view, not for speed.
+    # Quality knob, not the cost knob. Tokens scale with PIXEL AREA, so this is
+    # nearly free: rendering at 300 and downscaling to the cap beats rendering at
+    # 150, for identical tokens and a better image.
+    dpi: 300
+
+    # Rendered pages are VLM input; the browser never sees one. A render is ~1.5 s
+    # against a 30 s model call, and the cache is consulted before rendering — so
+    # persisting 1.5 MB per page buys almost nothing. Turn on for a "show me what
+    # the model saw" view, not for speed.
     persist-pages: false
+
+    # Refuse rather than silently truncate. A 400-page bundle is a mis-scan or a
+    # different kind of deal, and quietly examining the first 300 pages would look
+    # exactly like examining all of them.
+    max-bundle-pages: 300
+
+    # The money knob, per role. Segmentation only asks "what kind of page is this?"
+    # and does that fine at 800 px; extraction has to read a unit price. Running a
+    # 100-page bundle through segmentation at extraction resolution costs roughly
+    # ten times what it needs to.
+    #
+    #   long edge   ≈ tokens/page   100 pages
+    #      800           ~90            ~9k
+    #     1280          ~370           ~37k
+    #     1600          ~580           ~58k
+    #     2048          ~945           ~95k
+    profiles:
+      segment: { max-long-edge-px: 800,  max-pages: 40 }
+      extract: { max-long-edge-px: 1600, max-pages: 12 }
+      # Only when a human disputes what the model read.
+      forensic: { max-long-edge-px: 2600, max-pages: 4 }
 
   convert:
     # Bitonal CCITT G4 frames are re-embedded rather than rasterised. Scanned

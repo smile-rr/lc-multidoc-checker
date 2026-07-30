@@ -1,10 +1,7 @@
 package com.tb.helix.infra.blob;
 
-import com.tb.helix.core.blob.BlobOwner;
-import com.tb.helix.core.blob.BlobRef;
-import com.tb.helix.core.blob.BlobStore;
-import com.tb.helix.core.cache.DerivationKey;
-import com.tb.helix.core.error.DocumentException;
+import com.tb.helix.infra.Sha256;
+import com.tb.helix.infra.error.DocumentException;
 import com.tb.helix.infra.config.BlobProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -66,14 +63,18 @@ public class DiskBlobStore implements BlobStore {
 
     @Override
     public BlobRef put(byte[] content, String mediaType, String originalName) {
-        String sha = DerivationKey.sha256Hex(content);
-        Path target = pathFor(sha);
+        String sha = Sha256.of(content);
         BlobRef ref = new BlobRef(sha, content.length, mediaType, null, originalName);
+
+        // The extension comes from the media type we were handed, not from the catalogue —
+        // on a first write there is no catalogue row yet, and reading one back to decide
+        // where to write would be a lookup answering a question the caller already answered.
+        Path target = Path.of(root.resolve(storageKey(sha)) + extensionFor(mediaType));
 
         // Already held. Identical bytes are identical bytes — no read, no compare, no
         // rewrite. This is the branch that makes re-presenting a bundle free.
         if (Files.exists(target)) {
-            catalog.register(ref, TIER, storageKey(sha));
+            catalog.register(ref, TIER, storageKey(sha) + extensionFor(mediaType));
             return catalog.find(sha).orElse(ref);
         }
 
@@ -101,7 +102,7 @@ public class DiskBlobStore implements BlobStore {
             }
         }
 
-        catalog.register(ref, TIER, storageKey(sha));
+        catalog.register(ref, TIER, storageKey(sha) + extensionFor(mediaType));
         return ref;
     }
 
@@ -158,11 +159,38 @@ public class DiskBlobStore implements BlobStore {
         return "cas/" + sha.substring(0, 2) + "/" + sha.substring(2, 4) + "/" + sha;
     }
 
+    /**
+     * The stored file, extension included.
+     *
+     * <p>The digest addresses it; the extension only makes it openable. This tier exists so
+     * a person can look at what the service is holding, and a directory of extension-less
+     * hex strings defeats that entirely — you cannot double-click one.
+     *
+     * <p>Resolved from the catalogue rather than passed in, so a read never has to know the
+     * media type. On a miss the bare digest is tried too, which covers a blob stored before
+     * its catalogue row and keeps the two from having to be written atomically.
+     */
     private Path pathFor(String sha) {
         if (sha == null || sha.length() != 64) {
             throw new IllegalArgumentException("Not a sha256: " + sha);
         }
-        return root.resolve(storageKey(sha));
+        Path bare = root.resolve(storageKey(sha));
+        String ext = catalog.find(sha).map(r -> extensionFor(r.mediaType())).orElse("");
+        if (ext.isEmpty()) return bare;
+        Path withExt = Path.of(bare + ext);
+        return Files.exists(withExt) || !Files.exists(bare) ? withExt : bare;
+    }
+
+    private static String extensionFor(String mediaType) {
+        if (mediaType == null) return "";
+        String m = mediaType.toLowerCase();
+        if (m.contains("pdf")) return ".pdf";
+        if (m.contains("tiff") || m.contains("tif")) return ".tiff";
+        if (m.contains("png")) return ".png";
+        if (m.contains("jpeg") || m.contains("jpg")) return ".jpg";
+        if (m.contains("json")) return ".json";
+        if (m.startsWith("text/")) return ".txt";
+        return "";
     }
 
     /**
@@ -173,11 +201,14 @@ public class DiskBlobStore implements BlobStore {
      */
     private void linkForHumans(String sha, String caseId, String role) {
         try {
+            Path target = pathFor(sha);
             Path dir = root.resolve("by-case").resolve(caseId);
             Files.createDirectories(dir);
-            Path link = dir.resolve(role);
+            // role + the real extension: by-case/CHK-25-0128-014/bundle.pdf, which opens.
+            String ext = catalog.find(sha).map(r -> extensionFor(r.mediaType())).orElse("");
+            Path link = dir.resolve(role + ext);
             Files.deleteIfExists(link);
-            Files.createSymbolicLink(link, dir.relativize(pathFor(sha)));
+            Files.createSymbolicLink(link, dir.relativize(target));
         } catch (IOException | UnsupportedOperationException e) {
             log.debug("by-case link skipped for {} {}: {}", caseId, role, e.toString());
         }

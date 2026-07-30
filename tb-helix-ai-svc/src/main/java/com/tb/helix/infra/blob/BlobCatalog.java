@@ -1,7 +1,5 @@
 package com.tb.helix.infra.blob;
 
-import com.tb.helix.core.blob.BlobOwner;
-import com.tb.helix.core.blob.BlobRef;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 

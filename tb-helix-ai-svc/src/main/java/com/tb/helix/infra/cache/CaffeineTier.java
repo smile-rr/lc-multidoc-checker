@@ -2,7 +2,6 @@ package com.tb.helix.infra.cache;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import com.tb.helix.core.cache.CacheTier;
 import com.tb.helix.infra.config.CacheProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
