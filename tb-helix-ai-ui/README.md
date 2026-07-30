@@ -576,14 +576,49 @@ description" says nothing; `Goods description @ Commercial invoice no conflict w
 
 Not-brought-into-play collapses to one line: it is reference, not work.
 
-### Two kinds of check, one execute step
+### Rule card and Requirement card are different *provenances*
 
-Governance authors two kinds of card, and they are executed by different things:
+The word "requirement" was doing two jobs, and the collision was live: `ExaminePane`'s
+credit column rendered **"Requirements"** for the `:46A:`/`:47A:` parse while the plan
+beside it badged a *card kind* "Requirement". Its own source comment used both meanings
+in one sentence.
+
+| | Is | Authored | Reviewed by |
+|---|---|---|---|
+| **Rule card** | a standing check in the dictionary | in Governance | someone, before it ever runs |
+| **Requirement card** | what *this credit* demands — read out of `:46A:` / `:47A:` | by the planner, during the run | nobody |
+
+**That is the grouping** on the plan, in Review and on Decision — plus *Raised by you*
+for what a person raises. It is the difference that decides who can answer for a
+finding, and it needs no domain knowledge to read.
+
+A Rule card settled by an agent reading is still a Rule card; the service has it that
+way (`catalog.yml` holds one list keyed `rules:`, each entry carrying a `check_type`)
+and both halves are standing instructions the bank approved. A requirement the planner
+found no rule for is still a Requirement card — a gap in the rulebook, not a third
+group.
+
+### The tier is a mark, not a section
+
+How a card is settled rides on the row:
 
 | | Executor | Cost | Reproducible | What you read to trust it |
 |---|---|---|---|---|
-| **Rule** | the system, over extracted fields | ≈0 tokens, ms | byte-identical | the rows, and the values it read |
-| **Requirement** | an agent, over the presentation | tokens, seconds | no | the prompt, and the reasoning |
+| **exact** | the system, over extracted fields | ≈0 tokens, ms | byte-identical | the rows, and the values it read |
+| **judged** | an agent, over the presentation | tokens, seconds | no | the prompt, and the reasoning |
+
+It is not the grouping because it answers a different question: not *who can answer for
+this* but *how far can I trust it and what did it cost*. **The cost drawer does group
+by it**, for exactly that reason — cost is driven by tier, not by provenance.
+
+Underneath is the service's own `check_type` (`PROGRAMMATIC` · `AGENT` · `AGENT_TOOL` ·
+`AGENTIC`), in the tooltip and on a card's detail, since `AGENT` against `AGENTIC` is
+the difference in the bill.
+
+**Not "static / dynamic".** Both are equally static as authored artefacts: neither
+changes per credit, both are versioned text in the dictionary. The genuinely dynamic
+thing here is a requirement read out of a credit's `:47A:` — different every case — so
+that word is needed elsewhere.
 
 The pipeline did **not** gain a stage for this. A deterministic pass is not a step
 in the sense the other steps are: pacing exists to make model work observable,
@@ -592,7 +627,7 @@ and there is nothing to observe in six expression evaluations. Adding
 division of labour that belongs to the checks themselves. So `interpret → plan →
 execute` stands, and the difference lives where the checks live:
 
-- the **kind is marked on every plan row**, in the same badge Governance uses
+- the **tier is marked on every plan row**, in the same badge Governance uses
 - the **header states each half's economics**: *6 evaluated on extracted fields —
   no model, no cost* / *16 read by an agent — about 78k tokens*
 - rules **lead their group** and settle in the tick the run starts, because you

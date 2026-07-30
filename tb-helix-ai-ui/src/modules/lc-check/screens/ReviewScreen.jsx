@@ -17,7 +17,7 @@ import { PANE_FILL } from '../components/paneHeight'
 import DiscrepancyStatement from '../components/DiscrepancyStatement'
 import DispositionChips from '../components/DispositionChips'
 import { severityMeta, dispositionLabel } from '../state/severity'
-import { groupByKind, kindOf, kindMark } from '../state/findingKinds'
+import { groupByKind, kindOf, kindMark, tierMark } from '../state/findingKinds'
 import { useCase } from '../state/CaseContext'
 
 // Stage 4 — the findings.
@@ -29,11 +29,15 @@ import { useCase } from '../state/CaseContext'
 // The plan's structure carries through, deliberately: same groups, same two
 // densities, same words. Learning one screen should teach you the other.
 //
-// **Grouped by how it was settled. One arrangement, no control.** A finding inherits
-// the tier of the rule that settled it, and that grouping needs no expertise to read,
-// is the same on every credit, and puts the fast work in one place: exact findings are
-// arithmetic and can be agreed or rejected quickly, judged findings are where the
-// reading time belongs.
+// **Grouped by where the card came from. One arrangement, no control.** A Rule card
+// is standing, approved and the same on every credit; a Requirement card was read out
+// of *this* credit's 46A/47A during the run and reviewed by nobody. That is the
+// difference that decides who can answer for a finding, and it needs no expertise to
+// read.
+//
+// How it was settled — exact or judged — rides on the row instead of splitting the
+// list, because it answers a different question: not *who can answer for this* but
+// *how far can I trust it*.
 //
 // Two alternatives have been removed rather than offered. "By review area" was which
 // of our agents ran the rule — a fact about our implementation that means nothing to a
@@ -553,6 +557,13 @@ function FindingRow({ finding, decision, docById, onSelect }) {
         <span style={{ ...ellipsis, fontFamily: 'var(--font-mono)', fontSize: 11, color: finding.checkId ? 'var(--me-grey-70)' : finding.raisedByOfficer ? 'var(--me-grey-70)' : '#946400' }}>
           {finding.checkId ?? (finding.raisedByOfficer ? 'yours' : 'no rule')}
         </span>
+        {/* How it was settled, which the group no longer says — the list is grouped
+            by where the card came from. */}
+        {finding.settledBy ? (
+          <span title={tierMark(finding.settledBy).title} style={{ fontSize: 10, color: tierMark(finding.settledBy).color, whiteSpace: 'nowrap' }}>
+            {tierMark(finding.settledBy).label}
+          </span>
+        ) : null}
         <span style={{ ...ellipsis, fontSize: 10, color: '#946400' }}>
           {finding.gap === 'not settled' ? 'not settled' : ''}
         </span>

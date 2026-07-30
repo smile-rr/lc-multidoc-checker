@@ -180,9 +180,9 @@ export default function DecisionScreen({ onOpenFinding }) {
 
                   <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
-                      {/* How it was settled — the same mark Review uses, from the
-                          same definition. An icon rather than the line of prose it
-                          used to have: the group heading already spells it out. */}
+                      {/* Where the card came from — the same mark Review uses, from
+                          the same definition. An icon rather than the line of prose
+                          it used to have: the group heading already spells it out. */}
                       <span title={mark.title} style={{ display: 'flex', flexShrink: 0, color: mark.color }}>
                         <Icon name={mark.icon} size={11} color="currentColor" />
                       </span>

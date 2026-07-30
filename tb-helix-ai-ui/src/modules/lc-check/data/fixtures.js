@@ -416,7 +416,7 @@ const CASE_01 = {
       trace: [{ key: 'read by', value: 'Dates & Shipment review' }, { key: 'source', value: 'bundle p.2' }, { key: 'basis', value: 'UCP600 art.14(c), field 44C' }],
     },
     {
-      id: 'f-cond', severity: 'discrepancy', area: 'Additional conditions', areaId: 'a5', checkId: 'COND-47A',
+      id: 'f-cond', severity: 'discrepancy', area: 'Additional conditions', areaId: 'a5', checkId: 'COND-47A.1',
       docId: 'INV', page: 1, creditTag: '47A',
       statement: 'INVOICE DOES NOT QUOTE CONTRACT NO. WIDG-PO-2024-0317 AS REQUIRED BY FIELD 47A',
       title: 'The invoice does not quote the contract number the credit requires',
@@ -660,6 +660,45 @@ const CASE_02 = {
   authoriser: 'R. Meijer',
   docRefs: { INV: 'AA-2025-1187', BOL: 'HLCU-2298104', PKL: 'PL-25-1187', BOE: 'BOE-25-1187', BC: 'BC-25-1187', WC: 'WC-25-1187' },
   lowConfidence: [],
+  // The planner reads this credit's :47A: the same way it reads case 01's. Without
+  // these the plan claimed no Requirement cards while the findings list showed one,
+  // which is the plan and the review disagreeing about the same run.
+  plannerChecks: [
+    {
+      id: 'COND-47A.1',
+      areaId: 'a5',
+      name: 'Invoice quotes contract no. APP-PO-2025-1110',
+      appliesBecause: 'Planner read condition 1 of :47A: and wrote a check for it',
+      ruleRef: 'UCP 600 art. 14(d)',
+      rule: 'The commercial invoice must quote contract no. APP-PO-2025-1110, in addition to the LC number.\n\nFields to look at: {47A}',
+      refs: ['UCP600 Art.14'],
+      severity: 'CRITICAL',
+      findingId: null,
+    },
+    {
+      id: 'COND-47A.2',
+      areaId: 'a5',
+      name: 'Every document bears the LC number',
+      appliesBecause: 'Planner read condition 2 of :47A: and wrote a check for it',
+      ruleRef: 'UCP 600 art. 14(d)',
+      rule: 'Every document presented must bear the LC number.\n\nFields to look at: {47A}',
+      refs: ['UCP600 Art.14'],
+      severity: 'MAJOR',
+      findingId: null,
+    },
+    {
+      id: 'COND-47A.3',
+      areaId: null,
+      name: 'All documents are in English',
+      appliesBecause: 'Planner read condition 3 of :47A: but no rule in the dictionary covers document language',
+      ruleRef: 'No rule defined',
+      rule: 'All documents must be in English.\n\nNo check in the dictionary tests document language, so this condition was not examined. It is surfaced for a person to read.\n\nFields to look at: {47A}',
+      refs: [],
+      severity: 'MAJOR',
+      findingId: 'm-lang2',
+      notCovered: true,
+    },
+  ],
   scanNotes: {},
   creditFacts: [
     { tag: '20', label: 'Credit number' },
@@ -1225,6 +1264,17 @@ function withProvenance(findings, checksById, facts) {
   return findings.map((f) => {
     const check = f.checkId ? checksById[f.checkId] : null
     const settledBy = check ? check.tier : null
+    // Where the card came from, which is how the findings list is grouped.
+    //
+    //   dictionary  a Rule card — standing, authored in Governance, approved, and
+    //               the same on every credit.
+    //   credit      a Requirement card — read out of *this* credit's 46A/47A by the
+    //               planner. Per case, and nobody has reviewed it.
+    //
+    // A finding with no card at all is the credit's too: the planner read a
+    // requirement out of the text and found nothing in the dictionary that tests it.
+    // That is a gap in the rulebook, not a third provenance.
+    const origin = check ? (check.plannedByLlm ? 'credit' : 'dictionary') : 'credit'
     // Which row failed is a fact about the rule's run, so the finding states it. A
     // discrepancy that does not say defaults to the first row; anything else defaults
     // to none, which is what a clean result means.
@@ -1232,6 +1282,7 @@ function withProvenance(findings, checksById, facts) {
     return {
       ...f,
       settledBy,
+      origin,
       source: check ? check.source : null,
       comparison: settledBy === 'exact' ? ruleOutcome(f.checkId, facts, failedRow) : null,
       statementSource: settledBy === 'exact' ? 'derived' : settledBy ? 'drafted' : 'officer',

@@ -127,6 +127,10 @@ export default function ChecksScreen({ onOpenFinding }) {
     statusOf(check) === 'done' && check.findingId ? data.findings.find((f) => f.id === check.findingId) ?? null : null
 
   const runnable = allChecks.filter((c) => c.areaId || c.addedByOfficer)
+  // Grouped by where the card came from, not by how it is settled — see
+  // `state/findingKinds`. The tier rides on the row instead.
+  const fromDictionary = runnable.filter((c) => !c.plannedByLlm)
+  const fromCredit = runnable.filter((c) => c.plannedByLlm)
   const exact = runnable.filter((c) => c.tier === 'exact')
   const judged = runnable.filter((c) => c.tier !== 'exact')
   const skipped = allChecks.filter((c) => !c.areaId && !c.addedByOfficer)
@@ -161,23 +165,25 @@ export default function ChecksScreen({ onOpenFinding }) {
 
   const sections = [
     {
-      key: 'exact',
+      key: 'rule',
       icon: 'equal',
       tone: 'blue',
-      label: 'Exact',
-      count: exact.length,
-      note: 'An expression over fields already extracted. No model, no cost, same answer every time.',
-      checks: exact,
-      aside: blocked.length ? { warn: true, text: `${plural(blocked.length, 'rule')} needs a field that was not extracted` } : null,
+      label: 'Rule card',
+      count: fromDictionary.length,
+      note: 'From the dictionary — standing, approved, the same on every credit.',
+      checks: fromDictionary,
+      aside: blocked.length
+        ? { warn: true, text: `${plural(blocked.length, 'rule')} needs a field that was not extracted` }
+        : { text: `${exact.length} exact · ${judged.length} judged` },
     },
     {
-      key: 'judged',
+      key: 'requirement',
       icon: 'list-checks',
       tone: 'green',
-      label: 'Judged',
-      count: judged.length,
-      note: 'An agent reads it against the presentation and forms a view.',
-      checks: judged,
+      label: 'Requirement card',
+      count: fromCredit.length,
+      note: "Read out of this credit's 46A and 47A by the planner. Different on every case.",
+      checks: fromCredit,
       aside: { text: `about ${thousands(est.tokens, 0)} tokens · ${usd(est.cost)}` },
       policy: true,
     },
@@ -380,6 +386,7 @@ function Row({ check, status, finding, on, dense, onSelect }) {
         </span>
         <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            <TierDot tier={check.tier} checkType={check.checkType} />
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--me-grey-70)', flexShrink: 0 }}>{check.id}</span>
             <span style={{ ...ellipsis, fontSize: 12.5, fontWeight: on ? 600 : 400, color: on ? 'var(--me-blue-deep)' : muted ? 'var(--me-grey-70)' : 'var(--me-ink)' }}>{check.name}</span>
           </span>
@@ -411,7 +418,10 @@ function Row({ check, status, finding, on, dense, onSelect }) {
         <StatusIcon status={status} finding={finding} />
       </span>
 
-      <span style={{ ...ellipsis, fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--me-grey-70)' }}>{check.id}</span>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+        <TierDot tier={check.tier} checkType={check.checkType} />
+        <span style={{ ...ellipsis, fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--me-grey-70)' }}>{check.id}</span>
+      </span>
 
       <span style={{ ...ellipsis, fontSize: 12.5, fontWeight: on ? 600 : 400, color: on ? 'var(--me-blue-deep)' : muted ? 'var(--me-grey-70)' : 'var(--me-ink)' }}>
         {check.name}
@@ -425,6 +435,28 @@ function Row({ check, status, finding, on, dense, onSelect }) {
 
       <StateLabel check={check} status={status} finding={finding} sev={sev} rd={rd} needsField={needsField} />
     </button>
+  )
+}
+
+// How a card is settled, as one mark rather than a section of the list.
+//
+// The list is grouped by where a card came from — who can answer for it — and this
+// answers the other question: how far can I trust it, and what did it cost. An exact
+// card is arithmetic you can check in seconds; a judged one is a view somebody has to
+// read. The service's own tier is in the tooltip, because AGENT against AGENTIC is
+// the difference in the bill and a card's detail should not be the only place to see
+// it.
+function TierDot({ tier, checkType }) {
+  const exact = tier === 'exact'
+  return (
+    <span
+      title={exact
+        ? `Exact · ${checkType ?? 'PROGRAMMATIC'} — an expression over extracted fields. No model, same answer every time.`
+        : `Judged · ${checkType ?? 'AGENT'} — an agent reads it and forms a view.`}
+      style={{ display: 'flex', flexShrink: 0, color: exact ? 'var(--me-blue-deep)' : '#1F7A00' }}
+    >
+      <Icon name={exact ? 'equal' : 'list-checks'} size={11} color="currentColor" />
+    </span>
   )
 }
 
