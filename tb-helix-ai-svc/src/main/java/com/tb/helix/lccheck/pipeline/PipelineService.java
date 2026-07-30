@@ -4,6 +4,7 @@ import com.tb.helix.infra.error.ConflictException;
 import com.tb.helix.infra.error.NotFoundException;
 import com.tb.helix.infra.stream.EventBus;
 import com.tb.helix.infra.stream.HelixEvent;
+import com.tb.helix.lccheck.persistence.CaseRow;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.types.StageId;
 import com.tb.helix.lccheck.types.pipeline.StageOutcome;
@@ -57,16 +58,16 @@ public class PipelineService {
      * but do not plan anything" is not a thing anyone wants.
      */
     public void runStage(String caseId, StageId requested, String officerId) {
-        Map<String, Object> row = cases.find(caseId)
+        CaseRow row = cases.find(caseId)
                 .orElseThrow(() -> new NotFoundException("case", caseId));
 
-        String expected = (String) row.get("next_stage");
+        String expected = row.nextStage();
         if (expected != null && !expected.equals(requested.key())) {
             throw new ConflictException(
                     "This case is waiting at " + expected + ", not " + requested.key() + ".",
                     "stage_mismatch");
         }
-        if (Boolean.TRUE.equals(row.get("gate_halted")) && row.get("gate_overridden_by") == null) {
+        if (row.halted()) {
             throw new ConflictException(
                     "A hard check stopped this examination. Override it before running anything further.",
                     "gate_halted");

@@ -1,5 +1,7 @@
 package com.tb.helix.lccheck.service;
 
+import com.tb.helix.lccheck.persistence.CaseRow;
+import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.stage.intake.SwiftMessage;
 import com.tb.helix.lccheck.types.*;
@@ -29,108 +31,127 @@ import java.util.Map;
 @Component
 public class CaseAssembler {
 
-    public CaseSummary summary(Map<String, Object> r) {
+    private final com.fasterxml.jackson.databind.ObjectMapper json;
+
+    public CaseAssembler(com.fasterxml.jackson.databind.ObjectMapper json) {
+        this.json = json;
+    }
+
+    public CaseSummary summary(ReadRows.CaseSummary r) {
         return new CaseSummary(
-                str(r.get("case_ref")),
-                nz(r.get("credit_ref")),
-                nz(r.get("beneficiary")),
-                nz(r.get("currency")),
-                num(r.get("amount")),
-                asInt(r.get("page_count")),
-                str(r.get("status")),
-                statusLabel(str(r.get("status"))),
-                asInt(r.get("reply_due_days")),
+                r.caseRef(),
+                nz(r.creditRef()),
+                nz(r.beneficiary()),
+                nz(r.currency()),
+                num(r.amount()),
+                r.pageCount(),
+                r.status(),
+                statusLabel(r.status()),
+                r.replyDueDays(),
                 true);
     }
 
-    public CreditTerms credit(Map<String, Object> r) {
+    public CreditTerms credit(CaseRow r) {
         return new CreditTerms(
-                nz(r.get("credit_ref")), date(r.get("issued_date")),
-                nz(r.get("applicant")), nz(r.get("beneficiary")),
-                nz(r.get("currency")), num(r.get("amount")), num(r.get("tolerance_pct")),
-                date(r.get("latest_shipment")), date(r.get("expiry")), nz(r.get("expiry_place")),
+                nz(r.creditRef()), iso(r.issuedDate()),
+                nz(r.applicant()), nz(r.beneficiary()),
+                nz(r.currency()), num(r.amount()), num(r.tolerancePct()),
+                iso(r.latestShipment()), iso(r.expiry()), nz(r.expiryPlace()),
                 // 21 days is UCP 600 art. 14(c)'s default when the credit is silent.
-                r.get("presentation_days") == null ? 21 : asInt(r.get("presentation_days")),
-                nz(r.get("tenor")), nz(r.get("goods")));
+                r.presentationDays() == null ? 21 : r.presentationDays(),
+                nz(r.tenor()), nz(r.goods()));
     }
 
-    public LcDocument document(Map<String, Object> d, List<?> creditLines) {
-        List<Integer> pages = pagesOf(d);
-        boolean isCredit = "credit".equals(d.get("role"));
+    public LcDocument document(ReadRows.Document d, List<?> creditLines) {
+        List<Integer> pages = d.pages();
+        boolean isCredit = "credit".equals(d.role());
         return new LcDocument(
-                str(d.get("doc_code")), str(d.get("role")), nz(d.get("doc_type_label")),
-                nz(d.get("abbr")), nz(d.get("file_name")), nz(d.get("reference")), nz(d.get("icon")),
+                d.docCode(), d.role(), nz(d.docTypeLabel()),
+                nz(d.abbr()), nz(d.fileName()), nz(d.reference()), nz(d.icon()),
                 pages.isEmpty() ? null : List.of(pages.get(0), pages.get(pages.size() - 1)),
-                pages, nz(d.get("extraction_mode")),
-                Boolean.TRUE.equals(d.get("low_confidence")), str(d.get("scan_note")),
-                nz(d.get("doc_type_label")),
+                pages, nz(d.extractionMode()),
+                d.lowConfidence(), d.scanNote(),
+                nz(d.docTypeLabel()),
                 pages.isEmpty() ? "" : "bundle pages " + pages.get(0) + "–" + pages.get(pages.size() - 1),
                 isCredit ? creditLines : List.of(),
                 List.of());
     }
 
-    public FactView fact(Map<String, Object> f) {
+    public FactView fact(ReadRows.Fact f) {
         return new FactView(
-                str(f.get("doc_code")), str(f.get("anchor_id")), asInt(f.get("page")),
-                str(f.get("label")), nz(f.get("value")), nz(f.get("source")),
-                str(f.get("source_text")), nz(f.get("confidence")), str(f.get("flag")));
+                f.docCode(), f.anchorId(), f.page(),
+                f.label(), nz(f.value()), nz(f.source()),
+                f.sourceText(), nz(f.confidence()), f.flag());
     }
 
-    public PlanCheckView planCheck(Map<String, Object> c) {
+    public PlanCheckView planCheck(ReadRows.PlanCheck c) {
         return new PlanCheckView(
-                str(c.get("check_id")), nz(c.get("name")), str(c.get("area_id")),
-                nz(c.get("applies_because")), nz(c.get("rule_ref")),
-                Boolean.TRUE.equals(c.get("added_by_officer")),
-                Boolean.TRUE.equals(c.get("planned_by_llm")),
-                Boolean.TRUE.equals(c.get("not_covered")),
-                lower(c.get("tier")),
-                "CREDIT".equals(c.get("origin")) ? "credit" : "dictionary",
-                Boolean.TRUE.equals(c.get("is_gate")),
-                nz(c.get("cited_as")), str(c.get("check_type")), str(c.get("execution_plan")),
-                Map.of("severity", nz(c.get("severity")), "rule", nz(c.get("name"))));
+                c.checkId(), nz(c.name()), c.areaId(),
+                nz(c.appliesBecause()), nz(c.ruleRef()),
+                c.addedByOfficer(),
+                false,
+                c.notCovered(),
+                lower(c.tier()),
+                "CREDIT".equals(c.origin()) ? "credit" : "dictionary",
+                c.isGate(),
+                nz(c.citedAs()), c.checkType(), c.executionPlan(),
+                Map.of("severity", nz(c.severity()), "rule", nz(c.name())));
     }
 
-    @SuppressWarnings("unchecked")
-    public FindingView finding(Map<String, Object> f) {
-        Object analysis = f.get("analysis");
+    public FindingView finding(ReadRows.Finding f) {
         return new FindingView(
-                str(f.get("finding_ref")), str(f.get("severity")), nz(f.get("area")),
-                str(f.get("area_id")), str(f.get("check_id")), nz(f.get("doc_code")),
-                asInt(f.get("page")), str(f.get("anchor_id")), nz(f.get("credit_anchor_id")),
-                nz(f.get("title")), nz(f.get("statement")), nz(f.get("statement_source")),
-                nz(f.get("detail")), nz(f.get("expected")), nz(f.get("quote")),
-                nz(f.get("quote_source")), nz(f.get("reason")),
-                Boolean.TRUE.equals(f.get("raised_by_officer")),
+                f.findingRef(), f.severity(), nz(f.area()),
+                f.areaId(), f.checkId(), nz(f.docCode()),
+                f.page(), f.anchorId(), nz(f.creditAnchorId()),
+                nz(f.title()), nz(f.statement()), nz(f.statementSource()),
+                nz(f.detail()), nz(f.expected()), nz(f.quote()),
+                nz(f.quoteSource()), nz(f.reason()),
+                f.raisedByOfficer(),
                 // Read through the plan check, never stored twice — a finding that carried
                 // its own copy would drift from the check that produced it.
-                f.get("tier") == null ? null : lower(f.get("tier")),
-                "CREDIT".equals(f.get("origin")) ? "credit" : "dictionary",
-                str(f.get("check_type")), str(f.get("cited_as")),
-                analysis instanceof Map ? (Map<String, Object>) analysis : Map.of(),
+                f.tier() == null ? null : lower(f.tier()),
+                "CREDIT".equals(f.origin()) ? "credit" : "dictionary",
+                f.checkType(), f.citedAs(),
+                jsonObject(f.analysis()),
                 List.of());
     }
 
-    public RunState runState(Map<String, Object> row, int segmented) {
-        String stage = str(row.get("stage"));
+    /**
+     * A jsonb column as a map.
+     *
+     * <p>Parsed here rather than in the row, because a row reports what the column holds and
+     * this is an interpretation of it. Unparseable is empty rather than fatal: a malformed
+     * analysis costs the officer an explanation, not the finding.
+     */
+    private Map<String, Object> jsonObject(String raw) {
+        if (raw == null || raw.isBlank()) return Map.of();
+        try {
+            return json.readValue(raw, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {
+            });
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
+    public RunState runState(CaseRow row, int segmented) {
+        String stage = row.stage();
         boolean started = !"intake".equals(stage);
         boolean finished = List.of("execute", "signoff").contains(stage);
-        String error = str(row.get("error"));
+        String error = row.error();
         // Busy means a stage is running right now: the case is parked at neither the
         // officer nor an error. The browser reads it on load to decide whether to open a
         // stream — without it, a workbench opened mid-intake would sit on stale data
         // waiting for an event it never subscribed to.
-        boolean busy = !finished
-                && !Boolean.TRUE.equals(row.get("awaiting_officer"))
-                && (error == null || error.isBlank());
+        boolean busy = !finished && !row.awaitingOfficer() && (error == null || error.isBlank());
         return new RunState(stage, busy, error, started, finished, segmented,
                 finished ? Areas.ALL.stream().map(CheckArea::id).toList() : List.of());
     }
 
-    public Map<String, Object> bundlePage(Map<String, Object> p) {
+    public Map<String, Object> bundlePage(ReadRows.BundlePage p) {
         Map<String, Object> m = new LinkedHashMap<>();
-        m.put("number", p.get("page_no"));
-        m.put("docId", nz(p.get("doc_code")));
-        m.put("label", nz(p.get("label")));
+        m.put("number", p.pageNo());
+        m.put("docId", nz(p.docCode()));
+        m.put("label", nz(p.label()));
         return m;
     }
 
@@ -167,23 +188,15 @@ public class CaseAssembler {
      * <p>Computed, never stored. Under UCP 600 art. 16(d) a bank has five banking days;
      * a countdown written to a column is wrong by the next morning.
      */
-    public Integer daysUntil(Object date) {
-        LocalDate d = asDate(date);
+    public Integer daysUntil(LocalDate d) {
         return d == null ? null : (int) Math.max(0, ChronoUnit.DAYS.between(LocalDate.now(), d));
     }
 
-    @SuppressWarnings("unchecked")
-    public List<Integer> pagesOf(Map<String, Object> d) {
-        Object pages = d.get("pages");
-        if (pages instanceof java.sql.Array a) {
-            try {
-                return List.of((Integer[]) a.getArray());
-            } catch (Exception e) {
-                return List.of();
-            }
-        }
-        return pages instanceof List<?> l ? (List<Integer>) l : List.of();
+    /** A date as the wire wants it, or null. The record already parsed it. */
+    private String iso(LocalDate d) {
+        return d == null ? null : d.toString();
     }
+
 
     public List<?> creditLines(CaseStore store, String caseId) {
         return store.stepResult(caseId, "intake", "swift")
@@ -205,27 +218,8 @@ public class CaseAssembler {
         };
     }
 
-    private static LocalDate asDate(Object value) {
-        if (value == null) return null;
-        if (value instanceof java.sql.Date d) return d.toLocalDate();
-        try {
-            return LocalDate.parse(String.valueOf(value).substring(0, 10));
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private static String date(Object value) {
-        LocalDate d = asDate(value);
-        return d == null ? null : d.toString();
-    }
-
     private static Number num(Object o) {
         return o instanceof Number n ? n : 0;
-    }
-
-    private static Integer asInt(Object o) {
-        return o instanceof Number n ? n.intValue() : null;
     }
 
     private static String lower(Object o) {
@@ -234,6 +228,10 @@ public class CaseAssembler {
 
     // Empty string where the UI renders the value directly and a null would print
     // "null"; str() where it branches on absence and null is the honest answer.
+    //
+    // Still Object-typed, and now only because a few values still arrive from parsed model
+    // JSON rather than from a column. Everything that comes off a row is already typed —
+    // asDate(), date() and asInt() went with the maps that needed them.
     private static String nz(Object o) {
         return o == null ? "" : String.valueOf(o);
     }

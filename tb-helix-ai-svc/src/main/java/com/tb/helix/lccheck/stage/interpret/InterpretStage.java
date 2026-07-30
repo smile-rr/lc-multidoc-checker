@@ -69,8 +69,7 @@ public class InterpretStage implements Stage {
 
     @Override
     public StageOutcome execute(StageContext ctx) {
-        Map<String, Object> row = cases.find(ctx.caseId()).orElseThrow();
-        String pdfSha = (String) row.get("bundle_pdf_sha");
+        String pdfSha = cases.find(ctx.caseId()).orElseThrow().bundlePdfSha();
         if (pdfSha == null) return StageOutcome.failed("No presentation bundle on this case.");
 
         int pages = renderer.pageCount(pdfSha);

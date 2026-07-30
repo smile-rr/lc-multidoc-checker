@@ -1,5 +1,7 @@
 package com.tb.helix.lccheck.stage.signoff;
 
+import com.tb.helix.lccheck.persistence.CaseRow;
+import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.pipeline.*;
 import com.tb.helix.lccheck.types.StageId;
@@ -38,15 +40,15 @@ public class SignoffStage implements Stage {
 
     @Override
     public StageOutcome execute(StageContext ctx) {
-        Map<String, Object> row = cases.find(ctx.caseId()).orElseThrow();
+        CaseRow row = cases.find(ctx.caseId()).orElseThrow();
         Map<String, String> decisions = cases.decisions(ctx.caseId()).stream()
                 .collect(java.util.stream.Collectors.toMap(
-                        d -> String.valueOf(d.get("finding_ref")),
-                        d -> String.valueOf(d.get("disposition")),
+                        ReadRows.Decision::findingRef,
+                        d -> String.valueOf(d.disposition()),
                         (a, b) -> b));
 
-        List<Map<String, Object>> agreed = cases.findings(ctx.caseId()).stream()
-                .filter(f -> "agreed".equals(decisions.get(String.valueOf(f.get("finding_ref")))))
+        List<ReadRows.Finding> agreed = cases.findings(ctx.caseId()).stream()
+                .filter(f -> "agreed".equals(decisions.get(f.findingRef())))
                 .toList();
 
         ctx.progress("report", "Drafting the refusal advice");
@@ -54,7 +56,7 @@ public class SignoffStage implements Stage {
         ctx.recordStep("report", Map.of(
                 "grounds", agreed.size(),
                 "mt734", mt734,
-                "verdict", cases.verdict(ctx.caseId()).map(v -> String.valueOf(v.get("verdict"))).orElse("refuse")));
+                "verdict", cases.verdict(ctx.caseId()).map(ReadRows.Verdict::verdict).orElse("refuse")));
 
         cases.patchCase(ctx.caseId(), Map.of(
                 "status", agreed.isEmpty() ? "clean" : "with_authoriser",
@@ -62,13 +64,13 @@ public class SignoffStage implements Stage {
         return StageOutcome.ok();
     }
 
-    private String mt734(Map<String, Object> c, List<Map<String, Object>> grounds) {
+    private String mt734(CaseRow c, List<ReadRows.Finding> grounds) {
         StringBuilder sb = new StringBuilder();
-        sb.append(":20:").append(nz(c.get("case_ref"))).append('\n');
-        sb.append(":21:").append(nz(c.get("credit_ref"))).append('\n');
+        sb.append(":20:").append(nz(c.caseRef())).append('\n');
+        sb.append(":21:").append(nz(c.creditRef())).append('\n');
         sb.append(":32A:").append(LocalDate.now().toString().replace("-", "").substring(2))
-          .append(nz(c.get("currency"))).append(nz(c.get("amount"))).append('\n');
-        sb.append(":57a:").append(nz(c.get("presenting_bank"))).append('\n');
+          .append(nz(c.currency())).append(nz(c.amount())).append('\n');
+        sb.append(":57a:").append(nz(c.presentingBank())).append('\n');
         sb.append(":72:/REFUSAL/\n");
         sb.append(":77J:");
         if (grounds.isEmpty()) {
@@ -76,10 +78,9 @@ public class SignoffStage implements Stage {
         } else {
             sb.append('\n');
             int n = 1;
-            for (Map<String, Object> g : grounds) {
-                Object statement = g.get("statement");
+            for (ReadRows.Finding g : grounds) {
                 sb.append(n++).append(". ")
-                  .append(statement == null ? String.valueOf(g.get("title")).toUpperCase() : statement)
+                  .append(g.statement() == null ? String.valueOf(g.title()).toUpperCase() : g.statement())
                   .append('\n');
             }
         }

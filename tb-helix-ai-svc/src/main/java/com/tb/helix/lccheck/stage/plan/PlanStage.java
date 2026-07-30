@@ -8,6 +8,7 @@ import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
 import com.tb.helix.lccheck.persistence.CaseStore;
+import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.pipeline.*;
 import com.tb.helix.lccheck.types.StageId;
@@ -64,7 +65,6 @@ public class PlanStage implements Stage {
 
     @Override
     public StageOutcome execute(StageContext ctx) {
-        Map<String, Object> row = cases.find(ctx.caseId()).orElseThrow();
         Set<String> present = presentDocTypes(ctx);
 
         ctx.progress("select", "Selecting rules that apply to this presentation");
@@ -99,7 +99,7 @@ public class PlanStage implements Stage {
         // The model call: reading what the credit itself demands out of :46A: / :47A:.
         // Separated from rule selection above, which is a catalogue walk and instant.
         ctx.progress("requirements", "Reading what the credit asks for");
-        int requirements = planRequirements(ctx, row, ordinal);
+        int requirements = planRequirements(ctx, ordinal);
 
         ctx.recordStep("select", Map.of("ruleCards", planned, "requirementCards", requirements));
         ctx.progress("plan", planned + requirements + " checks planned", true);
@@ -112,7 +112,7 @@ public class PlanStage implements Stage {
      * <p>Cached on the credit text, so re-planning the same credit costs nothing and two
      * cases under the same credit share the reading.
      */
-    private int planRequirements(StageContext ctx, Map<String, Object> row, int ordinal) {
+    private int planRequirements(StageContext ctx, int ordinal) {
         Optional<Map<String, Object>> parsed = cases.stepResult(ctx.caseId(), "intake", "swift");
         if (parsed.isEmpty()) return 0;
 
@@ -164,8 +164,8 @@ public class PlanStage implements Stage {
 
     private Set<String> presentDocTypes(StageContext ctx) {
         Set<String> out = new LinkedHashSet<>();
-        for (Map<String, Object> d : cases.documents(ctx.caseId())) {
-            String code = String.valueOf(d.get("doc_code"));
+        for (ReadRows.Document d : cases.documents(ctx.caseId())) {
+            String code = d.docCode();
             if (!"mt700".equals(code)) out.add(code);
         }
         return out;

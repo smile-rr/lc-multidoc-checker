@@ -42,10 +42,141 @@ public class CaseStore {
                 """, String.class, caseRef, officerId);
     }
 
-    public Optional<Map<String, Object>> find(String caseId) {
-        var rows = jdbc.queryForList(
-                "SELECT * FROM helix_check.lc_case WHERE id = ?::uuid", caseId);
-        return rows.stream().findFirst();
+    public Optional<CaseRow> find(String caseId) {
+        return jdbc.query("SELECT * FROM helix_check.lc_case WHERE id = ?::uuid", CASE_ROW, caseId)
+                .stream().findFirst();
+    }
+
+
+    // --- Row mappers --------------------------------------------------------
+    //
+    // Every column name in lc-check appears in this block and nowhere else. Written by
+    // hand rather than reflected: a BeanPropertyRowMapper leaves an unmatched column null,
+    // so a rename yields a row that looks fine and is quietly empty.
+
+    private static final org.springframework.jdbc.core.RowMapper<ReadRows.Document> DOCUMENT =
+            (rs, n) -> new ReadRows.Document(
+                    rs.getString("doc_code"), rs.getString("role"), rs.getString("doc_type_label"),
+                    rs.getString("abbr"), rs.getString("icon"), rs.getString("file_name"),
+                    rs.getString("reference"), ints(rs.getArray("pages")),
+                    rs.getString("extraction_mode"), rs.getBoolean("low_confidence"),
+                    rs.getString("scan_note"), rs.getInt("ordinal"));
+
+    private static final org.springframework.jdbc.core.RowMapper<ReadRows.BundlePage> BUNDLE_PAGE =
+            (rs, n) -> new ReadRows.BundlePage(
+                    rs.getInt("page_no"), rs.getString("doc_code"), rs.getString("label"));
+
+    private static final org.springframework.jdbc.core.RowMapper<ReadRows.Fact> FACT =
+            (rs, n) -> new ReadRows.Fact(
+                    rs.getString("doc_code"), rs.getString("label"), rs.getString("field_key"),
+                    rs.getString("value"), rs.getString("value_norm"), (Integer) rs.getObject("page"),
+                    rs.getString("anchor_id"), rs.getString("source"), rs.getString("source_text"),
+                    rs.getString("confidence"), rs.getString("flag"));
+
+    private static final org.springframework.jdbc.core.RowMapper<ReadRows.PlanCheck> PLAN_CHECK =
+            (rs, n) -> new ReadRows.PlanCheck(
+                    rs.getString("check_id"), rs.getString("origin"), rs.getString("tier"),
+                    rs.getString("check_type"), rs.getBoolean("is_gate"), rs.getString("cited_as"),
+                    rs.getString("area_id"), rs.getString("name"), rs.getString("applies_because"),
+                    rs.getString("rule_ref"), rs.getString("severity"), strings(rs.getArray("refs")),
+                    rs.getString("rule_def"), rs.getString("execution_plan"),
+                    rs.getBoolean("not_covered"), rs.getBoolean("added_by_officer"),
+                    rs.getString("added_by"), rs.getString("status"), rs.getInt("ordinal"));
+
+    private static final org.springframework.jdbc.core.RowMapper<ReadRows.Finding> FINDING =
+            (rs, n) -> new ReadRows.Finding(
+                    rs.getString("finding_ref"), rs.getString("severity"), rs.getString("area"),
+                    rs.getString("area_id"), rs.getString("doc_code"), (Integer) rs.getObject("page"),
+                    rs.getString("anchor_id"), rs.getString("credit_anchor_id"), rs.getString("title"),
+                    rs.getString("statement"), rs.getString("statement_source"), rs.getString("detail"),
+                    rs.getString("expected"), rs.getString("quote"), rs.getString("quote_source"),
+                    rs.getString("reason"), rs.getString("analysis"),
+                    rs.getBoolean("raised_by_officer"), rs.getString("check_id"),
+                    rs.getString("origin"), rs.getString("tier"), rs.getString("check_type"),
+                    rs.getString("cited_as"));
+
+    private static final org.springframework.jdbc.core.RowMapper<ReadRows.RunStep> RUN_STEP =
+            (rs, n) -> new ReadRows.RunStep(
+                    rs.getString("step_id"), rs.getString("stage"), rs.getString("kind"),
+                    rs.getString("name"), rs.getString("role"), rs.getString("model_id"),
+                    rs.getInt("checks_count"), rs.getInt("total_calls"), rs.getInt("cached_calls"),
+                    rs.getBigDecimal("seconds"), rs.getInt("tokens_in"), rs.getInt("tokens_out"),
+                    rs.getInt("retries"), rs.getString("note"), rs.getInt("ordinal"));
+
+    private static final org.springframework.jdbc.core.RowMapper<ReadRows.CaseSummary> SUMMARY =
+            (rs, n) -> new ReadRows.CaseSummary(
+                    rs.getString("case_ref"), rs.getString("status"), rs.getString("credit_ref"),
+                    rs.getString("beneficiary"), rs.getString("currency"), rs.getBigDecimal("amount"),
+                    rs.getInt("page_count"), (Integer) rs.getObject("reply_due_days"));
+
+    private static final org.springframework.jdbc.core.RowMapper<ReadRows.Verdict> VERDICT =
+            (rs, n) -> new ReadRows.Verdict(rs.getString("verdict"), rs.getString("note"));
+
+    private static final org.springframework.jdbc.core.RowMapper<ReadRows.Decision> DECISION =
+            (rs, n) -> new ReadRows.Decision(
+                    rs.getString("finding_ref"), rs.getString("disposition"), rs.getString("note"));
+
+    /** An INT[] column. Postgres hands back an Integer[]; a null column is no pages, not null. */
+    private static List<Integer> ints(java.sql.Array a) {
+        try {
+            return a == null ? List.of() : List.of((Integer[]) a.getArray());
+        } catch (java.sql.SQLException e) {
+            return List.of();
+        }
+    }
+
+    private static List<String> strings(java.sql.Array a) {
+        try {
+            return a == null ? List.of() : List.of((String[]) a.getArray());
+        } catch (java.sql.SQLException e) {
+            return List.of();
+        }
+    }
+
+    /**
+     * The one place a case's column names are spelled out.
+     *
+     * <p>Written by hand rather than reflected onto the record. A {@code BeanPropertyRowMapper}
+     * would map these by name automatically and would also fail silently when it could not:
+     * a column it cannot match is left null, so a rename produces a row that looks fine and
+     * is quietly empty. This throws instead.
+     */
+    private static final org.springframework.jdbc.core.RowMapper<CaseRow> CASE_ROW = (rs, n) -> new CaseRow(
+            rs.getString("id"),
+            rs.getString("case_ref"),
+            rs.getString("status"),
+            rs.getString("stage"),
+            rs.getString("next_stage"),
+            rs.getBoolean("awaiting_officer"),
+            rs.getString("credit_ref"),
+            date(rs.getDate("issued_date")),
+            rs.getString("applicant"),
+            rs.getString("beneficiary"),
+            rs.getString("currency"),
+            rs.getBigDecimal("amount"),
+            rs.getBigDecimal("tolerance_pct"),
+            date(rs.getDate("latest_shipment")),
+            date(rs.getDate("expiry")),
+            rs.getString("expiry_place"),
+            (Integer) rs.getObject("presentation_days"),
+            rs.getString("tenor"),
+            rs.getString("goods"),
+            rs.getString("credit_text_sha"),
+            rs.getString("source_bundle_sha"),
+            rs.getString("bundle_pdf_sha"),
+            rs.getInt("page_count"),
+            date(rs.getDate("presented_date")),
+            rs.getString("presenting_bank"),
+            date(rs.getDate("reply_due_date")),
+            rs.getString("assigned_to"),
+            rs.getString("authoriser"),
+            rs.getBoolean("gate_halted"),
+            rs.getString("gate_halt_check_id"),
+            rs.getString("gate_overridden_by"),
+            rs.getString("error"));
+
+    private static java.time.LocalDate date(java.sql.Date d) {
+        return d == null ? null : d.toLocalDate();
     }
 
     public Optional<String> idForRef(String caseRef) {
@@ -53,14 +184,14 @@ public class CaseStore {
                 String.class, caseRef).stream().findFirst();
     }
 
-    public List<Map<String, Object>> list(String scope, String officerId) {
+    public List<ReadRows.CaseSummary> list(String scope, String officerId) {
         String where = switch (scope == null ? "all" : scope) {
             case "mine" -> " WHERE assigned_to = ?";
             case "due" -> " WHERE reply_due_days = 0";
             default -> "";
         };
         String sql = "SELECT * FROM helix_check.v_case_summary" + where + " ORDER BY created_at DESC";
-        return where.contains("?") ? jdbc.queryForList(sql, officerId) : jdbc.queryForList(sql);
+        return where.contains("?") ? jdbc.query(sql, SUMMARY, officerId) : jdbc.query(sql, SUMMARY);
     }
 
     /** Patches scalar columns. Keys are column names; unknown keys would be a typo, so they throw. */
@@ -105,9 +236,10 @@ public class CaseStore {
                 doc.getOrDefault("ordinal", 0));
     }
 
-    public List<Map<String, Object>> documents(String caseId) {
-        return jdbc.queryForList(
-                "SELECT * FROM helix_check.lc_document WHERE case_id = ?::uuid ORDER BY ordinal, doc_code", caseId);
+    public List<ReadRows.Document> documents(String caseId) {
+        return jdbc.query(
+                "SELECT * FROM helix_check.lc_document WHERE case_id = ?::uuid ORDER BY ordinal, doc_code",
+                DOCUMENT, caseId);
     }
 
     public void setBundlePage(String caseId, int pageNo, String docCode, String label) {
@@ -118,10 +250,10 @@ public class CaseStore {
                 """, caseId, pageNo, docCode, label);
     }
 
-    public List<Map<String, Object>> bundlePages(String caseId) {
-        return jdbc.queryForList(
+    public List<ReadRows.BundlePage> bundlePages(String caseId) {
+        return jdbc.query(
                 "SELECT page_no, doc_code, label FROM helix_check.lc_bundle_page WHERE case_id = ?::uuid ORDER BY page_no",
-                caseId);
+                BUNDLE_PAGE, caseId);
     }
 
     // --- Steps --------------------------------------------------------------
@@ -185,12 +317,12 @@ public class CaseStore {
                 toJson(f.get("slotVotes")));
     }
 
-    public List<Map<String, Object>> facts(String caseId) {
-        return jdbc.queryForList("""
+    public List<ReadRows.Fact> facts(String caseId) {
+        return jdbc.query("""
                 SELECT doc_code, label, field_key, value, value_norm, page, anchor_id,
                        source, source_text, confidence, flag
                   FROM helix_check.lc_fact WHERE case_id = ?::uuid ORDER BY doc_code, label
-                """, caseId);
+                """, FACT, caseId);
     }
 
     // --- Plan ---------------------------------------------------------------
@@ -217,9 +349,10 @@ public class CaseStore {
                 c.getOrDefault("status", "PLANNED"), c.getOrDefault("ordinal", 0));
     }
 
-    public List<Map<String, Object>> planChecks(String caseId) {
-        return jdbc.queryForList(
-                "SELECT * FROM helix_check.lc_plan_check WHERE case_id = ?::uuid ORDER BY ordinal, check_id", caseId);
+    public List<ReadRows.PlanCheck> planChecks(String caseId) {
+        return jdbc.query(
+                "SELECT * FROM helix_check.lc_plan_check WHERE case_id = ?::uuid ORDER BY ordinal, check_id",
+                PLAN_CHECK, caseId);
     }
 
     public void setCheckStatus(String caseId, String checkId, String status) {
@@ -256,13 +389,13 @@ public class CaseStore {
                 f.getOrDefault("raisedByOfficer", false), f.get("raisedBy"));
     }
 
-    public List<Map<String, Object>> findings(String caseId) {
-        return jdbc.queryForList("""
+    public List<ReadRows.Finding> findings(String caseId) {
+        return jdbc.query("""
                 SELECT f.*, p.check_id, p.origin, p.tier, p.check_type, p.cited_as
                   FROM helix_check.lc_finding f
                   LEFT JOIN helix_check.lc_plan_check p ON p.id = f.plan_check_id
                  WHERE f.case_id = ?::uuid ORDER BY f.created_at
-                """, caseId);
+                """, FINDING, caseId);
     }
 
     public void deleteFinding(String caseId, String findingRef) {
@@ -290,9 +423,10 @@ public class CaseStore {
                 r.getOrDefault("retries", 0), r.get("note"), r.getOrDefault("ordinal", 0));
     }
 
-    public List<Map<String, Object>> runSteps(String caseId) {
-        return jdbc.queryForList(
-                "SELECT * FROM helix_check.lc_run_step WHERE case_id = ?::uuid ORDER BY ordinal, step_id", caseId);
+    public List<ReadRows.RunStep> runSteps(String caseId) {
+        return jdbc.query(
+                "SELECT * FROM helix_check.lc_run_step WHERE case_id = ?::uuid ORDER BY ordinal, step_id",
+                RUN_STEP, caseId);
     }
 
     // --- Officer actions ----------------------------------------------------
@@ -306,14 +440,14 @@ public class CaseStore {
                 officerId == null ? "officer" : officerId, note);
     }
 
-    public List<Map<String, Object>> decisions(String caseId) {
-        return jdbc.queryForList(
+    public List<ReadRows.Decision> decisions(String caseId) {
+        return jdbc.query(
                 "SELECT finding_ref, disposition, note FROM helix_check.v_finding_decision WHERE case_id = ?::uuid",
-                caseId);
+                DECISION, caseId);
     }
 
-    public Optional<Map<String, Object>> verdict(String caseId) {
-        return jdbc.queryForList("SELECT * FROM helix_check.v_case_verdict WHERE case_id = ?::uuid", caseId)
+    public Optional<ReadRows.Verdict> verdict(String caseId) {
+        return jdbc.query("SELECT * FROM helix_check.v_case_verdict WHERE case_id = ?::uuid", VERDICT, caseId)
                 .stream().findFirst();
     }
 

@@ -3,6 +3,8 @@ package com.tb.helix.lccheck.service;
 import com.tb.helix.harness.doc.PageRenderer;
 import com.tb.helix.infra.blob.BlobStore;
 import com.tb.helix.infra.error.NotFoundException;
+import com.tb.helix.lccheck.persistence.CaseRow;
+import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.pipeline.PipelineService;
 import com.tb.helix.lccheck.stage.intake.IntakeStage;
@@ -61,19 +63,19 @@ public class CaseService {
 
     public CaseDetail detail(String ref) {
         String id = resolve(ref);
-        Map<String, Object> row = store.find(id).orElseThrow(() -> new NotFoundException("case", ref));
+        CaseRow row = store.find(id).orElseThrow(() -> new NotFoundException("case", ref));
         List<?> creditLines = assembler.creditLines(store, id);
 
         return new CaseDetail(
-                String.valueOf(row.get("case_ref")),
-                String.valueOf(row.get("status")),
+                row.caseRef(),
+                row.status(),
                 assembler.credit(row),
-                row.get("presented_date") == null ? null : String.valueOf(row.get("presented_date")),
-                (String) row.get("presenting_bank"),
-                assembler.daysUntil(row.get("reply_due_date")),
-                (String) row.get("authoriser"),
+                row.presentedDate() == null ? null : row.presentedDate().toString(),
+                row.presentingBank(),
+                assembler.daysUntil(row.replyDueDate()),
+                row.authoriser(),
                 "/api/v1/lc-check/cases/" + ref + "/bundle.pdf",
-                row.get("page_count") instanceof Number n ? n.intValue() : 0,
+                row.pageCount(),
                 assembler.runState(row, store.bundlePages(id).size()),
                 store.documents(id).stream().map(d -> assembler.document(d, creditLines)).toList(),
                 store.bundlePages(id).stream().map(assembler::bundlePage).toList(),
@@ -81,13 +83,13 @@ public class CaseService {
                 Areas.ALL,
                 store.planChecks(id).stream().map(assembler::planCheck).toList(),
                 store.findings(id).stream().map(assembler::finding).toList(),
-                store.runSteps(id));
+                store.runSteps(id).stream().map(ReadRows.RunStep::asView).toList());
     }
 
     /** The whole presentation, as the viewer fetches it. */
     public Optional<byte[]> bundlePdf(String ref) {
-        Map<String, Object> row = store.find(resolve(ref)).orElseThrow(() -> new NotFoundException("case", ref));
-        String sha = (String) row.get("bundle_pdf_sha");
+        String sha = store.find(resolve(ref))
+                .orElseThrow(() -> new NotFoundException("case", ref)).bundlePdfSha();
         return sha == null ? Optional.empty() : blobs.get(sha);
     }
 
@@ -99,11 +101,10 @@ public class CaseService {
      */
     public Optional<byte[]> documentPdf(String ref, String docCode) {
         String id = resolve(ref);
-        Map<String, Object> row = store.find(id).orElseThrow(() -> new NotFoundException("case", ref));
-        String sha = (String) row.get("bundle_pdf_sha");
+        String sha = store.find(id).orElseThrow(() -> new NotFoundException("case", ref)).bundlePdfSha();
         List<Integer> pages = store.documents(id).stream()
-                .filter(d -> docCode.equals(d.get("doc_code")))
-                .findFirst().map(assembler::pagesOf).orElse(List.of());
+                .filter(d -> docCode.equals(d.docCode()))
+                .findFirst().map(ReadRows.Document::pages).orElse(List.of());
         return sha == null || pages.isEmpty()
                 ? Optional.empty()
                 : Optional.of(renderer.extractPages(sha, pages));
@@ -180,7 +181,7 @@ public class CaseService {
         store.recordAction(id, "add_check", checkId, Map.of("name", name), officerId, null);
 
         return store.planChecks(id).stream()
-                .filter(c -> checkId.equals(c.get("check_id")))
+                .filter(c -> checkId.equals(c.checkId()))
                 .findFirst().map(assembler::planCheck)
                 .orElseThrow(() -> new NotFoundException("check", checkId));
     }
@@ -195,7 +196,7 @@ public class CaseService {
     }
 
     public String routedTo(String caseId) {
-        return store.find(caseId).map(r -> r.get("authoriser") == null ? "the checker" : String.valueOf(r.get("authoriser")))
+        return store.find(caseId).map(CaseRow::authoriser).filter(a -> a != null)
                 .orElse("the checker");
     }
 

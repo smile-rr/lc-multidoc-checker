@@ -1,6 +1,8 @@
 package com.tb.helix.lccheck.stage.gate;
 
 import com.tb.helix.governance.spi.CheckCatalog;
+import com.tb.helix.lccheck.persistence.CaseRow;
+import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.pipeline.*;
@@ -47,17 +49,17 @@ public class GateStage implements Stage {
 
     @Override
     public StageOutcome execute(StageContext ctx) {
-        Map<String, Object> row = cases.find(ctx.caseId()).orElseThrow();
+        CaseRow row = cases.find(ctx.caseId()).orElseThrow();
         List<CheckCatalog.CheckCard> gates = catalog.gates();
 
         // An override is the officer saying "I have seen this ground and I am continuing
         // anyway". The finding stays — it is still a discrepancy and still belongs in the
         // notice — but re-halting on every subsequent run would make the override do
         // nothing, which is how a case becomes impossible to move.
-        if (row.get("gate_overridden_by") != null) {
+        if (row.gateOverriddenBy() != null) {
             ctx.recordStep("overridden", Map.of(
-                    "by", String.valueOf(row.get("gate_overridden_by")),
-                    "check", String.valueOf(row.get("gate_halt_check_id"))));
+                    "by", String.valueOf(row.gateOverriddenBy()),
+                    "check", String.valueOf(row.gateHaltCheckId())));
             return StageOutcome.ok();
         }
 
@@ -68,7 +70,7 @@ public class GateStage implements Stage {
 
         ctx.progress("gate", "Running " + gates.size() + " hard check" + (gates.size() == 1 ? "" : "s"));
 
-        LocalDate expiry = date(row.get("expiry"));
+        LocalDate expiry = row.expiry();
         LocalDate presented = presentationDate(ctx, row);
 
         for (CheckCatalog.CheckCard gate : gates) {
@@ -114,16 +116,16 @@ public class GateStage implements Stage {
      * is the date that governs; the date we received the file is a fallback and is recorded
      * as such rather than quietly presented as fact.
      */
-    private LocalDate presentationDate(StageContext ctx, Map<String, Object> row) {
-        for (Map<String, Object> f : cases.facts(ctx.caseId())) {
-            if (!"CS".equals(f.get("doc_code"))) continue;
-            String label = String.valueOf(f.get("label")).toLowerCase();
+    private LocalDate presentationDate(StageContext ctx, CaseRow row) {
+        for (ReadRows.Fact f : cases.facts(ctx.caseId())) {
+            if (!"CS".equals(f.docCode())) continue;
+            String label = String.valueOf(f.label()).toLowerCase();
             if (label.contains("presentation") && label.contains("date")) {
-                LocalDate d = date(f.get("value"));
+                LocalDate d = date(f.value());
                 if (d != null) return d;
             }
         }
-        return date(row.get("presented_date"));
+        return row.presentedDate();
     }
 
     private LocalDate date(Object value) {

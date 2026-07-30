@@ -9,6 +9,8 @@ import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
 import com.tb.helix.infra.stream.HelixEvent;
+import com.tb.helix.lccheck.persistence.CaseRow;
+import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.pipeline.*;
@@ -60,13 +62,13 @@ public class ExecuteStage implements Stage {
 
     @Override
     public StageOutcome execute(StageContext ctx) {
-        List<Map<String, Object>> plan = cases.planChecks(ctx.caseId()).stream()
-                .filter(c -> "PLANNED".equals(c.get("status")))
+        List<ReadRows.PlanCheck> plan = cases.planChecks(ctx.caseId()).stream()
+                .filter(c -> "PLANNED".equals(c.status()))
                 .toList();
 
-        Map<String, List<Map<String, Object>>> byArea = new LinkedHashMap<>();
+        Map<String, List<ReadRows.PlanCheck>> byArea = new LinkedHashMap<>();
         for (var c : plan) {
-            byArea.computeIfAbsent(String.valueOf(c.getOrDefault("area_id", "a5")), k -> new ArrayList<>()).add(c);
+            byArea.computeIfAbsent(c.areaId() == null ? "a5" : c.areaId(), k -> new ArrayList<>()).add(c);
         }
 
         String factSheet = factSheet(ctx);
@@ -78,11 +80,11 @@ public class ExecuteStage implements Stage {
             ctx.emit(HelixEvent.AREA_STARTED, Map.of("areaId", area.getKey()));
 
             for (var check : area.getValue()) {
-                String checkId = String.valueOf(check.get("check_id"));
+                String checkId = check.checkId();
                 // Named per check, not per area. A judged area is several model calls and
                 // can run for a minute; "Time & availability" going quiet for that long is
                 // indistinguishable from a stall.
-                ctx.progress("check", String.valueOf(check.get("name")));
+                ctx.progress("check", check.name());
                 try {
                     Map<String, Object> verdict = judge(check, factSheet, factDigest);
                     raised += record(ctx, check, verdict) ? 1 : 0;
@@ -103,13 +105,13 @@ public class ExecuteStage implements Stage {
         return StageOutcome.ok();
     }
 
-    private Map<String, Object> judge(Map<String, Object> check, String factSheet, String factDigest) {
-        String checkId = String.valueOf(check.get("check_id"));
+    private Map<String, Object> judge(ReadRows.PlanCheck check, String factSheet, String factDigest) {
+        String checkId = check.checkId();
         String prompt = CHECK_PROMPT.formatted(
                 checkId,
-                String.valueOf(check.get("name")),
-                String.valueOf(check.getOrDefault("applies_because", "")),
-                String.valueOf(check.getOrDefault("rule_ref", "")),
+                check.name(),
+                nz(check.appliesBecause()),
+                nz(check.ruleRef()),
                 factSheet);
 
         var key = new DerivationKey(CacheOp.JUDGE_RULE, CacheOp.JUDGE_RULE_V, factDigest, checkId,
@@ -125,8 +127,8 @@ public class ExecuteStage implements Stage {
     }
 
     /** @return whether this produced something needing attention */
-    private boolean record(StageContext ctx, Map<String, Object> check, Map<String, Object> v) {
-        String checkId = String.valueOf(check.get("check_id"));
+    private boolean record(StageContext ctx, ReadRows.PlanCheck check, Map<String, Object> v) {
+        String checkId = check.checkId();
         String verdict = String.valueOf(v.getOrDefault("verdict", "inconclusive")).toLowerCase();
 
         String severity = switch (verdict) {
@@ -140,16 +142,16 @@ public class ExecuteStage implements Stage {
                 "id", "f-" + checkId.toLowerCase(),
                 "checkId", checkId,
                 "severity", severity,
-                "area", check.get("name"),
-                "areaId", check.get("area_id"),
+                "area", check.name(),
+                "areaId", check.areaId(),
                 "docId", firstDoc(v),
-                "title", v.getOrDefault("title", check.get("name")),
+                "title", v.getOrDefault("title", check.name()),
                 "statement", v.get("statement"),
                 "statementSource", "drafted",
                 "detail", v.get("why"),
                 "expected", v.get("expected"),
                 "quote", v.get("presented"),
-                "reason", check.get("rule_ref"),
+                "reason", check.ruleRef(),
                 "confidence", String.valueOf(v.getOrDefault("confidence", "MED")).toUpperCase(),
                 "analysis", Rows.of(
                         "requirement", v.get("expected"),
@@ -169,30 +171,47 @@ public class ExecuteStage implements Stage {
      * hand, and a tool round trip to hand a model something we hold is two extra completions
      * for no new information.
      */
+    private static String nz(String s) {
+        return s == null ? "" : s;
+    }
+
+    /** One credit term, omitted entirely when the credit does not state it. */
+    private static void term(StringBuilder sb, String label, Object value) {
+        if (value == null || String.valueOf(value).isBlank()) return;
+        sb.append("  ").append(label).append(": ").append(value).append('\n');
+    }
+
     private String factSheet(StageContext ctx) {
         StringBuilder sb = new StringBuilder();
-        Map<String, Object> row = cases.find(ctx.caseId()).orElseThrow();
+        CaseRow c = cases.find(ctx.caseId()).orElseThrow();
 
+        // Labelled in words rather than column names. The loop this replaces printed the
+        // schema at the model — "latest_shipment", "tolerance_pct" — and a prompt reads
+        // better, and more like the credit it describes, in English.
         sb.append("THE CREDIT\n");
-        for (String col : new String[] { "credit_ref", "applicant", "beneficiary", "currency", "amount",
-                "tolerance_pct", "latest_shipment", "expiry", "expiry_place", "presentation_days",
-                "tenor", "goods" }) {
-            Object v = row.get(col);
-            if (v != null && !String.valueOf(v).isBlank()) {
-                sb.append("  ").append(col).append(": ").append(v).append('\n');
-            }
-        }
+        term(sb, "credit reference", c.creditRef());
+        term(sb, "applicant", c.applicant());
+        term(sb, "beneficiary", c.beneficiary());
+        term(sb, "currency", c.currency());
+        term(sb, "amount", c.amount());
+        term(sb, "tolerance %", c.tolerancePct());
+        term(sb, "latest shipment", c.latestShipment());
+        term(sb, "expiry", c.expiry());
+        term(sb, "place of expiry", c.expiryPlace());
+        term(sb, "presentation period (days)", c.presentationDays());
+        term(sb, "tenor", c.tenor());
+        term(sb, "goods", c.goods());
 
         String current = null;
         sb.append("\nTHE PRESENTATION\n");
-        for (Map<String, Object> f : cases.facts(ctx.caseId())) {
-            String doc = String.valueOf(f.get("doc_code"));
+        for (ReadRows.Fact f : cases.facts(ctx.caseId())) {
+            String doc = f.docCode();
             if (!doc.equals(current)) {
                 sb.append("  ").append(DocType.of(doc).label()).append(" (").append(doc).append(")\n");
                 current = doc;
             }
-            sb.append("    ").append(f.get("label")).append(": ").append(f.get("value"));
-            if (f.get("page") != null) sb.append("   [p.").append(f.get("page")).append(']');
+            sb.append("    ").append(f.label()).append(": ").append(f.value());
+            if (f.page() != null) sb.append("   [p.").append(f.page()).append(']');
             sb.append('\n');
         }
         return sb.toString();

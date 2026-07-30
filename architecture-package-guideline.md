@@ -189,7 +189,7 @@ on purpose rather than by habit.
 
 - `types` packages must not depend on `service`, `stage`, `pipeline`, or `persistence` packages (types stay leaf nodes).
 - Classes in `types` packages must carry no Spring or JPA annotations — **and no serialiser annotations either**, or the wire format ends up dictated from inside the model.
-- `persistence` Row/Entity classes must not be imported outside their own `Store` implementation. *Where a codebase has no typed rows — stores returning `Map<String, Object>` — this is unenforceable as written; enforce the stronger form instead: nothing outside `service`/`stage`/`pipeline` may name the persistence package at all.*
+- `persistence` Row/Entity classes must not be imported outside their own `Store` implementation. *This is only enforceable once reads are typed — a store returning `Map<String, Object>` gives ArchUnit no type to check, and the column names leak invisibly. Type the reads first; the rule follows. Until then, enforce the weaker form: nothing outside `service`/`stage`/`pipeline` may name the persistence package at all.*
 - DTOs must not leak inward — nothing in `stage`, `pipeline`, `persistence` or `types` may name `api/dto`.
 - A feature module must not import another module's internals. State this as a **whitelist** of permitted packages (`types`, `spi`), never a blacklist of forbidden ones.
 - Dependency direction between modules is fixed and tested (e.g. `lccheck → harness/infra/governance`, never the reverse).

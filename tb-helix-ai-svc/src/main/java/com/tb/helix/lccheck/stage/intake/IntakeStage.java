@@ -4,6 +4,8 @@ import com.tb.helix.harness.doc.DocumentConverter;
 import com.tb.helix.harness.doc.PageRenderer;
 import com.tb.helix.infra.blob.BlobOwner;
 import com.tb.helix.infra.blob.BlobStore;
+import com.tb.helix.lccheck.persistence.CaseRow;
+import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.pipeline.Stage;
@@ -134,10 +136,10 @@ public class IntakeStage implements Stage {
     @Override
     public StageOutcome execute(StageContext ctx) {
         String caseId = ctx.caseId();
-        Map<String, Object> row = cases.find(caseId).orElseThrow();
+        CaseRow row = cases.find(caseId).orElseThrow();
         Map<String, Object> patch = new LinkedHashMap<>();
 
-        String creditSha = (String) row.get("credit_text_sha");
+        String creditSha = row.creditTextSha();
         if (creditSha != null) {
             ctx.progress("credit", "Reading the credit");
             byte[] bytes = blobs.get(creditSha).orElseThrow(
@@ -176,13 +178,13 @@ public class IntakeStage implements Stage {
             ctx.progress("credit", message.type().label() + " read", true);
         }
 
-        String sourceSha = (String) row.get("source_bundle_sha");
+        String sourceSha = row.sourceBundleSha();
         if (sourceSha != null) {
             // receive() sets bundle_pdf_sha when the upload was already a PDF, so a null
             // here means exactly one thing: a conversion is outstanding. Reading it that
             // way rather than re-sniffing the filename is also what makes a rerun cheap —
             // once converted, the sha is on the case and there is nothing left to do.
-            String converted = (String) row.get("bundle_pdf_sha");
+            String converted = row.bundlePdfSha();
             if (converted == null) {
                 ctx.progress("bundle", "Converting the scan to PDF");
                 var pdf = converter.toPdf(sourceSha);
@@ -215,8 +217,8 @@ public class IntakeStage implements Stage {
     /** The filename recorded at receive, so re-upserting the document does not lose it. */
     private String documentName(String caseId, String docCode) {
         return cases.documents(caseId).stream()
-                .filter(d -> docCode.equals(d.get("doc_code")))
-                .findFirst().map(d -> (String) d.get("file_name")).orElse(null);
+                .filter(d -> docCode.equals(d.docCode()))
+                .findFirst().map(ReadRows.Document::fileName).orElse(null);
     }
 
     private Map<String, Object> creditColumns(Map<String, Object> c) {

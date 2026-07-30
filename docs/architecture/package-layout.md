@@ -130,6 +130,7 @@ change to two modules at once. It stays small or it stops being a kernel.
 | Types depend on nothing that acts | `typesStayLeaves` |
 | Types carry no Spring, JPA or Jackson annotations | `typesAreFrameworkFree` |
 | Only service, stage and pipeline may name `persistence` | `persistenceIsReachedThroughItsStore` |
+| Rows never reach the API or a type | `rowsDoNotEscapeThePersistencePackage` |
 | DTOs never reach stages, pipeline, persistence or types | `dtosDoNotLeakInward` |
 | Controllers never reach past their service | `controllersDoNotReachPastTheirService` |
 | Controllers live in their module's `api` package | `controllersLiveInApiPackages` |
@@ -167,11 +168,29 @@ for no gain. The guideline's §6 exception covers this ("fully self-contained, a
 extraction") and both qualify; this records the decision so it does not get re-litigated. `types/` is a
 **feature-module** pattern, not a universal one.
 
-Also worth stating plainly: §7's "persistence Row classes must not be imported outside their Store" is
-not enforceable here, because there are no Row classes — the stores return `Map<String, Object>`.
-That is a real leak and a deliberate deferral; `Rows.of(...)` is a builder, not a type. What is
-enforced is the stronger, testable form: nothing outside service, stage and pipeline may name the
-persistence package at all. If typed rows ever land, tighten this rule with them.
+## 7a. Reads are typed; writes are not, yet
+
+`CaseStore`'s reads return records — `CaseRow` and the shapes in `ReadRows` — and every
+snake_case column name in lc-check appears in one row-mapper block and nowhere else. Before that
+the store returned `Map<String, Object>` and **85 column names** were spelled out across stages,
+the pipeline and the assembler, so a rename compiled cleanly and failed at runtime in a file
+nowhere near the migration that caused it. Fifteen `.get("…")` calls remain and none of them is a
+column: they read parsed model JSON, which genuinely has no compile-time shape.
+
+Typing the reads is also what made `rowsDoNotEscapeThePersistencePackage` writable. A map has no
+type for ArchUnit to check; a record does.
+
+**Writes still take `Map<String, Object>`** — `store.upsertFinding(caseId, Rows.of("severity", …))`.
+Deliberate for now: those keys are the store's own vocabulary rather than column names, `Rows.of`
+keeps them local to the call, and the same shape is what the governance controllers hand straight
+from an HTTP body. It is the obvious next step, not a finished job.
+
+**On ORMs, since it comes up.** JPA was considered and rejected on this schema: 23 `ON CONFLICT`
+upserts it cannot express, `jsonb`/`TEXT[]`/`<@` it needs custom types or native queries for, seven
+views it would map read-only against its own identity model — and it would put the query further
+out of reach, not closer, since you would be reading generated SQL out of a log. The pattern here is
+the opposite: complex reads move **into views**, which are versioned by Flyway and open in any DB
+tool, and Java gets a typed row back.
 
 ## 8. Adding something new
 

@@ -279,6 +279,28 @@ class ArchitectureTest {
     }
 
     @Test
+    @DisplayName("rows do not escape the persistence package")
+    void rowsDoNotEscapeThePersistencePackage() {
+        // The rule that could not be written while the stores returned Map<String, Object>.
+        // A map has no type for ArchUnit to check, so eighty-five snake_case column names
+        // had leaked into stages, the pipeline and the assembler — and a column rename
+        // compiled cleanly and failed at runtime, far from the migration that caused it.
+        //
+        // Now a row is a record, so the boundary is a type and this can be stated. Rows may
+        // be read by service, stage and pipeline — the layers that legitimately orchestrate
+        // — and turned into domain types there. They must never reach the API or a type,
+        // because that is where the wire format would start tracking the schema.
+        noClasses()
+                .that().resideInAnyPackage(
+                        "com.tb.helix.lccheck.api..",
+                        "com.tb.helix.lccheck.types..")
+                .should().dependOnClassesThat().haveSimpleNameEndingWith("Row")
+                .because("a row is the schema's shape; the wire and the domain have their own")
+                .allowEmptyShould(true)
+                .check(classes);
+    }
+
+    @Test
     @DisplayName("wire formats stay at the edge")
     void dtosDoNotLeakInward() {
         // A DTO is shaped by an HTTP API's history and its compatibility promises. Let one
