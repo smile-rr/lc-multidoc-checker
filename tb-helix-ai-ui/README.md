@@ -761,15 +761,28 @@ Every reading carries **Raise** — not only the doubtful ones, because a confid
 misreading is still a misreading and the officer decides which of our readings to
 trust.
 
-Raising opens a **dialog with room in it**, not a form in the corner of a column.
-Crammed into the panel it read as a nervous afterthought, and a form that feels like
-an afterthought produces findings that look like one — the wrong signal on something
-that ends up in a refusal advice. It pre-fills the document, page and quote from
-where you were standing, because a finding whose provenance was typed from memory is
-worth less than one the interface recorded. The article you are relying on is
-*offered, not demanded*: an examiner often knows a document is wrong before knowing
-which article says so, and forcing the citation first would either block the finding
-or invite a guess.
+**Raising happens in the column, beside the evidence.** It was a dialog for one
+revision, which covered the two things an officer is actually looking at while they
+write — the page and the credit's terms. A form that hides its own evidence is the
+wrong shape however roomy it is.
+
+It is **one box**: two lines to start, as many as it takes, and the first line taken
+as the headline because that is how people write anyway. It pre-fills the document,
+page and quote from where you were standing — a finding whose provenance was typed
+from memory is worth less than one the interface recorded. Two chips for severity
+rather than a select, because there are two answers and a select costs a click to see
+them.
+
+It defaults to **To decide**, not Discrepancy, and the asymmetry is the reason: a
+discrepancy that should have been a query gets stated in a refusal notice under UCP
+600 art. 16(c) and has to be defended, while a query that should have been a
+discrepancy gets looked at again ten minutes later. One of those is recoverable and
+the other is not, so the default is the recoverable one — with the other one click
+away at equal weight.
+
+**Everything below the raise action is reference.** Unsure, Extracted, Findings here —
+in that order, informing the judgement without competing with it. Our extraction is
+not what an officer looks at while deciding; the document is.
 
 ### A finding carries how it was settled
 

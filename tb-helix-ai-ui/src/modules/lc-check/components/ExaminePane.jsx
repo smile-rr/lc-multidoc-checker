@@ -7,7 +7,6 @@ import Icon from '@shared/ds/Icon'
 import IconButton from '@shared/ds/IconButton'
 import TextArea from '@shared/ds/TextArea'
 import SegmentedControl from '@shared/ds/SegmentedControl'
-import Modal from '@shared/ds/Modal'
 import PageStrip from '@shared/ds/PageStrip'
 import { usePageBar } from '@shared/ds/DocumentSurface'
 import { ellipsis } from '@shared/ds/text'
@@ -195,17 +194,39 @@ export default function ExaminePane({ findings, onOpenFinding }) {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {/* What we could not read. First, because it is the likeliest place
-            something was missed and the cheapest place to look. */}
+        {/* Raising comes first in this column, and stays *in* it.
+            
+            It was a dialog, which covered the two things an officer is actually
+            looking at while they write: the page and the credit's terms. A form that
+            hides its own evidence is the wrong shape however roomy it is. So it opens
+            here, beside them, and closing it costs one click.
+            
+            Everything below is reference. It informs the judgement; it is not the
+            judgement, and it should not compete with it for the eye. */}
+        {draft ? (
+          <RaisePanel
+            draft={draft}
+            setDraft={setDraft}
+            onDiscard={() => setDraft(null)}
+            onRaise={(d) => { const f = actions.raiseFinding(d); setDraft(null); onOpenFinding(f.id) }}
+          />
+        ) : (
+          <Button variant="secondary" size="md" onClick={() => startDraft(null)} style={{ width: '100%' }}>
+            <Icon name="flag" size={15} />Raise a finding
+          </Button>
+        )}
+
+        {/* What we could not read. The first thing under the action, because it is
+            the likeliest place something was missed and the cheapest place to look. */}
         <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden', borderColor: doubtful.length ? '#E9C97A' : 'var(--me-grey-15)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: doubtful.length ? '#FBEFCF' : 'var(--me-grey-08)', borderBottom: '1px solid var(--me-grey-15)' }}>
-            <Icon name={doubtful.length ? 'circle-alert' : 'circle-check'} size={14} color={doubtful.length ? '#946400' : 'var(--status-success)'} />
-            <span style={{ fontSize: 12, fontWeight: 600, color: doubtful.length ? '#946400' : 'var(--me-grey)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', background: doubtful.length ? '#FBEFCF' : 'var(--me-grey-08)', borderBottom: doubtful.length ? '1px solid var(--me-grey-15)' : 'none' }}>
+            <Icon name={doubtful.length ? 'circle-alert' : 'circle-check'} size={13} color={doubtful.length ? '#946400' : 'var(--status-success)'} />
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: doubtful.length ? '#946400' : 'var(--me-grey-70)' }}>
               {doubtful.length ? `Unsure · ${doubtful.length}` : 'Nothing unsure'}
             </span>
           </div>
           {doubtful.length ? (
-            <div style={{ padding: '4px 0' }}>
+            <div style={{ padding: '2px 0' }}>
               {doubtful.map((f, i) => (
                 <FactRow key={i} fact={f} doubtful onRaise={() => startDraft(f)} onGo={() => f.page && setPage(f.page)} />
               ))}
@@ -215,25 +236,21 @@ export default function ExaminePane({ findings, onOpenFinding }) {
 
         {/* Everything else we read, so a human can disagree with any of it. */}
         <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid var(--me-grey-15)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', borderBottom: '1px solid var(--me-grey-15)' }}>
             <Eyebrow size="sm">Extracted</Eyebrow>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>{confident.length}</span>
-            <div style={{ flex: 1 }} />
-            <Button variant="secondary" size="sm" onClick={() => startDraft(null)}>
-              <Icon name="flag" size={13} />Raise a finding
-            </Button>
           </div>
-          <div style={{ maxHeight: 300, overflow: 'auto', padding: '4px 0' }}>
+          <div style={{ maxHeight: 260, overflow: 'auto', padding: '2px 0' }}>
             {confident.map((f, i) => (
               <FactRow key={i} fact={f} onRaise={() => startDraft(f)} onGo={() => f.page && setPage(f.page)} />
             ))}
-            {!confident.length ? <div style={{ padding: '12px 14px', fontSize: 12, color: 'var(--me-grey-70)' }}>Nothing extracted from this document.</div> : null}
+            {!confident.length ? <div style={{ padding: '11px 14px', fontSize: 12, color: 'var(--me-grey-70)' }}>Nothing extracted from this document.</div> : null}
           </div>
         </div>
 
         {docFindings.length ? (
           <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid var(--me-grey-15)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', borderBottom: '1px solid var(--me-grey-15)' }}>
               <Eyebrow size="sm">Findings here</Eyebrow>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>{docFindings.length}</span>
             </div>
@@ -248,13 +265,6 @@ export default function ExaminePane({ findings, onOpenFinding }) {
 
       </div>
       </div>
-
-      <RaiseModal
-        draft={draft}
-        setDraft={setDraft}
-        onCancel={() => setDraft(null)}
-        onRaise={(d) => { const f = actions.raiseFinding(d); setDraft(null); onOpenFinding(f.id) }}
-      />
     </div>
   )
 }
@@ -415,55 +425,34 @@ function FactRow({ fact, doubtful, onRaise, onGo }) {
   )
 }
 
-// Raising a discrepancy: one box, one choice, one button.
+// Raising a finding: one box, in the column, beside the evidence.
 //
-// The first version asked two questions — a headline and then the reasoning — plus a
-// severity select and an optional article. An examiner mid-bundle has no time to
-// answer a questionnaire, and splitting one thought across two boxes makes them write
-// the same thing twice. So: one field, two lines to start and as many as it takes.
-// The first line becomes the headline because that is how people write anyway.
-function RaiseModal({ draft, setDraft, onCancel, onRaise }) {
-  if (!draft) return null
+// One field, two lines to start and as many as it takes; the first line is taken as
+// the headline because that is how people write anyway. Severity is two chips, not a
+// select — there are two answers and a select costs a click to see them.
+//
+// It defaults to **To decide**, not Discrepancy, and the asymmetry is the reason. A
+// discrepancy that should have been a query gets stated in a refusal notice under UCP
+// 600 art. 16(c) and has to be defended; a query that should have been a discrepancy
+// gets looked at again ten minutes later. One of those mistakes is recoverable and
+// the other is not, so the default is the recoverable one — and calling it a
+// discrepancy is one click away, with equal weight on screen.
+function RaisePanel({ draft, setDraft, onDiscard, onRaise }) {
   const text = draft.text ?? ''
   const firstLine = text.split('\n')[0].trim()
   const ready = firstLine.length > 2
   return (
-    <Modal
-      open
-      onClose={onCancel}
-      width={560}
-      title="Raise a finding"
-      subtitle={draft.quoteSource ? `On ${draft.quoteSource}` : undefined}
-      footer={
-        <>
-          {/* Severity is two words, not a dropdown: there are two answers and a
-              select would cost a click to see them. */}
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
-            {[
-              { id: 'discrepancy', label: 'Discrepancy' },
-              { id: 'possible', label: 'To decide' },
-            ].map((o) => (
-              <Chip
-                key={o.id}
-                size="md"
-                tone={draft.severity === o.id ? 'blue' : 'plain'}
-                onClick={() => setDraft({ ...draft, severity: o.id })}
-              >
-                {draft.severity === o.id ? <Icon name="check" size={11} /> : null}
-                {o.label}
-              </Chip>
-            ))}
-          </span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
-            <button onClick={onCancel} style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, color: 'var(--me-grey-70)' }}>Cancel</button>
-            <Button variant="primary" size="md" onClick={() => onRaise({ ...draft, title: firstLine, detail: text.slice(firstLine.length).trim() })} disabled={!ready}>Raise</Button>
-          </span>
-        </>
-      }
-    >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div style={{ ...cardSurface(12), boxShadow: '0 4px 16px rgba(4,115,234,.12)', borderColor: 'var(--me-blue)', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', background: 'var(--me-blue-20)', borderBottom: '1px solid var(--me-grey-15)' }}>
+        <Icon name="flag" size={13} color="var(--me-blue-deep)" />
+        <span style={{ flex: 1, fontSize: 11.5, fontWeight: 600, color: 'var(--me-blue-deep)' }}>
+          Raising on {draft.quoteSource || 'this document'}
+        </span>
+        <IconButton icon="x" size="sm" title="Discard this draft" onClick={onDiscard} />
+      </div>
+      <div style={{ padding: '11px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {draft.quote ? (
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, lineHeight: 1.6, color: 'var(--me-grey)', background: 'var(--me-grey-08)', borderRadius: 8, padding: '9px 11px', whiteSpace: 'pre-wrap' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, lineHeight: 1.55, color: 'var(--me-grey)', background: 'var(--me-grey-08)', borderRadius: 7, padding: '7px 9px', whiteSpace: 'pre-wrap' }}>
             {draft.quote}
           </span>
         ) : null}
@@ -471,12 +460,26 @@ function RaiseModal({ draft, setDraft, onCancel, onRaise }) {
           value={text}
           onChange={(e) => setDraft({ ...draft, text: e.target.value })}
           autoFocus
-          placeholder={'What is wrong.\nAnything more you want on the record.'}
+          placeholder={'What is wrong.\nAnything more for the record.'}
           maxLines={10}
           maxLength={900}
-          style={{ width: '100%', minHeight: 58, border: '1px solid var(--me-grey-20)', borderRadius: 9, padding: '10px 12px', fontFamily: 'inherit', fontSize: 13.5, lineHeight: 1.6, color: 'var(--me-ink)', outline: 'none' }}
+          style={{ width: '100%', minHeight: 52, border: '1px solid var(--me-grey-20)', borderRadius: 8, padding: '9px 11px', fontFamily: 'inherit', fontSize: 13, lineHeight: 1.6, color: 'var(--me-ink)', outline: 'none' }}
         />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+          {[
+            { id: 'possible', label: 'To decide' },
+            { id: 'discrepancy', label: 'Discrepancy' },
+          ].map((o) => (
+            <Chip key={o.id} size="md" tone={draft.severity === o.id ? 'blue' : 'plain'} onClick={() => setDraft({ ...draft, severity: o.id })}>
+              {draft.severity === o.id ? <Icon name="check" size={11} /> : null}
+              {o.label}
+            </Chip>
+          ))}
+          <div style={{ flex: 1 }} />
+          <button onClick={onDiscard} style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 600, color: 'var(--me-grey-70)' }}>Discard</button>
+          <Button variant="primary" size="sm" onClick={() => onRaise({ ...draft, title: firstLine, detail: text.slice(firstLine.length).trim() })} disabled={!ready}>Raise</Button>
+        </div>
       </div>
-    </Modal>
+    </div>
   )
 }
