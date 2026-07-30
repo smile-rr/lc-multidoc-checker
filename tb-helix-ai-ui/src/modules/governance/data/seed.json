@@ -548,7 +548,7 @@
           "detail": "From insurance cases."
         }
       ],
-      "checkType": "AGENT_TOOL"
+      "checkType": "PROGRAMMATIC"
     },
     {
       "id": "PARTY-FC04",

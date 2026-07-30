@@ -361,6 +361,15 @@ export function deriveVals(state, setState) {
 
   // ---- Rule cards ----------------------------------------------------------
   const ruleOf = (id) => normaliseRule(S.rules[id] || RULE_SEEDS[id])
+
+  // A card with authored conditions is an exact rule, whatever its `checkType` says.
+  //
+  // This is a guard rather than a preference. Retiering CERT-28 to AGENT_TOOL in a
+  // migration left its five authored rows orphaned: the card rendered the prose
+  // editor, its conditions were never shown, and nothing anywhere complained. The
+  // data is fixed, and this makes the same mistake impossible to make silently —
+  // conditions that exist are conditions that get edited.
+  const hasConditions = (c) => !!(c && (S.rules[c.id] || RULE_SEEDS[c.id]))
   const setRule = (id, fn) => setState((s) => ({ rules: { ...s.rules, [id]: fn(normaliseRule(s.rules[id] || RULE_SEEDS[id])) } }))
   const mapGroups = (rule, gid, fn) => ({ ...rule, groups: rule.groups.map((g) => (g.id === gid ? fn(g) : g)) })
   // Which fields a rule reads — so the dictionary can tell how often a field is
@@ -472,7 +481,8 @@ export function deriveVals(state, setState) {
     const inactive = !!S.inactiveIds[c.id]
     // Which kind of card this is decides what the middle of it holds, and it is
     // read before the snapshot below so Cancel can put the rule back too.
-    const kind = typeOf(c)
+    // `hasConditions` wins over the declared tier — see the guard above.
+    const kind = hasConditions(c) ? 'exact' : typeOf(c)
     const isExact = kind === 'exact'
     const rule = isExact ? ruleOf(c.id) : null
     // A check that has examined a case is referenced by the findings it produced
@@ -872,7 +882,7 @@ export function deriveVals(state, setState) {
   }
   const exportMd = allChecks().map((c) => {
     const t = valueOf(c, 'title'); const sv = valueOf(c, 'severity') || 'MAJOR'; const rf = (valueOf(c, 'refs') || []).join(', ')
-    const kind = typeOf(c)
+    const kind = hasConditions(c) ? 'exact' : typeOf(c)
     const bd = kind === 'exact' ? ruleMd(c) : valueOf(c, 'body') || ''
     return `${CARD_TYPES[kind].label.toUpperCase()} RULE: ${c.id} — ${t}\nSeverity: ${sv}\n\n${bd}${rf ? '\n\nReference: ' + rf : ''}`
   }).join('\n\n---\n\n')

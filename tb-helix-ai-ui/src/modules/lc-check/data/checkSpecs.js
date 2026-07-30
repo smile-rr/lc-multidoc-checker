@@ -133,6 +133,57 @@ export const TIER_META = {
 export const checkType = (id) => CHECK_TYPES[id] ?? 'AGENT'
 export const checkTier = (id) => (checkType(id) === 'PROGRAMMATIC' ? 'exact' : 'judged')
 
+// Rules that can run before anything is read, and whose failure nothing in the
+// documents can cure.
+//
+// Two properties, and they are not the same. A gate must have both:
+//
+//   1. its operands are the credit and the presentation record — dates, the document
+//      set — so it can run before a single page is rendered
+//   2. nothing in the presentation could make it pass, so continuing is provably
+//      spend on a question already answered
+//
+// Late shipment (DATE-44C) has the second and not the first: it needs the on-board
+// date off the bill of lading. Presentation after expiry has both — the presentation
+// date against :31D:, both in hand before extraction starts. So this is a small and
+// precious set, not a category most rules fall into, and it stays authored rather
+// than inferred.
+//
+// **A gate is a workflow decision with a legal cost, not an optimisation.** Under UCP
+// 600 art. 16(c) a refusing bank gives *a single notice* stating *each* discrepancy,
+// and under art. 16(f) a bank that fails to give a compliant notice is precluded from
+// claiming the documents do not comply. Stop after a gate and the notice states that
+// ground alone — you cannot add a second discrepancy later. So the UI offers the
+// choice and states the consequence; it never sells the saving on its own.
+// How well a requirement read out of the credit can be tested — **derived, never
+// stored.**
+//
+// The three states an examiner wants are already in the data: they are the tier of
+// the rule that covers the requirement. Storing them again as a fourth classification
+// beside provenance, tier and cited-as would add an axis that can drift out of step
+// with the rules it describes, to say something the rules already say.
+//
+//   deterministic       an exact rule tests it. Same answer every time.
+//   semi-deterministic  a judged rule tests it — an agent reads, but where the tier
+//                       is AGENT_TOOL the date and amount arithmetic goes through
+//                       compute tools, so the maths is exact even where the reading
+//                       is not.
+//   manual              nothing tests it. Yours to check, and the plan should say so
+//                       before the run rather than after.
+export const COVERAGE = {
+  deterministic: { label: 'deterministic', color: 'var(--me-blue-deep)', note: 'An exact rule tests this. Same answer every time.' },
+  'semi-deterministic': { label: 'semi-deterministic', color: '#1F7A00', note: 'A judged rule tests this — an agent reads it and forms a view.' },
+  manual: { label: 'manual — yours', color: '#946400', note: 'No rule tests this. It is yours to check.' },
+}
+
+export function coverageOf(ruleIds = [], tierOf = checkTier) {
+  if (!ruleIds.length) return 'manual'
+  return ruleIds.every((id) => tierOf(id) === 'exact') ? 'deterministic' : 'semi-deterministic'
+}
+
+export const GATES = ['DATE-31D']
+export const isGate = (id) => GATES.includes(id)
+
 // The rows an *exact* rule evaluates, and the field each side reads. `factLabel` and
 // `factDoc` are the join between the dictionary's vocabulary and what Interpret
 // actually produced — the label it was extracted under, and the document it came

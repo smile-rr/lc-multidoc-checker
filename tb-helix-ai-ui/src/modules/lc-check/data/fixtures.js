@@ -16,7 +16,7 @@
 
 import { SAMPLES, DOC_TYPES } from './samples/index.js'
 import { parseMt700Lines, tagValue } from '../lib/mt700.js'
-import { checkSpec, buildExecutionPlan, checkTier, checkType, checkSource, resolveRuleInputs, ruleOutcome } from './checkSpecs.js'
+import { checkSpec, buildExecutionPlan, checkTier, checkType, checkSource, isGate, resolveRuleInputs, ruleOutcome } from './checkSpecs.js'
 
 /** @typedef {import('./contracts.js').CaseDetail} CaseDetail */
 
@@ -1130,6 +1130,8 @@ function buildChecks(def, lines, credit, documents, facts) {
     spec,
     tier: checkTier(check.id),
     checkType: checkType(check.id),
+    // Runs on the credit and the presentation record alone, before anything is read.
+    gate: isGate(check.id),
     // `source` is what the card is *cited against* — the credit, UCP/ISBP, or bank
     // policy. Both branches below also set a `source` meaning where the card came
     // from (dictionary or planner), and this spread silently overwrote it, so that

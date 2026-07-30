@@ -9,7 +9,7 @@ import { ellipsis } from '@shared/ds/text'
 import { plural, thousands, usd, durationShort } from '@shared/lib/format'
 import { judgedRuleCost } from '../state/runCost'
 import { severityMeta } from '../state/severity'
-import { SOURCE_META } from '../data/checkSpecs'
+import { SOURCE_META, COVERAGE, coverageOf } from '../data/checkSpecs'
 import CheckSpecCard from '../components/CheckSpecCard'
 import TierTag from '../components/TierTag'
 import { PANE_FILL } from '../components/paneHeight'
@@ -130,7 +130,10 @@ export default function ChecksScreen({ onOpenFinding }) {
   const runnable = allChecks.filter((c) => c.areaId || c.addedByOfficer)
   // Grouped by where the card came from, not by how it is settled — see
   // `state/findingKinds`. The tier rides on the row instead.
-  const fromDictionary = runnable.filter((c) => !c.plannedByLlm)
+  const gates = runnable.filter((c) => c.gate)
+  const fromDictionary = runnable.filter((c) => !c.plannedByLlm && !c.gate)
+  const dictExact = fromDictionary.filter((c) => c.tier === 'exact')
+  const dictJudged = fromDictionary.filter((c) => c.tier !== 'exact')
   const fromCredit = runnable.filter((c) => c.plannedByLlm)
   const exact = runnable.filter((c) => c.tier === 'exact')
   const judged = runnable.filter((c) => c.tier !== 'exact')
@@ -146,6 +149,17 @@ export default function ChecksScreen({ onOpenFinding }) {
   // waste: the presentation is refused whatever :47A: says. Whether to stop is a
   // policy chosen before the run, so Auto never surprises you — and it sits on
   // the group it governs instead of in a banner of its own.
+  // A gate that came back discrepant. Distinct from a critical failure found later:
+  // this one was knowable before a page was rendered.
+  // Requirements the planner read out of the credit and found no rule for. They are
+  // filed with areaId null, so `runnable` never sees them — which is exactly why they
+  // were only discoverable afterwards, as a flag on a finding.
+  const notCoveredCount = allChecks.filter((c) => c.notCovered).length
+
+  const gateFailure = gates
+    .map((c) => (statusOf(c) === 'done' && c.findingId ? data.findings.find((f) => f.id === c.findingId) : null))
+    .find((f) => f && f.severity === 'discrepancy') ?? null
+
   const criticalRuleFailures = exact
     .map((c) => (statusOf(c) === 'done' && c.findingId ? data.findings.find((f) => f.id === c.findingId) : null))
     .filter((f) => f && f.severity === 'discrepancy')
@@ -164,7 +178,23 @@ export default function ChecksScreen({ onOpenFinding }) {
   const unanswerable = blocked.length + settled.filter((c) => c.notCovered).length
   const passed = settled.length - needsDecision.length - blocked.filter((c) => settled.includes(c)).length
 
+  // Three groups, and each aside says the thing that group is asked about.
+  //
+  // The cost estimate and the stop-on-failure policy used to sit on the requirement
+  // group, from when that group *was* the judged half. It is not any more — nearly
+  // all the judged work is in the dictionary now — so they moved to where the money
+  // actually is, and the requirement group says what it is asked: how much of what
+  // this credit demands can be tested at all.
   const sections = [
+    {
+      key: 'gate',
+      icon: 'shield-alert',
+      tone: 'warning',
+      label: 'Before anything is read',
+      count: gates.length,
+      note: 'Runs on the credit and the presentation record alone. Nothing in the documents could change the answer.',
+      checks: gates,
+    },
     {
       key: 'rule',
       icon: 'equal',
@@ -175,7 +205,8 @@ export default function ChecksScreen({ onOpenFinding }) {
       checks: fromDictionary,
       aside: blocked.length
         ? { warn: true, text: `${plural(blocked.length, 'rule')} needs a field that was not extracted` }
-        : { text: `${exact.length} exact · ${judged.length} judged` },
+        : { text: `${dictExact.length} exact · ${dictJudged.length} judged · about ${thousands(est.tokens, 0)} tokens` },
+      policy: true,
     },
     {
       key: 'requirement',
@@ -185,8 +216,11 @@ export default function ChecksScreen({ onOpenFinding }) {
       count: fromCredit.length,
       note: "Read out of this credit's 46A and 47A by the planner. Different on every case.",
       checks: fromCredit,
-      aside: { text: `about ${thousands(est.tokens, 0)} tokens · ${usd(est.cost)}` },
-      policy: true,
+      // How well each can be tested, derived from the tier of the rule covering it —
+      // never a stored fourth axis. See `coverageOf`.
+      aside: notCoveredCount
+        ? { warn: true, text: `${notCoveredCount} nothing tests — yours` }
+        : { text: `${fromCredit.filter((r) => coverageOf([r.id]) === 'deterministic').length} deterministic · ${fromCredit.filter((r) => coverageOf([r.id]) === 'semi-deterministic').length} semi-deterministic` },
     },
   ].filter((s) => s.count)
 
@@ -241,12 +275,46 @@ export default function ChecksScreen({ onOpenFinding }) {
           )}
         </div>
 
+        {/* A gate failed. The choice is real, and stating only the saving would be
+            selling it: under UCP 600 art. 16(c) a refusing bank gives a *single*
+            notice stating *each* discrepancy, and under art. 16(f) a bank whose
+            notice is not compliant is precluded from claiming the documents do not
+            comply. Stop here and the notice states this ground alone — a second
+            discrepancy found afterwards cannot be added to it. */}
+        {gateFailure ? (
+          <div style={{ margin: '12px 16px 0', border: '1px solid #E9C97A', background: '#FBEFCF', borderRadius: 10, padding: '11px 13px', display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+              <Icon name="shield-alert" size={15} color="#946400" />
+              <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: '#946400' }}>
+                {gateFailure.checkId} failed before anything was read
+              </span>
+            </span>
+            <span style={{ fontSize: 12, lineHeight: 1.55, color: '#946400' }}>
+              {gateFailure.title}. Nothing in the documents could change this.
+            </span>
+            <span style={{ fontSize: 11.5, lineHeight: 1.6, color: 'var(--me-grey)' }}>
+              A refusal notice states <strong>every</strong> discrepancy and there is only one
+              of them (art. 16(c)). Stop now and it states this ground alone — anything found
+              later cannot be added.
+            </span>
+            <span style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+              <button onClick={() => onOpenFinding?.(gateFailure.id)} style={{ ...linkBtn, color: '#946400', fontWeight: 600 }}>
+                Refuse on this ground and stop
+              </button>
+              <button onClick={() => actions.dispatch({ type: 'stop_on_rule_failure', on: false })} style={{ ...linkBtn, fontWeight: 600 }}>
+                Keep examining — {thousands(est.tokens, 0)} tokens, {usd(est.cost)}, for a complete notice
+              </button>
+            </span>
+          </div>
+        ) : null}
+
         {halted && (
           <div style={{ margin: '12px 16px 0', border: '1px solid #E9C97A', background: '#FBEFCF', borderRadius: 10, padding: '10px 13px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <Icon name="circle-pause" size={15} color="#946400" />
             <span style={{ flex: 1, minWidth: 200, fontSize: 12, lineHeight: 1.5, color: '#946400' }}>
               Stopped on {criticalRuleFailures.map((f) => f.checkId).join(', ')}. The {judged.length} judged rules have not
               run — about {thousands(est.tokens, 0)} tokens, {usd(est.cost)} and {durationShort(est.seconds)} of agent time not spent.
+              A notice states every discrepancy and there is only one of them, so what has not run cannot be added to it later.
             </span>
             <button onClick={() => actions.dispatch({ type: 'stop_on_rule_failure', on: false })} style={{ ...linkBtn, color: '#946400', fontWeight: 600 }}>Read on anyway</button>
             <button onClick={() => onOpenFinding?.(criticalRuleFailures[0].id)} style={{ ...linkBtn, color: '#946400', fontWeight: 600 }}>Take it to the report</button>
@@ -286,7 +354,7 @@ export default function ChecksScreen({ onOpenFinding }) {
               ) : null}
               {sec.policy && !executing && !selected ? (
                 <label
-                  title="A critical failure on the figures refuses the presentation whatever the conditions say, so reading on may be spend for nothing"
+                  title="A critical failure on the figures refuses the presentation whatever the conditions say. Stopping saves the judged half — but a refusal notice states every discrepancy and there is only one of them (art. 16(c)), so anything not examined cannot be added later."
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--me-grey)', cursor: 'pointer', whiteSpace: 'nowrap' }}
                 >
                   <input type="checkbox" checked={officer.stopOnRuleFailure} onChange={(e) => actions.dispatch({ type: 'stop_on_rule_failure', on: e.target.checked })} />
