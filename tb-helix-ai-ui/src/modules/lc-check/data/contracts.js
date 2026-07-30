@@ -264,7 +264,6 @@
  * @property {PlanCheck[]} checks
  * @property {Finding[]} findings
  * @property {RunStep[]} runSteps
- * @property {string} runModelSummary
  */
 
 export {}

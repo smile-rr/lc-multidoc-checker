@@ -1044,9 +1044,27 @@ are three numbers, the model breakdown is the part that changes decisions, and
 the step list is reference detail most people never open. Tabs also hid whichever
 section was empty, when *"we did not record that"* is itself worth seeing.
 
-Now one scroll with named bands — **Totals · Where it went · Coverage · By model ·
-By step · Run detail** — each rendering only when it has data and saying so when it
-does not, rather than a grid of em-dashes.
+Now one scroll with named bands — **Totals · Where it went · By step · Run detail** —
+each rendering only when it has data and saying so when it does not, rather than a
+grid of em-dashes.
+
+It was six bands and about sixty figures, which is a report rather than a drawer. Two
+of them answered the same question twice and one was mostly sums of the others:
+
+| Cut | Why |
+|---|---|
+| **Coverage** (six rows) | four were sums of what is above them or of the drawer's own subtitle — *cards settled* restated the sentence at the foot of *Where it went*, *model calls* was the total of the calls in it, *steps* repeated "5 of 9 steps" in the header. *Pages read* moved onto the reading row, where it belongs; cache and repairs are cost facts and moved into Totals |
+| **By model** | the same question as *Where it went*, cut a different way. Which model the money went to is a procurement question about the whole queue, not about this case — the AI performance panel answers it there. Here it competed with the cut that leads to a decision |
+| the **Tokens** total | the same fact as the cost in a unit that needs a rate card to read, and one that does not track it: 38k tokens on GPT-4o and 38k on Qwen are an order of magnitude apart. Tokens stay on the per-kind rows, where they explain a number instead of restating it |
+
+*By step* survives as the audit trail but is **folded by default** — worth having, not
+worth nine rows before anyone has asked.
+
+*Run detail* is now **derived rather than authored**. It was a hand-written string per
+case (`"30 calls, 2 repairs, 6 pages read, prompt cache 43%"`) and by the time the run
+table changed it claimed 30 calls against a computed 26 and a 43% cache against 34%. A
+summary of numbers stored next to the numbers it summarises will drift, and the drift
+is invisible because nothing compares them.
 
 ### The cost model follows the two card kinds
 

@@ -108,7 +108,7 @@ function stageCases(value, tag) {
     ],
     [
       `${tag} cost drawer`,
-      <CostDrawer open onClose={noop} cost={cost} stepCount={value.data.runSteps.length} completedCount={value.run.finished ? value.data.runSteps.length : 0} pageCount={value.data.bundlePages.length} modelSummary={value.data.runModelSummary} />,
+      <CostDrawer open onClose={noop} cost={cost} stepCount={value.data.runSteps.length} completedCount={value.run.finished ? value.data.runSteps.length : 0} pageCount={value.data.bundlePages.length} />,
     ],
     [`${tag} ask drawer`, <AskDrawer open onClose={noop} context="ctx" thread={value.ui.askThread} onAsk={noop} />],
   ]

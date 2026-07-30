@@ -177,7 +177,6 @@ function WorkbenchBody() {
         stepCount={data.runSteps.length}
         completedCount={cost.rows.filter((r) => r.state === 'done').length}
         pageCount={data.bundlePages.length}
-        modelSummary={data.runModelSummary}
       />
 
       <Toast message={ui.toast} />

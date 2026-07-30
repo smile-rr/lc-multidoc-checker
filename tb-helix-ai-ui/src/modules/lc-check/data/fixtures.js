@@ -1339,7 +1339,6 @@ function buildCase(defKey, overrides) {
     checks,
     findings: withProvenance(buildFindings(def), checksById, facts),
     runSteps: RUN_STEPS,
-    runModelSummary: 'GPT-4o · Qwen3 32B · Claude Sonnet 4.6 — 30 calls, 2 repairs, 6 pages read, prompt cache 43%',
     // The run state the case is already in when it loads. A finished case needs
     // no run before Review and Decision have something to show.
     runState: overrides.runState,
