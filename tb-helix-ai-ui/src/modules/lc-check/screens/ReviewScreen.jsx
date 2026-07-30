@@ -17,6 +17,7 @@ import ExaminePane from '../components/ExaminePane'
 import DiscrepancyStatement from '../components/DiscrepancyStatement'
 import DispositionChips from '../components/DispositionChips'
 import { severityMeta, dispositionLabel } from '../state/severity'
+import { groupByKind, kindOf, kindMark } from '../state/findingKinds'
 import { useCase } from '../state/CaseContext'
 
 // Stage 4 — the findings.
@@ -89,24 +90,17 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
       gap: f.raisedByOfficer ? null : !f.checkId ? 'no card' : f.severity === 'manual' ? 'not settled' : null,
     }))
 
-    const kindOf = (f) => data.checks.find((c) => c.id === f.checkId)?.kind ?? null
     // Uncovered first inside whichever group holds them: they are the ones nothing
     // examined, so they are the ones most easily skipped.
     const gapsFirst = (a, b) => (!!b.gap) - (!!a.gap)
 
-    const body =
-      grouping === 'doc'
-        ? data.documents
-            .map((d) => ({ label: d.docType, items: rest.filter((f) => f.docId === d.id).sort(gapsFirst) }))
-            .filter((g) => g.items.length)
-        : [
-            { label: 'Rule', icon: 'equal', tone: 'blue', note: 'The system compared fields. Same answer every time.', items: rest.filter((f) => kindOf(f) === 'rule').sort(gapsFirst) },
-            { label: 'Requirement', icon: 'list-checks', tone: 'green', note: 'An agent read it, or should have.', items: rest.filter((f) => kindOf(f) !== 'rule' && !f.raisedByOfficer).sort(gapsFirst) },
-            { label: 'Raised by you', icon: 'flag', tone: 'neutral', note: 'Yours, not a check\'s. Marked as such wherever it appears.', items: rest.filter((f) => f.raisedByOfficer) },
-          ].filter((g) => g.items.length)
-
-    return body
-  }, [visible.attention, grouping, data.documents, data.areas, data.checks])
+    // The kind groups are shared with Decision — see `state/findingKinds`.
+    return grouping === 'doc'
+      ? data.documents
+          .map((d) => ({ label: d.docType, items: rest.filter((f) => f.docId === d.id).sort(gapsFirst) }))
+          .filter((g) => g.items.length)
+      : groupByKind(rest, gapsFirst)
+  }, [visible.attention, grouping, data.documents])
 
   const counts = {
     discrepancy: visible.attention.filter((f) => f.severity === 'discrepancy').length,
@@ -209,7 +203,7 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
                 <FindingCard
                   key={f.id}
                   finding={f}
-                  kind={data.checks.find((c) => c.id === f.checkId)?.kind ?? null}
+                  kind={f.settledBy}
                   subtitle={subtitleFor(f)}
                   selected={f.id === selected.id}
                   decision={officer.decisions[f.id]}
@@ -476,7 +470,7 @@ function FindingsTable({ groups, clean, decisions, docById, grouping, setGroupin
 
 function FindingRow({ finding, decision, docById, onSelect }) {
   const sev = severityMeta(finding.severity)
-  const kind = finding.settledBy
+  const mark = kindMark(kindOf(finding))
   return (
     <button
       onClick={onSelect}
@@ -486,15 +480,15 @@ function FindingRow({ finding, decision, docById, onSelect }) {
       <span title={sev.label} style={{ width: 9, height: 9, borderRadius: '50%', background: sev.dot, justifySelf: 'center' }} />
 
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
-        {finding.raisedByOfficer ? (
-          <span title="You raised this" style={{ display: 'flex', flexShrink: 0, color: 'var(--me-grey)' }}><Icon name="flag" size={11} color="currentColor" /></span>
-        ) : finding.gap ? (
+        {/* The gap mark wins over the kind mark: that a card could not settle it,
+            or that no card covers it, is the more urgent thing about the row. */}
+        {finding.gap ? (
           <span title={finding.gap === 'no card' ? 'No card in the dictionary covers this — a gap to close in Governance' : 'A card ran and could not conclude, so it handed the question to you'} style={{ display: 'flex', flexShrink: 0, color: '#946400' }}><Icon name="circle-alert" size={11} color="currentColor" /></span>
-        ) : kind ? (
-          <span title={kind === 'rule' ? 'Computed by a rule' : 'Read by an agent'} style={{ display: 'flex', flexShrink: 0, color: kind === 'rule' ? 'var(--me-blue-deep)' : '#1F7A00' }}>
-            <Icon name={kind === 'rule' ? 'equal' : 'list-checks'} size={11} color="currentColor" />
+        ) : (
+          <span title={mark.title} style={{ display: 'flex', flexShrink: 0, color: mark.color }}>
+            <Icon name={mark.icon} size={11} color="currentColor" />
           </span>
-        ) : null}
+        )}
         <span style={{ ...ellipsis, fontFamily: 'var(--font-mono)', fontSize: 11, color: finding.checkId ? 'var(--me-grey-70)' : finding.raisedByOfficer ? 'var(--me-grey-70)' : '#946400' }}>
           {finding.checkId ?? (finding.raisedByOfficer ? 'yours' : 'no card')}
         </span>

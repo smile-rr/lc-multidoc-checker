@@ -185,6 +185,9 @@ const CASE_01 = {
   presentedDate: '28 Jan 2025',
   presentingBank: 'OCBC Singapore · OCBC/25/1187',
   authoriser: 'R. Meijer',
+  // The covering schedule's receipt stamp did not read, so no presentation date was
+  // established — which is why DATE-48 could not be tested on this case (f-pres).
+  presentationRead: false,
   docRefs: {
     INV: 'WE-2025-0041',
     BOL: 'MSCU-4471902',
@@ -461,7 +464,10 @@ const CASE_01 = {
       trace: [{ key: 'read by', value: 'Presentation & Completeness review' }, { key: 'source', value: 'bundle p.6' }, { key: 'basis', value: 'ISBP821 A31' }],
     },
     {
-      id: 'f-qty', severity: 'possible', area: 'Consistency', areaId: 'a5', checkId: 'XD-A23',
+      // A rule that failed on a row the officer still has to weigh: 498 against 500
+      // is not in doubt, what it means is. The goods-description row held; the
+      // quantity row (index 1) is the one that broke.
+      id: 'f-qty', severity: 'possible', area: 'Consistency', areaId: 'a5', checkId: 'XD-A23', failedRow: 1,
       docId: 'PKL', page: 3, creditTag: '45A',
       statement: 'QUANTITY CONFLICT — PACKING LIST 498 CARTONS AGAINST INVOICE 500 UNITS',
       title: 'The packing list shows 498 cartons against 500 units on the invoice',
@@ -506,18 +512,10 @@ const CASE_01 = {
       reason: 'UCP 600 article 18(c) — the description in the invoice corresponds with that in the credit.',
       trace: [{ key: 'read by', value: 'Goods, Amounts & Tolerance review' }, { key: 'basis', value: 'UCP600 art.18(c)' }],
     },
-    {
-      id: 'f-pres', severity: 'clean', area: 'Presentation', areaId: 'a3', checkId: 'DATE-48',
-      docId: 'INV', page: 1, creditTag: '48',
-      statement: 'PRESENTED 28 JAN 2025, WITHIN 21 DAYS OF SHIPMENT AND BEFORE EXPIRY 31 DEC 2025',
-      title: 'Presented in time — 14 days after shipment, well before expiry',
-      detail: 'Documents were presented 28 January 2025 against a 21-day presentation period and an expiry of 31 December 2025 in Singapore.',
-      expected: ':48: 21/DAYS\n:31D: 251231SINGAPORE',
-      quote: 'Presented 28 JAN 2025 (day 14)',
-      quoteSource: 'Presentation record',
-      reason: 'UCP 600 articles 6(d) and 14(c) — within both the presentation period and the expiry date.',
-      trace: [{ key: 'read by', value: 'Dates & Shipment review' }, { key: 'basis', value: 'UCP600 art.6(d), 14(c)' }],
-    },
+    // There was a second `f-pres` here, clean, saying the presentation was in time —
+    // the same id as the unanswerable one above and the opposite conclusion. React
+    // saw a duplicate key and selecting it always opened the first. On this case the
+    // receipt stamp did not read, so the unanswerable one is the true finding.
     {
       id: 'f-orig', severity: 'clean', area: 'Document set', areaId: 'a2', checkId: 'DOCSET-17',
       docId: 'INV', page: 1, creditTag: '46A',
@@ -533,11 +531,14 @@ const CASE_01 = {
     {
       id: 'f-party', severity: 'clean', area: 'Parties', areaId: 'a6', checkId: 'PARTY-FC04',
       docId: 'mt700', creditTag: '59',
-      statement: 'PARTIES, VESSEL AND PORTS SCREENED — NO MATCHES',
-      title: 'Parties and vessel screened — nothing to report',
-      detail: 'Applicant, beneficiary, carrier, vessel and both ports screened against the current lists. No matches.',
+      // Scoped to the named parties, because the vessel is not clear on this case —
+      // f-fc holds the partial match against it. Two findings on one check said
+      // opposite things until this one stopped claiming the vessel.
+      statement: 'APPLICANT, BENEFICIARY AND CARRIER SCREENED — NO MATCHES',
+      title: 'The named parties screened — nothing to report',
+      detail: 'Applicant, beneficiary, carrier and both ports screened against the current lists. No matches. The vessel is a separate finding.',
       expected: 'Sanctions & parties screening',
-      quote: 'No matches — screened 28 JAN 2025',
+      quote: 'No matches — parties screened 28 JAN 2025',
       quoteSource: 'Screening record',
       reason: 'Internal financial-crime policy. Re-screened at the point of payment as well.',
       trace: [{ key: 'read by', value: 'Sanctions & Parties screening' }, { key: 'lists', value: 'refreshed 28 JAN 2025 06:00 SGT' }],
@@ -635,7 +636,10 @@ const CASE_02 = {
     INV: [
       { page: 1, label: 'Invoice number', value: 'AA-2025-1187 · 10 Nov 2025' },
       { page: 1, label: 'Goods', value: 'T-shirts and shorts, cotton 100%' },
-      { page: 1, label: 'Quantity', value: '5,000 units at USD 10.00' },
+      // The unit price the invoice shows does not multiply out to the total it
+      // shows, and it is not the unit price :45A: states. One wrong figure, read
+      // deterministically — this is what a Rule card fails on (AMT-C6).
+      { page: 1, label: 'Quantity', value: '5,000 units at USD 10.10', src: '5,000 UNITS AT USD10.10 PER UNIT', flag: 'Credit states USD10.00 per unit; 5,000 × 10.10 is USD 50,500.00' },
       { page: 1, label: 'Total', value: 'USD 50,000.00' },
       { page: 1, label: 'Contract number quoted', value: 'APP-PO-2025-1110' },
     ],
@@ -662,6 +666,54 @@ const CASE_02 = {
     ],
   },
   findings: [
+    {
+      // A Rule card failing, on this case, so that both kinds of finding are on the
+      // screen at once. Nothing formed a view here: two figures were read off one
+      // page and multiplied. Checking it is checking a sum, which is why it leads —
+      // it is the quickest call on the list.
+      id: 'f-ext2', severity: 'discrepancy', area: 'Amount', areaId: 'a4', checkId: 'AMT-C6',
+      docId: 'INV', page: 1, creditTag: '45A',
+      statement: 'INVOICE EXTENSION DOES NOT COMPUTE — 5,000 UNITS AT USD 10.10 IS USD 50,500.00 AGAINST AN INVOICE TOTAL OF USD 50,000.00, AND THE CREDIT STATES USD 10.00 PER UNIT',
+      title: 'The invoice arithmetic does not come out',
+      detail: 'The invoice bills 5,000 units at USD 10.10, which is USD 50,500.00 — but it totals USD 50,000.00. The credit states USD 10.00 per unit, which does come to the total shown. One of the two figures on the invoice is wrong.',
+      expected: ':45A: 5000 UNITS AT USD10.00 PER UNIT\n:32B: USD50000,00',
+      quote: '5,000 units at USD 10.10\nTotal: USD 50,000.00',
+      quoteSource: 'Commercial invoice, p.1',
+      reason: 'ISBP 821 paragraph C6 with UCP 600 article 18(c) — an invoice must be arithmetically correct and its unit price must agree with the credit. Here it disagrees with both the credit and itself.',
+      analysis: {
+        requirement: 'Field 45A states 5,000 units at USD 10.00 per unit, and field 32B states USD 50,000.00. ISBP 821 C6 requires the invoice to be arithmetically correct; the unit price shown must also correspond with the credit.',
+        presented: 'The invoice shows 5,000 units at USD 10.10 per unit and a total of USD 50,000.00. 5,000 × 10.10 is USD 50,500.00, so the line and the total do not agree. The total does agree with the credit, and the draft is drawn for the same USD 50,000.00.',
+        why: 'The amount drawn is the right amount — the arithmetic behind it is not. A checker cannot decide which figure the beneficiary meant, and an invoice that does not add up is a discrepancy on its face however small the error.',
+        options: [
+          'Return the invoice to be reissued at USD 10.00 per unit. The total does not change, so nothing else in the presentation moves — this is normally cured within the presentation period.',
+          'Raise it and let the applicant waive: the drawing is for the credit amount exactly, so they may not care which unit price was typed.',
+        ],
+        confidence: 'HIGH',
+      },
+      trace: [{ key: 'computed by', value: 'AMT-C6 · quantity × unit price' }, { key: 'source', value: 'bundle p.1' }, { key: 'basis', value: 'ISBP821 C6; field 45A' }],
+    },
+    {
+      // Raised by a person, not by a check — seeded so the third group is populated
+      // without anyone having to raise one first, and so an officer's finding can be
+      // seen travelling through Review into the decision. This is the OCR backstop
+      // the Examine pane exists for: nothing failed, we simply could not read it.
+      id: 'f-officer-2', severity: 'possible', area: 'Raised by you', areaId: null, checkId: null,
+      raisedByOfficer: true,
+      docId: 'BOL', page: 2, creditTag: null,
+      statement: 'BILL OF LADING ENDORSEMENT ILLEGIBLE — TO WHOSE ORDER THE GOODS ARE ENDORSED CANNOT BE ESTABLISHED',
+      title: 'I cannot read who the bill of lading is endorsed to',
+      quote: '[endorsement stamped across the consignee box]',
+      quoteSource: 'Bill of lading, p.2',
+      detail: 'The reverse endorsement is stamped over the consignee box and the two overlap. Extraction reported the consignee cleanly and said nothing about the endorsement, so no check has looked at it. Raising it because title passes on that stamp.',
+      reason: 'Not a discrepancy on the face of it — it may be perfectly in order. I could not read it, and a document nobody could read is not a document anybody checked.',
+      analysis: {
+        requirement: '',
+        presented: 'The endorsement on the reverse is stamped across the consignee box; the two impressions overlap and neither reads cleanly.',
+        why: 'Under UCP 600 article 20(a)(i) the bill of lading must show the carrier and be signed, and where it is to order the endorsement is how title moves. If it cannot be read, the presentation cannot be said to have satisfied that — but nor can it be called discrepant on a reading nobody has.',
+        options: ['Look at the original under better light before deciding.', 'If it still does not read, ask the presenting bank to confirm the endorsement.'],
+      },
+      trace: [{ key: 'raised by', value: 'the examining officer' }, { key: 'source', value: 'bundle p.2' }],
+    },
     {
       id: 'f-comp', severity: 'discrepancy', area: 'Goods description', areaId: 'a4', checkId: 'GOODS-18C',
       docId: 'BC', page: 5, creditTag: '45A',
@@ -772,12 +824,16 @@ const CASE_03 = {
     INV: [
       { page: 1, label: 'Invoice number', value: 'CF-2022-0617 · 15 Jun 2022' },
       { page: 1, label: 'Goods', value: 'Original oil painting "Stick Figure", 30x20cm' },
+      { page: 1, label: 'Quantity', value: '1 piece at GBP 100.00' },
       { page: 1, label: 'Total', value: 'GBP 100.00' },
       { page: 1, label: 'Terms', value: 'DDP Miami' },
     ],
     BOL: [
       { page: 2, label: 'Waybill', value: 'DHL-8841207' },
-      { page: 2, label: 'Dispatched', value: '16 Jun 2022' },
+      // The date of shipment, under the dictionary's field name. A courier waybill
+      // says "dispatched" where a bill of lading says "shipped on board"; the source
+      // line keeps that visible, and the date rules can read it either way.
+      { page: 2, label: 'On board', value: '16 Jun 2022', src: 'DISPATCHED 16 JUN 2022' },
     ],
     PKL: [{ page: 3, label: 'Packing', value: '1 crate, 1 piece' }],
     BOE: [{ page: 4, label: 'Draft', value: 'BOE-22-0617 · at sight · GBP 100.00' }],
@@ -944,7 +1000,25 @@ function buildFacts(def, lines) {
     })),
   )
 
-  return [...creditFacts, ...docFacts]
+  // The date documents reached the counter. It is a fact about the presentation
+  // rather than about any one document — it comes off the covering schedule, which
+  // is not one of the six pages in the bundle — so it is filed against a docId no
+  // document claims, and the panels that group facts by document never show it.
+  //
+  // Two date rules take it as an operand (DATE-48, DATE-31D), so its absence is
+  // the difference between "presented in time" and "we could not test that". Case
+  // 01 sets `presentationRead: false` because its receipt stamp did not read, and
+  // that is the whole of that case's presentation finding.
+  const presentation =
+    def.presentationRead === false
+      ? []
+      : [{
+        docId: 'schedule', anchorId: null, page: null,
+        label: 'Presentation date', value: def.presentedDate,
+        source: 'covering schedule', confidence: 'HIGH', sourceText: null, flag: null,
+      }]
+
+  return [...creditFacts, ...docFacts, ...presentation]
 }
 
 /**
@@ -1061,14 +1135,14 @@ function analysisMarkdown(f, a) {
         }\n`
       : ''
 
-  return `## What the credit requires
+  // A finding an officer raised has no "what the credit requires" — that is the
+  // point of it. The section used to render regardless, printing an empty code
+  // fence with `undefined` inside it.
+  const required = a.requirement
+    ? `## What the credit requires\n\n${a.requirement}\n${f.expected ? `\n\`\`\`\n${f.expected}\n\`\`\`\n` : ''}`
+    : ''
 
-${a.requirement}
-
-\`\`\`
-${f.expected}
-\`\`\`
-
+  return `${required}
 ## What was presented
 
 ${a.presented}
@@ -1105,7 +1179,10 @@ function withProvenance(findings, checksById, facts) {
   return findings.map((f) => {
     const check = f.checkId ? checksById[f.checkId] : null
     const settledBy = check ? check.kind : null
-    const failedRow = f.severity === 'discrepancy' ? 0 : null
+    // Which row failed is a fact about the rule's run, so the finding states it. A
+    // discrepancy that does not say defaults to the first row; anything else defaults
+    // to none, which is what a clean result means.
+    const failedRow = f.failedRow ?? (f.severity === 'discrepancy' ? 0 : null)
     return {
       ...f,
       settledBy,
@@ -1119,8 +1196,8 @@ function withProvenance(findings, checksById, facts) {
 function buildFindings(def) {
   return def.findings.map((f) => {
     const analysis = f.analysis ?? {
-      requirement: f.expected.split('\n').join(' '),
-      presented: `${f.quote.split('\n').join(' ')} — ${f.quoteSource}.`,
+      requirement: (f.expected ?? '').split('\n').join(' '),
+      presented: `${(f.quote ?? '').split('\n').join(' ')} — ${f.quoteSource}.`,
       why: f.reason,
       options: f.severity === 'clean' ? ['Nothing to do — recorded as checked.'] : [],
       confidence: f.severity === 'clean' ? 'HIGH' : 'MED',
@@ -1134,6 +1211,9 @@ function buildFindings(def) {
       // This builder names every field it keeps, which silently dropped
       // `raisedByOfficer` and filed a seeded officer finding under Requirement.
       raisedByOfficer: !!f.raisedByOfficer,
+      // Which of a rule's rows failed, where the finding says. Named here because
+      // this builder keeps only what it names.
+      failedRow: f.failedRow ?? null,
       docId: f.docId,
       page: f.page ?? null,
       anchorId: null,

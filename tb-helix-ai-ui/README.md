@@ -676,6 +676,39 @@ interface speaks in the first person — and not "manual", which in trade financ
 means a person examining documents and would make the label sound like the whole
 job. So: **Rule · Requirement · Raised by you**.
 
+Those three live in `state/findingKinds.js` — labels, notes, icons, tones and the
+`kindOf` test — because **Review and Decision both group by them**. An officer
+arrives at the decision from the findings list; the same finding has to be under the
+same heading with the same mark in both, or the list they just worked through stops
+being the list they sign. Two copies of that definition would have drifted on the
+first change to either screen.
+
+### A rule has three outcomes, and "possible" is not one of them
+
+A Rule card compares extracted fields, so it can only **pass**, **fail**, or be
+**unanswerable** — the last when an operand was never extracted, which is not
+evidence of compliance and is never reported as a pass. Severity is a separate
+question: it is the *officer's* call, not the rule's. `f-qty` demonstrates the pair
+— 498 cartons against 500 units is not in doubt (the row failed), what it *means*
+is (severity `possible`, because units and cartons may be a packing arrangement).
+
+So the failing row is authored on the finding (`failedRow`), not inferred from
+severity. Inferring it fixed the blame to row 0 and could only fail at all on a
+discrepancy, which meant a multi-row rule always accused its first row and a
+failed-but-open rule rendered every row passing.
+
+Two more things the rule evidence depends on, both of which were quietly wrong:
+
+- **Operands resolve by label *and* document** (`factLabel` + `factDoc`). Matching
+  on the label alone made every cross-document row resolve both sides to the same
+  fact, so a rule comparing the invoice against the credit rendered as a value
+  compared with itself — and passed.
+- **The presentation date is a fact of the presentation**, not of a document: it
+  comes off the covering schedule, which is not one of the pages in the bundle. Two
+  date rules take it as an operand, so whether it was read is the difference between
+  *presented in time* and *we could not test that* — which is the whole of case 01's
+  presentation finding (`presentationRead: false`).
+
 ### Two tiers, told apart
 
 The mode (*Findings* / *Examine the documents*) changes what you are doing. The

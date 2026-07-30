@@ -2,12 +2,14 @@ import { cardSurface } from '@shared/ds/Card'
 import { ellipsis } from '@shared/ds/text'
 import { useState, useMemo } from 'react'
 import Button from '@shared/ds/Button'
+import Chip from '@shared/ds/Chip'
 import Icon from '@shared/ds/Icon'
 import { toneOf } from '@shared/lib/tone'
 import { plural } from '@shared/lib/format'
 import DispositionChips from '../components/DispositionChips'
 import DiscrepancyStatement from '../components/DiscrepancyStatement'
 import { severityMeta, dispositionLabel, VERDICTS } from '../state/severity'
+import { groupByKind, kindOf, kindMark } from '../state/findingKinds'
 import { useCase } from '../state/CaseContext'
 
 // Stage 5 — the officer's decision.
@@ -27,6 +29,7 @@ export default function DecisionScreen({ onOpenFinding }) {
   const [expanded, setExpanded] = useState({})
 
   const checkById = useMemo(() => Object.fromEntries(data.checks.map((c) => [c.id, c])), [data.checks])
+  const docById = useMemo(() => Object.fromEntries(data.documents.map((d) => [d.id, d])), [data.documents])
 
   // A refusal notice under UCP 600 art. 16(c) states *discrepancies* — ways the
   // presentation fails to comply with the credit and the rules applied to it. A hold
@@ -41,6 +44,15 @@ export default function DecisionScreen({ onOpenFinding }) {
   const all = visible.attention
   const rows = all.filter((f) => (f.source ?? 'credit') !== 'policy')
   const holds = all.filter((f) => f.source === 'policy')
+
+  // Grouped by kind, exactly as Review groups them, from the same definition. The
+  // officer worked the findings list by these three headings; arriving at the
+  // decision to find one flat list means re-finding everything they just read.
+  //
+  // It also front-loads the cheap calls: a rule finding is a sum you agree or
+  // reject in seconds, so putting them together clears most of the list before the
+  // reading starts.
+  const groups = useMemo(() => groupByKind(rows), [rows])
 
   const decided = rows.filter((f) => officer.decisions[f.id]).length
   const open = rows.length - decided
@@ -122,11 +134,23 @@ export default function DecisionScreen({ onOpenFinding }) {
             Nothing needs a decision yet — run the review first.
           </div>
         ) : (
-          rows.map((f) => {
+          groups.map((g) => (
+            <div key={g.key}>
+              {/* The same band Review's list uses, for the same three groups. */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 18px', background: 'var(--me-grey-08)', borderBottom: '1px solid var(--me-grey-15)', flexWrap: 'wrap' }}>
+                <Chip size="sm" tone={g.tone}>
+                  <Icon name={g.icon} size={11} />
+                  {g.label}
+                </Chip>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>{g.items.length}</span>
+                <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>{g.note}</span>
+              </div>
+              {g.items.map((f) => {
             const d = officer.decisions[f.id]
             const sev = severityMeta(f.severity)
             const isOpen = !!expanded[f.id]
             const check = f.checkId ? checkById[f.checkId] : null
+            const mark = kindMark(kindOf(f))
 
             return (
               <div key={f.id} style={{ borderBottom: '1px solid var(--me-grey-08)' }}>
@@ -145,12 +169,17 @@ export default function DecisionScreen({ onOpenFinding }) {
                   <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
                       {/* Check reference first: it is the unique handle for this
-                          finding, and what gets quoted in the advice and the file. */}
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: f.checkId ? 'var(--me-grey-70)' : '#946400', whiteSpace: 'nowrap' }}>
-                        {f.checkId ?? 'no check'}
+                          finding, and what gets quoted in the advice and the file.
+                          Where there is none, Review's two words for why — a card
+                          nobody authored, or a finding that was never a check's. */}
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: f.checkId || f.raisedByOfficer ? 'var(--me-grey-70)' : '#946400', whiteSpace: 'nowrap' }}>
+                        {f.checkId ?? (f.raisedByOfficer ? 'yours' : 'no card')}
                       </span>
+                      {/* Not the area name for an officer's finding — that reads
+                          "Raised by you" directly under a heading already saying so.
+                          The document is the useful thing to know instead. */}
                       <span style={{ fontSize: 12, color: 'var(--me-grey-70)', minWidth: 0, ...ellipsis }}>
-                        {check?.name ?? f.area}
+                        {check?.name ?? docById[f.docId]?.docType ?? f.area}
                       </span>
                     </div>
                     <span
@@ -159,16 +188,13 @@ export default function DecisionScreen({ onOpenFinding }) {
                     >
                       {f.title}
                     </span>
-                    {/* Same marks as Review: how it was settled, and what it is
-                        cited against. The officer arrives from that screen. */}
+                    {/* Same marks as Review, from the same definition: how it was
+                        settled, and what it is cited against. The officer arrives
+                        from that screen and should not have to relearn the list. */}
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                      {f.settledBy ? (
-                        <span title={f.settledBy === 'rule' ? 'Computed by a rule' : 'Read by an agent'} style={{ display: 'flex', color: f.settledBy === 'rule' ? 'var(--me-blue-deep)' : '#1F7A00' }}>
-                          <Icon name={f.settledBy === 'rule' ? 'equal' : 'list-checks'} size={11} color="currentColor" />
-                        </span>
-                      ) : f.raisedByOfficer ? (
-                        <span title="You raised this" style={{ display: 'flex', color: 'var(--me-grey)' }}><Icon name="flag" size={11} color="currentColor" /></span>
-                      ) : null}
+                      <span title={mark.title} style={{ display: 'flex', color: mark.color }}>
+                        <Icon name={mark.icon} size={11} color="currentColor" />
+                      </span>
                       <span style={{ fontSize: 10.5, color: 'var(--me-grey-70)', whiteSpace: 'nowrap' }}>
                         {CITE[f.source] ?? (f.raisedByOfficer ? 'yours' : '')}
                       </span>
@@ -222,7 +248,9 @@ export default function DecisionScreen({ onOpenFinding }) {
                 ) : null}
               </div>
             )
-          })
+              })}
+            </div>
+          ))
         )}
       </div>
       </div>

@@ -104,9 +104,14 @@ export const checkSource = (id) => SOURCE_OF[id] ?? 'credit'
 export const RULE_CHECKS = ['DATE-44C', 'DATE-48', 'DATE-31D', 'AMT-30A', 'AMT-C6', 'XD-A23']
 export const checkKind = (id) => (RULE_CHECKS.includes(id) ? 'rule' : 'requirement')
 
-// The rows a Rule card evaluates, and the field each side reads. `factLabel` is
-// how that operand appears in the extracted facts — the join between the
-// dictionary's vocabulary and what Interpret actually produced.
+// The rows a Rule card evaluates, and the field each side reads. `factLabel` and
+// `factDoc` are the join between the dictionary's vocabulary and what Interpret
+// actually produced — the label it was extracted under, and the document it came
+// off.
+//
+// Both halves are load-bearing. Matching on the label alone made every
+// cross-document row resolve both sides to the same fact, so a rule comparing the
+// invoice against the credit rendered as a value compared with itself, and passed.
 //
 // A rule is only answerable if every operand resolved. When one did not, the
 // plan says so before anything runs, and the result is "not covered" — never a
@@ -115,37 +120,43 @@ export const RULE_ROWS = {
   'DATE-44C': {
     scope: 'When the credit states a latest shipment date',
     message: 'Shipment was effected after the latest shipment date stated in the credit.',
-    rows: [{ l: { field: 'On-board date', doc: 'Bill of lading', factLabel: 'On board' }, op: 'is on or before', r: { field: 'Latest shipment date', doc: 'Letter of credit', factLabel: 'Latest shipment' }, tol: '' }],
+    rows: [{ l: { field: 'On-board date', doc: 'Bill of lading', factLabel: 'On board', factDoc: 'BOL' }, op: 'is on or before', r: { field: 'Latest shipment date', doc: 'Letter of credit', factLabel: 'Latest shipment', factDoc: 'mt700' }, tol: '' }],
   },
   'DATE-48': {
     scope: 'Every presentation',
     message: 'Documents were presented outside the presentation period.',
-    rows: [{ l: { field: 'Presentation date', doc: 'Covering schedule', factLabel: 'Presentation date' }, op: 'is within', r: { field: 'On-board date', doc: 'Bill of lading', factLabel: 'On board' }, tol: '21 calendar days' }],
+    rows: [{ l: { field: 'Presentation date', doc: 'Covering schedule', factLabel: 'Presentation date', factDoc: 'schedule' }, op: 'is within', r: { field: 'On-board date', doc: 'Bill of lading', factLabel: 'On board', factDoc: 'BOL' }, tol: '21 calendar days' }],
   },
   'DATE-31D': {
     scope: 'Every presentation',
     message: 'Documents were presented after the credit expired.',
-    rows: [{ l: { field: 'Presentation date', doc: 'Covering schedule', factLabel: 'Presentation date' }, op: 'is on or before', r: { field: 'Expiry date', doc: 'Letter of credit', factLabel: 'Expiry' }, tol: '' }],
+    rows: [{ l: { field: 'Presentation date', doc: 'Covering schedule', factLabel: 'Presentation date', factDoc: 'schedule' }, op: 'is on or before', r: { field: 'Expiry date', doc: 'Letter of credit', factLabel: 'Expiry', factDoc: 'mt700' }, tol: '' }],
   },
   'AMT-30A': {
     scope: 'Every presentation with a commercial invoice',
     message: 'The invoice value exceeds the credit amount, tolerance included.',
     rows: [
-      { l: { field: 'Invoice value', doc: 'Commercial invoice', factLabel: 'Total' }, op: 'is at most', r: { field: 'Credit amount', doc: 'Letter of credit', factLabel: 'Amount' }, tol: 'tolerance from 39A' },
-      { l: { field: 'Currency', doc: 'Commercial invoice', factLabel: 'Total' }, op: 'equals', r: { field: 'Currency', doc: 'Letter of credit', factLabel: 'Amount' }, tol: '' },
+      { l: { field: 'Invoice value', doc: 'Commercial invoice', factLabel: 'Total', factDoc: 'INV' }, op: 'is at most', r: { field: 'Credit amount', doc: 'Letter of credit', factLabel: 'Amount', factDoc: 'mt700' }, tol: 'tolerance from 39A' },
+      { l: { field: 'Currency', doc: 'Commercial invoice', factLabel: 'Total', factDoc: 'INV' }, op: 'equals', r: { field: 'Currency', doc: 'Letter of credit', factLabel: 'Amount', factDoc: 'mt700' }, tol: '' },
     ],
   },
   'AMT-C6': {
     scope: 'When the credit states a quantity and a unit price',
     message: 'Quantity times unit price does not equal the invoice total.',
-    rows: [{ l: { field: 'Invoice value', doc: 'Commercial invoice', factLabel: 'Total' }, op: 'equals (amount)', r: { literal: 'Quantity × Unit price @ Commercial invoice', factLabel: 'Quantity' }, tol: '' }],
+    // Both sides are read off the same page. It used to declare the left side as a
+    // `literal`, which rendered as "not extracted" — saying we had no figure when
+    // we had the line the figure is computed from.
+    rows: [{ l: { field: 'Quantity × unit price', doc: 'Commercial invoice', factLabel: 'Quantity', factDoc: 'INV' }, op: 'multiplies out to', r: { field: 'Invoice value', doc: 'Commercial invoice', factLabel: 'Total', factDoc: 'INV' }, tol: '' }],
   },
   'XD-A23': {
     scope: 'Every presentation, across all documents',
     message: 'Data on the documents conflicts within the same presentation.',
+    // The second row used to compare the beneficiary name against itself, reading
+    // both sides off the invoice *number*. What this check actually catches in these
+    // presentations is the quantity, so that is what it now compares.
     rows: [
-      { l: { field: 'Goods description', doc: 'Commercial invoice', factLabel: 'Goods' }, op: 'does not conflict with', r: { field: 'Goods description', doc: 'Letter of credit', factLabel: 'Goods' }, tol: 'general terms allowed' },
-      { l: { field: 'Beneficiary name', doc: 'Commercial invoice', factLabel: 'Invoice number' }, op: 'is the same party as', r: { field: 'Beneficiary name', doc: 'Letter of credit', factLabel: 'Invoice number' }, tol: '' },
+      { l: { field: 'Goods description', doc: 'Commercial invoice', factLabel: 'Goods', factDoc: 'INV' }, op: 'does not conflict with', r: { field: 'Goods description', doc: 'Letter of credit', factLabel: 'Goods', factDoc: 'mt700' }, tol: 'general terms allowed' },
+      { l: { field: 'Quantity packed', doc: 'Packing list', factLabel: 'Packing', factDoc: 'PKL' }, op: 'agrees with', r: { field: 'Quantity invoiced', doc: 'Commercial invoice', factLabel: 'Quantity', factDoc: 'INV' }, tol: '' },
     ],
   },
 }
@@ -160,16 +171,22 @@ export const RULE_ROWS = {
 export function resolveRuleInputs(id, facts = []) {
   const def = RULE_ROWS[id]
   if (!def) return null
-  const find = (label) => facts.find((f) => f.label === label) ?? null
+  // Label *and* document. A rule reads a named field off a named document, and two
+  // documents routinely carry the same field name — that is the whole point of a
+  // cross-document check.
+  const find = (o) => facts.find((f) => f.label === o.factLabel && (!o.factDoc || f.docId === o.factDoc)) ?? null
   const operands = def.rows.flatMap((r) => [r.l, r.r].filter((o) => o && o.factLabel))
   const seen = new Set()
   const inputs = operands
     .filter((o) => { const k = `${o.field ?? o.literal}|${o.doc ?? ''}`; if (seen.has(k)) return false; seen.add(k); return true })
     .map((o) => {
-      const fact = find(o.factLabel)
+      const fact = find(o)
       return {
         field: o.field ?? o.literal,
-        doc: o.doc ?? 'derived',
+        // "computed" rather than "derived": an operand the rule works out from a
+        // line rather than reading straight off one still has to say where it came
+        // from, in a word an examiner reads rather than decodes.
+        doc: o.doc ?? 'computed',
         resolved: !!fact,
         value: fact ? fact.value : null,
         confidence: fact ? fact.confidence : null,
@@ -188,30 +205,43 @@ export function resolveRuleInputs(id, facts = []) {
  * they need is the arithmetic: both sides, where each was read, and which row
  * failed.
  *
- * `failed` is mocked from whether the check produced a discrepancy, since the
- * fixtures hold values as they appear on the page ("14 JAN 2025") rather than as
- * comparable types. A real evaluator returns it per row; the shape is the same.
+ * `failedRow` is authored on the finding, because the fixtures hold values as they
+ * appear on the page ("14 JAN 2025") rather than as comparable types. It used to be
+ * guessed from severity — which fixed the failure to row 0 and could only fail at
+ * all on a discrepancy, so a multi-row rule always blamed its first row and a rule
+ * whose failure the officer still has to weigh showed every row passing. A real
+ * evaluator returns it per row; the shape is the same.
  */
 export function ruleOutcome(id, facts = [], failedRow = null) {
   const def = resolveRuleInputs(id, facts)
   if (!def) return null
+  // Every operand resolves the same way, computed ones included — they are in
+  // `inputs` under the same key `resolveRuleInputs` filed them by.
   const valueOf = (o) => {
     if (!o) return null
-    if (o.literal) return { field: o.literal, doc: 'derived', value: null, resolved: false }
-    const hit = def.inputs.find((i) => i.field === o.field && i.doc === o.doc)
-    return { field: o.field, doc: o.doc, value: hit ? hit.value : null, resolved: !!(hit && hit.resolved), confidence: hit ? hit.confidence : null }
+    const field = o.field ?? o.literal
+    const doc = o.field ? o.doc : 'computed'
+    const hit = def.inputs.find((i) => i.field === field && i.doc === doc)
+    return { field, doc, value: hit ? hit.value : null, resolved: !!(hit && hit.resolved), confidence: hit ? hit.confidence : null }
   }
   return {
     ...def,
     message: def.message,
-    rows: def.rows.map((r, i) => ({
-      op: r.op,
-      tol: r.tol,
-      left: valueOf(r.l),
-      right: valueOf(r.r),
-      // Unanswerable beats failed: a row missing an input did not fail, it never ran.
-      verdict: !valueOf(r.l)?.resolved || (r.r.field && !valueOf(r.r)?.resolved) ? 'unanswerable' : failedRow === null ? 'pass' : i === failedRow ? 'fail' : 'pass',
-    })),
+    rows: def.rows.map((r, i) => {
+      const left = valueOf(r.l)
+      const right = valueOf(r.r)
+      return {
+        op: r.op,
+        tol: r.tol,
+        left,
+        right,
+        // Unanswerable beats failed: a row missing an input did not fail, it never ran.
+        verdict:
+          !left?.resolved || (right && !right.resolved)
+            ? 'unanswerable'
+            : failedRow === null ? 'pass' : i === failedRow ? 'fail' : 'pass',
+      }
+    }),
   }
 }
 
