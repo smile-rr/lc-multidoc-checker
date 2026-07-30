@@ -1,4 +1,4 @@
-package com.tb.helix.harness.llm.openai;
+package com.tb.helix.harness.llm.chatcompletions;
 
 /**
  * Cleaning up after a model.

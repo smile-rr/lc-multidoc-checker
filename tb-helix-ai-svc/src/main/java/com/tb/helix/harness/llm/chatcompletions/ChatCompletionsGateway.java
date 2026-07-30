@@ -1,4 +1,4 @@
-package com.tb.helix.harness.llm.openai;
+package com.tb.helix.harness.llm.chatcompletions;
 
 import com.tb.helix.harness.llm.LlmGateway;
 import com.tb.helix.harness.llm.LlmProperties;
@@ -35,20 +35,20 @@ import java.util.concurrent.Executors;
  * configuration. Nothing above this line knows a vendor exists.
  */
 @Component
-public class OpenAiCompatGateway implements LlmGateway {
+public class ChatCompletionsGateway implements LlmGateway {
 
-    private static final Logger log = LoggerFactory.getLogger(OpenAiCompatGateway.class);
+    private static final Logger log = LoggerFactory.getLogger(ChatCompletionsGateway.class);
 
     private final LlmProperties props;
     private final ObjectMapper json;
-    private final Map<String, OpenAiCompatClient> clients = new LinkedHashMap<>();
+    private final Map<String, ChatCompletionsClient> clients = new LinkedHashMap<>();
     private final ExecutorService slotPool = Executors.newVirtualThreadPerTaskExecutor();
 
-    public OpenAiCompatGateway(LlmProperties props, ObjectMapper json) {
+    public ChatCompletionsGateway(LlmProperties props, ObjectMapper json) {
         this.props = props;
         this.json = json;
         props.allSlots().forEach((name, slot) -> {
-            if (slot.usable()) clients.put(name, new OpenAiCompatClient(name, slot, json));
+            if (slot.usable()) clients.put(name, new ChatCompletionsClient(name, slot, json));
             else if (slot.enabled()) log.warn("Slot {} is enabled but has no api key or model — skipped", name);
         });
         log.info("Model slots ready: {}", clients.keySet());
@@ -64,7 +64,7 @@ public class OpenAiCompatGateway implements LlmGateway {
 
     @Override
     public TextResult complete(TextRequest request) {
-        OpenAiCompatClient client = firstUsable(request.role());
+        ChatCompletionsClient client = firstUsable(request.role());
         var messages = new ArrayList<Map<String, Object>>();
         if (request.system() != null) messages.add(Map.of("role", "system", "content", request.system()));
         messages.add(Map.of("role", "user", "content", request.user()));
@@ -81,7 +81,7 @@ public class OpenAiCompatGateway implements LlmGateway {
 
     @Override
     public VisionResult read(VisionRequest request) {
-        List<OpenAiCompatClient> slots = usableSlots(request.role());
+        List<ChatCompletionsClient> slots = usableSlots(request.role());
 
         // Slots run concurrently; each carries its own failure. A slot that dies is dropped
         // rather than failing the read — redundancy is the entire reason for having more
@@ -102,7 +102,7 @@ public class OpenAiCompatGateway implements LlmGateway {
         return Consensus.of(good, results);
     }
 
-    private VisionResult.SlotResult readOne(OpenAiCompatClient client, VisionRequest request) {
+    private VisionResult.SlotResult readOne(ChatCompletionsClient client, VisionRequest request) {
         try {
             List<Map<String, Object>> parts = new ArrayList<>();
             parts.add(Map.of("type", "text", "text", request.prompt()));
@@ -142,7 +142,7 @@ public class OpenAiCompatGateway implements LlmGateway {
 
     @Override
     public ToolResult loop(ToolRequest request) {
-        OpenAiCompatClient client = firstUsable(request.role());
+        ChatCompletionsClient client = firstUsable(request.role());
         Map<String, ToolSpec> byName = new HashMap<>();
         request.tools().forEach(t -> byName.put(t.name(), t));
 
@@ -188,7 +188,7 @@ public class OpenAiCompatGateway implements LlmGateway {
                 new TokenUsage(promptTokens, completionTokens, latency, false));
     }
 
-    private String invoke(Map<String, ToolSpec> byName, OpenAiCompatClient.ToolCall call) {
+    private String invoke(Map<String, ToolSpec> byName, ChatCompletionsClient.ToolCall call) {
         ToolSpec spec = byName.get(call.name());
         if (spec == null) {
             // Tell the model what it may actually call rather than erroring. Models
@@ -203,7 +203,7 @@ public class OpenAiCompatGateway implements LlmGateway {
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> argsOf(OpenAiCompatClient.ToolCall call) {
+    private Map<String, Object> argsOf(ChatCompletionsClient.ToolCall call) {
         try {
             return json.readValue(call.argumentsJson(), Map.class);
         } catch (Exception e) {
@@ -211,7 +211,7 @@ public class OpenAiCompatGateway implements LlmGateway {
         }
     }
 
-    private Map<String, Object> assistantToolCallMessage(OpenAiCompatClient.Response response) {
+    private Map<String, Object> assistantToolCallMessage(ChatCompletionsClient.Response response) {
         Map<String, Object> msg = new LinkedHashMap<>();
         msg.put("role", "assistant");
         msg.put("content", response.content() == null ? "" : response.content());
@@ -223,8 +223,8 @@ public class OpenAiCompatGateway implements LlmGateway {
 
     // --- Role resolution ----------------------------------------------------
 
-    private List<OpenAiCompatClient> usableSlots(LlmRole role) {
-        List<OpenAiCompatClient> found = props.slotsFor(role).stream()
+    private List<ChatCompletionsClient> usableSlots(LlmRole role) {
+        List<ChatCompletionsClient> found = props.slotsFor(role).stream()
                 .map(clients::get).filter(java.util.Objects::nonNull).toList();
         if (found.isEmpty()) {
             throw new LlmException(
@@ -235,7 +235,7 @@ public class OpenAiCompatGateway implements LlmGateway {
         return found;
     }
 
-    private OpenAiCompatClient firstUsable(LlmRole role) {
+    private ChatCompletionsClient firstUsable(LlmRole role) {
         return usableSlots(role).get(0);
     }
 

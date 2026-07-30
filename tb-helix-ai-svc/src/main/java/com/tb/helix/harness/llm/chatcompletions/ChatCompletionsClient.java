@@ -1,4 +1,4 @@
-package com.tb.helix.harness.llm.openai;
+package com.tb.helix.harness.llm.chatcompletions;
 
 import com.tb.helix.harness.llm.LlmProperties;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -24,16 +24,16 @@ import java.util.Map;
  * predecessor rebuilt a client per call and set neither, so the only bound on a hung
  * provider was a future's timeout further up — and the socket stayed open underneath it.
  */
-class OpenAiCompatClient {
+class ChatCompletionsClient {
 
-    private static final Logger log = LoggerFactory.getLogger(OpenAiCompatClient.class);
+    private static final Logger log = LoggerFactory.getLogger(ChatCompletionsClient.class);
 
     private final String name;
     private final LlmProperties.Slot slot;
     private final RestClient http;
     private final ObjectMapper json;
 
-    OpenAiCompatClient(String name, LlmProperties.Slot slot, ObjectMapper json) {
+    ChatCompletionsClient(String name, LlmProperties.Slot slot, ObjectMapper json) {
         this.name = name;
         this.slot = slot;
         this.json = json;
