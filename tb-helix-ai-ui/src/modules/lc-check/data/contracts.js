@@ -205,6 +205,12 @@
  * earlier opens with its findings in place, rather than the UI assuming every
  * case starts unexamined.
  * @typedef {object} RunState
+ * @property {string} stage              Where the case is sitting, by key.
+ * @property {boolean} busy              A stage is running now. The workbench opens a
+ *                                       progress stream on this, which is what lets a
+ *                                       case be opened or reloaded mid-run and picked up.
+ * @property {?string} error             What stopped it, if a stage failed. A halted run
+ *                                       has to be distinguishable from a slow one.
  * @property {boolean} started
  * @property {boolean} finished
  * @property {number} segmented          Documents carved out of the bundle so far.

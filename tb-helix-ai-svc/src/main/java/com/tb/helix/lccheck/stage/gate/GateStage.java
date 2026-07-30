@@ -64,6 +64,8 @@ public class GateStage implements Stage {
             return StageOutcome.ok();
         }
 
+        ctx.progress("gate", "Running " + gates.size() + " hard check" + (gates.size() == 1 ? "" : "s"));
+
         LocalDate expiry = date(row.get("expiry"));
         LocalDate presented = presentationDate(ctx, row);
 

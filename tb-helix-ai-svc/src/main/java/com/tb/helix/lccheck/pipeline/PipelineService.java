@@ -85,6 +85,16 @@ public class PipelineService {
         executeAsync(caseId, stage, officerId);
     }
 
+    /**
+     * Runs a stage now, without asking whether it was the officer's turn.
+     *
+     * <p>The entry {@link #runStage} uses once its checks have passed, and the one intake
+     * uses on upload — intake is nobody's turn, it is what happens when files arrive.
+     *
+     * <p>Every caller is another bean, which is what makes {@code @Async} take effect: the
+     * annotation is honoured by the proxy, so a self-call inside this class would quietly
+     * run on the request thread and put the hang back.
+     */
     @Async
     public void executeAsync(String caseId, StageId requested, String officerId) {
         // The gate rides with plan, so an expired credit stops the run before the

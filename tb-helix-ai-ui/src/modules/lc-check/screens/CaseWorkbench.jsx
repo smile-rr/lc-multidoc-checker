@@ -70,7 +70,7 @@ function WorkbenchBody() {
   }, [data, run.finished, run.done, run.activeStep, run.completedAreaIds.length])
 
   if (loading) {
-    return <div style={{ padding: '26px 32px', fontSize: 13, color: 'var(--me-grey-70)' }}>Opening {caseId}…</div>
+    return <WorkbenchSkeleton caseId={caseId} />
   }
   if (error) {
     return (
@@ -95,6 +95,12 @@ function WorkbenchBody() {
   const stepping = run.mode === 'step'
   const nextStep = stepAfter(run.done)
   const action = (() => {
+    // Intake is still reading. Named rather than absent, and disabled rather than
+    // hidden: the officer should be able to see that the case is doing something
+    // and that starting a review is not yet one of the things they can do.
+    if (run.busy && !run.activeStep) {
+      return { label: run.activity ?? 'Reading…', disabled: true }
+    }
     if (run.activeStep) {
       // Named rather than hidden: a button that vanishes mid-run reads as a
       // finished run. Disabled, so it cannot be pressed twice.
@@ -117,7 +123,11 @@ function WorkbenchBody() {
     return stepping && nextStep ? { label: nextStep.action, run: actions.runNext } : null
   })()
 
-  const status = run.finished
+  const status = run.failure
+    ? { tone: 'error', label: 'Stopped' }
+    : run.busy && !run.activeStep
+    ? { tone: 'blue', label: run.activity ?? 'Reading' }
+    : run.finished
     ? { tone: 'error', label: `${plural(visible.attention.filter((f) => f.severity === 'discrepancy').length, 'discrepancy', 'discrepancies')} · reply due` }
     : run.activeStep
       ? { tone: 'blue', label: stepMeta(run.activeStep)?.badge ?? 'Review Running' }
@@ -180,6 +190,39 @@ function WorkbenchBody() {
       />
 
       <Toast message={ui.toast} />
+    </div>
+  )
+}
+
+// The workbench before its case has arrived.
+//
+// The same bones in the same places — a header band, a rail, a reading column —
+// so the case lands *into* a page rather than replacing one. A single line of
+// text on white reads as a screen that failed, and for the second or two it is up
+// it is indistinguishable from one.
+function WorkbenchSkeleton({ caseId }) {
+  const block = (h, w, radius = 4) => ({
+    height: h,
+    width: w,
+    borderRadius: radius,
+    background: 'var(--me-grey-08)',
+  })
+  return (
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }} aria-busy="true">
+      <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--me-grey-15)', display: 'flex', alignItems: 'center', gap: 14, background: '#fff' }}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--me-ink)' }}>{caseId}</span>
+        <div style={block(11, 150)} />
+        <div style={{ flex: 1 }} />
+        <div style={block(28, 110, 8)} />
+      </div>
+      <div style={{ flex: 1, display: 'flex', gap: 14, padding: '16px 24px', minHeight: 0 }}>
+        <div style={{ width: 240, flex: '0 0 240px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={block(56, '100%', 10)} />
+          <div style={block(56, '100%', 10)} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0, maxWidth: 1040, ...block('100%', 'auto', 12) }} />
+      </div>
+      <p style={{ margin: 0, padding: '0 24px 18px', fontSize: 12.5, color: 'var(--me-grey-70)' }}>Opening the case…</p>
     </div>
   )
 }

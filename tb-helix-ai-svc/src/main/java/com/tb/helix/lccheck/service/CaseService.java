@@ -1,6 +1,6 @@
 package com.tb.helix.lccheck.service;
 
-import com.tb.helix.lccheck.stage.intake.CreditReader;
+import com.tb.helix.lccheck.pipeline.PipelineService;
 import com.tb.helix.lccheck.stage.intake.IntakeStage;
 import com.tb.helix.lccheck.stage.intake.SwiftReader;
 import com.tb.helix.infra.blob.BlobStore;
@@ -11,8 +11,6 @@ import com.tb.helix.lccheck.domain.document.*;
 import com.tb.helix.lccheck.domain.examination.*;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.domain.StageId;
-import com.tb.helix.lccheck.stage.intake.CreditReader;
-import com.tb.helix.lccheck.stage.intake.SwiftReader;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -40,18 +38,18 @@ public class CaseService {
     private final BlobStore blobs;
     private final PageRenderer renderer;
     private final SwiftReader swift;
-    private final CreditReader creditReader;
+    private final PipelineService pipeline;
 
     public CaseService(CaseStore store, CaseAssembler assembler, IntakeStage intake,
                        BlobStore blobs, PageRenderer renderer,
-                       SwiftReader swift, CreditReader creditReader) {
+                       SwiftReader swift, PipelineService pipeline) {
         this.store = store;
         this.assembler = assembler;
         this.intake = intake;
         this.blobs = blobs;
         this.renderer = renderer;
         this.swift = swift;
-        this.creditReader = creditReader;
+        this.pipeline = pipeline;
     }
 
     // --- Reading ------------------------------------------------------------
@@ -118,17 +116,38 @@ public class CaseService {
 
     // --- Writing ------------------------------------------------------------
 
+    /**
+     * Opens a case.
+     *
+     * <p>Returns as soon as the uploads are on disk and the case exists — milliseconds —
+     * and leaves the reading to the pipeline. The officer lands on the workbench while the
+     * credit is still being read and watches it fill in, rather than holding a dialog open
+     * for a model call and arriving at a case with nothing in it.
+     *
+     * <p>The ordering matters and is not an optimisation: the evidence is stored before
+     * anything interprets it, so a failed read costs a rerun rather than a re-upload.
+     */
     public Map<String, Object> create(byte[] credit, String creditName,
                                       byte[] bundle, String bundleName, String bundleType,
                                       String officerId) {
         String caseRef = nextRef();
         String caseId = store.create(caseRef, officerId);
-        intake.ingest(caseId, credit, creditName, bundle, bundleName, bundleType);
+        intake.receive(caseId, credit, creditName, bundle, bundleName, bundleType);
+        pipeline.executeAsync(caseId, StageId.INTAKE, officerId);
         return Map.of("caseId", caseRef, "id", caseId);
     }
 
+    /**
+     * What the credit says on its face, before a case exists.
+     *
+     * <p>Mechanical: the SWIFT tags as written, no model. The dialog is asking "is this the
+     * right file" and a person answers that from the reference and the amount — so it must
+     * come back instantly, and there is no case yet to stream progress against. The reading
+     * that the examination relies on is {@code CreditReader}'s, and it happens in intake
+     * where it can report itself.
+     */
     public List<Map<String, String>> peek(byte[] creditText) {
-        return assembler.peek(creditReader.read(swift.read(new String(creditText, StandardCharsets.UTF_8))));
+        return assembler.peek(swift.read(new String(creditText, StandardCharsets.UTF_8)));
     }
 
     public void decide(String ref, String findingRef, String disposition, String note, String officerId) {

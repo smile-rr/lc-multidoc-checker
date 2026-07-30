@@ -75,6 +75,32 @@ function freshCaseValue() {
   }
 }
 
+// A case the service is still reading — the state a case is in for the first
+// seconds of its life, between "Create check" and the credit coming back.
+//
+// Worth a target of its own because no fixture is ever in it and it is the one
+// state where the data is genuinely incomplete: no documents, no pages, no credit
+// reference. A screen that assumed those were there took the whole workbench down
+// to a blank page, which is indistinguishable from a crash to the person who just
+// pressed the button.
+function intakeRunningCaseValue() {
+  const v = freshCaseValue()
+  return {
+    ...v,
+    data: {
+      ...v.data,
+      documents: [],
+      bundlePages: [],
+      facts: [],
+      checks: [],
+      findings: [],
+      totalPages: 0,
+      runState: { stage: 'intake', busy: true, error: null, started: false, finished: false, segmented: 0, completedAreaIds: [] },
+    },
+    run: { ...v.run, busy: true, activity: 'Reading the credit', failure: null },
+  }
+}
+
 const noop = () => {}
 
 function stageCases(value, tag) {
@@ -127,6 +153,21 @@ export function run() {
       results.push({ name: `route ${path}`, ok: true, bytes: html.length })
     } catch (err) {
       results.push({ name: `route ${path}`, ok: false, error: `${err.message}\n${(err.stack || '').split('\n').slice(1, 5).join('\n')}` })
+    }
+  }
+
+  // The reading case renders intake only — that is the screen it lands on, and
+  // the later stages legitimately have nothing to draw until it finishes.
+  for (const [name, element] of [['reading intake', <IntakeScreen />]]) {
+    try {
+      const html = renderToString(
+        <StaticRouter location="/lc-check/cases/CHK-25-0128-011/intake">
+          <CaseContext.Provider value={intakeRunningCaseValue()}>{element}</CaseContext.Provider>
+        </StaticRouter>,
+      )
+      results.push({ name, ok: true, bytes: html.length })
+    } catch (err) {
+      results.push({ name, ok: false, error: `${err.message}\n${(err.stack || '').split('\n').slice(1, 5).join('\n')}` })
     }
   }
 

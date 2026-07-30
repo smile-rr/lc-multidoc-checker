@@ -58,6 +58,20 @@ export async function createCase(files) {
 }
 
 /**
+ * Watches a case for work already in flight.
+ *
+ * Nothing runs by itself in mock — a fixture is not being read anywhere — so this
+ * subscribes to silence and returns the same unsubscribe the real one does. The
+ * caller cannot tell, which is the point of the seam.
+ *
+ * @returns {() => void}
+ */
+export function watchCase(caseId, onEvent) {
+  void [caseId, onEvent]
+  return () => {}
+}
+
+/**
  * What the credit tells us before a case exists — shown in the New check dialog
  * as soon as the MT700 is dropped.
  * @returns {Promise<{ label: string, value: string }[]>}

@@ -46,6 +46,19 @@ const initial = {
     finished: false,
 
     /**
+     * Work the service is doing right now, in its own words — "Reading the
+     * credit", "Converting the scan to PDF". Null when nothing is in flight.
+     *
+     * Set from the case on load and from the stream after that, so a workbench
+     * opened while intake is still running says what it is waiting for instead of
+     * showing an empty case.
+     */
+    busy: false,
+    activity: null,
+    /** What stopped it, if a stage failed. A stalled run has to be distinguishable. */
+    failure: null,
+
+    /**
      * True only for a run started in this session. A case can arrive already
      * examined, and the stage tabs must not drag the officer to the report the
      * moment they open one.
@@ -95,6 +108,10 @@ function reducer(state, action) {
       // finished case open straight onto its findings.
       const loaded = action.data.runState
       const finished = loaded?.finished ?? false
+      // A reload lands on a case that may be mid-flight — the reducer takes the
+      // service's word for that rather than assuming an idle case, which is what
+      // lets a second tab, or a refresh, pick up a run already in progress.
+      const busy = loaded?.busy ?? false
       return {
         ...state,
         loading: false,
@@ -107,15 +124,31 @@ function reducer(state, action) {
           finished,
           // An already-examined case has every step behind it; a fresh one has none.
           done: finished ? PIPELINE_STEPS.map((s) => s.id) : [],
-          activeStep: null,
+          // A refetch triggered by a progress event must not cancel the step it
+          // was reporting on — the run owns activeStep, the load does not.
+          activeStep: action.merge ? state.run.activeStep : null,
           segmented: loaded?.segmented ?? 0,
           completedAreaIds: loaded?.completedAreaIds ?? [],
-          activeAreaId: null,
-          live: false,
-          following: true,
+          activeAreaId: action.merge ? state.run.activeAreaId : null,
+          busy,
+          activity: busy ? (action.merge ? state.run.activity : null) : null,
+          failure: loaded?.error ?? null,
+          live: action.merge ? state.run.live : false,
+          following: action.merge ? state.run.following : true,
         },
       }
     }
+    // `activity` is only a label. It deliberately does NOT set `busy` — busy is what
+    // decides whether to open a watch stream, and setting it from an event arriving
+    // *on* a stream would have the run's own progress open a second connection to
+    // the same place. Where the work is being watched from is one question; what
+    // the work is is another.
+    case 'activity':
+      return { ...state, run: { ...state.run, failure: null, activity: action.label } }
+    case 'activity_ended':
+      return { ...state, run: { ...state.run, activity: null } }
+    case 'stage_failed':
+      return { ...state, run: { ...state.run, busy: false, activity: null, activeStep: null, failure: action.message } }
     case 'load_failed':
       return { ...state, loading: false, error: action.error }
 
@@ -210,6 +243,18 @@ export function CaseProvider({ caseId, children }) {
   const unsubscribe = useRef(null)
   const toastTimer = useRef(null)
 
+  // `merge` keeps the run's own state — this is a refetch during a run, not a
+  // fresh open. Ref rather than state so the stream handler below can call it
+  // without being torn down and resubscribed on every event.
+  const reload = useCallback(
+    (merge = false) =>
+      api
+        .getCase(caseId)
+        .then((data) => dispatch({ type: 'loaded', data, merge }))
+        .catch((error) => dispatch({ type: 'load_failed', error: error.message })),
+    [caseId],
+  )
+
   useEffect(() => {
     let alive = true
     api
@@ -219,6 +264,33 @@ export function CaseProvider({ caseId, children }) {
     return () => { alive = false }
   }, [caseId])
 
+  // Watches work this browser did not start.
+  //
+  // Intake begins when the files land, so by the time the workbench mounts it is
+  // already running. Without this the officer would sit on a case with no
+  // documents in it, waiting for an event nobody had subscribed to — which is
+  // exactly what "create check, then a blank screen" was.
+  //
+  // Opened while the service says it is busy and closed when it stops, so a case
+  // that is simply sitting there holds no connection.
+  const busy = state.run.busy
+  useEffect(() => {
+    if (!busy) return undefined
+    return api.watchCase(caseId, (event) => {
+      if (event.type === 'progress') {
+        dispatch({ type: 'activity', label: event.label })
+        // The event says something landed; the case endpoint says what. One
+        // description of a case, so the two cannot drift.
+        if (event.refresh) reload(true)
+      } else if (event.type === 'stage_failed') {
+        dispatch({ type: 'stage_failed', message: event.message })
+      } else if (event.type === 'awaiting_officer' || event.type === 'gate_halted') {
+        dispatch({ type: 'activity_ended' })
+        reload(true)
+      }
+    })
+  }, [busy, caseId, reload])
+
   useEffect(
     () => () => {
       unsubscribe.current?.()
@@ -226,6 +298,12 @@ export function CaseProvider({ caseId, children }) {
     },
     [],
   )
+
+  // The latest state, reachable from a callback that closed over an older one.
+  // Needed exactly once — reporting on a refetch that landed after the handler was
+  // created — and kept to that one use.
+  const stateRef = useRef(state)
+  stateRef.current = state
 
   const flash = useCallback((message) => {
     dispatch({ type: 'toast', message })
@@ -243,19 +321,32 @@ export function CaseProvider({ caseId, children }) {
       dispatch({ type: 'step_started', stepId })
       const segmentTotal = state.data?.totalPages ?? 6
       unsubscribe.current = api.runPipelineStep(caseId, stepId, { areas, segmentTotal }, (event) => {
-        if (event.type === 'segment') dispatch({ type: 'segmented', done: event.done, total: event.total })
+        if (event.type === 'progress') {
+          // What the stage is doing right now, in its own words. The area bars say
+          // how far along; this says what it is actually on.
+          dispatch({ type: 'activity', label: event.label })
+          if (event.refresh) reload(true)
+        } else if (event.type === 'stage_failed') {
+          dispatch({ type: 'stage_failed', message: event.message })
+        } else if (event.type === 'segment') dispatch({ type: 'segmented', done: event.done, total: event.total })
         else if (event.type === 'area_started') dispatch({ type: 'area_started', areaId: event.areaId })
         else if (event.type === 'area_done') dispatch({ type: 'area_done', areaId: event.areaId })
         else if (event.type === 'step_done') {
+          dispatch({ type: 'activity_ended' })
           dispatch({ type: 'step_done', stepId: event.stepId, areaIds: areas.map((a) => a.id) })
-          if (event.stepId === 'execute') {
-            const bad = (state.data?.findings ?? []).filter((f) => f.severity === 'discrepancy').length
+          // A step produced rows — documents, facts, checks, findings — and the event
+          // said so without carrying them. Refetch, then report on what came back:
+          // counting findings from the copy loaded before the step ran would report
+          // the previous run's number.
+          reload(true).then(() => {
+            if (event.stepId !== 'execute') return
+            const bad = (stateRef.current.data?.findings ?? []).filter((f) => f.severity === 'discrepancy').length
             flash(bad ? `Report ready — ${bad} discrepanc${bad === 1 ? 'y' : 'ies'} to look at.` : 'Report ready — nothing to raise.')
-          }
+          })
         }
       })
     },
-    [caseId, state.data, flash],
+    [caseId, state.data, flash, reload],
   )
 
   /** The officer asking for the next step — the first press also starts the run. */

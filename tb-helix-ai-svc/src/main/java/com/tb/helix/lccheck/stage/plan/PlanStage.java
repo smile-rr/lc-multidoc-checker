@@ -65,6 +65,8 @@ public class PlanStage implements Stage {
         Map<String, Object> row = cases.find(ctx.caseId()).orElseThrow();
         Set<String> present = presentDocTypes(ctx);
 
+        ctx.progress("select", "Selecting rules that apply to this presentation");
+
         int ordinal = 1;
         int planned = 0;
         for (CheckCatalog.CheckCard card : catalog.activeChecks()) {
@@ -92,8 +94,13 @@ public class PlanStage implements Stage {
             if (applies) planned++;
         }
 
+        // The model call: reading what the credit itself demands out of :46A: / :47A:.
+        // Separated from rule selection above, which is a catalogue walk and instant.
+        ctx.progress("requirements", "Reading what the credit asks for");
         int requirements = planRequirements(ctx, row, ordinal);
+
         ctx.recordStep("select", Map.of("ruleCards", planned, "requirementCards", requirements));
+        ctx.progress("plan", planned + requirements + " checks planned", true);
         return StageOutcome.ok();
     }
 

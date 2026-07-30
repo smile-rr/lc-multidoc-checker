@@ -98,7 +98,7 @@ export const api = {
       onEvent({ type, ...payload })
     }
 
-    for (const type of ['segment', 'area_started', 'area_done', 'step_done',
+    for (const type of ['progress', 'segment', 'area_started', 'area_done', 'step_done',
                         'stage_started', 'stage_done', 'stage_failed',
                         'gate_halted', 'cache_hit', 'finding', 'awaiting_officer']) {
       source.addEventListener(type, forward(type))

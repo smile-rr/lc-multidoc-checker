@@ -30,6 +30,22 @@ public record HelixEvent(String caseId, String type, Map<String, Object> payload
     public static final String AWAITING_OFFICER = "awaiting_officer";
 
     // --- Progress within a stage --------------------------------------------
+    /**
+     * A named unit of work inside a stage. {@code {stage, step, label, refresh}}
+     *
+     * <p>Finer-grained than {@link #STEP_DONE}, which reports a whole stage. Intake is the
+     * case that forced it: storing the files, reading the credit and preparing the bundle
+     * are seconds apart and each one puts something new on screen, so a stage that reported
+     * only its own completion would leave the officer looking at an empty workbench for the
+     * whole of it.
+     *
+     * <p>{@code refresh} says the case has changed and the browser should refetch it. The
+     * event carries the fact that something landed, not the thing itself — a progress
+     * channel that shipped domain objects would be a second, weaker copy of the case
+     * endpoint, and the two would drift.
+     */
+    public static final String PROGRESS = "progress";
+
     /** One more page of the bundle has been identified. {@code {done, total}} */
     public static final String SEGMENT = "segment";
 

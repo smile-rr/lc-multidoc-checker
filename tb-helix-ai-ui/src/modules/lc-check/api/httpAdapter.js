@@ -29,6 +29,18 @@ export async function getCase(caseId) {
   return api.get(`${base}/cases/${encodeURIComponent(caseId)}`)
 }
 
+/**
+ * Opens a case from two uploaded files.
+ *
+ * Returns as soon as the service has the bytes on disk — it does not wait for the
+ * credit to be read or a scan to be converted. Those happen on the workbench and
+ * report themselves over `watchCase`, which is why this is quick enough to hold a
+ * dialog open for.
+ *
+ * The parts must be real `File`s. Appending a string puts a form *field* on the
+ * wire rather than a file part, which Spring binds to nothing — the case is
+ * created holding neither document and every screen after it has nothing to show.
+ */
 export async function createCase({ creditFile, bundleFile }) {
   const form = new FormData()
   if (creditFile) form.append('credit', creditFile)
@@ -40,6 +52,20 @@ export async function peekCredit(creditFile) {
   const form = new FormData()
   if (creditFile) form.append('credit', creditFile)
   return api.post(`${base}/cases/peek`, form)
+}
+
+/**
+ * Watches a case, whether or not this browser started what it is doing.
+ *
+ * Separate from `runPipelineStep`, which owns the stream for a run the officer
+ * pressed a button for. This one is for work already in flight: intake begins the
+ * moment the files land, and a workbench that only listened while *it* was
+ * running would show an empty case for the whole of it.
+ *
+ * Returns an unsubscribe.
+ */
+export function watchCase(caseId, onEvent) {
+  return api.stream(`${base}/cases/${encodeURIComponent(caseId)}/stream`, onEvent)
 }
 
 export async function getSpendSummary({ period = '30d' } = {}) {

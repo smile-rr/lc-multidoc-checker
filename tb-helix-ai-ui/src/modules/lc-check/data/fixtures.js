@@ -1405,8 +1405,11 @@ function buildCase(defKey, overrides) {
   }
 }
 
-const FINISHED = { started: true, finished: true, segmented: 6, completedAreaIds: ALL_AREA_IDS }
-const FRESH = { started: false, finished: false, segmented: 0, completedAreaIds: [] }
+// `busy` is a fixture's way of saying the service is working on this case right
+// now. Always false here: nothing runs by itself against a fixture, and a mock
+// that claimed otherwise would have the workbench open a stream to nowhere.
+const FINISHED = { stage: 'signoff', busy: false, error: null, started: true, finished: true, segmented: 6, completedAreaIds: ALL_AREA_IDS }
+const FRESH = { stage: 'intake', busy: false, error: null, started: false, finished: false, segmented: 0, completedAreaIds: [] }
 
 /** Which authored case and run state each list row resolves to. */
 const CASE_INDEX = {

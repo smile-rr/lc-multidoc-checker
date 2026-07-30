@@ -79,8 +79,12 @@ public class InterpretStage implements Stage {
                     + render.maxBundlePages() + ". Split it or raise helix.render.max-bundle-pages.");
         }
 
+        ctx.progress("segment", "Sorting " + pages + " pages into documents");
         Map<Integer, String> byPage = segment(ctx, pdfSha, pages);
         writeDocuments(ctx, byPage, pages);
+        // The document rail can be drawn now, before a single field has been read.
+        ctx.progress("segment", "Pages sorted", true);
+
         extractAll(ctx, pdfSha, byPage);
 
         cases.patchCase(ctx.caseId(), Map.of("status", "to_decide"));
@@ -175,6 +179,10 @@ public class InterpretStage implements Stage {
             List<Integer> pages = entry.getValue().stream().sorted().toList();
             String scope = code + "|" + pages.get(0) + "-" + pages.get(pages.size() - 1);
             String prompt = extractPrompt(code);
+            // The slowest thing in the stage — one vision call per document — and until
+            // now the only thing the officer saw of it was a progress bar that had
+            // already reached the end of segmentation.
+            ctx.progress("extract", "Reading the " + DocType.of(code).label().toLowerCase());
 
             var key = new DerivationKey(CacheOp.EXTRACT_DOC, CacheOp.EXTRACT_DOC_V, pdfSha, scope,
                     DerivationKey.sha256Hex(prompt), "role:extract", null, spec.asCacheParams());

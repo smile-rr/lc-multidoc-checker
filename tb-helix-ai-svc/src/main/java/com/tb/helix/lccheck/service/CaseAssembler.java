@@ -4,6 +4,7 @@ import com.tb.helix.lccheck.domain.*;
 import com.tb.helix.lccheck.domain.document.*;
 import com.tb.helix.lccheck.domain.examination.*;
 import com.tb.helix.lccheck.persistence.CaseStore;
+import com.tb.helix.lccheck.stage.intake.SwiftMessage;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -112,7 +113,15 @@ public class CaseAssembler {
         String stage = str(row.get("stage"));
         boolean started = !"intake".equals(stage);
         boolean finished = List.of("execute", "signoff").contains(stage);
-        return new RunState(started, finished, segmented,
+        String error = str(row.get("error"));
+        // Busy means a stage is running right now: the case is parked at neither the
+        // officer nor an error. The browser reads it on load to decide whether to open a
+        // stream — without it, a workbench opened mid-intake would sit on stale data
+        // waiting for an event it never subscribed to.
+        boolean busy = !finished
+                && !Boolean.TRUE.equals(row.get("awaiting_officer"))
+                && (error == null || error.isBlank());
+        return new RunState(stage, busy, error, started, finished, segmented,
                 finished ? Areas.ALL.stream().map(CheckArea::id).toList() : List.of());
     }
 
@@ -124,15 +133,31 @@ public class CaseAssembler {
         return m;
     }
 
-    /** The credit's own reference and expiry, for the dialog shown before a case exists. */
-    public List<Map<String, String>> peek(Map<String, Object> c) {
+    /**
+     * The credit at a glance, for the dialog shown before a case exists.
+     *
+     * <p>Straight off the tags, unparsed — {@code :32B:} as written, not as understood.
+     * The dialog's question is "is this the right file", which a reference and an amount
+     * answer, and it has to answer instantly: there is no case yet, so no stream to report
+     * progress on, so anything slow here is a dialog that hangs.
+     *
+     * <p>Deliberately not the same reading the examination uses. That one is a model's, it
+     * happens in intake, and it reports itself as it goes.
+     */
+    public List<Map<String, String>> peek(SwiftMessage m) {
         List<Map<String, String>> out = new ArrayList<>();
-        out.add(Map.of("label", "Credit", "value",
-                nz(c.get("creditRef")) + (c.get("expiry") == null ? "" : " · expires " + c.get("expiry"))));
-        out.add(Map.of("label", "Amount", "value", nz(c.get("currency")) + " " + nz(c.get("amount"))));
-        out.add(Map.of("label", "Beneficiary", "value", nz(c.get("beneficiary"))));
-        out.add(Map.of("label", "Applicant", "value", nz(c.get("applicant"))));
+        out.add(Map.of("label", "Message", "value", m.type().label()));
+        out.add(Map.of("label", "Credit", "value", firstLine(m.tag("20"))));
+        out.add(Map.of("label", "Amount", "value", firstLine(m.tag("32B"))));
+        out.add(Map.of("label", "Beneficiary", "value", firstLine(m.tag("59"))));
+        out.add(Map.of("label", "Applicant", "value", firstLine(m.tag("50"))));
         return out;
+    }
+
+    /** A party field runs to four lines; the dialog has room for the name. */
+    private String firstLine(String tag) {
+        if (tag == null || tag.isBlank()) return "—";
+        return tag.strip().lines().findFirst().orElse("—").strip();
     }
 
     /**

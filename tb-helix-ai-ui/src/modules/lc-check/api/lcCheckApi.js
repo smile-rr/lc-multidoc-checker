@@ -23,9 +23,15 @@ export const listCases = pick(mock.listCases, http.listCases)
 export const getCase = pick(mock.getCase, http.getCase)
 export const createCase = pick(mock.createCase, http.createCase)
 export const peekCredit = pick(mock.peekCredit, http.peekCredit)
-export const getSpendSummary = pick(mock.getSpendSummary, http.getSpendSummary)
 export const addCheck = pick(mock.addCheck, http.addCheck)
 export const recordDecision = pick(mock.recordDecision, http.recordDecision)
 export const submitCase = pick(mock.submitCase, http.submitCase)
-export const ask = pick(mock.ask, http.ask)
 export const runPipelineStep = pick(mock.runPipelineStep, http.runPipelineStep)
+export const watchCase = pick(mock.watchCase, http.watchCase)
+
+// Mock in both modes, and deliberately — the service has no endpoint behind
+// either yet, and routing them to a 404 would put a toast on the cases list every
+// time it loads. This is the per-function seam doing its job: move the line when
+// the endpoint is real.
+export const getSpendSummary = pick(mock.getSpendSummary)
+export const ask = pick(mock.ask)

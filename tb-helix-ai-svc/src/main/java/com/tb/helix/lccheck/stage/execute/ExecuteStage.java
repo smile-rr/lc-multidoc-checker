@@ -77,6 +77,10 @@ public class ExecuteStage implements Stage {
 
             for (var check : area.getValue()) {
                 String checkId = String.valueOf(check.get("check_id"));
+                // Named per check, not per area. A judged area is several model calls and
+                // can run for a minute; "Time & availability" going quiet for that long is
+                // indistinguishable from a stall.
+                ctx.progress("check", String.valueOf(check.get("name")));
                 try {
                     Map<String, Object> verdict = judge(check, factSheet, factDigest);
                     raised += record(ctx, check, verdict) ? 1 : 0;

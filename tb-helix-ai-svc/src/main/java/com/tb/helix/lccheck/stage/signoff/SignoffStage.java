@@ -47,6 +47,7 @@ public class SignoffStage implements Stage {
                 .filter(f -> "agreed".equals(decisions.get(String.valueOf(f.get("finding_ref")))))
                 .toList();
 
+        ctx.progress("report", "Drafting the refusal advice");
         String mt734 = mt734(row, agreed);
         ctx.recordStep("report", Map.of(
                 "grounds", agreed.size(),

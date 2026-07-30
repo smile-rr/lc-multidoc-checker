@@ -66,6 +66,23 @@ public interface StageContext {
         emit(HelixEvent.of(caseId(), type, payload));
     }
 
+    /** Says what is being done right now, in words an officer would use. */
+    default void progress(String step, String label) {
+        progress(step, label, false);
+    }
+
+    /**
+     * The same, and the case now holds something it did not a moment ago.
+     *
+     * @param refresh true when the browser should refetch — the event says <em>that</em>
+     *                something landed, never <em>what</em>, so there is one description of
+     *                a case rather than two that can disagree
+     */
+    default void progress(String step, String label, boolean refresh) {
+        emit(HelixEvent.PROGRESS, Map.of(
+                "stage", stage().key(), "step", step, "label", label, "refresh", refresh));
+    }
+
     // --- Cancellation --------------------------------------------------------
 
     /**
