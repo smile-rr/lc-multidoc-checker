@@ -120,7 +120,7 @@ export default function GovernanceModule() {
             return (
               <button
                 key={s.id}
-                onClick={() => navigate(`/governance/${s.id}`)}
+                onClick={() => v.confirmLeave(() => navigate(`/governance/${s.id}`))}
                 style={{
                   padding: '18px 2px',
                   background: 'none',

@@ -140,11 +140,11 @@ function FieldCard({ f, defaultOpen = false }) {
   return (
     <Card pad="sm" data-item-id={f.id} style={f.isNew ? newCard : undefined}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <input ref={nameRef} className="inline-edit" value={f.name} onChange={f.onChangeName} placeholder="Business field name" style={nameInput} />
+        <input ref={nameRef} className="inline-edit" value={f.name} onChange={f.onChangeName} onFocus={f.onFocus} readOnly={f.locked} placeholder="Business field name" style={nameInput} />
         <Chip size="sm" title="Checks that read this field" style={{ flexShrink: 0, fontWeight: 600, color: 'var(--me-grey-70)' }}>{f.usedLabel}</Chip>
         <IconButton icon="trash-2" title={f.removeTip} tone="danger" onClick={f.onRemove} />
       </div>
-      <TextArea className="inline-edit" value={f.description} onChange={f.onChangeDesc} onBlur={f.onBlurDesc} placeholder="What this field holds, in one line…" maxLines={3} maxLength={DESC_MAX} style={descArea} />
+      <TextArea className="inline-edit" value={f.description} onChange={f.onChangeDesc} onFocus={f.onFocus} readOnly={f.locked} placeholder="What this field holds, in one line…" maxLines={3} maxLength={DESC_MAX} style={descArea} />
 
       <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--me-grey-08)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -168,7 +168,8 @@ function FieldCard({ f, defaultOpen = false }) {
                   className="inline-edit"
                   value={b.note}
                   onChange={b.onChangeNote}
-                  onBlur={b.onBlurNote}
+                  onFocus={f.onFocus}
+                  readOnly={f.locked}
                   placeholder="What it is called here and how to read it…"
                   maxLines={3}
                   maxLength={NOTE_MAX}
@@ -193,6 +194,19 @@ function FieldCard({ f, defaultOpen = false }) {
           </div>
         )}
       </div>
+      {f.editing && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--me-grey-08)' }}>
+          <div style={{ flex: 1 }} />
+          <button
+            onClick={f.onCancel}
+            title={f.isNew ? 'Discard this — it has not been added yet' : 'Undo the changes made since you started editing'}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, color: f.isNew ? 'var(--status-error)' : 'var(--me-grey-70)' }}
+          >
+            {f.cancelLabel}
+          </button>
+          <Button variant="primary" size="sm" onClick={f.onSave}>Save</Button>
+        </div>
+      )}
     </Card>
   )
 }
@@ -202,11 +216,24 @@ function DocCard({ d }) {
   return (
     <Card pad="sm" data-item-id={d.id} style={d.isNew ? newCard : undefined}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <input className="inline-edit" value={d.key} onChange={d.onChangeKey} placeholder="KEY" style={{ width: 180, flexShrink: 0, padding: '6px 9px', fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--me-blue-deep)' }} />
-        <input ref={nameRef} className="inline-edit" value={d.name} onChange={d.onChangeName} placeholder="Document name" style={nameInput} />
+        <input className="inline-edit" value={d.key} onChange={d.onChangeKey} onFocus={d.onFocus} readOnly={d.locked} placeholder="KEY" style={{ width: 180, flexShrink: 0, padding: '6px 9px', fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--me-blue-deep)' }} />
+        <input ref={nameRef} className="inline-edit" value={d.name} onChange={d.onChangeName} onFocus={d.onFocus} readOnly={d.locked} placeholder="Document name" style={nameInput} />
         <IconButton icon="trash-2" title={d.removeTip} tone="danger" onClick={d.onRemove} />
       </div>
-      <TextArea className="inline-edit" value={d.description} onChange={d.onChangeDesc} onBlur={d.onBlurDesc} placeholder="Short description of this document type…" maxLines={3} maxLength={DESC_MAX} style={descArea} />
+      <TextArea className="inline-edit" value={d.description} onChange={d.onChangeDesc} onFocus={d.onFocus} readOnly={d.locked} placeholder="Short description of this document type…" maxLines={3} maxLength={DESC_MAX} style={descArea} />
+      {d.editing && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--me-grey-08)' }}>
+          <div style={{ flex: 1 }} />
+          <button
+            onClick={d.onCancel}
+            title={d.isNew ? 'Discard this — it has not been added yet' : 'Undo the changes made since you started editing'}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, color: d.isNew ? 'var(--status-error)' : 'var(--me-grey-70)' }}
+          >
+            {d.cancelLabel}
+          </button>
+          <Button variant="primary" size="sm" onClick={d.onSave}>Save</Button>
+        </div>
+      )}
     </Card>
   )
 }

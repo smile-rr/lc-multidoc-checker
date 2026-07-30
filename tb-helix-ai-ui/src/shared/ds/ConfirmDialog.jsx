@@ -2,7 +2,11 @@ import Button from './Button'
 import { Overlay, sheet } from './Overlay'
 
 // Reusable confirmation for destructive/irreversible actions. Driven by the
-// store's `confirm` object: { title, message, confirmLabel, onCancel, onConfirm }.
+// store's `confirm` object: { title, message, confirmLabel, cancelLabel, onCancel,
+// onConfirm }. `cancelLabel` matters when the safe way out is not "cancel the
+// thing I asked for" but an action of its own — "Keep editing" on a
+// leave-with-unsaved-changes question, where plain "Cancel" reads as "cancel my
+// edit", the exact opposite of what it does.
 //
 // `blocked: true` turns it into a refusal rather than a question: the action is
 // not offered at all, because the system knows it would break a reference
@@ -30,7 +34,7 @@ export default function ConfirmDialog({ confirm }) {
             </>
           ) : (
             <>
-              <Button variant="ghost" size="md" onClick={confirm.onCancel}>Cancel</Button>
+              <Button variant="ghost" size="md" onClick={confirm.onCancel}>{confirm.cancelLabel || 'Cancel'}</Button>
               <Button variant="danger" size="md" onClick={confirm.onConfirm}>{confirm.confirmLabel || 'Delete'}</Button>
             </>
           )}

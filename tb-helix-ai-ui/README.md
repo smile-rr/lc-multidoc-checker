@@ -416,6 +416,22 @@ commits something half-written.
 That single slot is also what makes focus predictable: whatever is created takes
 the slot, takes the caret, and scrolls itself into view (`useNewItemFocus`).
 
+**Leaving asks.** Switching section, opening an item, clicking into a different
+card, or switching book while something is unfinished raises one question —
+*"Leave without saving? GEN-90 has changes that have not been saved."* — with
+**Keep editing** and **Discard changes**. Saving on your behalf is not offered,
+because what you were writing may not be saveable yet. Say discard on a record
+this edit created and it goes entirely; on one that already existed it goes back
+to its snapshot. Rows that another edit is blocking are `readOnly`, so you cannot
+type into two things at once and then wonder which one you were in.
+
+**Every editor works this way**, and that is the point: a check card, a rule
+card, a dictionary field, a document type and a library article all take a
+snapshot on first change, all show the same footer, and all use the same three
+words — Save, Cancel (revert), Discard (un-create). The dictionary was the odd
+one out, mutating the store on every keystroke, which also made "discard your
+changes" impossible to honour: there was nothing to go back to.
+
 ### Where a new item lands, and how you get rid of it
 
 A new item goes where you will look for it next, which depends on whether its

@@ -72,7 +72,7 @@ const normaliseRule = (raw) => {
   return { scope: raw.scope, message: raw.message, groups: [{ id: 'g1', logic: raw.logic || 'all', rows: raw.rows || [] }] }
 }
 
-const blankRow = () => ({ id: 'r-' + reqId(), l: {}, r: {}, op: 'eq', tol: '' })
+const blankRow = () => ({ id: uid('r'), l: {}, r: {}, op: 'eq', tol: '' })
 
 // Run after anything is removed. A block that has lost its last condition is
 // gone — an empty bracket means nothing, and leaving one for the author to tidy
@@ -82,7 +82,7 @@ const blankRow = () => ({ id: 'r-' + reqId(), l: {}, r: {}, op: 'eq', tol: '' })
 // above it to join to.
 const tidyRule = (ru) => {
   const kept = ru.groups.filter((g) => g.rows.length)
-  if (!kept.length) return { ...ru, groups: [{ id: 'g-' + reqId(), logic: 'all', rows: [blankRow()] }] }
+  if (!kept.length) return { ...ru, groups: [{ id: uid('g'), logic: 'all', rows: [blankRow()] }] }
   return { ...ru, groups: kept.map((g, i) => (i === 0 ? { ...g, connector: undefined } : g)) }
 }
 
@@ -257,6 +257,54 @@ export function deriveVals(state, setState) {
   // who lost track of where the unfinished thing is. So it takes them there.
   const guard = (fn) => (...args) => { if (pendingId) { focusItem(pendingId); return } fn(...args) }
 
+  // Throw away whatever holds the slot, whichever kind of thing it is. A record
+  // that this edit created goes entirely; one that already existed goes back to
+  // its snapshot.
+  const discardPending = () => setState((st) => {
+    const id = st.editingId || st.artEditingId || st.createdId
+    if (!id) return {}
+    const clear = { editingId: null, artEditingId: null, createdId: null, operandOpen: null, refsOpenId: null, helpOpenId: null, dictDocPickerId: null }
+    const es = { ...st.editSnap }; const snap = es[id]; delete es[id]
+    const rs = { ...st.ruleSnap }; const rsnap = rs[id]; delete rs[id]
+    const created = st.createdId === id
+    const patch = { ...clear, editSnap: es, ruleSnap: rs }
+    // a check
+    if (st.extraChecks.some((c) => c.id === id) || CHECKS.some((c) => c.id === id)) {
+      const ov = { ...st.overrides }
+      if (created) delete ov[id]
+      else if (snap !== undefined) ov[id] = snap
+      else delete ov[id]
+      const rules = { ...st.rules }
+      if (created) delete rules[id]
+      else if (rsnap !== undefined) rules[id] = rsnap
+      return { ...patch, overrides: ov, rules, extraChecks: created ? st.extraChecks.filter((c) => c.id !== id) : st.extraChecks }
+    }
+    // a dictionary field or document type
+    const fs = st.dictFields || seedFields()
+    if (fs.some((x) => x.id === id)) return { ...patch, dictFields: created ? fs.filter((x) => x.id !== id) : fs.map((x) => (x.id === id && snap ? snap : x)), dictDetail: created ? null : st.dictDetail }
+    const ds = st.dictDocs || seedDocTypes()
+    if (ds.some((x) => x.id === id)) return { ...patch, dictDocs: created ? ds.filter((x) => x.id !== id) : ds.map((x) => (x.id === id && snap ? snap : x)), dictDetail: created ? null : st.dictDetail }
+    // a book, or an article inside one
+    const bs = st.books || seedBooks()
+    if (bs.some((b) => b.id === id)) return { ...patch, books: created ? bs.filter((b) => b.id !== id) : bs, activeBookId: created ? (bs[0] ? bs[0].id : null) : st.activeBookId }
+    return { ...patch, books: bs.map((b) => ({ ...b, articles: b.articles.filter((a) => !(aidOf(a) === id && a.isNew)) })) }
+  })
+
+  // Leaving an unfinished edit asks. It used to happen silently — you clicked
+  // another tab and the half-written thing stayed behind, applied but orphaned.
+  // Two ways out and no third: saving for someone is not on offer, because what
+  // they were writing may not be saveable yet.
+  const confirmLeave = (proceed) => {
+    if (!pendingId) { proceed(); return }
+    requestConfirm({
+      title: 'Leave without saving?',
+      message: `${pendingLabel} has changes that have not been saved. Leaving now throws them away.`,
+      cancelLabel: 'Keep editing',
+      confirmLabel: 'Discard changes',
+      onConfirm: () => { discardPending(); proceed() },
+    })
+  }
+
   // Added checks lead the library. Prepending inside `extraChecks` is not enough
   // on its own — concatenating the seed first would still push a new card below
   // every seeded one, which is the position the author is not looking at.
@@ -304,7 +352,7 @@ export function deriveVals(state, setState) {
   const assignToGroup = (id, gid, agentId) =>
     setState((s) => ({ placements: { ...s.placements, [id]: { agentId, groupId: gid } }, addMenuGid: null }))
   const renameGroup = (gid, name) => setState((s) => ({ agentGroups: s.agentGroups.map((x) => (x.gid === gid ? { ...x, name } : x)) }))
-  const addGroupFor = (agentId) => setState((s) => { const n = s.agentGroups.filter((x) => x.agentId === agentId).length + 1; return { agentGroups: [...s.agentGroups, { agentId, gid: 'G' + reqId(), name: 'Group ' + n }] } })
+  const addGroupFor = (agentId) => setState((s) => { const n = s.agentGroups.filter((x) => x.agentId === agentId).length + 1; return { agentGroups: [...s.agentGroups, { agentId, gid: uid('G'), name: 'Group ' + n }] } })
   // Reorder groups within an agent (positional — the sequence number follows order).
   const moveGroup = (gid, delta) => setState((s) => {
     const groups = [...s.agentGroups]
@@ -422,7 +470,13 @@ export function deriveVals(state, setState) {
       ruleSnap: !isRule || s.ruleSnap[c.id] !== undefined ? s.ruleSnap : { ...s.ruleSnap, [c.id]: snapRule },
     })
     const startEdit = () => {
-      if (S.editingId !== c.id) setState((s) => ({ editingId: c.id, ...takeSnap(s) }))
+      if (S.editingId === c.id) return
+      if (S.editingId || S.artEditingId || S.createdId) {
+        // Another card is open. Ask, and on yes land in the one just clicked.
+        confirmLeave(() => setState((s) => ({ editingId: c.id, ...takeSnap(s) })))
+        return
+      }
+      setState((s) => ({ editingId: c.id, ...takeSnap(s) }))
     }
     const write = (field, val) =>
       setState((s) => {
@@ -518,7 +572,7 @@ export function deriveVals(state, setState) {
       ruleScope: rule ? rule.scope || '' : '', onChangeScope: (e) => { const scope = e.target.value; patchRule((ru) => ({ ...ru, scope })) },
       ruleMessage: rule ? rule.message || '' : '', onChangeMessage: (e) => { const message = e.target.value; patchRule((ru) => ({ ...ru, message })) },
       ruleGroups, opGroups: OP_GROUPS,
-      onAddGroup: () => patchRule((ru) => ({ ...ru, groups: [...ru.groups, { id: 'g-' + reqId(), logic: 'all', connector: 'AND', rows: [blankRow()] }] })),
+      onAddGroup: () => patchRule((ru) => ({ ...ru, groups: [...ru.groups, { id: uid('g'), logic: 'all', connector: 'AND', rows: [blankRow()] }] })),
       // The structure controls only appear once you are editing, and until now
       // the only way in was to click into a field — so a finished rule offered
       // no way to add a condition to it. This is that way in.
@@ -625,7 +679,7 @@ export function deriveVals(state, setState) {
         delete rs[c.id]
         return { editingId: null, createdId: null, refsOpenId: null, helpOpenId: null, operandOpen: null, overrides: ov, editSnap: es, rules, ruleSnap: rs }
       }),
-      onOpen: () => setState((s) => ({ activeCheckId: c.id, editingId: null, panel: null, checkFrom: { section: s.section, view: s.view, activeAgentId: s.activeAgentId } })),
+      onOpen: () => confirmLeave(() => setState((s) => ({ activeCheckId: c.id, editingId: null, panel: null, checkFrom: { section: s.section, view: s.view, activeAgentId: s.activeAgentId } }))),
       onComment: (e) => { if (e && e.stopPropagation) e.stopPropagation(); toggleReview(c.id, e) },
       onToggleActive: (e) => { if (e && e.stopPropagation) e.stopPropagation(); setState((s) => ({ cpActive: { ...s.cpActive, [c.id]: !(s.cpActive[c.id] === undefined ? true : s.cpActive[c.id]) } })) },
     }
@@ -652,7 +706,7 @@ export function deriveVals(state, setState) {
       id: byId[S.activeCheckId].id,
       backLabel: from.section === 'agents' ? 'Back to agent' : 'Back to checks',
       check: buildCheck(byId[S.activeCheckId], 'library'),
-      onBack: () => setState((s) => ({ activeCheckId: null, editingId: null, panel: null, section: from.section, view: from.view || 'list', activeAgentId: from.activeAgentId || s.activeAgentId })),
+      onBack: () => confirmLeave(() => setState((s) => ({ activeCheckId: null, editingId: null, panel: null, section: from.section, view: from.view || 'list', activeAgentId: from.activeAgentId || s.activeAgentId }))),
     }
   }
 
@@ -812,7 +866,7 @@ export function deriveVals(state, setState) {
   const bq = (S.bookQuery || '').toLowerCase()
   const bookStrip = books
     .filter((b) => !bq || (b.title + ' ' + b.subtitle).toLowerCase().includes(bq))
-    .map((b) => ({ id: b.id, title: b.title, subtitle: b.subtitle, count: b.articles.length + (b.articles.length === 1 ? ' article' : ' articles'), active: b.id === active.id, onSelect: () => setState({ activeBookId: b.id, libSearch: '' }), onDelete: () => requestConfirm({ title: 'Delete book?', message: `“${b.title}” and its ${b.articles.length} article${b.articles.length === 1 ? '' : 's'} will be permanently removed.`, confirmLabel: 'Delete book', onConfirm: () => deleteBook(b.id) }) }))
+    .map((b) => ({ id: b.id, title: b.title, subtitle: b.subtitle, count: b.articles.length + (b.articles.length === 1 ? ' article' : ' articles'), active: b.id === active.id, onSelect: () => confirmLeave(() => setState({ activeBookId: b.id, libSearch: '' })), onDelete: () => requestConfirm({ title: 'Delete book?', message: `“${b.title}” and its ${b.articles.length} article${b.articles.length === 1 ? '' : 's'} will be permanently removed.`, confirmLabel: 'Delete book', onConfirm: () => deleteBook(b.id) }) }))
   const libQ = (S.libSearch || '').toLowerCase()
   const mkArt = (bookId, a) => {
     const aid = aidOf(a)
@@ -824,7 +878,7 @@ export function deriveVals(state, setState) {
       read: a.read || 'Reading text not yet added — click to write it.', editRead: a.read || '', usedByLabel: n + (n === 1 ? ' check' : ' checks'), isNew: !!a.isNew, editing, notEditing: !editing,
       isNew: !!a.isNew,
       cancelLabel: a.isNew ? 'Discard' : 'Cancel',
-      onEdit: () => setState({ artEditingId: aid }),
+      onEdit: () => confirmLeave(() => setState({ artEditingId: aid })),
       onChangeCode: (e) => patch('code', e.target.value),
       onChangeTitle: (e) => patch('title', e.target.value),
       onChangeRead: (e) => patch('read', e.target.value),
@@ -845,7 +899,7 @@ export function deriveVals(state, setState) {
     return {
       name: sec, hasName: sec !== '', key, open, caret: open ? 'chevron-down' : 'chevron-right', count: bySec[sec].length,
       onToggle: () => setState((x) => ({ tocCollapsed: { ...x.tocCollapsed, [key]: !x.tocCollapsed[key] } })),
-      onAddArticle: guard(() => { const code = 'ART-' + reqId(); setBooks((bs) => bs.map((b) => (b.id === active.id ? { ...b, articles: [...b.articles, { aid: code, code: '', title: '', section: sec, read: '', isNew: true }] } : b))); setState({ artEditingId: code }) }),
+      onAddArticle: guard(() => { const code = uid('ART'); setBooks((bs) => bs.map((b) => (b.id === active.id ? { ...b, articles: [...b.articles, { aid: code, code: '', title: '', section: sec, read: '', isNew: true }] } : b))); setState({ artEditingId: code }) }),
       onDeleteSection: () => requestConfirm({ title: 'Delete section?', message: `All ${bySec[sec].length} article${bySec[sec].length === 1 ? '' : 's'} in “${sec}” will be removed.`, confirmLabel: 'Delete section', onConfirm: () => deleteSection(active.id, sec) }),
       arts: bySec[sec].map((a) => mkArt(active.id, a)),
     }
@@ -868,15 +922,38 @@ export function deriveVals(state, setState) {
     }).length
   const dq = (S.dictSearch || '').toLowerCase()
   const patchField = (id, fn) => setDF((fs) => fs.map((x) => (x.id === id ? fn(x) : x)))
-  const buildFieldRow = (f) => ({
+  // A dictionary row edits the way a check card does: focus starts an edit, a
+  // snapshot is taken so Cancel can put it back, and Save trims and commits.
+  // Live-mutating every keystroke was the odd one out here — and it made "discard
+  // your changes" impossible to honour, because there was nothing to go back to.
+  const dictEdit = (id, snap) => {
+    const editing = S.editingId === id
+    const created = S.createdId === id
+    const start = () => { if (S.editingId !== id) setState((st) => ({ editingId: id, editSnap: st.editSnap[id] !== undefined ? st.editSnap : { ...st.editSnap, [id]: snap } })) }
+    return { editing, created, locked: !!S.editingId && !editing, start }
+  }
+  const dictClose = (extra) => setState((st) => { const es = { ...st.editSnap }; delete es[extra.id]; return { editingId: null, createdId: null, editSnap: es, dictDocPickerId: null } })
+
+  const buildFieldRow = (f) => {
+    const e = dictEdit(f.id, JSON.parse(JSON.stringify(f)))
+    return {
     id: f.id, name: f.name, description: f.description,
     isNew: S.createdId === f.id,
-    onOpen: () => setState({ dictDetail: { kind: 'field', id: f.id } }),
+    editing: e.editing, locked: e.locked,
+    onFocus: e.start,
+    cancelLabel: e.created ? 'Discard' : 'Cancel',
+    onSave: () => { setDF((fs) => fs.map((x) => (x.id === f.id ? { ...x, name: (x.name || '').trim(), description: (x.description || '').trim(), bindings: (x.bindings || []).map((b) => ({ ...b, note: (b.note || '').trim() })) } : x))); dictClose(f) },
+    onCancel: () => {
+      if (e.created) { setDF((fs) => fs.filter((x) => x.id !== f.id)); dictClose(f); setState({ dictDetail: null }); return }
+      const snap = S.editSnap[f.id]
+      if (snap) setDF((fs) => fs.map((x) => (x.id === f.id ? snap : x)))
+      dictClose(f)
+    },
+    onOpen: () => confirmLeave(() => setState({ dictDetail: { kind: 'field', id: f.id } })),
     usedLabel: fieldUsed(f.name) + (fieldUsed(f.name) === 1 ? ' check' : ' checks'),
     docsLine: bindingDocs(f).join(' · ') || '—',
-    onChangeName: (e) => { const v = e.target.value; patchField(f.id, (x) => ({ ...x, name: v })) },
-    onChangeDesc: (e) => { const v = e.target.value; patchField(f.id, (x) => ({ ...x, description: v })) },
-    onBlurDesc: () => patchField(f.id, (x) => ({ ...x, description: (x.description || '').trim() })),
+    onChangeName: (ev) => { e.start(); const val = ev.target.value; patchField(f.id, (x) => ({ ...x, name: val })) },
+    onChangeDesc: (ev) => { e.start(); const val = ev.target.value; patchField(f.id, (x) => ({ ...x, description: val })) },
     usedCount: fieldUsed(f.name),
     removeTip: S.createdId === f.id ? 'Discard this new field' : 'Remove this field',
     onRemove: () => {
@@ -900,22 +977,32 @@ export function deriveVals(state, setState) {
     // and how to read it. That note is the whole extraction instruction.
     bindings: (f.bindings || []).map((b, i) => ({
       doc: b.doc, note: b.note || '',
-      onChangeNote: (e) => { const v = e.target.value; patchField(f.id, (x) => ({ ...x, bindings: x.bindings.map((y, j) => (j === i ? { ...y, note: v } : y)) })) },
-      onBlurNote: () => patchField(f.id, (x) => ({ ...x, bindings: x.bindings.map((y, j) => (j === i ? { ...y, note: (y.note || '').trim() } : y)) })),
-      onRemove: () => patchField(f.id, (x) => ({ ...x, bindings: x.bindings.filter((y, j) => j !== i) })),
+      onChangeNote: (ev) => { e.start(); const val = ev.target.value; patchField(f.id, (x) => ({ ...x, bindings: x.bindings.map((y, j) => (j === i ? { ...y, note: val } : y)) })) },
+      onRemove: () => { e.start(); patchField(f.id, (x) => ({ ...x, bindings: x.bindings.filter((y, j) => j !== i) })) },
     })),
     pickerOpen: S.dictDocPickerId === f.id,
     onTogglePicker: () => setState((s) => ({ dictDocPickerId: s.dictDocPickerId === f.id ? null : f.id })),
-    docBook: docNames.filter((dn) => !bindingDocs(f).includes(dn)).map((dn) => ({ name: dn, onAdd: () => { patchField(f.id, (x) => ({ ...x, bindings: [...(x.bindings || []), { doc: dn, note: '' }] })); setState({ dictDocPickerId: null }) } })),
-  })
+    docBook: docNames.filter((dn) => !bindingDocs(f).includes(dn)).map((dn) => ({ name: dn, onAdd: () => { e.start(); patchField(f.id, (x) => ({ ...x, bindings: [...(x.bindings || []), { doc: dn, note: '' }] })); setState({ dictDocPickerId: null }) } })),
+  }}
   const docUsed = (name) => dictFields.filter((f) => bindingDocs(f).includes(name)).length
-  const buildDocRow = (d) => ({
-    id: d.id, key: d.key, name: d.name, description: d.description, isNew: S.createdId === d.id, usedLabel: docUsed(d.name) + (docUsed(d.name) === 1 ? ' field' : ' fields'),
-    onOpen: () => setState({ dictDetail: { kind: 'doc', id: d.id } }),
-    onChangeKey: (e) => { const v = e.target.value; setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, key: v } : x))) },
-    onChangeName: (e) => { const v = e.target.value; setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, name: v } : x))) },
-    onChangeDesc: (e) => { const v = e.target.value; setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, description: v } : x))) },
-    onBlurDesc: () => setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, description: (x.description || '').trim() } : x))),
+  const buildDocRow = (d) => {
+    const e = dictEdit(d.id, JSON.parse(JSON.stringify(d)))
+    return {
+    id: d.id, key: d.key, name: d.name, description: d.description, isNew: S.createdId === d.id,
+    editing: e.editing, locked: e.locked, onFocus: e.start,
+    cancelLabel: e.created ? 'Discard' : 'Cancel',
+    onSave: () => { setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, key: (x.key || '').trim(), name: (x.name || '').trim(), description: (x.description || '').trim() } : x))); dictClose(d) },
+    onCancel: () => {
+      if (e.created) { setDD((ds) => ds.filter((x) => x.id !== d.id)); dictClose(d); setState({ dictDetail: null }); return }
+      const snap = S.editSnap[d.id]
+      if (snap) setDD((ds) => ds.map((x) => (x.id === d.id ? snap : x)))
+      dictClose(d)
+    },
+    usedLabel: docUsed(d.name) + (docUsed(d.name) === 1 ? ' field' : ' fields'),
+    onOpen: () => confirmLeave(() => setState({ dictDetail: { kind: 'doc', id: d.id } })),
+    onChangeKey: (ev) => { e.start(); const val = ev.target.value; setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, key: val } : x))) },
+    onChangeName: (ev) => { e.start(); const val = ev.target.value; setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, name: val } : x))) },
+    onChangeDesc: (ev) => { e.start(); const val = ev.target.value; setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, description: val } : x))) },
     usedCount: docUsed(d.name),
     removeTip: S.createdId === d.id ? 'Discard this new document type' : 'Remove this document type',
     onRemove: () => {
@@ -934,7 +1021,7 @@ export function deriveVals(state, setState) {
             onConfirm: () => { setDD((ds) => ds.filter((x) => x.id !== d.id)); setState({ dictDetail: null }) },
           })
     },
-  })
+  }}
   // Sorted, except while an item is being added: a row that reorders itself out
   // from under the cursor as you type its name is worse than an unsorted list.
   const dictSort = S.createdId ? { key: 'none', dir: 'asc' } : S.dictSort
@@ -949,7 +1036,7 @@ export function deriveVals(state, setState) {
   if (S.dictDetail) {
     if (S.dictDetail.kind === 'field') { const f = dictFields.find((x) => x.id === S.dictDetail.id); if (f) dictDetail = { kind: 'field', row: buildFieldRow(f) } }
     else { const dd = dictDocs.find((x) => x.id === S.dictDetail.id); if (dd) dictDetail = { kind: 'doc', row: buildDocRow(dd) } }
-    if (dictDetail) dictDetail.onBack = () => setState({ dictDetail: null })
+    if (dictDetail) dictDetail.onBack = () => confirmLeave(() => setState({ dictDetail: null }))
   }
   // What to call the thing that is holding the edit slot.
   const pendingLabel = (() => {
@@ -975,25 +1062,27 @@ export function deriveVals(state, setState) {
   return {
     isChecks: section === 'checks' && !checkDetail, isCheckDetail: !!checkDetail, checkDetail,
     isAgentsList: section === 'agents' && view === 'list' && !checkDetail, isAgentDetail: section === 'agents' && view === 'detail' && !checkDetail, isLibrary: section === 'library' && !checkDetail, isDictionary: section === 'dictionary' && !checkDetail,
-    goAgents: () => setState({ section: 'agents', view: 'list', panel: null, activeCheckId: null, dictDetail: null }),
-    goChecks: () => setState({ section: 'checks', panel: null, activeCheckId: null, dictDetail: null }),
-    goLibrary: () => setState({ section: 'library', panel: null, activeCheckId: null, dictDetail: null }),
-    goDictionary: () => setState({ section: 'dictionary', panel: null, activeCheckId: null, dictDetail: null }),
+    goAgents: () => confirmLeave(() => setState({ section: 'agents', view: 'list', panel: null, activeCheckId: null, dictDetail: null })),
+    goChecks: () => confirmLeave(() => setState({ section: 'checks', panel: null, activeCheckId: null, dictDetail: null })),
+    goLibrary: () => confirmLeave(() => setState({ section: 'library', panel: null, activeCheckId: null, dictDetail: null })),
+    goDictionary: () => confirmLeave(() => setState({ section: 'dictionary', panel: null, activeCheckId: null, dictDetail: null })),
+    // The module's tab bar owns the URL, so it asks through here.
+    confirmLeave,
     section,
 
     // Reference library (single page: book strip + reader)
     bookStrip, bookQuery: S.bookQuery, setBookQuery: (e) => setState({ bookQuery: e.target.value }),
     onDeleteActiveBook: () => requestConfirm({ title: 'Delete book?', message: `“${active.title}” and its ${active.articles.length} article${active.articles.length === 1 ? '' : 's'} will be permanently removed.`, confirmLabel: 'Delete book', onConfirm: () => deleteBook(active.id) }),
     activeTitle: active.title, activeSubtitle: active.subtitle, readerSections, libEmpty,
-    addBook: guard(() => { const id = 'book' + reqId(); setBooks((bs) => prepend(bs, { id, title: 'New book', subtitle: 'Untitled reference', articles: [] })); setState({ activeBookId: id, createdId: id }) }),
-    addSection: guard(() => { const id = active.id; const code = 'ART-' + reqId(); setBooks((bs) => bs.map((b) => (b.id === id ? { ...b, articles: [...b.articles, { aid: code, code: '', title: '', section: 'New section', read: '', isNew: true }] } : b))); setState({ artEditingId: code, libAddOpen: false }) }),
-    addArticle: guard(() => { const id = active.id; const code = 'ART-' + reqId(); setBooks((bs) => bs.map((b) => (b.id === id ? { ...b, articles: [...b.articles, { aid: code, code: '', title: '', section: '', read: '', isNew: true }] } : b))); setState({ artEditingId: code, libAddOpen: false }) }),
+    addBook: guard(() => { const id = uid('book'); setBooks((bs) => prepend(bs, { id, title: 'New book', subtitle: 'Untitled reference', articles: [] })); setState({ activeBookId: id, createdId: id }) }),
+    addSection: guard(() => { const id = active.id; const code = uid('ART'); setBooks((bs) => bs.map((b) => (b.id === id ? { ...b, articles: [...b.articles, { aid: code, code: '', title: '', section: 'New section', read: '', isNew: true }] } : b))); setState({ artEditingId: code, libAddOpen: false }) }),
+    addArticle: guard(() => { const id = active.id; const code = uid('ART'); setBooks((bs) => bs.map((b) => (b.id === id ? { ...b, articles: [...b.articles, { aid: code, code: '', title: '', section: '', read: '', isNew: true }] } : b))); setState({ artEditingId: code, libAddOpen: false }) }),
     addMenuOpen: S.libAddOpen, toggleAddMenu: () => setState((s) => ({ libAddOpen: !s.libAddOpen })),
     libSearch: S.libSearch, setLibSearch: (e) => setState({ libSearch: e.target.value }),
 
     // Import modal
     importName: S.importName, setImportName: (e) => setState({ importName: e.target.value }),
-    importBook: () => { const items = (S.importItems || []).filter((x) => x.include); const id = 'book' + reqId(); const nb = { id, title: (S.importName || '').trim() || 'Imported book', subtitle: 'Imported from PDF', articles: items.map((it) => ({ aid: 'A' + reqId(), code: it.code, title: it.title, section: it.section || '', read: 'Imported from the uploaded PDF; the assistant split this out — edit the reading text as needed.', isNew: true })) }; setBooks((bs) => [...bs, nb]); setState({ importOpen: false, importName: '', activeBookId: id }) },
+    importBook: () => { const items = (S.importItems || []).filter((x) => x.include); const id = uid('book'); const nb = { id, title: (S.importName || '').trim() || 'Imported book', subtitle: 'Imported from PDF', articles: items.map((it) => ({ aid: uid('A'), code: it.code, title: it.title, section: it.section || '', read: 'Imported from the uploaded PDF; the assistant split this out — edit the reading text as needed.', isNew: true })) }; setBooks((bs) => [...bs, nb]); setState({ importOpen: false, importName: '', activeBookId: id }) },
     importOpen: S.importOpen, importUpload: S.importStage === 'upload', importReview: S.importStage === 'review', importItems, importCount,
     openImport: () => setState({ importOpen: true, importStage: 'upload', importItems: [] }),
     closeImport: () => setState({ importOpen: false }),
@@ -1006,7 +1095,7 @@ export function deriveVals(state, setState) {
 
     // Dictionary
     dictIsFields: S.dictTab !== 'doctypes', dictIsDocs: S.dictTab === 'doctypes',
-    setDictFieldsTab: () => setState({ dictTab: 'fields', dictDetail: null }), setDictDocsTab: () => setState({ dictTab: 'doctypes', dictDetail: null }),
+    setDictFieldsTab: () => confirmLeave(() => setState({ dictTab: 'fields', dictDetail: null })), setDictDocsTab: () => confirmLeave(() => setState({ dictTab: 'doctypes', dictDetail: null })),
     dictFieldsBg: S.dictTab !== 'doctypes' ? 'var(--me-blue)' : '#fff', dictFieldsFg: S.dictTab !== 'doctypes' ? '#fff' : 'var(--me-grey-70)',
     dictDocsBg: S.dictTab === 'doctypes' ? 'var(--me-blue)' : '#fff', dictDocsFg: S.dictTab === 'doctypes' ? '#fff' : 'var(--me-grey-70)',
     dictIsCards: S.dictView === 'cards', dictIsListView: S.dictView === 'list',
@@ -1016,8 +1105,8 @@ export function deriveVals(state, setState) {
     dictSearch: S.dictSearch, setDictSearch: (e) => setState({ dictSearch: e.target.value }),
     fieldRows, docRows, isDictDetail: !!dictDetail, dictDetail, dictSortCol,
     dictCountLabel: (S.dictTab === 'doctypes' ? docRows.length : fieldRows.length) + ' of ' + (S.dictTab === 'doctypes' ? dictDocs.length : dictFields.length),
-    addField: guard(() => { const id = 'f' + reqId(); setDF((fs) => prepend(fs, { id, name: '', description: '', bindings: [] })); setState({ dictView: 'cards', createdId: id, dictSort: { key: 'none', dir: 'asc' } }) }),
-    addDoc: guard(() => { const id = 'd' + reqId(); setDD((ds) => prepend(ds, { id, key: '', name: '', description: '' })); setState({ dictView: 'cards', createdId: id, dictSort: { key: 'none', dir: 'asc' } }) }),
+    addField: guard(() => { const id = uid('f'); setDF((fs) => prepend(fs, { id, name: '', description: '', bindings: [] })); setState({ dictView: 'cards', createdId: id, dictSort: { key: 'none', dir: 'asc' } }) }),
+    addDoc: guard(() => { const id = uid('d'); setDD((ds) => prepend(ds, { id, key: '', name: '', description: '' })); setState({ dictView: 'cards', createdId: id, dictSort: { key: 'none', dir: 'asc' } }) }),
 
     // Nav state
     navChecksBorder: section === 'checks' ? 'var(--me-blue)' : 'transparent', navChecksColor: section === 'checks' ? 'var(--me-ink)' : 'var(--me-grey-70)', navChecksWeight: section === 'checks' ? 700 : 500,
@@ -1053,13 +1142,13 @@ export function deriveVals(state, setState) {
     newCheck: guard(() => newCheck('requirement')),
 
     // Agents list
-    newAgent: guard(() => setState((s) => { const id = 'agent' + reqId(); const a = { id, name: 'New agent', cat: 'Uncategorised', status: 'Draft', statusTone: 'neutral', cov: '', covColor: 'var(--me-grey-70)', summary: 'What this agent reads.', eyebrow: '', description: '', domainId: '', owner: '', version: '', icon: 'bot', accent: '#525355', behavior: '', config: { tools: [] } }; return { extraAgents: [...s.extraAgents, a], section: 'agents', view: 'detail', activeAgentId: id, detailTab: 'checkpoints', panel: null } })),
+    newAgent: guard(() => setState((s) => { const id = uid('agent'); const a = { id, name: 'New agent', cat: 'Uncategorised', status: 'Draft', statusTone: 'neutral', cov: '', covColor: 'var(--me-grey-70)', summary: 'What this agent reads.', eyebrow: '', description: '', domainId: '', owner: '', version: '', icon: 'bot', accent: '#525355', behavior: '', config: { tools: [] } }; return { extraAgents: [...s.extraAgents, a], section: 'agents', view: 'detail', activeAgentId: id, detailTab: 'checkpoints', panel: null } })),
     agents: allAgents().filter((a) => !S.deletedAgentIds[a.id]).map((raw) => withEdits(raw)).map((a) => ({
       ...a,
       accentSoft: a.accent ? a.accent + '1A' : 'var(--me-grey-08)',
       cps: allChecks().filter((c) => placementOf(c).agentId === a.id).length,
       groups: S.agentGroups.filter((g) => g.agentId === a.id).length,
-      onOpen: () => setState({ section: 'agents', view: 'detail', activeAgentId: a.id, detailTab: 'checkpoints', panel: null }),
+      onOpen: () => confirmLeave(() => setState({ section: 'agents', view: 'detail', activeAgentId: a.id, detailTab: 'checkpoints', panel: null })),
       onDelete: () => requestConfirm({ title: 'Delete agent?', message: `“${a.name}” will be removed. Its checks return to the unassigned pool — they aren't deleted.`, confirmLabel: 'Delete agent', onConfirm: () => deleteAgent(a.id) }),
     })),
     // Active agent (drives the detail header + config tab)
@@ -1081,7 +1170,7 @@ export function deriveVals(state, setState) {
     listBg: S.listMode === 'list' ? 'var(--me-blue)' : '#fff', listFg: S.listMode === 'list' ? '#fff' : 'var(--me-grey-70)',
 
     // Add-case modal + agent detail controls
-    confirm: S.confirm ? { title: S.confirm.title, message: S.confirm.message, confirmLabel: S.confirm.confirmLabel, blocked: S.confirm.blocked, acknowledgeLabel: S.confirm.acknowledgeLabel, onCancel: () => setState({ confirm: null }), onConfirm: () => { const fn = S.confirm.onConfirm; setState({ confirm: null }); if (fn) fn() } } : null,
+    confirm: S.confirm ? { title: S.confirm.title, message: S.confirm.message, confirmLabel: S.confirm.confirmLabel, cancelLabel: S.confirm.cancelLabel, blocked: S.confirm.blocked, acknowledgeLabel: S.confirm.acknowledgeLabel, onCancel: () => setState({ confirm: null }), onConfirm: () => { const fn = S.confirm.onConfirm; setState({ confirm: null }); if (fn) fn() } } : null,
     addOpen: S.addOpen, openAdd: () => setState({ addOpen: true }), closeAdd: () => setState({ addOpen: false }), stop: (e) => { if (e && e.stopPropagation) e.stopPropagation() },
     agentActive: S.agentActive, toggleAgent: (v) => setState({ agentActive: v }),
     openTest: () => setState({ testOpen: true }), closeTest: () => setState({ testOpen: false }), testOpen: S.testOpen, phases,
@@ -1120,4 +1209,17 @@ export function deriveVals(state, setState) {
 let _seq = 1
 function reqId() {
   return _seq++
+}
+
+// Every id minted at runtime goes through here, and every one of them carries a
+// hyphen — which no seeded id does.
+//
+// This is not a style preference. `uid('f')` produced `f1` on the first
+// click, and `f1` is the seed's own "Expiry date": the new field and that one
+// then shared an id, so patching by id wrote to both and React saw a duplicate
+// key. Typing a name into the new field renamed a real one. The same collision
+// had already happened once with rule blocks (`g1`). Keeping the two id spaces
+// structurally disjoint is the only fix that does not rely on remembering.
+function uid(prefix) {
+  return `${prefix}-${reqId()}`
 }
