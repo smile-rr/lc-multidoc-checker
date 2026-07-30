@@ -1,3 +1,4 @@
+import Icon from '@shared/ds/Icon'
 import { ellipsis } from '@shared/ds/text'
 import DispositionChips from './DispositionChips'
 import { severityMeta, dispositionLabel } from '../state/severity'
@@ -5,7 +6,7 @@ import { severityMeta, dispositionLabel } from '../state/severity'
 // One finding in the review list. Severity leads, then where it came from, then
 // the officer's call if they have made one — so a scan down the list answers
 // "what still needs me?" without opening anything.
-export default function FindingCard({ finding, subtitle, selected, decision, onSelect, onDecide }) {
+export default function FindingCard({ finding, kind, subtitle, selected, decision, onSelect, onDecide }) {
   const sev = severityMeta(finding.severity)
   return (
     <div
@@ -26,7 +27,16 @@ export default function FindingCard({ finding, subtitle, selected, decision, onS
         <span style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.4, color: 'var(--me-ink)', textWrap: 'pretty', flex: 1, minWidth: 0 }}>{finding.title}</span>
         {/* The check that produced it — the reference an officer quotes. */}
         {finding.checkId ? (
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--me-grey-70)', whiteSpace: 'nowrap' }}>{finding.checkId}</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
+            {/* How it was settled. An officer's confidence in a finding should
+                differ by this, and so should the time they give it. */}
+            {kind ? (
+              <span title={kind === 'rule' ? 'Computed by a rule — arithmetic on extracted fields' : 'Read by an agent — a view formed against the presentation'} style={{ display: 'flex', color: kind === 'rule' ? 'var(--me-blue-deep)' : '#1F7A00' }}>
+                <Icon name={kind === 'rule' ? 'equal' : 'list-checks'} size={11} color="currentColor" />
+              </span>
+            ) : null}
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--me-grey-70)' }}>{finding.checkId}</span>
+          </span>
         ) : (
           <span title="No check covered this" style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: '#946400', whiteSpace: 'nowrap' }}>no check</span>
         )}

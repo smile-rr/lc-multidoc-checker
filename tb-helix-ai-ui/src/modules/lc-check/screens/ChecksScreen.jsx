@@ -42,11 +42,20 @@ import { useCase } from '../state/CaseContext'
 // everyone can read; put what experts need in the data.
 // ---------------------------------------------------------------------------
 //
-// The list takes the full width so the plan can be *overviewed* — one line per
-// check, the whole plan at once, rows comparable down a column. Selecting one
-// opens it beside the list rather than instead of it: reading the plan and
-// studying one check are different jobs, and the screen should not make you
-// choose between them.
+// The list changes shape according to whether it is the subject or the
+// navigation, because those want opposite things:
+//
+//   nothing selected  the plan *is* the subject. Full width, one line per check,
+//                     the whole plan at once and rows comparable down a column.
+//                     This is the "is the plan right, and what is missing" read.
+//   one selected      the plan becomes navigation. It shrinks to a rail and the
+//                     check gets the room, because now the question is about that
+//                     check and the answer is long — its conditions, the values it
+//                     read, the request that will be sent.
+//
+// Clicking a row is the whole gesture: it already says "I want to study this", so
+// a separate mode switch would be a second control for the same intent. Closing
+// the panel (or clicking the selected row again) gives the overview back.
 const COLS = {
   display: 'grid',
   gridTemplateColumns: '26px 96px minmax(0,1.4fr) minmax(0,1.9fr) minmax(0,0.9fr) 88px',
@@ -140,7 +149,7 @@ export default function ChecksScreen({ onOpenFinding }) {
       style={{
         padding: '16px 24px 28px',
         display: 'grid',
-        gridTemplateColumns: selected ? 'minmax(0,1fr) minmax(390px,430px)' : 'minmax(0,1fr)',
+        gridTemplateColumns: selected ? 'minmax(280px,340px) minmax(460px,1fr)' : 'minmax(0,1fr)',
         gap: 16,
         alignItems: 'start',
       }}
@@ -176,14 +185,16 @@ export default function ChecksScreen({ onOpenFinding }) {
           </div>
         )}
 
-        <div style={{ ...COLS, padding: '9px 16px', borderBottom: '1px solid var(--me-grey-15)' }}>
-          <span />
-          <Eyebrow size="sm">ID</Eyebrow>
-          <Eyebrow size="sm">Check</Eyebrow>
-          <Eyebrow size="sm">What it reads</Eyebrow>
-          <Eyebrow size="sm">Cited as</Eyebrow>
-          <Eyebrow size="sm">State</Eyebrow>
-        </div>
+        {!selected && (
+          <div style={{ ...COLS, padding: '9px 16px', borderBottom: '1px solid var(--me-grey-15)' }}>
+            <span />
+            <Eyebrow size="sm">ID</Eyebrow>
+            <Eyebrow size="sm">Check</Eyebrow>
+            <Eyebrow size="sm">What it reads</Eyebrow>
+            <Eyebrow size="sm">Cited as</Eyebrow>
+            <Eyebrow size="sm">State</Eyebrow>
+          </div>
+        )}
 
         {sections.map((sec) => (
           <div key={sec.key}>
@@ -195,15 +206,15 @@ export default function ChecksScreen({ onOpenFinding }) {
                 {sec.label}
               </Chip>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>{sec.count}</span>
-              <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>{sec.note}</span>
+              {!selected && <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>{sec.note}</span>}
               <div style={{ flex: 1 }} />
-              {sec.aside ? (
+              {sec.aside && !selected ? (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: sec.aside.warn ? '#946400' : 'var(--me-grey-70)', whiteSpace: 'nowrap' }}>
                   {sec.aside.warn ? <Icon name="circle-alert" size={12} color="currentColor" /> : null}
                   {sec.aside.text}
                 </span>
               ) : null}
-              {sec.policy && !executing ? (
+              {sec.policy && !executing && !selected ? (
                 <label
                   title="A critical failure on the figures refuses the presentation whatever the conditions say, so reading on may be spend for nothing"
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--me-grey)', cursor: 'pointer', whiteSpace: 'nowrap' }}
@@ -215,7 +226,7 @@ export default function ChecksScreen({ onOpenFinding }) {
             </div>
 
             {sec.checks.map((c) => (
-              <Row key={c.id} check={c} status={statusOf(c)} finding={findingFor(c)} on={c.id === selectedId} onSelect={() => pick(c.id)} />
+              <Row key={c.id} check={c} status={statusOf(c)} finding={findingFor(c)} on={c.id === selectedId} dense={!!selected} onSelect={() => pick(c.id)} />
             ))}
           </div>
         ))}
@@ -230,7 +241,7 @@ export default function ChecksScreen({ onOpenFinding }) {
               </span>
             </button>
             {showSkipped
-              ? skipped.map((c) => <Row key={c.id} check={c} status="skipped" finding={null} on={c.id === selectedId} onSelect={() => pick(c.id)} />)
+              ? skipped.map((c) => <Row key={c.id} check={c} status="skipped" finding={null} on={c.id === selectedId} dense={!!selected} onSelect={() => pick(c.id)} />)
               : null}
           </div>
         ) : null}
@@ -250,7 +261,7 @@ export default function ChecksScreen({ onOpenFinding }) {
   )
 }
 
-function Row({ check, status, finding, on, onSelect }) {
+function Row({ check, status, finding, on, dense, onSelect }) {
   const sev = finding ? severityMeta(finding.severity) : null
   const src = SOURCE_META[check.source] ?? SOURCE_META.credit
   const rd = check.ruleDef
@@ -278,6 +289,41 @@ function Row({ check, status, finding, on, onSelect }) {
       ? creditFieldsOf(check).map((t) => `:${t}:`).join(' ')
       : 'the whole presentation'
 
+  if (dense) {
+    return (
+      <button
+        onClick={onSelect}
+        title={reads}
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 9,
+          width: '100%',
+          textAlign: 'left',
+          padding: '9px 14px',
+          border: 'none',
+          borderBottom: '1px solid var(--me-grey-08)',
+          borderLeft: `2px solid ${on ? 'var(--me-blue)' : 'transparent'}`,
+          background: on ? 'var(--me-blue-20)' : '#fff',
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+        }}
+      >
+        <span style={{ flex: '0 0 15px', height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <StatusIcon status={status} finding={finding} />
+        </span>
+        <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--me-grey-70)', flexShrink: 0 }}>{check.id}</span>
+            <span style={{ ...ellipsis, fontSize: 12.5, fontWeight: on ? 600 : 400, color: on ? 'var(--me-blue-deep)' : muted ? 'var(--me-grey-70)' : 'var(--me-ink)' }}>{check.name}</span>
+          </span>
+          <span style={{ ...ellipsis, fontSize: 11, color: 'var(--me-grey-70)' }}>{reads}</span>
+        </span>
+        <StateLabel check={check} status={status} finding={finding} sev={sev} rd={rd} needsField={needsField} compact />
+      </button>
+    )
+  }
+
   return (
     <button
       onClick={onSelect}
@@ -296,15 +342,7 @@ function Row({ check, status, finding, on, onSelect }) {
       }}
     >
       <span style={{ display: 'flex', justifyContent: 'center' }}>
-        {status === 'running' ? (
-          <Spinner />
-        ) : (
-          <Icon
-            name={status === 'done' ? 'check' : status === 'skipped' ? 'minus' : 'circle-dashed'}
-            size={14}
-            color={status === 'done' ? (finding && finding.severity !== 'clean' ? 'var(--status-warning)' : 'var(--status-success)') : 'var(--me-grey-50)'}
-          />
-        )}
+        <StatusIcon status={status} finding={finding} />
       </span>
 
       <span style={{ ...ellipsis, fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--me-grey-70)' }}>{check.id}</span>
@@ -319,21 +357,31 @@ function Row({ check, status, finding, on, onSelect }) {
         {refs.join(', ') || src.cite}
       </span>
 
-      <span style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
-        {needsField ? (
-          <span title={`Not extracted: ${rd.missing.map((m) => `${m.field} @ ${m.doc}`).join(', ')}`} style={{ color: '#946400' }}>needs a field</span>
-        ) : check.notCovered ? (
-          <span title="No rule covers this condition" style={{ color: '#946400' }}>not covered</span>
-        ) : sev && finding.severity !== 'clean' ? (
-          <span style={{ color: sev.text }}>{finding.severity === 'discrepancy' ? 'discrepancy' : 'to decide'}</span>
-        ) : status === 'done' ? (
-          <span style={{ color: 'var(--status-success)' }}>passed</span>
-        ) : (
-          <span style={{ color: 'var(--me-grey-50)' }}>{status}</span>
-        )}
-      </span>
+      <StateLabel check={check} status={status} finding={finding} sev={sev} rd={rd} needsField={needsField} />
     </button>
   )
+}
+
+function StatusIcon({ status, finding }) {
+  if (status === 'running') return <Spinner />
+  return (
+    <Icon
+      name={status === 'done' ? 'check' : status === 'skipped' ? 'minus' : 'circle-dashed'}
+      size={14}
+      color={status === 'done' ? (finding && finding.severity !== 'clean' ? 'var(--status-warning)' : 'var(--status-success)') : 'var(--me-grey-50)'}
+    />
+  )
+}
+
+// The one column that must never be dropped for space: it is the difference
+// between "we checked and it passed" and "we could not check".
+function StateLabel({ check, status, finding, sev, rd, needsField, compact }) {
+  const base = { fontSize: compact ? 10.5 : 11, whiteSpace: 'nowrap', flexShrink: 0, lineHeight: '16px' }
+  if (needsField) return <span title={`Not extracted: ${rd.missing.map((m) => `${m.field} @ ${m.doc}`).join(', ')}`} style={{ ...base, color: '#946400' }}>needs a field</span>
+  if (check.notCovered) return <span title="No rule covers this condition" style={{ ...base, color: '#946400' }}>not covered</span>
+  if (sev && finding.severity !== 'clean') return <span style={{ ...base, color: sev.text }}>{finding.severity === 'discrepancy' ? 'discrepancy' : 'to decide'}</span>
+  if (status === 'done') return <span style={{ ...base, color: 'var(--status-success)' }}>passed</span>
+  return <span style={{ ...base, color: 'var(--me-grey-50)' }}>{compact ? '' : status}</span>
 }
 
 /** The credit fields a requirement is handed, read off its own rule text. */

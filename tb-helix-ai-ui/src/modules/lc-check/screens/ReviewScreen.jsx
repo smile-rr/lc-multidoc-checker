@@ -21,6 +21,19 @@ import { useCase } from '../state/CaseContext'
 // Findings the engine could not cover come first, under their own heading. That
 // ordering is the point: an officer must not be able to work top-to-bottom and
 // come away thinking everything was checked. What we didn't check leads.
+//
+// The plan's vocabulary carries through: a finding inherits the **kind** of the
+// check that produced it, and "By how it was settled" is a grouping here for the
+// same reason it is the grouping there — it needs no expertise to read and it does
+// not change shape from one credit to the next. It is also the most useful sweep
+// an officer has: findings a rule produced are arithmetic and can be agreed or
+// rejected quickly; findings an agent formed a view on are the ones worth the
+// reading time. Grouping by it puts the fast work in one place.
+//
+// This screen stays rail + content rather than a full-width table, because the job
+// is different: on the plan you ask "is this right and what is missing", which is a
+// question about the whole list; here you work findings one at a time and each one
+// is long.
 export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }) {
   const { data, visible, officer, actions } = useCase()
   const [grouping, setGrouping] = useState('area')
@@ -36,20 +49,27 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
     const manual = attention.filter((f) => f.severity === 'manual')
     const rest = attention.filter((f) => f.severity !== 'manual')
 
+    const kindOf = (f) => data.checks.find((c) => c.id === f.checkId)?.kind ?? null
+
     const body =
       grouping === 'doc'
         ? data.documents
             .map((d) => ({ label: d.docType, items: rest.filter((f) => f.docId === d.id) }))
             .filter((g) => g.items.length)
-        : data.areas
-            .map((a) => ({ label: a.name, items: rest.filter((f) => f.areaId === a.id) }))
-            .filter((g) => g.items.length)
+        : grouping === 'kind'
+          ? [
+              { label: 'Computed by a rule', note: 'Arithmetic on extracted fields — the same answer every time.', items: rest.filter((f) => kindOf(f) === 'rule') },
+              { label: 'Read by an agent', note: 'A view formed against the presentation, open to question.', items: rest.filter((f) => kindOf(f) !== 'rule') },
+            ].filter((g) => g.items.length)
+          : data.areas
+              .map((a) => ({ label: a.name, items: rest.filter((f) => f.areaId === a.id) }))
+              .filter((g) => g.items.length)
 
     return [
       ...(manual.length ? [{ label: 'Not Covered', items: manual }] : []),
       ...body,
     ]
-  }, [visible.attention, grouping, data.documents, data.areas])
+  }, [visible.attention, grouping, data.documents, data.areas, data.checks])
 
   const counts = {
     discrepancy: visible.attention.filter((f) => f.severity === 'discrepancy').length,
@@ -99,6 +119,7 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
           onChange={setGrouping}
           items={[
             { id: 'area', label: 'By review area' },
+            { id: 'kind', label: 'By how it was settled' },
             { id: 'doc', label: 'By document' },
           ]}
         />
@@ -109,13 +130,17 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
           {groups.map((g) => (
             <div key={g.label} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '2px 2px 0' }}>
-                <Eyebrow size="sm">{g.label}</Eyebrow>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--me-grey-70)' }}>{plural(g.items.length, 'item')}</span>
+                <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
+                  <Eyebrow size="sm">{g.label}</Eyebrow>
+                  {g.note ? <span style={{ fontSize: 11, color: 'var(--me-grey-70)' }}>{g.note}</span> : null}
+                </span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--me-grey-70)', flexShrink: 0 }}>{plural(g.items.length, 'item')}</span>
               </div>
               {g.items.map((f) => (
                 <FindingCard
                   key={f.id}
                   finding={f}
+                  kind={data.checks.find((c) => c.id === f.checkId)?.kind ?? null}
                   subtitle={subtitleFor(f)}
                   selected={f.id === selected.id}
                   decision={officer.decisions[f.id]}
