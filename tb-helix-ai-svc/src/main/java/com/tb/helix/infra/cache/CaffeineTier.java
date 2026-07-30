@@ -1,8 +1,9 @@
 package com.tb.helix.infra.cache;
 
+import com.tb.helix.infra.config.CacheProperties;
+
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import com.tb.helix.infra.config.CacheProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;

@@ -1,4 +1,4 @@
-package com.tb.helix.lccheck.domain.document;
+package com.tb.helix.lccheck.types.document;
 
 import java.util.List;
 

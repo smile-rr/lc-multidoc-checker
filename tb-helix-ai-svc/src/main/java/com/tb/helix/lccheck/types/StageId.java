@@ -1,4 +1,4 @@
-package com.tb.helix.lccheck.domain;
+package com.tb.helix.lccheck.types;
 
 import java.util.List;
 import java.util.Optional;
@@ -11,11 +11,11 @@ import java.util.Optional;
  * is a regulated examination, and a pipeline that ran to completion on upload would be
  * presenting conclusions nobody chose to reach.
  *
- * <p>In {@code domain} rather than beside the runner because it is a noun, not part of the
- * contract: a stage name appears in a URL, in a database column, in a clear-downstream call.
- * {@code Stage}, {@code StageContext} and {@code StageOutcome} stayed in {@code pipeline} —
- * those three are one contract split across three files, and only the runner and the stages
- * themselves ever speak it.
+ * <p>A type rather than part of the pipeline's contract: a stage name is a noun that appears
+ * in a URL, in a database column and in a clear-downstream call, so half the codebase names
+ * it. {@code Stage} and {@code StageContext} are the contract and stay in {@code pipeline}
+ * with the runner that speaks it. {@code StageOutcome} sits in {@code types.pipeline} —
+ * pure data, mirroring the behaviour package it serves.
  *
  * <p>{@link #GATE} is a stage in the code and a step on the wire, but it is triggered by
  * the same officer action as {@link #PLAN} — so the workbench keeps three run buttons

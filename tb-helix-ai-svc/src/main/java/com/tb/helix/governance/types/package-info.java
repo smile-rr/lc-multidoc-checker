@@ -11,9 +11,14 @@
  * models; neither has any business knowing what a discrepancy is. But a documentary credit
  * is exactly what both business modules are about, and they must agree on its terms.
  *
- * <p>It holds vocabulary and nothing else — enums, codes, and the derivations that follow
- * from them. No services, no state, no dependencies. Named for what it is so that it
- * resists becoming the place things go when nobody knows where they belong: you cannot
- * argue a repository into something called vocabulary.
+ * <p>A <b>shared kernel</b> in the DDD sense, and treated with the suspicion that deserves:
+ * data only, no services, no state, no dependencies, and a change here is a change to two
+ * modules at once. It stays small or it stops being a kernel and becomes a junk drawer.
+ *
+ * <p>It used to be called {@code domain} and held {@code CheckCatalog} as well. That was one
+ * package pretending to be one thing: a vocabulary every module may read, and a service
+ * contract only lc-check calls. Splitting them means the import tells you which you touched
+ * — {@code governance.types} is vocabulary, {@code governance.spi} is a call into another
+ * module.
  */
-package com.tb.helix.governance.domain;
+package com.tb.helix.governance.types;

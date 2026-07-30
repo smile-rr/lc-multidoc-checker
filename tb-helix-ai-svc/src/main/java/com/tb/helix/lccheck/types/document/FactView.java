@@ -1,4 +1,4 @@
-package com.tb.helix.lccheck.domain.document;
+package com.tb.helix.lccheck.types.document;
 
 /**
  * A value read off a document, with its provenance.

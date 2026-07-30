@@ -1,6 +1,7 @@
 package com.tb.helix.lccheck.pipeline;
 
-import com.tb.helix.lccheck.domain.StageId;
+import com.tb.helix.lccheck.types.StageId;
+import com.tb.helix.lccheck.types.pipeline.StageOutcome;
 
 /**
  * One step of an examination.

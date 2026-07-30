@@ -1,10 +1,12 @@
 package com.tb.helix.lccheck.stage.gate;
 
-import com.tb.helix.lccheck.domain.StageId;
-import com.tb.helix.lccheck.persistence.Rows;
-import com.tb.helix.governance.domain.CheckCatalog;
+import com.tb.helix.governance.spi.CheckCatalog;
 import com.tb.helix.lccheck.persistence.CaseStore;
+import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.pipeline.*;
+import com.tb.helix.lccheck.types.StageId;
+import com.tb.helix.lccheck.types.pipeline.StageOutcome;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;

@@ -1,4 +1,4 @@
-package com.tb.helix.lccheck.pipeline;
+package com.tb.helix.lccheck.types.pipeline;
 
 /**
  * How a stage ended.

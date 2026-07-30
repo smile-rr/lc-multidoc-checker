@@ -166,22 +166,33 @@ class ArchitectureTest {
     }
 
     @Test
-    @DisplayName("lc-check sees governance's model, not its machinery")
+    @DisplayName("lc-check sees governance's published surface, not its machinery")
     void lcCheckSeesOnlyTheGovernanceModel() {
         // The dependency is real — an examination runs authored rules — so it is declared
-        // rather than hidden behind a port. What is bounded is its width: lc-check reads
-        // `governance.domain` and nothing else, so governance can change how it stores or
-        // serves a check without an examination noticing, and could move behind a network
-        // boundary by reimplementing one interface.
+        // rather than hidden. What is bounded is its width: lc-check may read exactly two
+        // packages, and both are published on purpose.
+        //
+        //   governance.types   the shared vocabulary — severity, tier, doc type
+        //   governance.spi     the contract governance offers callers (Open Host Service)
+        //
+        // Everything else is governance's own business. It can change how a check is
+        // stored, authored or served without an examination noticing, and could move behind
+        // a network boundary by reimplementing one interface.
+        //
+        // Stated as a whitelist rather than a blacklist deliberately: a blacklist has to be
+        // edited every time governance grows a package, and the edit that is forgotten is
+        // the one that opens the boundary.
         noClasses()
                 .that().resideInAPackage("com.tb.helix.lccheck..")
-                .should().dependOnClassesThat().resideInAnyPackage(
-                        "com.tb.helix.governance.api..",
-                        "com.tb.helix.governance.persistence..",
-                        "com.tb.helix.governance.service..",
-                        "com.tb.helix.governance.seed..")
-                .because("an examination reads the rulebook's model; how it is authored, "
-                        + "stored or served is none of its business")
+                .should().dependOnClassesThat(
+                        com.tngtech.archunit.base.DescribedPredicate.describe(
+                                "are governance internals",
+                                (com.tngtech.archunit.core.domain.JavaClass c) ->
+                                        c.getPackageName().startsWith("com.tb.helix.governance")
+                                        && !c.getPackageName().startsWith("com.tb.helix.governance.types")
+                                        && !c.getPackageName().startsWith("com.tb.helix.governance.spi")))
+                .because("an examination reads the rulebook's published surface; how it is "
+                        + "authored, stored or served is none of its business")
                 .allowEmptyShould(true)
                 .check(classes);
 
@@ -189,6 +200,98 @@ class ArchitectureTest {
                 .that().resideInAPackage("com.tb.helix.governance..")
                 .should().dependOnClassesThat().resideInAPackage("com.tb.helix.lccheck..")
                 .because("governance authors rules; it has no business knowing they get executed")
+                .allowEmptyShould(true)
+                .check(classes);
+    }
+
+    @Test
+    @DisplayName("types are leaves — they hold data and depend on nothing that acts")
+    void typesStayLeaves() {
+        // The rule that keeps `types` from becoming another word for `misc`. A type that can
+        // reach a service will eventually call one, and then the data model has behaviour in
+        // it that nobody expected to run.
+        //
+        // Note what is NOT banned: a type may depend on another type, including one in
+        // another module's `types` — that is what a shared vocabulary is for.
+        noClasses()
+                .that().resideInAnyPackage(
+                        "com.tb.helix.lccheck.types..",
+                        "com.tb.helix.governance.types..")
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        "com.tb.helix.lccheck.service..",
+                        "com.tb.helix.lccheck.stage..",
+                        "com.tb.helix.lccheck.pipeline..",
+                        "com.tb.helix.lccheck.persistence..",
+                        "com.tb.helix.lccheck.api..",
+                        "com.tb.helix.governance.persistence..",
+                        "com.tb.helix.governance.api..",
+                        "com.tb.helix.governance.seed..",
+                        "com.tb.helix.infra..",
+                        "com.tb.helix.harness..")
+                .because("a type reports state; the moment it can reach something that acts, "
+                        + "it stops being one")
+                .allowEmptyShould(true)
+                .check(classes);
+    }
+
+    @Test
+    @DisplayName("types carry no framework annotations")
+    void typesAreFrameworkFree() {
+        // A record with @Component on it is a bean wearing a type's clothes. This is the
+        // cheapest possible check for "did this data class quietly become infrastructure",
+        // and it is the one that catches the mistake on the day it is made rather than the
+        // day someone tries to serialise it, move it, or extract the module.
+        noClasses()
+                .that().resideInAnyPackage(
+                        "com.tb.helix.lccheck.types..",
+                        "com.tb.helix.governance.types..")
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        "org.springframework..",
+                        "jakarta.persistence..",
+                        "com.fasterxml.jackson..")
+                .because("types are plain data — no Spring, no JPA, and no serialiser "
+                        + "annotations dictating a wire format from inside the model")
+                .allowEmptyShould(true)
+                .check(classes);
+    }
+
+    @Test
+    @DisplayName("the store is the only way to the database")
+    void persistenceIsReachedThroughItsStore() {
+        // `persistence` owns SQL and column names. A stage that imported a row mapper would
+        // be coupled to the schema, and a column rename would ripple into the examination —
+        // so only the layers that legitimately orchestrate may name the store at all.
+        //
+        // api is excluded by `controllersDoNotReachPastTheirService` below; this states the
+        // positive form so a new package cannot quietly gain access by not being listed.
+        noClasses()
+                .that().resideInAPackage("com.tb.helix.lccheck..")
+                .and().resideOutsideOfPackages(
+                        "com.tb.helix.lccheck.persistence..",
+                        "com.tb.helix.lccheck.service..",
+                        "com.tb.helix.lccheck.stage..",
+                        "com.tb.helix.lccheck.pipeline..")
+                .should().dependOnClassesThat().resideInAPackage("com.tb.helix.lccheck.persistence..")
+                .because("column names are the schema's business; everything else goes "
+                        + "through the store")
+                .allowEmptyShould(true)
+                .check(classes);
+    }
+
+    @Test
+    @DisplayName("wire formats stay at the edge")
+    void dtosDoNotLeakInward() {
+        // A DTO is shaped by an HTTP API's history and its compatibility promises. Let one
+        // inward and a version bump becomes an edit to a stage. The controller and the
+        // service that assembles for it are the only things that should ever name one.
+        noClasses()
+                .that().resideInAnyPackage(
+                        "com.tb.helix.lccheck.stage..",
+                        "com.tb.helix.lccheck.pipeline..",
+                        "com.tb.helix.lccheck.persistence..",
+                        "com.tb.helix.lccheck.types..")
+                .should().dependOnClassesThat().resideInAPackage("com.tb.helix.lccheck.api.dto..")
+                .because("a request body is the API's shape, not the examination's")
                 .allowEmptyShould(true)
                 .check(classes);
     }
@@ -225,7 +328,13 @@ class ArchitectureTest {
         // nothing and passes. Packages join this list as their milestone lands, so a red
         // build here means "unwritten", which is what it should mean.
         for (String pkg : new String[] {
-                "com.tb.helix.infra", "com.tb.helix.harness", "com.tb.helix.app" }) {
+                "com.tb.helix.infra", "com.tb.helix.harness", "com.tb.helix.app",
+                // Named by the rules above. A typo in one of these turns a boundary check
+                // into a rule that matches nothing and passes, which is worse than no rule
+                // at all — it reads green.
+                "com.tb.helix.lccheck.types", "com.tb.helix.lccheck.api.dto",
+                "com.tb.helix.lccheck.persistence", "com.tb.helix.lccheck.stage",
+                "com.tb.helix.governance.types", "com.tb.helix.governance.spi" }) {
             long count = classes.stream().filter(c -> c.getPackageName().startsWith(pkg)).count();
             org.assertj.core.api.Assertions.assertThat(count)
                     .as("package %s holds no classes — either it is unwritten, or the package "

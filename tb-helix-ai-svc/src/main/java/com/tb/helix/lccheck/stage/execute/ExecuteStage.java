@@ -1,19 +1,21 @@
 package com.tb.helix.lccheck.stage.execute;
 
-import com.tb.helix.lccheck.domain.StageId;
+import com.tb.helix.governance.spi.CheckCatalog;
+import com.tb.helix.governance.types.DocType;
 import com.tb.helix.harness.llm.LlmGateway;
 import com.tb.helix.harness.llm.LlmRole;
 import com.tb.helix.harness.llm.text.TextRequest;
-import com.tb.helix.governance.domain.DocType;
-import com.tb.helix.lccheck.persistence.Rows;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
 import com.tb.helix.infra.stream.HelixEvent;
-import com.tb.helix.governance.domain.CheckCatalog;
 import com.tb.helix.lccheck.persistence.CaseStore;
+import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.pipeline.*;
+import com.tb.helix.lccheck.types.StageId;
+import com.tb.helix.lccheck.types.pipeline.StageOutcome;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;

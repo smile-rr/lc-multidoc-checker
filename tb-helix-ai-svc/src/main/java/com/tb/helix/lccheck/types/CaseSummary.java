@@ -1,4 +1,4 @@
-package com.tb.helix.lccheck.domain;
+package com.tb.helix.lccheck.types;
 
 /**
  * One row of the cases list.

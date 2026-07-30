@@ -1,4 +1,4 @@
-package com.tb.helix.lccheck.domain.examination;
+package com.tb.helix.lccheck.types.examination;
 
 /**
  * Who can answer for a check.

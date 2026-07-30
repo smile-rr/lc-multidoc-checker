@@ -3,10 +3,11 @@ package com.tb.helix.lccheck.stage.intake;
 import com.tb.helix.harness.llm.LlmGateway;
 import com.tb.helix.harness.llm.LlmRole;
 import com.tb.helix.harness.llm.text.TextRequest;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;

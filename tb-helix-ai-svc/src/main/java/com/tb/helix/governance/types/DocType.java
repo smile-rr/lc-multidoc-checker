@@ -1,4 +1,4 @@
-package com.tb.helix.governance.domain;
+package com.tb.helix.governance.types;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

@@ -1,4 +1,4 @@
-package com.tb.helix.governance.domain;
+package com.tb.helix.governance.types;
 
 /**
  * How a check reaches its answer, escalating in cost and autonomy.

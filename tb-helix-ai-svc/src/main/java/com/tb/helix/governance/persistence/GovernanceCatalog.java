@@ -1,7 +1,8 @@
 package com.tb.helix.governance.persistence;
 
+import com.tb.helix.governance.spi.CheckCatalog;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tb.helix.governance.domain.CheckCatalog;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 

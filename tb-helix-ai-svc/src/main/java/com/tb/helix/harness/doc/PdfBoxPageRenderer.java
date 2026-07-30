@@ -3,6 +3,7 @@ package com.tb.helix.harness.doc;
 import com.tb.helix.infra.blob.BlobStore;
 import com.tb.helix.infra.cache.CacheTier;
 import com.tb.helix.infra.error.DocumentException;
+
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
@@ -10,7 +11,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import javax.imageio.ImageIO;
 import java.awt.Image;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import javax.imageio.ImageIO;
 
 /**
  * PDF pages to PNG, for a vision model to read.

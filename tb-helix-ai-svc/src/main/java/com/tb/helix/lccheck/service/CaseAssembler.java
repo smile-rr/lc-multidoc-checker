@@ -1,10 +1,11 @@
 package com.tb.helix.lccheck.service;
 
-import com.tb.helix.lccheck.domain.*;
-import com.tb.helix.lccheck.domain.document.*;
-import com.tb.helix.lccheck.domain.examination.*;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.stage.intake.SwiftMessage;
+import com.tb.helix.lccheck.types.*;
+import com.tb.helix.lccheck.types.document.*;
+import com.tb.helix.lccheck.types.examination.*;
+
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;

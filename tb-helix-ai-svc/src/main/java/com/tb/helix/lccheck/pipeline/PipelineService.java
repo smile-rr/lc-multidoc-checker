@@ -1,11 +1,13 @@
 package com.tb.helix.lccheck.pipeline;
 
-import com.tb.helix.lccheck.domain.StageId;
 import com.tb.helix.infra.error.ConflictException;
 import com.tb.helix.infra.error.NotFoundException;
 import com.tb.helix.infra.stream.EventBus;
 import com.tb.helix.infra.stream.HelixEvent;
 import com.tb.helix.lccheck.persistence.CaseStore;
+import com.tb.helix.lccheck.types.StageId;
+import com.tb.helix.lccheck.types.pipeline.StageOutcome;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;

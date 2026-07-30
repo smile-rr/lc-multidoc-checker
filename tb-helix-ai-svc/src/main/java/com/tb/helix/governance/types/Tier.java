@@ -1,4 +1,4 @@
-package com.tb.helix.governance.domain;
+package com.tb.helix.governance.types;
 
 /**
  * How much to trust an answer, and what it cost to get.

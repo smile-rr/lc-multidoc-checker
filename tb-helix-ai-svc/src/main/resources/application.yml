@@ -251,17 +251,16 @@ helix:
       # Hard cap on an agentic rule's tool-calling turns. A per-rule
       # max_iterations may lower this; nothing raises it.
       max-iterations: 3
-    presets:
-      dir: ${PRESETS_DIR:${user.dir}/../test/cases}
-      max-count: 3
 
   # --- Governance ---------------------------------------------------------
   governance:
     seed:
-      # Per-table, only when empty. Hand-authored rows carry seeded=false and
-      # survive; a reseed that overwrote them would delete a person's work.
+      # The catalogue this service starts with — its own, not a copy of anything
+      # the UI renders. Per-table, only when empty: hand-authored rows carry
+      # seeded=false and survive, because a reseed that overwrote them would
+      # delete a person's work.
       enabled: true
-      resource: classpath:seed/governance-seed.json
+      resource: classpath:seed/initial-catalogue.json
 
 # ============================================================================
 # Platform

@@ -1,4 +1,4 @@
-package com.tb.helix.governance.domain;
+package com.tb.helix.governance.spi;
 
 import java.util.List;
 

@@ -1,9 +1,11 @@
 package com.tb.helix.app;
 
 import com.tb.helix.infra.error.HelixException;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -41,6 +43,20 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> unhandled(Exception e) {
+        // Spring's own failures about the request itself — no such endpoint, wrong method,
+        // unsupported media type, a missing parameter — all implement ErrorResponse and
+        // already carry the status Spring chose. Reported as that status rather than as a
+        // 500, because a caller told "something went wrong" goes looking for a server fault
+        // over what is usually a typo in a URL.
+        //
+        // Branched here rather than given its own @ExceptionHandler because ErrorResponse is
+        // an interface and not a Throwable — the annotation will not take it, and listing
+        // the dozen concrete subclasses instead is a list that goes stale.
+        if (e instanceof ErrorResponse typed) {
+            String reason = e.getMessage() == null ? "The request did not match an endpoint." : e.getMessage();
+            log.warn("{} → {}", typed.getStatusCode(), reason);
+            return ResponseEntity.status(typed.getStatusCode()).body(body("bad_request", reason));
+        }
         log.error("Unhandled failure", e);
         return ResponseEntity.internalServerError()
                 .body(body("internal_error", "Something went wrong. The failure has been logged."));

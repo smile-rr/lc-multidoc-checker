@@ -1,16 +1,17 @@
 package com.tb.helix.lccheck.service;
 
+import com.tb.helix.harness.doc.PageRenderer;
+import com.tb.helix.infra.blob.BlobStore;
+import com.tb.helix.infra.error.NotFoundException;
+import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.pipeline.PipelineService;
 import com.tb.helix.lccheck.stage.intake.IntakeStage;
 import com.tb.helix.lccheck.stage.intake.SwiftReader;
-import com.tb.helix.infra.blob.BlobStore;
-import com.tb.helix.infra.error.NotFoundException;
-import com.tb.helix.harness.doc.PageRenderer;
-import com.tb.helix.lccheck.domain.*;
-import com.tb.helix.lccheck.domain.document.*;
-import com.tb.helix.lccheck.domain.examination.*;
-import com.tb.helix.lccheck.persistence.CaseStore;
-import com.tb.helix.lccheck.domain.StageId;
+import com.tb.helix.lccheck.types.*;
+import com.tb.helix.lccheck.types.StageId;
+import com.tb.helix.lccheck.types.document.*;
+import com.tb.helix.lccheck.types.examination.*;
+
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;

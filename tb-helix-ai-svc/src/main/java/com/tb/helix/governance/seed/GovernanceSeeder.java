@@ -1,10 +1,12 @@
 package com.tb.helix.governance.seed;
 
+import com.tb.helix.governance.persistence.GovernanceStore;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tb.helix.governance.persistence.GovernanceStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.ResourceLoader;
@@ -13,10 +15,18 @@ import org.springframework.stereotype.Component;
 import java.util.*;
 
 /**
- * First boot, from the same seed file the UI's mock reads.
+ * The rulebook this service starts with.
  *
- * <p>One description of the world rather than two that drift: {@code seed.json} is the
- * fixture the governance UI renders under mock and the rulebook this service starts with.
+ * <p>{@code initial-catalogue.json} is <b>the backend's</b> content — the checks, fields,
+ * doc types and articles an empty deployment needs in order to examine anything at all. An
+ * unseeded catalogue is not a smaller product; it is a service that plans zero checks and
+ * reports every presentation clean.
+ *
+ * <p>It is deliberately <em>not</em> the UI's mock fixture, though it was first copied from
+ * it. Sharing one file across the two looked like "one description of the world" and was
+ * really an unenforced promise: nothing failed when they diverged, and nothing would have
+ * told anybody. The UI's fixtures are the design — what a check looks like on screen — and
+ * they belong to the UI. This is production data, and it belongs here.
  *
  * <p>Runs only when the catalogue is empty. A reseed that overwrote hand-authored rows
  * would delete somebody's afternoon, which is why {@code seeded} exists on a dictionary
@@ -31,11 +41,15 @@ public class GovernanceSeeder implements ApplicationRunner {
     private final GovernanceStore store;
     private final ObjectMapper json;
     private final ResourceLoader resources;
+    private final String resource;
 
-    public GovernanceSeeder(GovernanceStore store, ObjectMapper json, ResourceLoader resources) {
+    public GovernanceSeeder(GovernanceStore store, ObjectMapper json, ResourceLoader resources,
+                            @Value("${helix.governance.seed.resource:classpath:seed/initial-catalogue.json}")
+                            String resource) {
         this.store = store;
         this.json = json;
         this.resources = resources;
+        this.resource = resource;
     }
 
     @Override
@@ -44,14 +58,14 @@ public class GovernanceSeeder implements ApplicationRunner {
             log.info("Governance catalogue already populated — not seeding");
             return;
         }
-        try (var in = resources.getResource("classpath:seed/governance-seed.json").getInputStream()) {
+        try (var in = resources.getResource(resource).getInputStream()) {
             JsonNode seed = json.readTree(in);
             seedDocTypes(seed);
             seedFields(seed);
             seedLibrary(seed);
             seedAgents(seed);
             seedChecks(seed);
-            log.info("Seeded governance catalogue: {} checks", store.countChecks());
+            log.info("Seeded governance catalogue from {}: {} checks", resource, store.countChecks());
         } catch (Exception e) {
             // A service that will not start because a seed file moved is worse than one
             // that starts empty and says so.

@@ -1,4 +1,4 @@
-package com.tb.helix.lccheck.domain;
+package com.tb.helix.lccheck.types;
 
 /**
  * What the credit says, as the workbench shows it.

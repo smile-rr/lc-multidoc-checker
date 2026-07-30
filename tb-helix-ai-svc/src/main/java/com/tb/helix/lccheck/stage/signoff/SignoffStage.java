@@ -1,8 +1,10 @@
 package com.tb.helix.lccheck.stage.signoff;
 
-import com.tb.helix.lccheck.domain.StageId;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.pipeline.*;
+import com.tb.helix.lccheck.types.StageId;
+import com.tb.helix.lccheck.types.pipeline.StageOutcome;
+
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;

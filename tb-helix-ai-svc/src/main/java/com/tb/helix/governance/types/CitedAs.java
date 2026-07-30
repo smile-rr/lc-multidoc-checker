@@ -1,4 +1,4 @@
-package com.tb.helix.governance.domain;
+package com.tb.helix.governance.types;
 
 /**
  * What a check is answerable to — the "Cited as" column.
