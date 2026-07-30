@@ -2,6 +2,7 @@ package com.tb.helix.governance.seed;
 
 import com.tb.helix.governance.persistence.GovernanceStore;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -12,31 +13,47 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Component;
 
-import java.util.*;
+import java.util.List;
+import java.util.Map;
 
 /**
  * The rulebook this service starts with.
  *
- * <p>{@code initial-catalogue.json} is <b>the backend's</b> content — the checks, fields,
- * doc types and articles an empty deployment needs in order to examine anything at all. An
- * unseeded catalogue is not a smaller product; it is a service that plans zero checks and
- * reports every presentation clean.
+ * <p>{@code initial-catalogue.json} is production data: the checks, fields, doc types and
+ * articles an empty deployment needs in order to examine anything at all. An unseeded
+ * catalogue is not a smaller product — it is a service that plans zero checks and reports
+ * every presentation clean.
  *
- * <p>It is deliberately <em>not</em> the UI's mock fixture, though it was first copied from
- * it. Sharing one file across the two looked like "one description of the world" and was
- * really an unenforced promise: nothing failed when they diverged, and nothing would have
- * told anybody. The UI's fixtures are the design — what a check looks like on screen — and
- * they belong to the UI. This is production data, and it belongs here.
- *
- * <p>Runs only when the catalogue is empty. A reseed that overwrote hand-authored rows
+ * <p>Runs once, only when the catalogue is empty. A reseed that overwrote hand-authored rows
  * would delete somebody's afternoon, which is why {@code seeded} exists on a dictionary
- * field and why this checks before writing rather than relying on upserts to be harmless.
+ * field and why this checks before writing rather than trusting upserts to be harmless.
+ *
+ * <h2>Why there is no mapping code here</h2>
+ *
+ * <p>This class used to translate: {@code key} became {@code code}, {@code cat} became
+ * {@code category}, a check's fields came from one map and its rule from another, document
+ * <em>labels</em> were looked up to find document <em>codes</em>, and {@code citedAs} was not
+ * in the file at all — it was the string {@code "practice"}, in Java. That is data living in
+ * code, and it means changing the seed needs a rebuild and a Java reviewer.
+ *
+ * <p>All of it existed for one reason: the file had been copied from the UI's mock fixture,
+ * so it was shaped for a React screen rather than for these tables. Once it became the
+ * backend's own file, the shape could be the schema's, and the translation had nothing left
+ * to do.
+ *
+ * <p>The file now speaks the same vocabulary as {@link GovernanceStore} — which is also the
+ * vocabulary of the authoring API, since the controllers hand it the request body directly.
+ * So a seed entry is literally a check you could have POSTed. Adding one is editing JSON;
+ * nothing below needs to change, and nothing below decides anything.
  */
 @Component
 @ConditionalOnProperty(name = "helix.governance.seed.enabled", havingValue = "true", matchIfMissing = true)
 public class GovernanceSeeder implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(GovernanceSeeder.class);
+
+    private static final TypeReference<List<Map<String, Object>>> ROWS = new TypeReference<>() {
+    };
 
     private final GovernanceStore store;
     private final ObjectMapper json;
@@ -60,11 +77,18 @@ public class GovernanceSeeder implements ApplicationRunner {
         }
         try (var in = resources.getResource(resource).getInputStream()) {
             JsonNode seed = json.readTree(in);
-            seedDocTypes(seed);
-            seedFields(seed);
-            seedLibrary(seed);
-            seedAgents(seed);
-            seedChecks(seed);
+
+            // Order is the only thing this class knows that the file does not, and it is
+            // not a mapping — it is referential integrity. A field binding names a doc type,
+            // a group names an agent, a check names both.
+            rows(seed, "docTypes").forEach(store::saveDocType);
+            rows(seed, "fields").forEach(this::saveFieldWithBindings);
+            rows(seed, "books").forEach(store::saveBook);
+            rows(seed, "articles").forEach(store::saveArticle);
+            rows(seed, "agents").forEach(store::saveAgent);
+            rows(seed, "groups").forEach(store::saveGroup);
+            rows(seed, "checks").forEach(this::saveCheckWithRule);
+
             log.info("Seeded governance catalogue from {}: {} checks", resource, store.countChecks());
         } catch (Exception e) {
             // A service that will not start because a seed file moved is worse than one
@@ -73,155 +97,35 @@ public class GovernanceSeeder implements ApplicationRunner {
         }
     }
 
-    private void seedDocTypes(JsonNode seed) {
-        for (JsonNode d : seed.path("docTypes")) {
-            store.saveDocType(Map.of(
-                    "key", d.path("key").asText(),
-                    "name", d.path("name").asText(),
-                    "description", d.path("description").asText(""),
-                    "beforeReading", d.path("beforeReading").asBoolean(false),
-                    "ordinal", 0));
-        }
+    private List<Map<String, Object>> rows(JsonNode seed, String name) {
+        JsonNode node = seed.path(name);
+        return node.isMissingNode() ? List.of() : json.convertValue(node, ROWS);
     }
 
-    private void seedFields(JsonNode seed) {
-        for (JsonNode f : seed.path("fields")) {
-            String key = f.path("name").asText();
-            store.saveField(mapOf(
-                    "key", key,
-                    "name", f.path("name").asText(),
-                    "description", f.path("description").asText(""),
-                    "seeded", true));
-            int i = 0;
-            for (JsonNode b : f.path("bindings")) {
-                // Bindings name documents by label; the table keys them by code.
-                String code = codeForLabel(seed, b.path("doc").asText());
-                if (code != null) store.saveBinding(key, code, b.path("note").asText(""), i++);
+    /** A field and the documents it is read from — one object in the file, two tables here. */
+    private void saveFieldWithBindings(Map<String, Object> field) {
+        store.saveField(field);
+        if (!(field.get("bindings") instanceof List<?> list)) return;
+
+        int ordinal = 0;
+        for (Object b : list) {
+            if (b instanceof Map<?, ?> binding) {
+                Object note = binding.get("note");
+                store.saveBinding(String.valueOf(field.get("key")),
+                        String.valueOf(binding.get("doc")),
+                        note == null ? "" : String.valueOf(note),
+                        ordinal++);
             }
         }
     }
 
-    private void seedLibrary(JsonNode seed) {
-        Map<String, String> books = new LinkedHashMap<>();
-        books.put("UCP600", "UCP 600");
-        books.put("ISBP821", "ISBP 821");
-        books.forEach((id, name) -> store.saveBook(Map.of("id", id, "title", name, "ordinal", 0)));
-
-        JsonNode info = seed.path("articleInfo");
-        int i = 0;
-        for (JsonNode ref : seed.path("refBook")) {
-            String code = ref.path("code").asText();
-            String bookId = code.startsWith("ISBP") ? "ISBP821" : "UCP600";
-            JsonNode detail = info.path(code);
-            store.saveArticle(mapOf(
-                    "aid", code.replace(" ", "-").replace(".", "-"),
-                    "bookId", bookId,
-                    "code", code,
-                    "title", ref.path("desc").asText(""),
-                    "summary", detail.path("summary").asText(""),
-                    "read", detail.path("read").asText(""),
-                    "ordinal", i++));
+    /** A check and its conditions — one object in the file, two tables here. */
+    private void saveCheckWithRule(Map<String, Object> check) {
+        store.saveCheck(check);
+        if (check.get("rule") instanceof Map<?, ?> rule) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> typed = (Map<String, Object>) rule;
+            store.saveRule(String.valueOf(check.get("id")), typed);
         }
-    }
-
-    private void seedAgents(JsonNode seed) {
-        int i = 0;
-        for (JsonNode a : seed.path("agents")) {
-            store.saveAgent(mapOf(
-                    "id", a.path("id").asText(),
-                    "name", a.path("name").asText(),
-                    "cat", a.path("cat").asText(""),
-                    "domainId", a.path("domainId").asText(""),
-                    "eyebrow", a.path("eyebrow").asText(""),
-                    "summary", a.path("summary").asText(""),
-                    "description", a.path("description").asText(""),
-                    "behavior", a.path("behavior").asText(""),
-                    "owner", a.path("owner").asText(""),
-                    "version", a.path("version").asText(""),
-                    "status", "ACTIVE",
-                    "icon", a.path("icon").asText(""),
-                    "accent", a.path("accent").asText(""),
-                    "config", json.convertValue(a.path("config"), Map.class),
-                    "ordinal", i++));
-        }
-        for (JsonNode g : seed.path("groups")) {
-            store.saveGroup(mapOf(
-                    "gid", g.path("gid").asText(),
-                    "agentId", g.path("agentId").asText(),
-                    "name", g.path("name").asText(),
-                    "desc", g.path("desc").asText("")));
-        }
-    }
-
-    private void seedChecks(JsonNode seed) {
-        JsonNode defaults = seed.path("checkDefaults");
-        JsonNode rules = seed.path("ruleSeeds");
-
-        for (JsonNode c : seed.path("checks")) {
-            String id = c.path("id").asText();
-            JsonNode def = defaults.path(id);
-
-            store.saveCheck(mapOf(
-                    "id", id,
-                    "title", c.path("title").asText(),
-                    "body", c.path("body").asText(""),
-                    "domain", c.path("domain").asText(""),
-                    "severity", c.path("severity").asText("MAJOR"),
-                    "checkType", c.path("checkType").asText("AGENT"),
-                    "gate", c.path("gate").asBoolean(false),
-                    "citedAs", "practice",
-                    "agentId", c.path("agentId").isNull() ? null : c.path("agentId").asText(null),
-                    "groupId", c.path("groupId").isNull() ? null : c.path("groupId").asText(null),
-                    "refs", list(c.path("refs")),
-                    "fields", list(def.path("fields")),
-                    "docs", codesFor(seed, def.path("docs")),
-                    "suggestion", c.path("suggestion").asText(""),
-                    // Seeded checks are ACTIVE, otherwise the first examination plans nothing
-                    // and the whole pipeline looks broken for a reason nobody would guess.
-                    "status", c.path("draft").asBoolean(false) ? "DRAFT" : "ACTIVE"));
-
-            JsonNode rule = rules.path(id);
-            if (!rule.isMissingNode()) {
-                // Seeds are flat {scope, logic, message, rows}; the editor works in groups.
-                Map<String, Object> group = new LinkedHashMap<>();
-                group.put("id", "g1");
-                group.put("logic", rule.path("logic").asText("all"));
-                group.put("rows", json.convertValue(rule.path("rows"), List.class));
-                store.saveRule(id, mapOf(
-                        "scope", rule.path("scope").asText(""),
-                        "message", rule.path("message").asText(""),
-                        "groups", List.of(group)));
-            }
-        }
-    }
-
-    // --- Helpers ------------------------------------------------------------
-
-    private String codeForLabel(JsonNode seed, String label) {
-        for (JsonNode d : seed.path("docTypes")) {
-            if (d.path("name").asText().equalsIgnoreCase(label)) return d.path("key").asText();
-        }
-        return null;
-    }
-
-    private List<String> codesFor(JsonNode seed, JsonNode labels) {
-        List<String> out = new ArrayList<>();
-        for (JsonNode l : labels) {
-            String code = codeForLabel(seed, l.asText());
-            if (code != null) out.add(code);
-        }
-        return out;
-    }
-
-    private List<String> list(JsonNode node) {
-        List<String> out = new ArrayList<>();
-        node.forEach(n -> out.add(n.asText()));
-        return out;
-    }
-
-    private static Map<String, Object> mapOf(Object... kv) {
-        Map<String, Object> out = new LinkedHashMap<>();
-        for (int i = 0; i + 1 < kv.length; i += 2) out.put(String.valueOf(kv[i]), kv[i + 1]);
-        return out;
     }
 }
