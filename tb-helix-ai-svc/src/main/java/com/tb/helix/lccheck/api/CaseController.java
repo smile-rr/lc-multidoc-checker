@@ -1,5 +1,6 @@
 package com.tb.helix.lccheck.api;
 
+import com.tb.helix.infra.cost.ModelCallLog;
 import com.tb.helix.infra.stream.EventStream;
 import com.tb.helix.lccheck.api.dto.DecisionRequest;
 import com.tb.helix.lccheck.api.dto.NewCheckRequest;
@@ -41,17 +42,20 @@ public class CaseController {
     private final DocCheckPipeline pipeline;
     private final StageLauncher runner;
     private final EventStream stream;
+    private final ModelCallLog calls;
 
     // Two collaborators, because they answer two questions. The pipeline is what an
     // examination *is* — asked once, the same answer for every case. The runner is one case
     // being examined. This used to reach the first through the second, which made them read
     // like one thing with a spare accessor.
     public CaseController(CaseService cases, DocCheckPipeline pipeline,
-                          StageLauncher runner, EventStream stream) {
+                          StageLauncher runner, EventStream stream,
+                          ModelCallLog calls) {
         this.cases = cases;
         this.pipeline = pipeline;
         this.runner = runner;
         this.stream = stream;
+        this.calls = calls;
     }
 
     /**
@@ -153,6 +157,18 @@ public class CaseController {
     public List<Map<String, Object>> events(@PathVariable String ref,
                                             @RequestParam(defaultValue = "0") long after) {
         return stream.history(cases.resolve(ref), after);
+    }
+
+    /**
+     * What this examination spent, by model.
+     *
+     * <p>Priced at read time from the family book, never stored: rates change, and a total
+     * written down at the time is a number that stops matching the rate behind it without
+     * ever saying so.
+     */
+    @GetMapping("/cases/{ref}/spend")
+    public List<Map<String, Object>> spend(@PathVariable String ref) {
+        return calls.spendForCase(cases.resolve(ref));
     }
 
     // --- Officer decisions --------------------------------------------------

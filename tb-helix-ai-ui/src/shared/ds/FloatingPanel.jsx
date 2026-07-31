@@ -152,16 +152,19 @@ export default function FloatingPanel({
         style={{
           display: 'flex', alignItems: 'center', gap: 10,
           padding: '9px 10px 9px 14px',
-          borderBottom: minimised ? 'none' : '1px solid var(--me-grey-15)',
-          background: 'var(--me-grey-08)',
+          // Window chrome, not a section heading. It shared a grey with the section
+          // headers inside the body, so the panel's own title bar and the first
+          // heading under it read as two of the same thing — and the boundary
+          // between "this window" and "what is in it" disappeared.
+          background: 'var(--me-ink)',
           cursor: 'move', userSelect: 'none', flexShrink: 0,
         }}
       >
-        <Icon name="grip-horizontal" size={14} color="var(--me-grey-50)" />
-        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)', flexShrink: 0 }}>{title}</span>
+        <Icon name="grip-horizontal" size={14} color="rgba(255,255,255,.45)" />
+        <span style={{ fontSize: 13, fontWeight: 600, color: '#fff', flexShrink: 0 }}>{title}</span>
         {/* The status line is what makes minimising worth doing — collapsed, this
             is the entire panel, so it has to say the thing you are watching for. */}
-        <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: 'var(--me-grey-70)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: 'rgba(255,255,255,.66)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {status}
         </span>
         <HeaderButton
@@ -215,7 +218,7 @@ function HeaderButton({ title, onClick, icon }) {
       style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         width: 26, height: 26, borderRadius: 7, flexShrink: 0,
-        border: 'none', background: 'none', cursor: 'pointer', color: 'var(--me-grey-70)',
+        border: 'none', background: 'none', cursor: 'pointer', color: 'rgba(255,255,255,.72)',
       }}
     >
       <Icon name={icon} size={16} color="currentColor" />

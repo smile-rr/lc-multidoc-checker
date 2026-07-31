@@ -34,4 +34,18 @@ public interface StepJournal {
     default boolean abandoned() {
         return false;
     }
+
+    /**
+     * Runs one step's body, giving the journal a chance to wrap it.
+     *
+     * <p>The engine knows which step is running and nothing about what that means; the
+     * caller knows the examination it belongs to. This is the one seam where the two meet,
+     * and it exists so a model call made three frames deeper can be attributed to the step
+     * that caused it without the request records having to carry a case id.
+     *
+     * <p>Default is to run it, so a journal that does not care is unaffected.
+     */
+    default <T> T aroundStep(String phase, String key, java.util.function.Supplier<T> body) {
+        return body.get();
+    }
 }

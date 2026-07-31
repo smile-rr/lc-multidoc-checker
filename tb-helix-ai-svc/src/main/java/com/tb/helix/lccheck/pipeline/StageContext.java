@@ -1,5 +1,6 @@
 package com.tb.helix.lccheck.pipeline;
 
+import com.tb.helix.infra.cost.CallScope;
 import com.tb.helix.infra.pipeline.StepJournal;
 import com.tb.helix.infra.pipeline.StepResult;
 import com.tb.helix.infra.stream.EventBus;
@@ -215,6 +216,18 @@ public final class StageContext implements StepJournal {
     @Override
     public void stepStarted(String phase, String key, String label) {
         announce(key, label);
+    }
+
+    /**
+     * Binds the case, stage and step for the duration of the step.
+     *
+     * <p>Every model call made anywhere under here is recorded against them, so the spend
+     * ledger can answer "which step spent the money" without a request record carrying an
+     * examination's vocabulary through the gateway.
+     */
+    @Override
+    public <T> T aroundStep(String phase, String key, java.util.function.Supplier<T> body) {
+        return CallScope.bind(CallScope.of(caseId, phase, key), body);
     }
 
     @Override

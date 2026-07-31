@@ -1,5 +1,8 @@
 package com.tb.helix.infra.cache;
 
+import com.tb.helix.infra.cost.CallScope;
+import com.tb.helix.infra.cost.ModelCallLog;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,8 +36,9 @@ public class LayeredCache implements DerivationCache {
     private final List<CacheTier> tiers;
     private final PgDerivationStore l3;
     private final ObjectMapper json;
+    private final ModelCallLog calls;
 
-    public LayeredCache(List<CacheTier> tiers, PgDerivationStore l3, ObjectMapper json) {
+    public LayeredCache(List<CacheTier> tiers, PgDerivationStore l3, ObjectMapper json, ModelCallLog calls) {
         // Ordered by level so the walk is cheapest-first regardless of bean discovery order.
         this.tiers = tiers.stream()
                 .filter(CacheTier::enabled)
@@ -42,6 +46,7 @@ public class LayeredCache implements DerivationCache {
                 .toList();
         this.l3 = l3;
         this.json = json;
+        this.calls = calls;
         log.info("Cache tiers active: {}", this.tiers.stream().map(t -> t.level().name()).toList());
     }
 
@@ -96,6 +101,16 @@ public class LayeredCache implements DerivationCache {
         Optional<Hit<T>> hit = lookup(key, type);
         if (hit.isPresent()) {
             log.debug("cache-hit {} {} from {}", key.op(), key.inputScope(), hit.get().tier());
+            // Recorded, not merely logged. A run answered entirely from cache made no
+            // provider calls and so left no ledger rows at all — which reads as a stage
+            // that did nothing rather than one that did everything for free. What was
+            // avoided is the most interesting number a cache has.
+            var scope = CallScope.current();
+            calls.record(new ModelCallLog.Call(
+                    scope.caseId(), scope.stage(), scope.step(),
+                    key.op(), null, key.modelId() == null ? "cache" : key.modelId(), null,
+                    ModelCallLog.Kind.TEXT, ModelCallLog.Status.CACHED, 1,
+                    0, 0, 0, 0, key.hash(), null));
             return hit.get();
         }
 

@@ -44,7 +44,7 @@ public class DbBlobStore implements BlobStore {
     public DbBlobStore(JdbcTemplate jdbc, BlobCatalog catalog, BlobProperties props) {
         this.jdbc = jdbc;
         this.catalog = catalog;
-        log.info("Blob store: Postgres (helix_core.blob_content), tier={}", props.tier());
+        log.info("Blob store: Postgres (helix_infra.blob_content), tier={}", props.tier());
     }
 
     @Override
@@ -56,7 +56,7 @@ public class DbBlobStore implements BlobStore {
         // idempotent, so re-presenting the same bundle writes nothing new.
         catalog.register(ref, TIER, "db://" + sha);
         jdbc.update("""
-                INSERT INTO helix_core.blob_content (sha256, content) VALUES (?, ?)
+                INSERT INTO helix_infra.blob_content (sha256, content) VALUES (?, ?)
                 ON CONFLICT (sha256) DO NOTHING
                 """, sha, content);
 
@@ -67,7 +67,7 @@ public class DbBlobStore implements BlobStore {
     public Optional<byte[]> get(String sha256) {
         try {
             return Optional.ofNullable(jdbc.queryForObject(
-                    "SELECT content FROM helix_core.blob_content WHERE sha256 = ?", byte[].class, sha256));
+                    "SELECT content FROM helix_infra.blob_content WHERE sha256 = ?", byte[].class, sha256));
         } catch (EmptyResultDataAccessException e) {
             return Optional.empty();
         } catch (RuntimeException e) {
@@ -86,7 +86,7 @@ public class DbBlobStore implements BlobStore {
     @Override
     public boolean exists(String sha256) {
         Boolean found = jdbc.queryForObject(
-                "SELECT EXISTS(SELECT 1 FROM helix_core.blob_content WHERE sha256 = ?)",
+                "SELECT EXISTS(SELECT 1 FROM helix_infra.blob_content WHERE sha256 = ?)",
                 Boolean.class, sha256);
         return Boolean.TRUE.equals(found);
     }

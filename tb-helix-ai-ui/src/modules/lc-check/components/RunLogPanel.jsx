@@ -4,7 +4,7 @@ import Icon from '@shared/ds/Icon'
 import Badge from '@shared/ds/Badge'
 import { ellipsis } from '@shared/ds/text'
 import useRunLog from '../state/useRunLog'
-import { foldRunLog, isRunning, elapsed, clockTime } from '../state/runLog'
+import { foldRunLog, isRunning, elapsed, clockTime, LOG_INK } from '../state/runLog'
 
 // Run log — what the examination did, while it does it.
 //
@@ -35,14 +35,14 @@ const STAGE_LABELS = {
 }
 
 const STATUS = {
-  running: { tone: 'blue', label: 'Running', icon: 'loader', color: 'var(--me-blue)' },
-  done: { tone: 'success', label: 'Done', icon: 'check', color: '#1F7A00' },
-  ok: { tone: 'success', label: 'Done', icon: 'check', color: '#1F7A00' },
-  halted: { tone: 'warning', label: 'Halted', icon: 'octagon-alert', color: '#B26B00' },
-  failed: { tone: 'error', label: 'Failed', icon: 'triangle-alert', color: '#B3261E' },
-  skipped: { tone: 'neutral', label: 'Skipped', icon: 'minus', color: 'var(--me-grey-70)' },
+  running: { tone: 'blue', label: 'Running', icon: 'loader', color: LOG_INK.running },
+  done: { tone: 'success', label: 'Done', icon: 'check', color: LOG_INK.ok },
+  ok: { tone: 'success', label: 'Done', icon: 'check', color: LOG_INK.ok },
+  halted: { tone: 'warning', label: 'Halted', icon: 'octagon-alert', color: LOG_INK.halted },
+  failed: { tone: 'error', label: 'Failed', icon: 'triangle-alert', color: LOG_INK.failed },
+  skipped: { tone: 'neutral', label: 'Skipped', icon: 'minus', color: LOG_INK.muted },
   // Events that named no stage and arrived with none open. Older tapes have them.
-  unplaced: { tone: 'neutral', label: 'Unattributed', icon: 'minus', color: 'var(--me-grey-70)' },
+  unplaced: { tone: 'neutral', label: 'Unattributed', icon: 'minus', color: LOG_INK.muted },
 }
 const statusOf = (key) => STATUS[key] ?? STATUS.running
 
@@ -151,13 +151,13 @@ function StepRow({ step }) {
   return (
     <div style={{ margin: '0 20px', borderLeft: `2px solid ${step.status === 'running' ? s.color : 'var(--me-grey-15)'}`, paddingLeft: 12 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '6px 0 2px' }}>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)', flexShrink: 0 }}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: LOG_INK.key, fontWeight: 600, flexShrink: 0 }}>
           {step.key}
         </span>
-        <span style={{ fontSize: 13, color: 'var(--me-ink)', minWidth: 0, ...ellipsis }}>{step.label}</span>
+        <span style={{ fontSize: 13, color: LOG_INK.label, minWidth: 0, ...ellipsis }}>{step.label}</span>
         {step.cacheHit && (
           <span title="Answered from cache — no model was asked" style={{ display: 'inline-flex', flexShrink: 0 }}>
-            <Icon name="zap" size={12} color="#1F7A00" />
+            <Icon name="zap" size={12} color={LOG_INK.ok} />
           </span>
         )}
         {step.status !== 'ok' && step.status !== 'running' && (
@@ -178,14 +178,14 @@ function StepRow({ step }) {
 function EventRow({ event, inset = 0 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '2px 0 2px', paddingLeft: inset, fontSize: 11.5 }}>
-      <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--me-grey-50)', flexShrink: 0 }}>
+      <span style={{ fontFamily: 'var(--font-mono)', color: LOG_INK.time, flexShrink: 0 }}>
         {clockTime(event.at)}
       </span>
-      <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--me-grey-70)', flexShrink: 0 }}>
+      <span style={{ fontFamily: 'var(--font-mono)', color: LOG_INK.type, flexShrink: 0 }}>
         {event.type}
       </span>
       {event.detail && (
-        <span style={{ color: 'var(--me-grey)', minWidth: 0, ...ellipsis }}>{event.detail}</span>
+        <span style={{ color: LOG_INK.detail, minWidth: 0, ...ellipsis }}>{event.detail}</span>
       )}
     </div>
   )
@@ -201,9 +201,9 @@ function EventRow({ event, inset = 0 }) {
 function Clock({ at, ms, running, strong }) {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 8, flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: 11 }}>
-      <span style={{ color: 'var(--me-grey-50)' }}>{clockTime(at)}</span>
+      <span style={{ color: LOG_INK.time }}>{clockTime(at)}</span>
       <span style={{
-        color: running ? 'var(--me-blue)' : 'var(--me-grey-70)',
+        color: running ? LOG_INK.running : LOG_INK.muted,
         fontWeight: strong ? 600 : 500,
         minWidth: 46, textAlign: 'right',
       }}>

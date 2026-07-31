@@ -11,6 +11,8 @@ import com.tb.helix.harness.llm.tool.ToolResult;
 import com.tb.helix.harness.llm.tool.ToolSpec;
 import com.tb.helix.harness.llm.vision.VisionRequest;
 import com.tb.helix.harness.llm.vision.VisionResult;
+import com.tb.helix.infra.cost.CallScope;
+import com.tb.helix.infra.cost.ModelCallLog;
 import com.tb.helix.infra.error.LlmException;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -42,12 +44,14 @@ public class ChatCompletionsGateway implements LlmGateway {
 
     private final LlmProperties props;
     private final ObjectMapper json;
+    private final ModelCallLog calls;
     private final Map<String, ChatCompletionsClient> clients = new LinkedHashMap<>();
     private final ExecutorService slotPool = Executors.newVirtualThreadPerTaskExecutor();
 
-    public ChatCompletionsGateway(LlmProperties props, ObjectMapper json) {
+    public ChatCompletionsGateway(LlmProperties props, ObjectMapper json, ModelCallLog calls) {
         this.props = props;
         this.json = json;
+        this.calls = calls;
         props.allSlots().forEach((name, slot) -> {
             if (slot.usable()) clients.put(name, new ChatCompletionsClient(name, slot, json));
             else if (slot.enabled()) log.warn("Slot {} is enabled but has no api key or model — skipped", name);
@@ -70,12 +74,25 @@ public class ChatCompletionsGateway implements LlmGateway {
         if (request.system() != null) messages.add(Map.of("role", "system", "content", request.system()));
         messages.add(Map.of("role", "user", "content", request.user()));
 
-        var response = client.complete(messages, request.maxTokens(), request.jsonOutput(),
-                null, request.overrides());
+        long began = System.currentTimeMillis();
+        try {
+            var response = client.complete(messages, request.maxTokens(), request.jsonOutput(),
+                    null, request.overrides());
 
-        return new TextResult(response.content(), response.raw(), client.model(),
-                new TokenUsage(response.promptTokens(), response.completionTokens(),
-                        response.latencyMs(), false));
+            record(client, request.role(), ModelCallLog.Kind.TEXT, ModelCallLog.Status.OK,
+                    response.promptTokens(), response.completionTokens(), response.latencyMs(), null);
+
+            return new TextResult(response.content(), response.raw(), client.model(),
+                    new TokenUsage(response.promptTokens(), response.completionTokens(),
+                            response.latencyMs(), false));
+
+        } catch (RuntimeException e) {
+            // A failure costs latency and no tokens, so it leaves no trace in a token
+            // ledger — and it is the row somebody looking into a slow run wants first.
+            record(client, request.role(), ModelCallLog.Kind.TEXT, statusOf(e),
+                    0, 0, (int) (System.currentTimeMillis() - began), e.getMessage());
+            throw e;
+        }
     }
 
     // --- Vision -------------------------------------------------------------
@@ -88,8 +105,14 @@ public class ChatCompletionsGateway implements LlmGateway {
         // rather than failing the read — redundancy is the entire reason for having more
         // than one, and a three-slot consensus that silently became one must still be
         // visible, which is what SlotResult.failed carries.
+        // Captured here and re-bound inside each task. The pool's threads are shared, so
+        // whatever a stage bound on the calling thread is not there by the time a slot runs
+        // — and the vision path is where the money goes, which makes it the one place
+        // attribution must not quietly fall through to "no case".
+        var scope = CallScope.capture();
         List<CompletableFuture<VisionResult.SlotResult>> futures = slots.stream()
-                .map(client -> CompletableFuture.supplyAsync(() -> readOne(client, request), slotPool))
+                .map(client -> CompletableFuture.supplyAsync(
+                        () -> CallScope.bind(scope, () -> readOne(client, request)), slotPool))
                 .toList();
 
         List<VisionResult.SlotResult> results = futures.stream().map(CompletableFuture::join).toList();
@@ -104,6 +127,7 @@ public class ChatCompletionsGateway implements LlmGateway {
     }
 
     private VisionResult.SlotResult readOne(ChatCompletionsClient client, VisionRequest request) {
+        long began = System.currentTimeMillis();
         try {
             List<Map<String, Object>> parts = new ArrayList<>();
             parts.add(Map.of("type", "text", "text", request.prompt()));
@@ -116,6 +140,9 @@ public class ChatCompletionsGateway implements LlmGateway {
                     null, true, null, request.overrides());
 
             Map<String, Object> fields = parseFields(response.content());
+            record(client, request.role(), ModelCallLog.Kind.VISION, ModelCallLog.Status.OK,
+                    response.promptTokens(), response.completionTokens(), response.latencyMs(), null);
+
             return new VisionResult.SlotResult(client.name(), client.model(), fields, response.raw(),
                     false, null,
                     new TokenUsage(response.promptTokens(), response.completionTokens(),
@@ -123,9 +150,40 @@ public class ChatCompletionsGateway implements LlmGateway {
 
         } catch (RuntimeException e) {
             log.warn("Vision slot {} failed: {}", client.name(), e.toString());
+            // Per slot, not per read. Three slots where one always times out is a fact about
+            // that slot, and a read recorded as a single success would hide it completely.
+            record(client, request.role(), ModelCallLog.Kind.VISION, statusOf(e),
+                    0, 0, (int) (System.currentTimeMillis() - began), e.getMessage());
             return new VisionResult.SlotResult(client.name(), client.model(), Map.of(), null,
                     true, e.getMessage(), new TokenUsage(0, 0, 0, false));
         }
+    }
+
+    /**
+     * Writes down what one attempt cost.
+     *
+     * <p>Here rather than at the call sites because every path through this class ends in a
+     * provider round trip, and a ledger with a hole in it is worse than no ledger — it reads
+     * as a run that was cheaper than it was.
+     */
+    private void record(ChatCompletionsClient client, LlmRole role, ModelCallLog.Kind kind,
+                        ModelCallLog.Status status, Integer in, Integer out, Integer ms, String error) {
+        var scope = CallScope.current();
+        calls.record(new ModelCallLog.Call(
+                scope.caseId(), scope.stage(), scope.step(),
+                role == null ? null : role.name().toLowerCase(),
+                client.name(), client.model(), null,
+                kind, status, 1,
+                in == null ? 0 : in, out == null ? 0 : out, 0,
+                ms, null, error));
+    }
+
+    /** A timeout is worth telling apart from a refusal: one is capacity, the other is us. */
+    private static ModelCallLog.Status statusOf(RuntimeException e) {
+        String s = String.valueOf(e).toLowerCase();
+        return s.contains("timeout") || s.contains("timed out")
+                ? ModelCallLog.Status.TIMEOUT
+                : ModelCallLog.Status.FAILED;
     }
 
     @SuppressWarnings("unchecked")

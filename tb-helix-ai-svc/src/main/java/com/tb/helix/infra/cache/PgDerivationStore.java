@@ -12,7 +12,7 @@ import java.time.Duration;
 import java.util.Optional;
 
 /**
- * L3 — the durable answer, in {@code helix_core.derivation}.
+ * L3 — the durable answer, in {@code helix_infra.derivation}.
  *
  * <p>Postgres rather than the filesystem for structured results, because everything this
  * needs is already there: TTL as a column and a sweep, hit counting, indexed lookup by
@@ -61,7 +61,7 @@ public class PgDerivationStore {
         if (!cfg.enabled()) return Optional.empty();
         try {
             return jdbc.query("""
-                    UPDATE helix_core.derivation
+                    UPDATE helix_infra.derivation
                        SET hit_count = hit_count + 1, last_hit_at = NOW()
                      WHERE cache_key = ?
                        AND (expires_at IS NULL OR expires_at > NOW())
@@ -86,7 +86,7 @@ public class PgDerivationStore {
             Long ttlSeconds = ttl == null || ttl.isZero() || ttl.isNegative() ? null : ttl.toSeconds();
 
             jdbc.update("""
-                    INSERT INTO helix_core.derivation
+                    INSERT INTO helix_infra.derivation
                         (cache_key, op, op_version, input_sha, input_scope, prompt_sha,
                          model_id, provider_url, params, result, result_blob_sha, raw_response,
                          prompt_tokens, completion_tokens, total_tokens, latency_ms, expires_at)
@@ -132,7 +132,7 @@ public class PgDerivationStore {
 
     public int purgeExpired() {
         try {
-            return jdbc.update("DELETE FROM helix_core.derivation WHERE expires_at IS NOT NULL AND expires_at <= NOW()");
+            return jdbc.update("DELETE FROM helix_infra.derivation WHERE expires_at IS NOT NULL AND expires_at <= NOW()");
         } catch (RuntimeException e) {
             log.warn("L3 purge failed: {}", e.toString());
             return 0;

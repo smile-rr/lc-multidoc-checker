@@ -32,13 +32,13 @@ public class BlobCatalog {
      */
     public void register(BlobRef ref, String storageTier, String storageKey) {
         jdbc.update("""
-                INSERT INTO helix_core.blob
+                INSERT INTO helix_infra.blob
                     (sha256, byte_size, media_type, storage_tier, storage_key, original_filename, page_count)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (sha256) DO UPDATE SET
                     last_seen_at = NOW(),
                     -- Fill in a page count learnt later; never overwrite a known one with null.
-                    page_count   = COALESCE(helix_core.blob.page_count, EXCLUDED.page_count)
+                    page_count   = COALESCE(helix_infra.blob.page_count, EXCLUDED.page_count)
                 """,
                 ref.sha256(), ref.byteSize(), ref.mediaType(), storageTier, storageKey,
                 ref.originalName(), ref.pageCount());
@@ -47,7 +47,7 @@ public class BlobCatalog {
     public Optional<BlobRef> find(String sha256) {
         return jdbc.query("""
                 SELECT sha256, byte_size, media_type, page_count, original_filename
-                  FROM helix_core.blob WHERE sha256 = ?
+                  FROM helix_infra.blob WHERE sha256 = ?
                 """,
                 (rs, i) -> new BlobRef(
                         rs.getString("sha256"),
@@ -60,13 +60,13 @@ public class BlobCatalog {
 
     public boolean exists(String sha256) {
         Boolean found = jdbc.queryForObject(
-                "SELECT EXISTS(SELECT 1 FROM helix_core.blob WHERE sha256 = ?)", Boolean.class, sha256);
+                "SELECT EXISTS(SELECT 1 FROM helix_infra.blob WHERE sha256 = ?)", Boolean.class, sha256);
         return Boolean.TRUE.equals(found);
     }
 
     /** Records a page count discovered after storage — a PDF is not opened just to count it. */
     public void setPageCount(String sha256, int pageCount) {
-        jdbc.update("UPDATE helix_core.blob SET page_count = ? WHERE sha256 = ?", pageCount, sha256);
+        jdbc.update("UPDATE helix_infra.blob SET page_count = ? WHERE sha256 = ?", pageCount, sha256);
     }
 
     /**
@@ -77,7 +77,7 @@ public class BlobCatalog {
      */
     public void reference(String sha256, BlobOwner ownerKind, String ownerId, String role) {
         jdbc.update("""
-                INSERT INTO helix_core.blob_ref (blob_sha, owner_kind, owner_id, role)
+                INSERT INTO helix_infra.blob_ref (blob_sha, owner_kind, owner_id, role)
                 VALUES (?, ?, ?, ?)
                 ON CONFLICT (owner_kind, owner_id, role, blob_sha) DO NOTHING
                 """,
@@ -85,14 +85,14 @@ public class BlobCatalog {
     }
 
     public void releaseAll(BlobOwner ownerKind, String ownerId) {
-        jdbc.update("DELETE FROM helix_core.blob_ref WHERE owner_kind = ? AND owner_id = ?",
+        jdbc.update("DELETE FROM helix_infra.blob_ref WHERE owner_kind = ? AND owner_id = ?",
                 ownerKind.name(), ownerId);
     }
 
     /** What one owner holds, by role. */
     public Optional<String> shaFor(BlobOwner ownerKind, String ownerId, String role) {
         return jdbc.queryForList("""
-                SELECT blob_sha FROM helix_core.blob_ref
+                SELECT blob_sha FROM helix_infra.blob_ref
                  WHERE owner_kind = ? AND owner_id = ? AND role = ?
                 """, String.class, ownerKind.name(), ownerId, role)
                 .stream().findFirst();
@@ -107,8 +107,8 @@ public class BlobCatalog {
      */
     public List<String> orphans(java.time.Duration grace, int limit) {
         return jdbc.queryForList("""
-                SELECT b.sha256 FROM helix_core.blob b
-                 WHERE NOT EXISTS (SELECT 1 FROM helix_core.blob_ref r WHERE r.blob_sha = b.sha256)
+                SELECT b.sha256 FROM helix_infra.blob b
+                 WHERE NOT EXISTS (SELECT 1 FROM helix_infra.blob_ref r WHERE r.blob_sha = b.sha256)
                    AND b.last_seen_at < NOW() - (? || ' seconds')::interval
                  ORDER BY b.last_seen_at
                  LIMIT ?
@@ -116,6 +116,6 @@ public class BlobCatalog {
     }
 
     public void forget(String sha256) {
-        jdbc.update("DELETE FROM helix_core.blob WHERE sha256 = ?", sha256);
+        jdbc.update("DELETE FROM helix_infra.blob WHERE sha256 = ?", sha256);
     }
 }

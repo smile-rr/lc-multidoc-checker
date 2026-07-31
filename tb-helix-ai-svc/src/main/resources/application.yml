@@ -53,8 +53,12 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
-    # The three schemas this service owns. The first is the history table's home.
-    schemas: helix_core,helix_check,helix_gov
+    # The schemas this service owns. The first is the history table's home, and it
+    # stays helix_core for exactly that reason: V12 moved every table out of it
+    # into helix_infra, but Flyway resolves its own table from this list at
+    # connection time, so moving that one too would leave a migration unable to
+    # record that it succeeded. helix_core now holds the history and nothing else.
+    schemas: helix_core,helix_infra,helix_check,helix_gov
     create-schemas: true
     baseline-on-migrate: true
 
@@ -73,7 +77,7 @@ helix:
 
   # --- Blob store ---------------------------------------------------------
   # Content-addressed. No case folders and no doc-type folders: the catalogue
-  # (helix_core.blob + blob_ref) answers "which blobs belong to case X", which
+  # (helix_infra.blob + blob_ref) answers "which blobs belong to case X", which
   # is what makes dedup free — the same bundle uploaded twice is one file.
   blob:
     tier: ${HELIX_BLOB_TIER:DISK}                       # DISK | S3 (S3 adapter is a stub for now)

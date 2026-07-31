@@ -90,7 +90,7 @@ public final class PipelineEngine {
 
             context.stepStarted(phase.key(), step.key(), step.label());
             long started = System.currentTimeMillis();
-            last = step.run(context);
+            last = context.aroundStep(phase.key(), step.key(), () -> step.run(context));
             context.stepFinished(phase.key(), step.key(), last, System.currentTimeMillis() - started);
 
             if (!last.canContinue()) return last;

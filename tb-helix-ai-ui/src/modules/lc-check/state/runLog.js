@@ -195,6 +195,31 @@ function describe(type, p) {
   }
 }
 
+/**
+ * The log's palette.
+ *
+ * A console colours by *what a token is*, not by how important it is, and that is
+ * the whole trick: once time is always grey, an identifier always teal and an
+ * event type always violet, a wall of rows can be skimmed for the one shape you
+ * are looking for without reading any of it.
+ *
+ * Chosen for a white body rather than a black one — terminal defaults are tuned
+ * for dark ground and turn illegible here — so these are the darker end of each
+ * hue, all at least 4.5:1 on white.
+ */
+export const LOG_INK = {
+  time: '#8A9099',      // when — present on every row, so the quietest thing on it
+  key: '#0B7285',       // a step key: an identifier, the thing you grep for
+  type: '#6741D9',      // an event type: the channel, like a log level
+  detail: '#4A5058',    // what it said
+  label: 'var(--me-ink)',
+  running: 'var(--me-blue)',
+  ok: '#1F7A00',
+  halted: '#B26B00',
+  failed: '#B3261E',
+  muted: 'var(--me-grey-70)',
+}
+
 /** Is anything still in flight? Drives whether the panel ticks. */
 export const isRunning = (stages) =>
   stages.some((s) => s.status === 'running' && s.startedAt)
