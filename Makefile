@@ -32,6 +32,8 @@ SVC_DIR  := tb-helix-ai-svc
 UI_DIR   := tb-helix-ai-ui
 LOG_DIR  := /tmp/helix
 
+DETACH   := python3 -c 'import os,sys; os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])'
+
 SVC_PORT := 9090
 UI_PORT  := 5174
 
@@ -61,16 +63,25 @@ help:  ## this list
 
 # ---------------------------------------------------------------------------
 # Everything at once
+#
+# Started in a session of their own, not merely with nohup: nohup survives a
+# hangup and nothing else, and these are launched from a subshell that make takes
+# with it when the make is interrupted. Their own session means "background"
+# means it — close the terminal, Ctrl-C the make, and the three keep running
+# until `make down` says otherwise.
+#
+# macOS has no setsid, so DETACH is the portable equivalent: a two-line Python
+# that starts a new session and then becomes the command.
 # ---------------------------------------------------------------------------
 
 up: db $(LOG_DIR) _npm  ## start db + svc + ui in the background
 	@$(MAKE) --no-print-directory svc-down >/dev/null 2>&1 || true
 	@$(MAKE) --no-print-directory ui-down  >/dev/null 2>&1 || true
 	@(cd $(SVC_DIR) && set -a && source ../$(ENV_FILE) && set +a \
-	   && nohup ./gradlew bootRun > $(LOG_DIR)/svc.log 2>&1 &) \
+	   && $(DETACH) ./gradlew bootRun > $(LOG_DIR)/svc.log 2>&1 < /dev/null &) \
 	  && echo "→ svc starting  (log: $(LOG_DIR)/svc.log)"
 	@$(MAKE) --no-print-directory svc-wait
-	@(cd $(UI_DIR) && nohup npm run dev > $(LOG_DIR)/ui.log 2>&1 &) \
+	@(cd $(UI_DIR) && $(DETACH) npm run dev > $(LOG_DIR)/ui.log 2>&1 < /dev/null &) \
 	  && echo "✓ ui  → http://127.0.0.1:$(UI_PORT)   (log: $(LOG_DIR)/ui.log)"
 	@echo ""
 	@echo "   make logs    follow    |    make down    stop"
@@ -162,6 +173,12 @@ ui-down:  ## stop the frontend
 
 # ---------------------------------------------------------------------------
 # Checking on it
+#
+# `status` fetches; it used to ask lsof whether anything held the port. Those are
+# not the same question and the difference is the one that bites: a socket in
+# TIME_WAIT after a kill, or a Vite that booted and then failed to compile, both
+# hold a port and neither serves a page. A status line you cannot trust is worse
+# than no status line, because you go and debug the wrong thing.
 # ---------------------------------------------------------------------------
 
 build: _npm  ## compile the backend, run the boundary rules, build the UI
@@ -169,20 +186,22 @@ build: _npm  ## compile the backend, run the boundary rules, build the UI
 	@cd $(UI_DIR) && npm run smoke && npm run build
 
 status:  ## what is up
-	@printf '  %-8s %-22s %s\n' service address state
-	@printf '  %-8s %-22s %s\n' -------- ---------------------- -----
-	@if nc -z -w 1 127.0.0.1 $(DB_PORT) 2>/dev/null; then s="✓ up"; else s="·"; fi; \
-	 printf '  %-8s %-22s %s\n' postgres "127.0.0.1:$(DB_PORT)" "$$s"
-	@if lsof -i tcp:$(SVC_PORT) -sTCP:LISTEN >/dev/null 2>&1; then s="✓ up"; else s="·"; fi; \
-	 printf '  %-8s %-22s %s\n' svc "http://127.0.0.1:$(SVC_PORT)" "$$s"
-	@if lsof -i tcp:$(UI_PORT) -sTCP:LISTEN >/dev/null 2>&1; then s="✓ up"; else s="·"; fi; \
-	 printf '  %-8s %-22s %s\n' ui "http://127.0.0.1:$(UI_PORT)" "$$s"
+	@printf '  %-8s %-30s %s\n' service address state
+	@printf '  %-8s %-30s %s\n' -------- ------------------------------ -----
+	@if nc -z -w 1 127.0.0.1 $(DB_PORT) 2>/dev/null; then s="✓ up"; else s="· down"; fi; \
+	 printf '  %-8s %-30s %s\n' postgres "127.0.0.1:$(DB_PORT)" "$$s"
+	@code=$$(curl -s -o /dev/null -m 3 -w '%{http_code}' http://127.0.0.1:$(SVC_PORT)/actuator/health 2>/dev/null); \
+	 if [ "$$code" = "200" ]; then s="✓ up"; elif [ "$$code" = "000" ]; then s="· down"; else s="! HTTP $$code"; fi; \
+	 printf '  %-8s %-30s %s\n' svc "http://127.0.0.1:$(SVC_PORT)" "$$s"
+	@code=$$(curl -s -o /dev/null -m 3 -w '%{http_code}' http://127.0.0.1:$(UI_PORT)/ 2>/dev/null); \
+	 if [ "$$code" = "200" ]; then s="✓ up"; elif [ "$$code" = "000" ]; then s="· down"; else s="! HTTP $$code"; fi; \
+	 printf '  %-8s %-30s %s\n' ui "http://127.0.0.1:$(UI_PORT)" "$$s"
 
 health:  ## ask the backend how it is
 	@printf 'svc :$(SVC_PORT) → '
 	@curl -fsS http://127.0.0.1:$(SVC_PORT)/actuator/health 2>/dev/null \
-	  | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','?'))" \
-	  || echo "unreachable"
+	  | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','?'))" 2>/dev/null \
+	  || echo "not running"
 
 logs:  ## follow the logs from `make up`
 	@tail -f $(LOG_DIR)/svc.log $(LOG_DIR)/ui.log

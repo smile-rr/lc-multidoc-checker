@@ -13,16 +13,16 @@
 | 组件 | 端口 | 启动 (up) | 停止 (down) | 模式 |
 |------|------|-----------|-------------|------|
 | **PostgreSQL** | 5432 | `make db` | `make db-down` | Docker 容器 |
-| **svc**（后端） | 9082 | `make svc` | `make svc-down` | 本机 Gradle |
-| **svc-watch** | 9082 | `make svc-watch` | `make svc-down` | 本机 Gradle + DevTools 热重启 |
-| **ui**（前端） | 5173 | `make ui` | `make ui-down` | 本机 Vite |
+| **svc**（后端） | 9090 | `make svc` | `make svc-down` | 本机 Gradle |
+| **watch** | 9090 | `make watch` | `make svc-down` | 本机 Gradle + DevTools 热重启 |
+| **ui**（前端） | 5174 | `make ui` | `make ui-down` | 本机 Vite |
 
 ### 组合
 
 | 操作 | 命令 | 说明 |
 |------|------|------|
-| **全起** | `make all` | db → svc → ui（后台，日志 `/tmp/lc-checker-v2/`） |
-| **停应用** | `make all-down` | 停 svc + ui，**db 保持运行** |
+| **全起** | `make up` | db → svc → ui（后台，日志 `/tmp/lc-checker-v2/`） |
+| **停应用** | `make up-down` | 停 svc + ui，**db 保持运行** |
 | **全停** | `make down` | 停 svc + ui + postgres |
 
 ### 诊断 / 工具
@@ -33,7 +33,7 @@
 | `make status` | db / svc / ui 端口状态 |
 | `make health` | svc `/actuator/health` |
 | `make langfuse-auth` | 从 `.env` 密钥生成 `LANGFUSE_AUTH_BASIC` |
-| `make db-reinit` | 销毁并重建 Postgres 容器（库 `lc_checker`；svc 启动时创建 schema `lc_v3`） |
+| `make db-reset` | 销毁并重建 Postgres 容器（库 `lc_checker`；svc 启动时创建 schema `lc_v3`） |
 
 ### 复制即用
 
@@ -41,16 +41,16 @@
 # ── UP ──────────────────────────────────────────
 make db              # 仅数据库
 make svc             # 仅后端（前台，Ctrl-C 停）
-make svc-watch       # 后端 + 保存 Java 自动热重启（DevTools）
+make watch       # 后端 + 保存 Java 自动热重启（DevTools）
 make ui              # 仅前端（前台，Ctrl-C 停）
-make all             # 全部后台启动
+make up             # 全部后台启动
 
 # ── DOWN ────────────────────────────────────────
 make svc-down        # 停后端
 make ui-down         # 停前端
-make all-down        # 停后端 + 前端（db 继续跑）
+make up-down        # 停后端 + 前端（db 继续跑）
 make db-down         # 停数据库
-make db-reinit       # 销毁并重建 lc_checker 库（schema lc_v3 由 svc 创建）
+make db-reset       # 销毁并重建 lc_checker 库（schema lc_v3 由 svc 创建）
 make down            # 全部停止
 
 # ── CHECK ───────────────────────────────────────
@@ -65,8 +65,8 @@ make health
 ```bash
 cd v3-e2e-flow
 cp .env.example .env   # 填好密钥（见下）
-make all
-open http://127.0.0.1:5173
+make up
+open http://127.0.0.1:5174
 ```
 
 ---
@@ -115,13 +115,13 @@ Schema 由 svc 启动时自动创建（`lc_checker` 库内的 **`lc_v3`** schema
 
 | 方式 | 命令 | 说明 |
 |------|------|------|
-| **推荐** | `make svc-watch` | 后台 `classes --continuous` + `bootRun`；保存 `.java` 或 `src/main/resources/**` 后约 3s 自动重启 |
+| **推荐** | `make watch` | 后台 `classes --continuous` + `bootRun`；保存 `.java` 或 `src/main/resources/**` 后约 3s 自动重启 |
 | IDE | `make svc` + IDE「保存时编译」 | IntelliJ / Cursor 开启 *Build project automatically* 效果相同 |
 | 手动 | 改代码 → `cd lc-checker-v2-svc && ./gradlew classes` | DevTools 检测到 `build/classes` 变化后重启 |
 
 ### 各文件类型支持情况
 
-DevTools 是 **Spring 上下文快重启**（约 3s），不是 JVM 热替换。保存后需触发 Gradle 编译/复制到 `build/classes`（`svc-watch` 或 IDE 自动构建）。
+DevTools 是 **Spring 上下文快重启**（约 3s），不是 JVM 热替换。保存后需触发 Gradle 编译/复制到 `build/classes`（`watch` 或 IDE 自动构建）。
 
 | 文件 | 热重启后生效？ | 说明 |
 |------|----------------|------|
@@ -158,7 +158,7 @@ DevTools 热重启时若仍看到大段 `CONDITION EVALUATION DELTA`，已通过
 
 ## 后台日志
 
-`make all` 启动后：
+`make up` 启动后：
 
 | 服务 | 日志文件 |
 |------|----------|
@@ -176,14 +176,13 @@ tail -f /tmp/lc-checker-v2/svc.log
 | 问题 | 处理 |
 |------|------|
 | svc 连不上 DB | `make db` → `make status`，核对 `.env` 密码 |
-| `:9082` / `:5173` 被占用 | `make svc-down` / `make ui-down` |
+| `:9090` / `:5174` 被占用 | `make svc-down` / `make ui-down` |
 | Docker 未运行 | `make db`（自动起 Colima） |
 | Vision 失败 | 检查 `VISION_1/2_API_KEY` |
 | MinIO 警告 | 本地设 `STORAGE_MINIO_REQUIRED=false` 并重启 svc，应见 `MinIO not required` |
 | Langfuse `HttpExporter` timeout | `.env` 设 `LANGFUSE_ENABLED=false` 并重启 svc |
 | Intake「classifying」很慢 | 确认 `.env` 中 `STORAGE_MINIO_REQUIRED=false`；未设置时会尝试连 Ubuntu MinIO 并每次 PDF 超时 ~8s |
-| Presets 500 / 加载失败 | 先 `make health`；svc 未就绪时 Vite 代理会 500。`make all` 会等 svc UP 后再起 ui。日志应见 `[Presets] loaded N bundles` |
-| Presets 空列表 | svc 日志 `[Presets] dir not found` → 用 `make svc`（自动设 `PRESETS_DIR=test/cases`），勿从错误目录手启 Gradle |
+| Presets 500 / 加载失败 | 先 `make health`；svc 未就绪时 Vite 代理会 500。`make up` 会等 svc UP 后再起 ui。日志应见 `[Presets] loaded N bundles` |
 
 ---
 

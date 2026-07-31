@@ -12,17 +12,19 @@ LC Checker **v3** end-to-end flow — multi-document LC examination (MT700 + PDF
 
 ```bash
 cp .env.example .env    # fill LLM_API_KEY, VISION_1/2_API_KEY
-make db && make svc-watch   # terminal 1
-make ui                     # terminal 2 → http://127.0.0.1:5173
+make up                     # db + svc + ui in the background
+make status                 # → http://127.0.0.1:5174
 ```
 
 | Service | Port | Command |
 |---------|------|---------|
-| Postgres | 5432 | `make db` / `make db-reinit` |
-| svc | 9082 | `make svc` / `make svc-watch` |
-| ui | 5173 | `make ui` |
+| Postgres | 5432 | `make db` / `make db-reset` |
+| svc (tb-helix-ai-svc) | 9090 | `make svc` / `make watch` |
+| ui (tb-helix-ai-ui) | 5174 | `make ui` |
 
-**Never** run `docker compose -f infra/docker-compose.yml` on Mac for local dev — Ubuntu production only (`make dep-*`).
+`make help` lists everything. Logs from `make up` are in `/tmp/helix/`.
+
+**Never** run `docker compose -f infra/docker-compose.yml` on Mac for local dev — Ubuntu production only. The Makefile no longer has deploy targets; they drove two services being deleted.
 
 ---
 
@@ -33,7 +35,7 @@ make ui                     # terminal 2 → http://127.0.0.1:5173
 | PostgreSQL **database** | `lc_checker` | Shared with v1/v2 on same server |
 | Application **schema** | `lc_v3` | v2 uses `lc_v2` — do not mix SQL |
 | DDL source | `lc-checker-v2-svc/src/main/resources/db/schema.sql` | `spring.sql.init.mode=always` |
-| Reset local | `make db-reinit` + restart svc | Wipes container; recreates empty `lc_checker` |
+| Reset local | `make db-reset` + restart svc | Wipes container; recreates empty `lc_checker` |
 
 Key tables: `check_sessions`, `documents`, `pipeline_steps`, `pipeline_events`, `officer_actions`, `vision_extract_cache`.
 
@@ -61,9 +63,8 @@ LANGFUSE_ENABLED=false         # Mac: no OTLP to Ubuntu :3300
 | Variable | Restart needed |
 |----------|----------------|
 | `.env` changes | Yes — `make svc-down && make svc` |
-| `application.yml` / Java / resources | `make svc-watch` hot-reload (~3s) |
+| `application.yml` / Java / resources | `make watch` hot-reload (~3s) |
 
-Makefile exports `PRESETS_DIR=<repo>/test/cases` for `make svc` / `make all`.
 
 ---
 
@@ -124,11 +125,10 @@ intake → parse → reconcile → examine → signoff
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| Presets `500` | svc not ready | `make health`; use `make all` (waits for svc) |
+| Presets `500` | svc not ready | `make health`; use `make up` (waits for svc) |
 | Intake "classifying" ~1 min | MinIO connect timeout | `STORAGE_MINIO_REQUIRED=false` |
 | `HttpExporter` timeout `:3300` | Langfuse unreachable | `LANGFUSE_ENABLED=false` |
 | `CONDITION EVALUATION DELTA` wall | DevTools restart log | Disabled in `application.yml` |
-| Presets empty list | Wrong `PRESETS_DIR` / CWD | Use `make svc` (sets absolute path) |
 
 ---
 
@@ -154,7 +154,7 @@ v3-e2e-flow/
 ## Agent workflow tips
 
 1. Read this file + run `make status` before debugging "hangs" or 500s.
-2. Prefer `make svc-watch` when editing Java or `resources/`.
+2. Prefer `make watch` when editing Java or `resources/`.
 3. Do not commit `.env`; do not force-push without user request.
 4. Minimize diff scope — match existing patterns in surrounding code.
 5. Ubuntu production uses same `lc_checker` DB; deploy with `lc_v3` schema via updated svc image.
