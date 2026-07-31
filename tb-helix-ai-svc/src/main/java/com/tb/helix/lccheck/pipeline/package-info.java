@@ -7,7 +7,7 @@
  *   Stage              a phase of that examination. One method of its own: which stage.
  *   StageContext       what a step is allowed to do — record, read back, emit, cancel.
  *   DbStageContext     the only implementation: does all of that against Postgres and SSE.
- *   ExaminationRunner  HOW it runs here — the officer's turn, the gate riding with the
+ *   StageLauncher  HOW it runs here — the officer's turn, the gate riding with the
  *                      plan, halts, the async boundary.
  * </pre>
  *

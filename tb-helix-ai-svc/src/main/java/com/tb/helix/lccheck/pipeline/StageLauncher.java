@@ -23,11 +23,28 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Orchestration, and the officer's control of it.
+ * Whether a stage may run now, and what it means when it ends.
+ *
+ * <p>Named for what it does rather than for running, because running is the middle third of
+ * it and the least interesting: {@link com.tb.helix.infra.pipeline.PipelineEngine} does that.
+ * This <b>gatekeeps</b> — is it the officer's turn, is the case halted — then launches, then
+ * <b>settles</b>: a halt becomes a discrepancy on the case, a failure becomes an error, and a
+ * clean finish parks the case at the next stage a person can ask for.
+ *
+ * <p>The predecessor called this a runner, which over-promised: it never runs an examination,
+ * it runs one stage of one. {@code JobLauncher} is the same idea in Spring Batch, next to a
+ * {@code Job} that is the definition — here, {@link DocCheckPipeline}.
  *
  * <p>Only intake runs by itself. Every later stage waits at {@code awaiting_officer} until
  * a person asks for it — this is a regulated examination, and a pipeline that ran to
  * completion on upload would be presenting conclusions nobody chose to reach.
+ *
+ * <p><b>Why this is not in infra.</b> The shape is generic and the content is not. Every line
+ * that is left is UCP 600 or the bank's: that a halted case needs an override before anything
+ * else runs, that a halt is a discrepancy rather than a fault, that a finished stage parks at
+ * the next one an officer may request, that asking is an audited act. A generic runner would
+ * need a port for each of those, each with exactly one implementation, and {@code infra} would
+ * end up containing the idea of an officer overriding a rule.
  *
  * <p>Stages hold no state between calls. Everything a stage needs it reads from the
  * database and the blob store through its context, so any instance can resume any case
@@ -35,16 +52,16 @@ import java.util.concurrent.ConcurrentHashMap;
  * costs a run that keeps going rather than a case that cannot continue.
  */
 @Service
-public class ExaminationRunner {
+public class StageLauncher {
 
-    private static final Logger log = LoggerFactory.getLogger(ExaminationRunner.class);
+    private static final Logger log = LoggerFactory.getLogger(StageLauncher.class);
 
     private final DocCheckPipeline pipeline;
     private final CaseStore cases;
     private final EventBus events;
     private final Map<String, Boolean> cancelled = new ConcurrentHashMap<>();
 
-    public ExaminationRunner(DocCheckPipeline pipeline, CaseStore cases, EventBus events) {
+    public StageLauncher(DocCheckPipeline pipeline, CaseStore cases, EventBus events) {
         this.pipeline = pipeline;
         this.cases = cases;
         this.events = events;

@@ -5,7 +5,7 @@ import com.tb.helix.lccheck.api.dto.DecisionRequest;
 import com.tb.helix.lccheck.api.dto.NewCheckRequest;
 import com.tb.helix.lccheck.api.dto.SignoffRequest;
 import com.tb.helix.lccheck.pipeline.DocCheckPipeline;
-import com.tb.helix.lccheck.pipeline.ExaminationRunner;
+import com.tb.helix.lccheck.pipeline.StageLauncher;
 import com.tb.helix.lccheck.service.CaseService;
 import com.tb.helix.lccheck.types.CaseDetail;
 import com.tb.helix.lccheck.types.CaseSummary;
@@ -39,7 +39,7 @@ public class CaseController {
 
     private final CaseService cases;
     private final DocCheckPipeline pipeline;
-    private final ExaminationRunner runner;
+    private final StageLauncher runner;
     private final EventStream stream;
 
     // Two collaborators, because they answer two questions. The pipeline is what an
@@ -47,7 +47,7 @@ public class CaseController {
     // being examined. This used to reach the first through the second, which made them read
     // like one thing with a spare accessor.
     public CaseController(CaseService cases, DocCheckPipeline pipeline,
-                          ExaminationRunner runner, EventStream stream) {
+                          StageLauncher runner, EventStream stream) {
         this.cases = cases;
         this.pipeline = pipeline;
         this.runner = runner;
