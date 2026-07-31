@@ -69,7 +69,11 @@ function persistField(f) {
     name: (f.name || '').trim(),
     description: (f.description || '').trim(),
     valueType: f.valueType ?? null,
-    bindings: (f.bindings || []).map((b) => ({ doc: b.doc, note: (b.note || '').trim() })),
+    bindings: (f.bindings || []).map((b) => ({
+      doc: b.doc,
+      note: (b.note || '').trim(),
+      ...(b.aliases && b.aliases.length ? { aliases: b.aliases } : {}),
+    })),
   }).catch(() => {})
 }
 
@@ -217,6 +221,16 @@ const checkIssues = (check, rule, isExact) => {
 //
 // This exists so lc-check can find the credit without knowing that this bank calls it
 // "LC". Codes are a convention an author owns; a role is a contract.
+// What a dictionary field holds. Sent to the model with the field, so it is asked
+// for a date rather than left to work out that "expiry_date" wants one.
+export const VALUE_TYPES = [
+  { value: 'STRING', label: 'Text' },
+  { value: 'DATE', label: 'Date' },
+  { value: 'AMOUNT', label: 'Amount' },
+  { value: 'INTEGER', label: 'Whole number' },
+  { value: 'CURRENCY_CODE', label: 'Currency code' },
+]
+
 export const DOC_ROLES = [
   { value: '', label: 'None — an ordinary document type' },
   { value: 'credit', label: 'The credit — carries the terms examined against' },
@@ -1177,12 +1191,23 @@ export function deriveVals(state, setState) {
     // a bare key, which is the model's only clue about what it is being asked for.
     nameMissing: isBlank(f.name),
     descMissing: isBlank(f.description),
-    canSave: allPresent(f.name, f.description),
+    // Conditional, and it is the interesting one. Adding a source is optional —
+    // an author may name a field before deciding where it is read from — but a
+    // source that has been added and left blank is worse than no source at all:
+    // the extraction prompt then asks for the field on that document with no
+    // instruction, and the model guesses. Required until the row is removed.
+    notesMissing: (f.bindings || []).filter((b) => isBlank(b.note)).length,
+    canSave: allPresent(f.name, f.description)
+      && (f.bindings || []).every((b) => !isBlank(b.note)),
     saveBlockedWhy: isBlank(f.name)
       ? 'Give it a name first.'
-      : isBlank(f.description) ? 'Say what it holds — the extraction prompt is built from this.' : '',
+      : isBlank(f.description) ? 'Say what it holds — the extraction prompt is built from this.'
+      : (f.bindings || []).some((b) => isBlank(b.note))
+        ? 'Every document you have added needs a read note — or take the document off.'
+        : '',
     onSave: () => {
       if (!allPresent(f.name, f.description)) return
+      if ((f.bindings || []).some((b) => isBlank(b.note))) return
       const saved = { ...f, name: (f.name || '').trim(), description: (f.description || '').trim(),
                       bindings: (f.bindings || []).map((b) => ({ ...b, note: (b.note || '').trim() })) }
       setDF((fs) => fs.map((x) => (x.id === f.id ? saved : x)))
@@ -1221,11 +1246,31 @@ export function deriveVals(state, setState) {
     },
     // Each source carries one note: what the field is called on that document
     // and how to read it. That note is the whole extraction instruction.
-    bindings: (f.bindings || []).map((b, i) => ({
-      doc: docLabel(b.doc), note: b.note || '',
-      onChangeNote: (ev) => { e.start(); const val = ev.target.value; patchField(f.id, (x) => ({ ...x, bindings: x.bindings.map((y, j) => (j === i ? { ...y, note: val } : y)) })) },
-      onRemove: () => { e.start(); patchField(f.id, (x) => ({ ...x, bindings: x.bindings.filter((y, j) => j !== i) })) },
-    })),
+    bindings: (f.bindings || []).map((b, i) => {
+      const patchBinding = (fn) => patchField(f.id, (x) => ({ ...x, bindings: x.bindings.map((y, j) => (j === i ? fn(y) : y)) }))
+      return {
+        doc: docLabel(b.doc), note: b.note || '',
+        noteMissing: isBlank(b.note),
+        onChangeNote: (ev) => { e.start(); const val = ev.target.value; patchBinding((y) => ({ ...y, note: val })) },
+        // What this document calls the field, when it does not call it what the
+        // dictionary does. An invoice says "total", "grand total", "amount due";
+        // the reading is folded back onto this key by whichever matches. Comma
+        // separated because that is how a person lists three synonyms.
+        aliases: (b.aliases || []).join(', '),
+        onChangeAliases: (ev) => {
+          e.start()
+          const list = ev.target.value.split(',').map((x) => x.trim()).filter(Boolean)
+          patchBinding((y) => (list.length ? { ...y, aliases: list } : (({ aliases, ...rest }) => rest)(y)))
+        },
+        onRemove: () => { e.start(); patchField(f.id, (x) => ({ ...x, bindings: x.bindings.filter((y, j) => j !== i) })) },
+      }
+    }),
+    // What kind of value this holds. It goes into the extraction prompt beside the
+    // field — "expiry_date — Expiry date (date)" — so the model is told to return a
+    // date rather than left to infer it from the name.
+    valueType: f.valueType || 'STRING',
+    valueTypes: VALUE_TYPES,
+    onChangeValueType: (ev) => { e.start(); const val = ev.target.value; patchField(f.id, (x) => ({ ...x, valueType: val })) },
     pickerOpen: S.dictDocPickerId === f.id,
     onTogglePicker: () => setState((s) => ({ dictDocPickerId: s.dictDocPickerId === f.id ? null : f.id })),
     docBook: docKeys.filter((dk) => !bindingDocs(f).includes(dk)).map((dk) => ({ name: docLabel(dk), onAdd: () => { e.start(); patchField(f.id, (x) => ({ ...x, bindings: [...(x.bindings || []), { doc: dk, note: '' }] })); setState({ dictDocPickerId: null }) } })),

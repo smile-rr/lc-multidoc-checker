@@ -153,6 +153,17 @@ function FieldCard({ f, defaultOpen = false }) {
           placeholder="Business field name"
           style={nameInput}
         />
+        <select
+          value={f.valueType}
+          onChange={f.onChangeValueType}
+          onFocus={f.onFocus}
+          disabled={f.locked}
+          title="What kind of value this holds — the model is told, rather than left to infer it from the name"
+          className="inline-edit"
+          style={{ flexShrink: 0, padding: '5px 7px', fontFamily: 'inherit', fontSize: 12, color: 'var(--me-grey-70)' }}
+        >
+          {f.valueTypes.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
         <Chip size="sm" title="Checks that read this field" style={{ flexShrink: 0, fontWeight: 600, color: 'var(--me-grey-70)' }}>{f.usedLabel}</Chip>
         <IconButton icon="trash-2" title={f.removeTip} tone="danger" onClick={f.onRemove} />
       </div>
@@ -189,17 +200,36 @@ function FieldCard({ f, defaultOpen = false }) {
             {f.bindings.map((b, i) => (
               <div key={i} style={{ display: 'grid', gridTemplateColumns: '176px minmax(0,1fr) 24px', gap: 10, alignItems: 'start' }}>
                 <span title={b.doc} style={{ ...ellip(12.5, 600, 'var(--me-ink)'), paddingTop: 7 }}>{b.doc}</span>
-                <TextArea
-                  className="inline-edit"
-                  value={b.note}
-                  onChange={b.onChangeNote}
-                  onFocus={f.onFocus}
-                  readOnly={f.locked}
-                  placeholder="What it is called here and how to read it…"
-                  maxLines={3}
-                  maxLength={NOTE_MAX}
-                  style={{ width: '100%', fontSize: 12.5, lineHeight: 1.5, color: 'var(--me-grey)', padding: '5px 7px' }}
-                />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+                  {/* Adding a source is optional; leaving one blank is not. The note is
+                      the whole extraction instruction for this field on this document,
+                      and an empty one sends the model a field name and no guidance. */}
+                  <TextArea
+                    className="inline-edit"
+                    value={b.note}
+                    onChange={b.onChangeNote}
+                    onFocus={f.onFocus}
+                    readOnly={f.locked}
+                    required
+                    invalid={b.noteMissing}
+                    hint="Say how it is read here, or take this document off."
+                    placeholder="What it is called here and how to read it…"
+                    maxLines={3}
+                    maxLength={NOTE_MAX}
+                    style={{ width: '100%', fontSize: 12.5, lineHeight: 1.5, color: 'var(--me-grey)', padding: '5px 7px' }}
+                  />
+                  {/* Not required — most documents call a field what the dictionary calls
+                      it. When one does not, this is what folds its wording back onto the
+                      key so a check can still find it. */}
+                  <TextField
+                    value={b.aliases}
+                    onChange={b.onChangeAliases}
+                    onFocus={f.onFocus}
+                    readOnly={f.locked}
+                    placeholder="Also called… (comma separated, optional)"
+                    style={{ width: '100%', fontSize: 12, color: 'var(--me-grey-70)', padding: '4px 7px' }}
+                  />
+                </div>
                 <IconButton icon="x" size="sm" tone="danger" title="Remove this source" onClick={b.onRemove} style={{ justifySelf: 'end', marginTop: 3 }} />
               </div>
             ))}
