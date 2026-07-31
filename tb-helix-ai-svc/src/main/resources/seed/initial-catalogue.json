@@ -528,28 +528,21 @@
           "desc": "Where and how the credit can be used.",
           "name": "Availability risk",
           "ordinal": 0,
-          "checks": [
-            "REQ-38",
-            "REQ-41A"
-          ]
+          "checks": []
         },
         {
           "gid": "TIME_WINDOW",
           "desc": "The dates that decide whether a presentation is in time.",
           "name": "Time window",
           "ordinal": 1,
-          "checks": [
-            "DATE-31D"
-          ]
+          "checks": []
         },
         {
           "gid": "DRAFTS_TENOR",
           "desc": "The bill of exchange itself.",
           "name": "Drafts & tenor",
           "ordinal": 2,
-          "checks": [
-            "DOCSET-42C"
-          ]
+          "checks": []
         }
       ],
       "eyebrow": "LC terms · Time & availability",
@@ -617,9 +610,7 @@
           "desc": "Loading evidence and shipment dates.",
           "name": "On-board & dating",
           "ordinal": 3,
-          "checks": [
-            "TRANS-20"
-          ]
+          "checks": []
         },
         {
           "gid": "TRANS_PORTS",
@@ -691,18 +682,14 @@
           "desc": "Correspondence with the credit.",
           "name": "Goods description",
           "ordinal": 5,
-          "checks": [
-            "XD-14"
-          ]
+          "checks": []
         },
         {
           "gid": "INV_AMOUNTS",
           "desc": "Values, tolerances and unit prices.",
           "name": "Amounts & pricing",
           "ordinal": 6,
-          "checks": [
-            "AMT-18"
-          ]
+          "checks": []
         }
       ],
       "eyebrow": "Goods · Pricing",
@@ -760,9 +747,7 @@
           "desc": "Amount, currency and cover dates.",
           "name": "Coverage & risks",
           "ordinal": 7,
-          "checks": [
-            "CERT-28"
-          ]
+          "checks": []
         }
       ],
       "eyebrow": "Insurance · Cover",

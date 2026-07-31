@@ -328,37 +328,28 @@
       "gid": "AVAILABILITY_RISK",
       "name": "Availability risk",
       "desc": "Where and how the credit can be used.",
-      "checks": [
-        "REQ-41A",
-        "REQ-38"
-      ]
+      "checks": []
     },
     {
       "agentId": "expiry",
       "gid": "TIME_WINDOW",
       "name": "Time window",
       "desc": "The dates that decide whether a presentation is in time.",
-      "checks": [
-        "DATE-31D"
-      ]
+      "checks": []
     },
     {
       "agentId": "expiry",
       "gid": "DRAFTS_TENOR",
       "name": "Drafts & tenor",
       "desc": "The bill of exchange itself.",
-      "checks": [
-        "DOCSET-42C"
-      ]
+      "checks": []
     },
     {
       "agentId": "transport",
       "gid": "TRANS_ONBOARD",
       "name": "On-board & dating",
       "desc": "Loading evidence and shipment dates.",
-      "checks": [
-        "TRANS-20"
-      ]
+      "checks": []
     },
     {
       "agentId": "transport",
@@ -372,27 +363,21 @@
       "gid": "INV_GOODS",
       "name": "Goods description",
       "desc": "Correspondence with the credit.",
-      "checks": [
-        "XD-14"
-      ]
+      "checks": []
     },
     {
       "agentId": "invoice",
       "gid": "INV_AMOUNTS",
       "name": "Amounts & pricing",
       "desc": "Values, tolerances and unit prices.",
-      "checks": [
-        "AMT-18"
-      ]
+      "checks": []
     },
     {
       "agentId": "insurance",
       "gid": "INS_COVERAGE",
       "name": "Coverage & risks",
       "desc": "Amount, currency and cover dates.",
-      "checks": [
-        "CERT-28"
-      ]
+      "checks": []
     },
     {
       "agentId": "beneficiary",
