@@ -100,18 +100,29 @@ UPDATE helix_gov.dict_field SET value_type = 'STRING' WHERE value_type IS NULL;
 -- were read by a hardcoded list in Java and had no dictionary field, so no rule could cite
 -- them and no author could change how they are read. Data, inserted rather than seeded,
 -- because the seeder only runs on an empty catalogue.
+--
+-- Both statements are guarded, because a fresh database has no catalogue for them to patch —
+-- the seed file carries these three fields, and the binding names a document type that does
+-- not exist yet. Unguarded, the second one fails the migration on the FK and the service
+-- never starts; guarded away, the seeder arrives and supplies all of it.
 
-INSERT INTO helix_gov.dict_field (key, name, description, kind, value_type, seeded) VALUES
+INSERT INTO helix_gov.dict_field (key, name, description, kind, value_type, seeded)
+SELECT * FROM (VALUES
     ('credit_reference', 'Credit reference',
      'The credit''s own number, as the issuing bank assigned it.', 'LC_FIELD', 'STRING', TRUE),
     ('issue_date', 'Issue date',
      'The date the credit was issued.', 'LC_FIELD', 'DATE', TRUE),
     ('tolerance_percent', 'Tolerance',
      'The percentage the drawing may exceed the credit amount by.', 'LC_FIELD', 'INTEGER', TRUE)
+) AS v
+ WHERE EXISTS (SELECT 1 FROM helix_gov.dict_field)
 ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO helix_gov.field_binding (field_key, doc_code, note, ordinal) VALUES
+INSERT INTO helix_gov.field_binding (field_key, doc_code, note, ordinal)
+SELECT * FROM (VALUES
     ('credit_reference',  'LC', 'Tag 20 — the sender''s reference for this credit.', 1),
     ('issue_date',        'LC', 'Tag 31C, YYMMDD.', 2),
     ('tolerance_percent', 'LC', 'Tag 39A — the plus percentage. 0 when the tag is absent.', 3)
+) AS v
+ WHERE EXISTS (SELECT 1 FROM helix_gov.doc_type WHERE code = 'LC')
 ON CONFLICT (field_key, doc_code) DO NOTHING;

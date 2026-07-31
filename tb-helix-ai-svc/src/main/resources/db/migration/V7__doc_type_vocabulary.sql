@@ -96,8 +96,13 @@ UPDATE helix_gov.doc_type SET role = 'schedule' WHERE code = 'CS';
 -- had a code for one; the dictionary never did, so no field could be bound to it and no
 -- check could name it. Inserted rather than seeded because the seeder only runs on an empty
 -- catalogue, and this one is not empty.
+--
+-- WHERE EXISTS, because a fresh database has no catalogue for this to patch. Adding the row
+-- anyway would make `helix_gov.document` non-empty by the time the seeder looks, and the
+-- seeder would stand down — leaving a deployment whose whole rulebook is one document type.
 INSERT INTO helix_gov.doc_type (code, name, description, before_reading, ordinal)
-VALUES ('WC', 'Warranty certificate',
-        'The beneficiary''s undertaking as to quality, period and scope of the warranty given.',
-        FALSE, 90)
+SELECT 'WC', 'Warranty certificate',
+       'The beneficiary''s undertaking as to quality, period and scope of the warranty given.',
+       FALSE, 90
+ WHERE EXISTS (SELECT 1 FROM helix_gov.doc_type)
 ON CONFLICT (code) DO NOTHING;
