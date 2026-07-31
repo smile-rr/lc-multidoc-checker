@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import Drawer from '@shared/ds/Drawer'
+import FloatingPanel from '@shared/ds/FloatingPanel'
 import Icon from '@shared/ds/Icon'
 import Badge from '@shared/ds/Badge'
 import { ellipsis } from '@shared/ds/text'
@@ -12,6 +12,13 @@ import { foldRunLog, isRunning, elapsed, clockTime } from '../state/runLog'
 // it has been doing: a stage takes ninety seconds behind one line of status, and
 // the difference between reading six pages and hanging on the second is invisible
 // until it times out. This is that difference, at three depths.
+//
+// **A floating panel, not a drawer.** A drawer greys out the page and takes the
+// keyboard, which is exactly wrong for something whose whole purpose is to be
+// watched while the run it is describing changes the screen behind it. So it
+// floats, nothing under it is disabled, and it minimises to its title bar —
+// where the status line keeps saying which stage is running and for how long.
+// Drag the header to move it off whatever it is covering.
 //
 // **The three tiers are drawn as three tiers, not as one list with indentation.**
 //   stage   a banded header — the unit an officer starts and waits on
@@ -39,7 +46,7 @@ const STATUS = {
 }
 const statusOf = (key) => STATUS[key] ?? STATUS.running
 
-export default function RunLogDrawer({ open, onClose, caseId }) {
+export default function RunLogPanel({ open, onClose, caseId }) {
   const { events, state } = useRunLog(caseId, open)
 
   // One clock for the whole panel, and only while something is actually running.
@@ -56,16 +63,25 @@ export default function RunLogDrawer({ open, onClose, caseId }) {
 
   const total = stages.reduce((sum, s) => sum + (s.ms ?? 0), 0)
 
+  // What the title bar says, and therefore the whole panel when it is minimised.
+  // The running stage and its step, because that is what somebody minimises it to
+  // keep an eye on; the totals only when nothing is in flight.
+  const running = stages.find((s) => s.status === 'running')
+  const runningStep = running?.steps.find((s) => s.status === 'running')
+  const status = state === 'loading' ? 'Loading…'
+    : state === 'failed' ? 'Log unavailable'
+      : !stages.length ? 'Nothing has run yet'
+        : running
+          ? `${STAGE_LABELS[running.key] ?? running.key}${runningStep ? ` · ${runningStep.label}` : ''} · ${elapsed(running.ms)}`
+          : `${stages.length} stage${stages.length === 1 ? '' : 's'} · ${elapsed(total)}`
+
   return (
-    <Drawer
+    <FloatingPanel
+      id="lc-check-run-log"
       open={open}
       onClose={onClose}
       title="Run log"
-      subtitle={
-        state === 'loading' ? 'Loading…'
-          : !stages.length ? 'Nothing has run on this case yet'
-            : `${stages.length} stage${stages.length === 1 ? '' : 's'} · ${elapsed(total)}${live ? ' · running' : ''}`
-      }
+      status={status}
       width={620}
     >
       {state === 'failed' ? (
@@ -81,7 +97,7 @@ export default function RunLogDrawer({ open, onClose, caseId }) {
           {stages.map((stage) => <StageBand key={stage.key + stage.startedAt} stage={stage} />)}
         </div>
       )}
-    </Drawer>
+    </FloatingPanel>
   )
 }
 
