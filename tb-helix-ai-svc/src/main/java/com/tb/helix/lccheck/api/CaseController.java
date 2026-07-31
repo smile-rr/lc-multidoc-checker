@@ -6,6 +6,7 @@ import com.tb.helix.lccheck.api.dto.NewCheckRequest;
 import com.tb.helix.lccheck.api.dto.SignoffRequest;
 import com.tb.helix.lccheck.pipeline.PipelineService;
 import com.tb.helix.lccheck.service.CaseService;
+import com.tb.helix.lccheck.service.FlowService;
 import com.tb.helix.lccheck.types.CaseDetail;
 import com.tb.helix.lccheck.types.CaseSummary;
 import com.tb.helix.lccheck.types.StageId;
@@ -39,11 +40,26 @@ public class CaseController {
     private final CaseService cases;
     private final PipelineService pipeline;
     private final EventStream stream;
+    private final FlowService flowService;
 
-    public CaseController(CaseService cases, PipelineService pipeline, EventStream stream) {
+    public CaseController(CaseService cases, PipelineService pipeline, EventStream stream,
+                          FlowService flowService) {
         this.cases = cases;
         this.pipeline = pipeline;
         this.stream = stream;
+        this.flowService = flowService;
+    }
+
+    /**
+     * The examination itself: every stage, its steps, and who starts each one.
+     *
+     * <p>Not per-case — this is the shape of the process, not the state of one run. The
+     * browser reads it once and stops hard-coding a copy of the pipeline it can only get
+     * wrong.
+     */
+    @GetMapping("/flow")
+    public List<Map<String, Object>> flow() {
+        return flowService.describe();
     }
 
     // --- Cases --------------------------------------------------------------

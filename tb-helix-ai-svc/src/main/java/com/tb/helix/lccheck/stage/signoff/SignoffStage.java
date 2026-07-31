@@ -5,7 +5,7 @@ import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.pipeline.*;
 import com.tb.helix.lccheck.types.StageId;
-import com.tb.helix.lccheck.types.pipeline.StageOutcome;
+import com.tb.helix.lccheck.types.pipeline.StepResult;
 
 import org.springframework.stereotype.Component;
 
@@ -39,7 +39,12 @@ public class SignoffStage implements Stage {
     }
 
     @Override
-    public StageOutcome execute(StageContext ctx) {
+    public List<Step> steps() {
+        return List.of(
+                Step.of("report", "Drafting the refusal advice", this::draftAdvice));
+    }
+
+    private StepResult draftAdvice(StageContext ctx) {
         CaseRow row = cases.find(ctx.caseId()).orElseThrow();
         Map<String, String> decisions = cases.decisions(ctx.caseId()).stream()
                 .collect(java.util.stream.Collectors.toMap(
@@ -47,21 +52,22 @@ public class SignoffStage implements Stage {
                         d -> String.valueOf(d.disposition()),
                         (a, b) -> b));
 
+        // Only what the officer agreed reaches the advice. A parked or rejected finding was
+        // considered and set aside, and putting it in the notice anyway would make the
+        // officer's decision meaningless.
         List<ReadRows.Finding> agreed = cases.findings(ctx.caseId()).stream()
                 .filter(f -> "agreed".equals(decisions.get(f.findingRef())))
                 .toList();
 
-        ctx.progress("report", "Drafting the refusal advice");
         String mt734 = mt734(row, agreed);
-        ctx.recordStep("report", Map.of(
-                "grounds", agreed.size(),
-                "mt734", mt734,
-                "verdict", cases.verdict(ctx.caseId()).map(ReadRows.Verdict::verdict).orElse("refuse")));
-
         cases.patchCase(ctx.caseId(), Map.of(
                 "status", agreed.isEmpty() ? "clean" : "with_authoriser",
                 "completed_at", java.sql.Timestamp.from(java.time.Instant.now())));
-        return StageOutcome.ok();
+
+        return StepResult.ok(Map.of(
+                "grounds", agreed.size(),
+                "mt734", mt734,
+                "verdict", cases.verdict(ctx.caseId()).map(ReadRows.Verdict::verdict).orElse("refuse")));
     }
 
     private String mt734(CaseRow c, List<ReadRows.Finding> grounds) {

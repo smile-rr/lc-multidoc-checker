@@ -66,21 +66,32 @@ public interface StageContext {
         emit(HelixEvent.of(caseId(), type, payload));
     }
 
-    /** Says what is being done right now, in words an officer would use. */
-    default void progress(String step, String label) {
-        progress(step, label, false);
+    /**
+     * Announces a declared step. Called by the runner, not by a stage.
+     *
+     * <p>Carries the key <em>and</em> the label: the key is the contract a browser can
+     * translate on, the label is what it falls back to and what makes the stream readable
+     * to whoever is debugging it.
+     */
+    default void announce(String step, String label) {
+        emit(HelixEvent.PROGRESS, Map.of(
+                "stage", stage().key(), "step", step, "label", label, "refresh", false));
     }
 
     /**
-     * The same, and the case now holds something it did not a moment ago.
+     * Says the case now holds something it did not a moment ago, so the browser should
+     * refetch.
      *
-     * @param refresh true when the browser should refetch — the event says <em>that</em>
-     *                something landed, never <em>what</em>, so there is one description of
-     *                a case rather than two that can disagree
+     * <p>The event says <em>that</em> something landed, never <em>what</em> — there is one
+     * description of a case, the case endpoint, and a progress channel that shipped domain
+     * objects would be a second weaker copy of it that could drift.
+     *
+     * <p>This one a step does call, because only the step knows whether what it wrote is
+     * worth a round trip. Reading the credit is; counting pages is not, on its own.
      */
-    default void progress(String step, String label, boolean refresh) {
+    default void landed(String step, String label) {
         emit(HelixEvent.PROGRESS, Map.of(
-                "stage", stage().key(), "step", step, "label", label, "refresh", refresh));
+                "stage", stage().key(), "step", step, "label", label, "refresh", true));
     }
 
     // --- Cancellation --------------------------------------------------------

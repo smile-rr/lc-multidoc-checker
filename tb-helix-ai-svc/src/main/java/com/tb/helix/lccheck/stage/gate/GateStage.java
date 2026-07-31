@@ -7,7 +7,7 @@ import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.pipeline.*;
 import com.tb.helix.lccheck.types.StageId;
-import com.tb.helix.lccheck.types.pipeline.StageOutcome;
+import com.tb.helix.lccheck.types.pipeline.StepResult;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,7 +48,20 @@ public class GateStage implements Stage {
     }
 
     @Override
-    public StageOutcome execute(StageContext ctx) {
+    public List<Step> steps() {
+        return List.of(
+                Step.of("gate", "Running the hard checks", this::runGates));
+    }
+
+    /**
+     * Every authored hard check, in order, stopping at the first that fails.
+     *
+     * <p>One declared step rather than one per gate: which gates exist is the catalogue's
+     * answer and changes without a deployment, so a per-gate declaration would make
+     * {@link #steps()} depend on data. Each gate's own verdict still lands on the step tape
+     * under its check id.
+     */
+    private StepResult runGates(StageContext ctx) {
         CaseRow row = cases.find(ctx.caseId()).orElseThrow();
         List<CheckCatalog.CheckCard> gates = catalog.gates();
 
@@ -57,18 +70,14 @@ public class GateStage implements Stage {
         // notice — but re-halting on every subsequent run would make the override do
         // nothing, which is how a case becomes impossible to move.
         if (row.gateOverriddenBy() != null) {
-            ctx.recordStep("overridden", Map.of(
-                    "by", String.valueOf(row.gateOverriddenBy()),
-                    "check", String.valueOf(row.gateHaltCheckId())));
-            return StageOutcome.ok();
+            return StepResult.skipped("overridden by " + row.gateOverriddenBy()
+                    + " on " + row.gateHaltCheckId());
         }
-
         if (gates.isEmpty()) {
-            ctx.recordStep("none", Map.of("note", "no hard checks are authored"));
-            return StageOutcome.ok();
+            return StepResult.skipped("no hard checks are authored");
         }
 
-        ctx.progress("gate", "Running " + gates.size() + " hard check" + (gates.size() == 1 ? "" : "s"));
+        ctx.announce("gate", "Running " + gates.size() + " hard check" + (gates.size() == 1 ? "" : "s"));
 
         LocalDate expiry = row.expiry();
         LocalDate presented = presentationDate(ctx, row);
@@ -98,15 +107,13 @@ public class GateStage implements Stage {
                         "reason", "UCP 600 art. 6(e) — presentation must be made on or before expiry.",
                         "creditAnchorId", "tag-31D",
                         "confidence", "HIGH"));
-                ctx.recordStep(gate.id(), Map.of("verdict", "FAIL", "expiry", expiry.toString(),
-                        "presented", presented.toString()));
                 log.info("Case {} halted: presented {} after expiry {}", ctx.caseId(), presented, expiry);
-                return StageOutcome.halted(gate.id(), statement);
+                return StepResult.halted(gate.id(), statement);
             }
             ctx.recordStep(gate.id(), Map.of("verdict", "PASS",
                     "expiry", String.valueOf(expiry), "presented", String.valueOf(presented)));
         }
-        return StageOutcome.ok();
+        return StepResult.ok(Map.of("gates", gates.size(), "verdict", "PASS"));
     }
 
     /**

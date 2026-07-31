@@ -8,6 +8,7 @@ import com.tb.helix.lccheck.persistence.CaseRow;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.types.StageId;
 import com.tb.helix.lccheck.types.pipeline.StageOutcome;
+import com.tb.helix.lccheck.types.pipeline.StepResult;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -134,9 +135,10 @@ public class PipelineService {
         StageId id = stage.id();
         events.publish(HelixEvent.of(caseId, HelixEvent.STAGE_STARTED, Map.of("stage", id.key())));
         long started = System.currentTimeMillis();
+        StageContext ctx = new DbStageContext(caseId, id, officerId, cases, events, cancelled);
 
         try {
-            StageOutcome outcome = stage.execute(new DbStageContext(caseId, id, officerId, cases, events, cancelled));
+            StageOutcome outcome = runSteps(ctx, stage);
             long ms = System.currentTimeMillis() - started;
 
             switch (outcome.status()) {
@@ -173,6 +175,69 @@ public class PipelineService {
                     Map.of("stage", id.key(), "message", String.valueOf(e.getMessage()))));
             return StageOutcome.failed(e.getMessage());
         }
+    }
+
+    /**
+     * Walks a stage's declared steps.
+     *
+     * <p>Every step is announced before it runs and recorded after, from its own
+     * declaration — which is why no stage calls {@code progress} or {@code recordStep} any
+     * more, and why the label on the wire cannot disagree with the key in the database.
+     *
+     * <p>A step that does not apply is recorded as {@code SKIPPED} with its reason rather
+     * than passed over. An examiner has to be able to say what was not checked; a step that
+     * quietly returned would look identical to one that passed.
+     */
+    private StageOutcome runSteps(StageContext ctx, Stage stage) {
+        String stageKey = stage.id().key();
+
+        for (Step step : stage.steps()) {
+            if (ctx.cancelled()) {
+                log.info("Case {} cancelled before step {}:{}", ctx.caseId(), stageKey, step.key());
+                return StageOutcome.ok();
+            }
+
+            if (!step.appliesTo(ctx)) {
+                cases.recordStep(ctx.caseId(), stageKey, step.key(), "NOT_APPLICABLE",
+                        Map.of("reason", "nothing for this step to do on this case"), null, false, null);
+                continue;
+            }
+
+            ctx.announce(step.key(), step.label());
+            long started = System.currentTimeMillis();
+            StepResult result = step.run(ctx);
+            long ms = System.currentTimeMillis() - started;
+
+            switch (result.status()) {
+                case OK -> {
+                    cases.recordStep(ctx.caseId(), stageKey, step.key(), "OK",
+                            withTiming(result.data(), ms), null, false, null);
+                    // A note means the case now holds something it did not, so the browser
+                    // is told to refetch. Emitted here rather than by the step, so every
+                    // publish in the pipeline goes through one place.
+                    if (result.note() != null) ctx.landed(step.key(), result.note());
+                }
+                case SKIPPED -> cases.recordStep(ctx.caseId(), stageKey, step.key(), "SKIPPED",
+                        Map.of("reason", String.valueOf(result.detail())), null, false, null);
+                case HALTED -> {
+                    cases.recordStep(ctx.caseId(), stageKey, step.key(), "OK",
+                            withTiming(result.data(), ms), null, false, null);
+                    return result.asStageOutcome();
+                }
+                case FAILED -> {
+                    cases.recordStep(ctx.caseId(), stageKey, step.key(), "FAILED",
+                            null, result.detail(), false, null);
+                    return result.asStageOutcome();
+                }
+            }
+        }
+        return StageOutcome.ok();
+    }
+
+    private Map<String, Object> withTiming(Map<String, Object> data, long ms) {
+        Map<String, Object> out = new LinkedHashMap<>(data == null ? Map.of() : data);
+        out.put("ms", ms);
+        return out;
     }
 
     public void cancel(String caseId) {

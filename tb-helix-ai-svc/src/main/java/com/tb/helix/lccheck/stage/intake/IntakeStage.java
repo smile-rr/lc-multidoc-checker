@@ -9,9 +9,10 @@ import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.pipeline.Stage;
+import com.tb.helix.lccheck.pipeline.Step;
 import com.tb.helix.lccheck.pipeline.StageContext;
 import com.tb.helix.lccheck.types.StageId;
-import com.tb.helix.lccheck.types.pipeline.StageOutcome;
+import com.tb.helix.lccheck.types.pipeline.StepResult;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -45,6 +47,20 @@ import java.util.Map;
 public class IntakeStage implements Stage {
 
     private static final Logger log = LoggerFactory.getLogger(IntakeStage.class);
+
+    /**
+     * Step keys, published because other code reads their results back.
+     *
+     * <p>A key is a contract the moment anything looks it up — {@code CaseAssembler} wants
+     * the credit's tag lines, {@code PlanStage} wants its {@code :46A:}/{@code :47A:} text.
+     * Naming the constant rather than repeating the string is what stops a renamed step
+     * from silently returning nothing: this file is the one definition, and a rename here
+     * fails to compile everywhere it matters.
+     */
+    public static final String CREDIT = "credit";
+    public static final String BUNDLE = "bundle";
+    public static final String MANIFEST = "manifest";
+    public static final String READY = "ready";
 
     private final BlobStore blobs;
     private final DocumentConverter converter;
@@ -134,78 +150,90 @@ public class IntakeStage implements Stage {
      * makes intake repeatable at all: the bytes are the input, and they are still there.
      */
     @Override
-    public StageOutcome execute(StageContext ctx) {
+    public List<Step> steps() {
+        return List.of(
+                Step.of(CREDIT, "Reading the credit",
+                        ctx -> row(ctx).creditTextSha() != null, this::readCredit),
+                Step.of(BUNDLE, "Converting the scan to PDF",
+                        ctx -> row(ctx).sourceBundleSha() != null && row(ctx).bundlePdfSha() == null,
+                        this::convertBundle),
+                Step.of(MANIFEST, "Counting the pages",
+                        ctx -> row(ctx).sourceBundleSha() != null, this::countPages),
+                Step.of(READY, "Finishing intake", this::markReady));
+    }
+
+    /**
+     * Reads the credit through a model and writes its terms.
+     *
+     * <p>Written before the bundle is touched, so the terms are on screen while the scan is
+     * still converting — which is the whole reason this is four steps rather than one.
+     */
+    private StepResult readCredit(StageContext ctx) {
         String caseId = ctx.caseId();
-        CaseRow row = cases.find(caseId).orElseThrow();
-        Map<String, Object> patch = new LinkedHashMap<>();
+        String creditSha = row(ctx).creditTextSha();
+        byte[] bytes = blobs.get(creditSha).orElseThrow(
+                () -> new IllegalStateException("Credit blob " + creditSha + " is missing"));
 
-        String creditSha = row.creditTextSha();
-        if (creditSha != null) {
-            ctx.progress("credit", "Reading the credit");
-            byte[] bytes = blobs.get(creditSha).orElseThrow(
-                    () -> new IllegalStateException("Credit blob " + creditSha + " is missing"));
+        SwiftMessage message = swift.read(new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
+        Map<String, Object> credit = creditReader.read(message);
 
-            SwiftMessage message = swift.read(new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
-            Map<String, Object> credit = creditReader.read(message);
+        // An amendment changes terms rather than establishing them, so only what it
+        // actually states is written — CreditReader has already dropped the rest, and a
+        // field absent from a 707 means "unchanged", never "cleared".
+        cases.patchCase(caseId, creditColumns(credit));
 
-            // An amendment changes terms rather than establishing them, so only what it
-            // actually states is written — CreditReader has already dropped the rest, and a
-            // field absent from a 707 means "unchanged", never "cleared".
-            patch.putAll(creditColumns(credit));
+        // No fileName: the upsert leaves file_name alone on conflict, so the name recorded
+        // at receive survives this and every rerun after it. The upload is the only thing
+        // that knows what the file was called.
+        cases.upsertDocument(caseId, "mt700", Rows.of(
+                "role", "credit",
+                "docType", message.type().isCredit() ? "Letter of credit" : message.type().label(),
+                "abbr", message.type().isCredit() ? "LC" : message.type().code(),
+                "icon", "file-text",
+                "reference", String.valueOf(credit.getOrDefault("creditRef", "")),
+                "extraction", "text", "ordinal", 0));
 
-            ctx.recordStep("swift", Map.of(
-                    "messageType", message.type().code(),
-                    "messageLabel", message.type().label(),
-                    "tags", message.tags(),
-                    "credit", credit,
-                    "lines", message.lines()));
+        return StepResult.done(message.type().label() + " read", Map.of(
+                "messageType", message.type().code(),
+                "messageLabel", message.type().label(),
+                "tags", message.tags(),
+                "credit", credit,
+                "lines", message.lines()));
+    }
 
-            // No fileName: the upsert leaves file_name alone on conflict, so the name
-            // recorded at receive survives this and every rerun after it. The upload is
-            // the only thing that knows what the file was called.
-            cases.upsertDocument(caseId, "mt700", Rows.of(
-                    "role", "credit",
-                    "docType", message.type().isCredit() ? "Letter of credit" : message.type().label(),
-                    "abbr", message.type().isCredit() ? "LC" : message.type().code(),
-                    "icon", "file-text",
-                    "reference", String.valueOf(credit.getOrDefault("creditRef", "")),
-                    "extraction", "text", "ordinal", 0));
+    /**
+     * A TIFF becomes the PDF everything downstream assumes.
+     *
+     * <p>Skipped when {@code receive} already set the bundle sha, which it does for a PDF
+     * upload — and after a conversion, which is what makes a rerun cheap.
+     */
+    private StepResult convertBundle(StageContext ctx) {
+        CaseRow row = row(ctx);
+        var pdf = converter.toPdf(row.sourceBundleSha());
+        blobs.reference(pdf.sha256(), BlobOwner.CASE, ctx.caseId(), "bundle");
+        cases.patchCase(ctx.caseId(), Map.of("bundle_pdf_sha", pdf.sha256()));
+        log.info("Case {}: converted source {} to PDF {}",
+                ctx.caseId(), row.sourceBundleSha().substring(0, 8), pdf.shortSha());
+        return StepResult.ok(Map.of("sourceSha", row.sourceBundleSha(), "pdfSha", pdf.sha256()));
+    }
 
-            // Written before the bundle is touched, so the terms are on screen while the
-            // scan is still converting.
-            cases.patchCase(caseId, patch);
-            patch.clear();
-            ctx.progress("credit", message.type().label() + " read", true);
-        }
+    private StepResult countPages(StageContext ctx) {
+        CaseRow row = row(ctx);
+        String pdfSha = row.bundlePdfSha();
+        int pages = renderer.pageCount(pdfSha);
+        cases.patchCase(ctx.caseId(), Map.of("page_count", pages));
+        return StepResult.ok(Map.of(
+                "sourceSha", row.sourceBundleSha(), "pdfSha", pdfSha,
+                "converted", !pdfSha.equals(row.sourceBundleSha()), "pages", pages));
+    }
 
-        String sourceSha = row.sourceBundleSha();
-        if (sourceSha != null) {
-            // receive() sets bundle_pdf_sha when the upload was already a PDF, so a null
-            // here means exactly one thing: a conversion is outstanding. Reading it that
-            // way rather than re-sniffing the filename is also what makes a rerun cheap —
-            // once converted, the sha is on the case and there is nothing left to do.
-            String converted = row.bundlePdfSha();
-            if (converted == null) {
-                ctx.progress("bundle", "Converting the scan to PDF");
-                var pdf = converter.toPdf(sourceSha);
-                converted = pdf.sha256();
-                blobs.reference(converted, BlobOwner.CASE, caseId, "bundle");
-                log.info("Case {}: converted source {} to PDF {}", caseId, sourceSha.substring(0, 8), pdf.shortSha());
-            }
+    private StepResult markReady(StageContext ctx) {
+        cases.patchCase(ctx.caseId(), Map.of("status", "awaiting_check"));
+        return StepResult.done("Ready to examine");
+    }
 
-            ctx.progress("bundle", "Counting the pages");
-            patch.put("bundle_pdf_sha", converted);
-            patch.put("page_count", renderer.pageCount(converted));
-
-            ctx.recordStep("manifest", Map.of(
-                    "sourceSha", sourceSha, "pdfSha", converted,
-                    "converted", !converted.equals(sourceSha)));
-        }
-
-        patch.put("status", "awaiting_check");
-        cases.patchCase(caseId, patch);
-        ctx.progress("done", "Ready to examine", true);
-        return StageOutcome.ok();
+    private CaseRow row(StageContext ctx) {
+        return cases.find(ctx.caseId()).orElseThrow();
     }
 
     /** A TIFF has to become a PDF; anything else is already what the viewer wants. */

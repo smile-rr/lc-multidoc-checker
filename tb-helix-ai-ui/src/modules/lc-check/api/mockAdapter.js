@@ -13,6 +13,28 @@
 import { CASE_LIST, caseDetailFor, ASK_SUGGESTIONS, AI_PERFORMANCE, RUN_STEPS } from '../data/fixtures.js'
 import { summariseSpend } from '../state/runCost.js'
 
+/** The pipeline as tb-helix-ai-svc declares it. Mirrors GET /lc-check/flow. */
+const FLOW = [
+  { stage: 'intake', auto: true, officerStarts: false, steps: [
+    { key: 'credit', label: 'Reading the credit' },
+    { key: 'bundle', label: 'Converting the scan to PDF' },
+    { key: 'manifest', label: 'Counting the pages' },
+    { key: 'ready', label: 'Finishing intake' }] },
+  { stage: 'interpret', auto: false, officerStarts: true, steps: [
+    { key: 'segment', label: 'Sorting the pages into documents' },
+    { key: 'extract', label: 'Reading each document' }] },
+  { stage: 'gate', auto: false, officerStarts: false, steps: [
+    { key: 'gate', label: 'Running the hard checks' }] },
+  { stage: 'plan', auto: false, officerStarts: true, steps: [
+    { key: 'select', label: 'Selecting the rules that apply' },
+    { key: 'requirements', label: 'Reading what the credit asks for' }] },
+  { stage: 'execute', auto: false, officerStarts: true, steps: [
+    { key: 'facts', label: 'Assembling what the documents say' },
+    { key: 'checks', label: 'Running the planned checks' }] },
+  { stage: 'signoff', auto: false, officerStarts: true, steps: [
+    { key: 'report', label: 'Drafting the refusal advice' }] },
+]
+
 /** Simulated service latency, ms. Kept visible so loading states get exercised. */
 const LATENCY = { list: 160, detail: 220, mutate: 110 }
 
@@ -38,6 +60,20 @@ export async function listCases({ scope = 'all' } = {}) {
  * @param {string} caseId
  * @returns {Promise<import('../data/contracts.js').CaseDetail>}
  */
+/**
+ * The flow, as the service declares it.
+ *
+ * Kept in step with `Stage.steps()` on the backend — `assertFlowMatches` in
+ * severity.js shouts if the two drift, which is the whole reason this exists
+ * rather than the UI simply believing its own constant.
+ *
+ * @returns {Promise<object[]>}
+ */
+export async function getFlow() {
+  await wait(LATENCY.mutate)
+  return clone(FLOW)
+}
+
 export async function getCase(caseId) {
   await wait(LATENCY.detail)
   const detail = caseDetailFor(caseId)

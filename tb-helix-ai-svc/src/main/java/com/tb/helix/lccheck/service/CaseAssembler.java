@@ -1,6 +1,7 @@
 package com.tb.helix.lccheck.service;
 
 import com.tb.helix.lccheck.persistence.CaseRow;
+import com.tb.helix.lccheck.stage.intake.IntakeStage;
 import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.stage.intake.SwiftMessage;
@@ -199,7 +200,7 @@ public class CaseAssembler {
 
 
     public List<?> creditLines(CaseStore store, String caseId) {
-        return store.stepResult(caseId, "intake", "swift")
+        return store.stepResult(caseId, StageId.INTAKE.key(), IntakeStage.CREDIT)
                 .map(r -> (List<?>) r.getOrDefault("lines", List.of()))
                 .orElse(List.of());
     }

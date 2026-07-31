@@ -50,6 +50,44 @@ export const PIPELINE_STEPS = [
 
 export const stepMeta = (id) => PIPELINE_STEPS.find((s) => s.id === id) ?? null
 
+/**
+ * Checks the browser's idea of the run against the service's declaration.
+ *
+ * PIPELINE_STEPS is not a copy of the backend flow — it is a UX grouping, and it
+ * deliberately differs: intake runs by itself so it gets no button, the gate rides
+ * with plan, and signoff is reached from the decision screen rather than the run
+ * button. What it must never do is disagree about *which stages an officer can
+ * start*, because then a button either does nothing or is missing.
+ *
+ * So the two are compared rather than merged, and a mismatch is shouted about in
+ * the console. Four separate descriptions of this pipeline drifted before anyone
+ * noticed; this is the cheapest thing that makes drift visible the moment it
+ * happens, in both mock and api mode.
+ *
+ * @param {object[]} flow  GET /lc-check/flow
+ * @returns {string[]} complaints, empty when they agree
+ */
+export function flowDisagreements(flow) {
+  if (!Array.isArray(flow) || flow.length === 0) return []
+  const backendRunnable = flow.filter((s) => s.officerStarts).map((s) => s.stage)
+  const ours = PIPELINE_STEPS.map((s) => s.id)
+
+  const problems = []
+  for (const id of ours) {
+    if (!backendRunnable.includes(id)) {
+      problems.push(`the run bar offers "${id}", which the service does not let an officer start`)
+    }
+  }
+  // signoff is expected to be absent from ours — it is reached from the decision
+  // screen, not the run button — so it is not a complaint.
+  for (const id of backendRunnable) {
+    if (!ours.includes(id) && id !== 'signoff') {
+      problems.push(`the service can run "${id}" but the run bar never offers it`)
+    }
+  }
+  return problems
+}
+
 /** The next step that has not run, or null when the run is out of steps. */
 export const stepAfter = (doneIds) => PIPELINE_STEPS.find((s) => !doneIds.includes(s.id)) ?? null
 

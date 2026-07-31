@@ -8,12 +8,13 @@ import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
 import com.tb.helix.lccheck.persistence.CaseStore;
+import com.tb.helix.lccheck.stage.intake.IntakeStage;
 import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.pipeline.*;
 import com.tb.helix.lccheck.types.StageId;
 import com.tb.helix.lccheck.types.examination.Areas;
-import com.tb.helix.lccheck.types.pipeline.StageOutcome;
+import com.tb.helix.lccheck.types.pipeline.StepResult;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -64,19 +65,30 @@ public class PlanStage implements Stage {
     }
 
     @Override
-    public StageOutcome execute(StageContext ctx) {
-        Set<String> present = presentDocTypes(ctx);
+    public List<Step> steps() {
+        return List.of(
+                Step.of("select", "Selecting the rules that apply", this::selectRules),
+                Step.of("requirements", "Reading what the credit asks for", this::readRequirements));
+    }
 
-        ctx.progress("select", "Selecting rules that apply to this presentation");
+    /**
+     * The catalogue walk. Instant — no model, no I/O beyond the plan rows.
+     *
+     * <p>Separate from {@link #readRequirements} because the two cost different amounts and
+     * fail for different reasons, and a stage that reported them as one would tell the
+     * officer nothing about which was slow.
+     */
+    private StepResult selectRules(StageContext ctx) {
+        Set<String> present = presentDocTypes(ctx);
 
         int ordinal = 1;
         int planned = 0;
         for (CheckCatalog.CheckCard card : catalog.activeChecks()) {
             if (card.isGate()) continue;   // already run, already recorded
 
-            // A trigger that is not met records NOT_APPLICABLE with a reason. "We did not
-            // check that" is an answer an examiner has to be able to give, so it is never
-            // a silent omission.
+            // A trigger that is not met records SKIPPED with a reason. "We did not check
+            // that" is an answer an examiner has to be able to give, so it is never a
+            // silent omission.
             boolean applies = card.docTypes().isEmpty() || present.stream().anyMatch(card.docTypes()::contains);
             String because = applies
                     ? (card.docTypes().isEmpty() ? "Applies to every presentation"
@@ -95,25 +107,22 @@ public class PlanStage implements Stage {
                     "status", applies ? "PLANNED" : "SKIPPED", "ordinal", ordinal++));
             if (applies) planned++;
         }
-
-        // The model call: reading what the credit itself demands out of :46A: / :47A:.
-        // Separated from rule selection above, which is a catalogue walk and instant.
-        ctx.progress("requirements", "Reading what the credit asks for");
-        int requirements = planRequirements(ctx, ordinal);
-
-        ctx.recordStep("select", Map.of("ruleCards", planned, "requirementCards", requirements));
-        ctx.progress("plan", planned + requirements + " checks planned", true);
-        return StageOutcome.ok();
+        return StepResult.ok(Map.of("ruleCards", planned, "nextOrdinal", ordinal));
     }
 
-    /**
-     * The credit's own demands, read from :46A: and :47A:.
-     *
-     * <p>Cached on the credit text, so re-planning the same credit costs nothing and two
-     * cases under the same credit share the reading.
-     */
+    /** What the credit itself demands, read out of {@code :46A:} and {@code :47A:}. */
+    private StepResult readRequirements(StageContext ctx) {
+        int ordinal = ctx.stepResult(StageId.PLAN, "select")
+                .map(r -> r.get("nextOrdinal") instanceof Number n ? n.intValue() : 1)
+                .orElse(1);
+
+        int requirements = planRequirements(ctx, ordinal);
+        return StepResult.done(requirements + " requirement cards read",
+                Map.of("requirementCards", requirements));
+    }
+
     private int planRequirements(StageContext ctx, int ordinal) {
-        Optional<Map<String, Object>> parsed = cases.stepResult(ctx.caseId(), "intake", "swift");
+        Optional<Map<String, Object>> parsed = cases.stepResult(ctx.caseId(), StageId.INTAKE.key(), IntakeStage.CREDIT);
         if (parsed.isEmpty()) return 0;
 
         @SuppressWarnings("unchecked")

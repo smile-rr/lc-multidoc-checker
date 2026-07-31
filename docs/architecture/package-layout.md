@@ -192,11 +192,63 @@ out of reach, not closer, since you would be reading generated SQL out of a log.
 the opposite: complex reads move **into views**, which are versioned by Flyway and open in any DB
 tool, and Java gets a typed row back.
 
+## 7b. The flow is declared, not written
+
+A stage says what it *is made of*; the runner does the rest.
+
+```java
+@Override
+public List<Step> steps() {
+    return List.of(
+        Step.of(CREDIT,   "Reading the credit",       ctx -> row(ctx).creditTextSha() != null, this::readCredit),
+        Step.of(BUNDLE,   "Converting the scan to PDF", ctx -> row(ctx).bundlePdfSha() == null, this::convertBundle),
+        Step.of(MANIFEST, "Counting the pages",       this::countPages),
+        Step.of(READY,    "Finishing intake",         this::markReady));
+}
+```
+
+`PipelineService.runSteps` announces each step before it runs, records it on the tape after, and
+publishes the completion note. **No stage calls `progress` or `recordStep` for its own steps any
+more** — which is why the key on the wire cannot disagree with the key in the database.
+
+Three consequences worth stating:
+
+- **`GET /api/v1/lc-check/flow`** returns the whole pipeline, built from these declarations. It is
+  what runs, not a description of it.
+- **Applicability is declared.** The `when` predicate replaces an early `return`, so a step that does
+  not apply lands on the tape as `NOT_APPLICABLE` with a reason. An examiner has to be able to say
+  what was *not* checked; a silent `if` looks identical to a pass.
+- **A completion note is data.** `StepResult.done("6 documents read", …)` — its presence is what tells
+  the browser to refetch. Only the step knows whether what it wrote is worth a round trip, and only
+  the runner publishes.
+
+**Where a step key is read back, it is a constant, not a literal.** `IntakeStage.CREDIT` is named by
+`CaseAssembler` and `PlanStage`; renaming the step fails the build instead of silently returning
+nothing. Keys that nobody looks up stay inline.
+
+**A fan-out whose width the code does not know** — one call per document, one per planned check —
+stays a single declared step whose body re-announces with the item it is on. Declaring a step per
+document would make `steps()` depend on the case, which is the one thing a declaration must not do.
+
+### Why not Spring Batch or Temporal
+
+Both were considered. Spring Batch is chunk-oriented batch processing and its `JobRepository` owns
+nine tables of its own — so stage state would live there *and* in `lc_case.stage`, and an officer
+overriding a gate would leave the two disagreeing. Temporal genuinely fits long human-paced
+workflows, but it needs a server, a worker and determinism constraints, and it too owns the history.
+Our flow is one row, six states and a button between each: a state machine, not a distributed saga.
+
+The gap was never the engine — it was that the steps were control flow instead of data. If the flow
+later spans services, needs compensation, or waits days on an external callback, Temporal becomes the
+right answer, and these declarations map onto activities nearly one to one.
+
 ## 8. Adding something new
 
 - **A new stage** → a class in `stage/<name>/` implementing `Stage`, plus a `StageId` constant.
   Nothing else. `PipelineService` discovers it; ordering, events, retry and persistence are the
   orchestrator's, which is what makes a stage one file rather than five edits.
+- **A new step inside a stage** → one entry in that stage's `steps()` list and a private method.
+  The tape, the SSE label, `/flow` and the browser's progress all follow from it.
 - **A new type** → `types/`, or `types/<subdomain>/` if it belongs to one. No annotations.
 - **A new endpoint** → a method on a controller, one or two lines, delegating to a service.
 - **A new provider** (model, cache tier, blob store) → an adapter in `infra` or `harness` behind the

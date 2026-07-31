@@ -15,7 +15,7 @@ import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.pipeline.*;
 import com.tb.helix.lccheck.types.StageId;
-import com.tb.helix.lccheck.types.pipeline.StageOutcome;
+import com.tb.helix.lccheck.types.pipeline.StepResult;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -61,7 +61,34 @@ public class ExecuteStage implements Stage {
     }
 
     @Override
-    public StageOutcome execute(StageContext ctx) {
+    public List<Step> steps() {
+        return List.of(
+                Step.of("facts", "Assembling what the documents say", this::assembleFacts),
+                Step.of("checks", "Running the planned checks", this::runChecks));
+    }
+
+    /**
+     * The fact sheet every judged check is measured against.
+     *
+     * <p>Its own step because it is built once and reused by all of them — and because its
+     * digest is the cache key, so a change here invalidates every judgement. Worth being
+     * able to see on the tape.
+     */
+    private StepResult assembleFacts(StageContext ctx) {
+        String factSheet = factSheet(ctx);
+        return StepResult.ok(Map.of(
+                "digest", DerivationKey.sha256Hex(factSheet),
+                "chars", factSheet.length()));
+    }
+
+    /**
+     * Every planned check, grouped by the area the workbench draws.
+     *
+     * <p>One declared step for a fan-out whose width is the plan's, not the code's — so the
+     * body re-announces per check. Areas still emit their own start/done events, because the
+     * review screen fills in area by area.
+     */
+    private StepResult runChecks(StageContext ctx) {
         List<ReadRows.PlanCheck> plan = cases.planChecks(ctx.caseId()).stream()
                 .filter(c -> "PLANNED".equals(c.status()))
                 .toList();
@@ -76,7 +103,7 @@ public class ExecuteStage implements Stage {
         int raised = 0;
 
         for (var area : byArea.entrySet()) {
-            if (ctx.cancelled()) return StageOutcome.ok();
+            if (ctx.cancelled()) return StepResult.ok(Map.of("checks", plan.size(), "findings", raised));
             ctx.emit(HelixEvent.AREA_STARTED, Map.of("areaId", area.getKey()));
 
             for (var check : area.getValue()) {
@@ -84,7 +111,7 @@ public class ExecuteStage implements Stage {
                 // Named per check, not per area. A judged area is several model calls and
                 // can run for a minute; "Time & availability" going quiet for that long is
                 // indistinguishable from a stall.
-                ctx.progress("check", check.name());
+                ctx.announce("checks", check.name());
                 try {
                     Map<String, Object> verdict = judge(check, factSheet, factDigest);
                     raised += record(ctx, check, verdict) ? 1 : 0;
@@ -101,8 +128,8 @@ public class ExecuteStage implements Stage {
         }
 
         cases.patchCase(ctx.caseId(), Map.of("status", raised > 0 ? "discrepancies" : "clean"));
-        ctx.recordStep("summary", Map.of("checks", plan.size(), "findings", raised));
-        return StageOutcome.ok();
+        return StepResult.done(raised + (raised == 1 ? " finding" : " findings"),
+                Map.of("checks", plan.size(), "findings", raised));
     }
 
     private Map<String, Object> judge(ReadRows.PlanCheck check, String factSheet, String factDigest) {
@@ -171,6 +198,7 @@ public class ExecuteStage implements Stage {
      * hand, and a tool round trip to hand a model something we hold is two extra completions
      * for no new information.
      */
+
     private static String nz(String s) {
         return s == null ? "" : s;
     }

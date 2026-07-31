@@ -15,7 +15,7 @@ import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.pipeline.*;
 import com.tb.helix.lccheck.types.StageId;
-import com.tb.helix.lccheck.types.pipeline.StageOutcome;
+import com.tb.helix.lccheck.types.pipeline.StepResult;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -68,28 +68,52 @@ public class InterpretStage implements Stage {
     }
 
     @Override
-    public StageOutcome execute(StageContext ctx) {
+    public List<Step> steps() {
+        return List.of(
+                Step.of("segment", "Sorting the pages into documents", this::runSegment),
+                Step.of("extract", "Reading each document", this::runExtract));
+    }
+
+    /**
+     * Which page is which document.
+     *
+     * <p>Refuses an over-long bundle rather than truncating it: examining the first 300
+     * pages of 400 looks exactly like examining all of them, and that is the worse failure.
+     */
+    private StepResult runSegment(StageContext ctx) {
         String pdfSha = cases.find(ctx.caseId()).orElseThrow().bundlePdfSha();
-        if (pdfSha == null) return StageOutcome.failed("No presentation bundle on this case.");
+        if (pdfSha == null) return StepResult.failed("No presentation bundle on this case.");
 
         int pages = renderer.pageCount(pdfSha);
         if (pages > render.maxBundlePages()) {
-            // Refuse rather than truncate. Examining the first 300 pages of 400 looks
-            // exactly like examining all of them, and that is the worse failure.
-            return StageOutcome.failed("This bundle has " + pages + " pages; the limit is "
+            return StepResult.failed("This bundle has " + pages + " pages; the limit is "
                     + render.maxBundlePages() + ". Split it or raise helix.render.max-bundle-pages.");
         }
 
-        ctx.progress("segment", "Sorting " + pages + " pages into documents");
+        ctx.announce("segment", "Sorting " + pages + " pages into documents");
         Map<Integer, String> byPage = segment(ctx, pdfSha, pages);
         writeDocuments(ctx, byPage, pages);
         // The document rail can be drawn now, before a single field has been read.
-        ctx.progress("segment", "Pages sorted", true);
+        return StepResult.done("Pages sorted",
+                Map.of("pages", pages, "documents", byPage.values().stream().distinct().count()));
+    }
 
-        extractAll(ctx, pdfSha, byPage);
+    /**
+     * The fields, one vision call per document.
+     *
+     * <p>One declared step for a fan-out whose width is not known until segmentation has
+     * run — so the step is "extract" and its body re-announces with the document it is on.
+     * Declaring a step per document would mean {@link #steps()} depending on the case, which
+     * is the one thing a declaration must not do.
+     */
+    private StepResult runExtract(StageContext ctx) {
+        String pdfSha = cases.find(ctx.caseId()).orElseThrow().bundlePdfSha();
+        Map<Integer, String> byPage = new LinkedHashMap<>();
+        for (var p : cases.bundlePages(ctx.caseId())) byPage.put(p.pageNo(), p.docCode());
 
+        int read = extractAll(ctx, pdfSha, byPage);
         cases.patchCase(ctx.caseId(), Map.of("status", "to_decide"));
-        return StageOutcome.ok();
+        return StepResult.done(read + " documents read", Map.of("documents", read));
     }
 
     // --- Segmentation -------------------------------------------------------
@@ -167,15 +191,16 @@ public class InterpretStage implements Stage {
 
     // --- Extraction ---------------------------------------------------------
 
-    private void extractAll(StageContext ctx, String pdfSha, Map<Integer, String> byPage) {
+    private int extractAll(StageContext ctx, String pdfSha, Map<Integer, String> byPage) {
         Map<String, List<Integer>> grouped = new LinkedHashMap<>();
         byPage.forEach((page, code) -> {
             if (!"UNKNOWN".equals(code)) grouped.computeIfAbsent(code, k -> new ArrayList<>()).add(page);
         });
 
         var spec = render.specFor("extract");
+        int read = 0;
         for (var entry : grouped.entrySet()) {
-            if (ctx.cancelled()) return;
+            if (ctx.cancelled()) return read;
             String code = entry.getKey();
             List<Integer> pages = entry.getValue().stream().sorted().toList();
             String scope = code + "|" + pages.get(0) + "-" + pages.get(pages.size() - 1);
@@ -183,7 +208,7 @@ public class InterpretStage implements Stage {
             // The slowest thing in the stage — one vision call per document — and until
             // now the only thing the officer saw of it was a progress bar that had
             // already reached the end of segmentation.
-            ctx.progress("extract", "Reading the " + DocType.of(code).label().toLowerCase());
+            ctx.announce("extract", "Reading the " + DocType.of(code).label().toLowerCase());
 
             var key = new DerivationKey(CacheOp.EXTRACT_DOC, CacheOp.EXTRACT_DOC_V, pdfSha, scope,
                     DerivationKey.sha256Hex(prompt), "role:extract", null, spec.asCacheParams());
@@ -197,6 +222,10 @@ public class InterpretStage implements Stage {
                 });
 
                 writeFacts(ctx, code, pages.get(0), hit.value());
+                read++;
+                // Per document rather than per stage, because a cache hit here is the
+                // difference between four seconds and four minutes and the officer should
+                // see which they got.
                 if (hit.tier() != com.tb.helix.infra.cache.CacheTier.Level.NONE) {
                     ctx.recordCachedStep("extract:" + code, Map.of("pages", pages), null);
                 } else {
@@ -208,6 +237,7 @@ public class InterpretStage implements Stage {
                 ctx.recordFailedStep("extract:" + code, e.getMessage());
             }
         }
+        return read;
     }
 
     @SuppressWarnings("unchecked")

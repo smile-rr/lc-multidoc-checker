@@ -6,6 +6,7 @@ import Badge from '@shared/ds/Badge'
 import Button from '@shared/ds/Button'
 import { money, dueLabel, plural } from '@shared/lib/format'
 import * as api from '../api/lcCheckApi'
+import { flowDisagreements } from '../state/severity'
 import NewCheckModal from '../components/NewCheckModal'
 import SpendPanel from '../components/SpendPanel'
 
@@ -32,6 +33,22 @@ export default function CasesScreen() {
   const [rows, setRows] = useState(null)
   const [spend, setSpend] = useState(null)
   const [newOpen, setNewOpen] = useState(false)
+
+  // The service's own description of the pipeline, checked against ours. Loaded
+  // here because the cases list is the one screen everybody passes through, and a
+  // drift warning is worth nothing if it only fires on a screen nobody opens.
+  useEffect(() => {
+    let alive = true
+    api.getFlow().then((flow) => {
+      if (!alive) return
+      const problems = flowDisagreements(flow)
+      if (problems.length) {
+        console.warn('[helix] the run bar and the service disagree about the pipeline:\n  - ' +
+          problems.join('\n  - '))
+      }
+    }).catch(() => {})
+    return () => { alive = false }
+  }, [])
 
   // Loaded once, not per filter: the spend is portfolio-wide and does not change
   // because the officer narrowed the list.

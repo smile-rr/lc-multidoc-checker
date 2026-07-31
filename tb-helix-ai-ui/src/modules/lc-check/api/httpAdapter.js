@@ -25,6 +25,16 @@ export async function listCases({ scope = 'all' } = {}) {
   return api.get(`${base}/cases?scope=${encodeURIComponent(scope)}`)
 }
 
+/**
+ * The examination's shape: every stage, its steps, and who starts each one.
+ *
+ * Not per-case — this is the process, not one run of it. The service builds it
+ * from the stage declarations themselves, so it cannot disagree with what runs.
+ */
+export async function getFlow() {
+  return api.get(`${base}/flow`)
+}
+
 export async function getCase(caseId) {
   return api.get(`${base}/cases/${encodeURIComponent(caseId)}`)
 }
