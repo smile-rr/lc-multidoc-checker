@@ -11,18 +11,15 @@
 // Run it before the module first renders and the store cannot tell the
 // difference between the fixture and the service.
 //
-// The mapping is the interesting part. The service normalises what the fixture
-// keeps convenient:
+// **There is almost no mapping left.** The service stores each thing as one JSON
+// document in the shape the console already works in, so a document arrives ready
+// to use. What remains is unpacking what the console holds flat and the service
+// holds nested — an agent's groups, a book's articles — plus the few values the
+// service derives and the fixture never had.
 //
-//   binding.doc     a doc_code both sides — the console shows the name, but the
-//                   code is the identity and nothing joins on a label
-//   check.cases     a usage count the service calls cases_count
-//   check_rule      one groups[] tree; the fixture kept a flat {logic, rows}
-//   comments        a flat table here, keyed by target in the fixture
-//
-// Where the service knows something the fixture never did — gate eligibility,
-// derived from the dictionary — it is carried across, because that is the whole
-// reason the authoring surface asks a server rather than guessing.
+// The translation that used to be here was field-by-field over eight row shapes,
+// and it was where a lookup deleted in one refactor took the entire console back
+// onto its own fixture behind a banner nobody could explain.
 // ===========================================================================
 
 /** Replaces an array's contents, keeping the reference every importer holds. */
@@ -40,104 +37,71 @@ function rekey(target, source) {
 }
 
 export function hydrateSeed(seed, data) {
-  refill(seed.docTypes, (data.docTypes ?? []).map((d, i) => ({
-    id: `d${i}`,
-    key: d.code,
-    name: d.name,
-    description: d.description ?? '',
-    ...(d.before_reading ? { beforeReading: true } : {}),
-    ...(d.role ? { role: d.role } : {}),
-  })))
-
-  const bindingsFor = {}
-  ;(data.bindings ?? []).forEach((b) => {
-    // The code, not the name. A name is a label an author may correct; the code is
-    // identity, and it is what every consumer of the dictionary joins on.
-    ;(bindingsFor[b.field_key] ??= []).push({ doc: b.doc_code, note: b.note ?? '' })
-  })
-  refill(seed.fields, (data.fields ?? []).map((f, i) => ({
-    id: `f${i + 1}`,
-    key: f.key,
-    name: f.name,
-    description: f.description ?? '',
-    bindings: bindingsFor[f.key] ?? [],
-  })))
+  // --- Dictionary --------------------------------------------------------
+  // `id` is the console's handle for the row it is editing. The key is the
+  // identity, so it serves as both and there is nothing to invent.
+  refill(seed.docTypes, (data.docTypes ?? []).map((d) => ({ id: d.key, ...d })))
+  refill(seed.fields, (data.fields ?? []).map((f) => ({ id: f.key, bindings: [], ...f })))
 
   // --- Checks ------------------------------------------------------------
   refill(seed.checks, (data.checks ?? []).map((c) => ({
-    id: c.id,
-    domain: c.domain ?? '',
-    cases: c.cases_count ?? 0,
-    agentId: c.agent_id ?? null,
-    groupId: c.group_id ?? null,
-    severity: c.severity,
-    refs: c.refs ?? [],
-    suggestion: '',
-    title: c.title,
-    body: c.body ?? '',
-    timeline: [],
-    checkType: c.check_type,
-    ...(c.gate_on ? { gate: true } : {}),
+    ...c,
+    // Derived by the service, because the dictionary is there: whether this could
+    // run before the presentation is read, and whether it currently does.
+    ...(c.gateOn ? { gate: true } : {}),
     ...(c.status === 'DRAFT' ? { draft: true } : {}),
-    // Derived server-side from the dictionary, so the toggle can be disabled
-    // with the real reason rather than a guess made in the browser.
-    gateEligible: c.gate_eligible ?? false,
+    gateEligible: c.gateEligible ?? false,
   })))
 
   rekey(seed.checkDefaults, Object.fromEntries((data.checks ?? []).map((c) => [c.id, {
-    fields: c.field_refs ?? [],
-    // Codes, not names. The store resolves a code to its label at the point of
-    // display — the whole console does now — and translating here left this line
-    // reaching for a lookup that had been deleted, which took governance off the
-    // service entirely and onto the built-in seed with a warning.
-    docs: c.doc_types ?? [],
+    fields: c.fields ?? [],
+    docs: c.docs ?? [],
   }])))
 
-  // The service keeps one groups[] tree; the fixture kept a flat rule and let
-  // the store normalise it. Unwrap the first group so both shapes agree.
-  rekey(seed.ruleSeeds, Object.fromEntries((data.rules ?? []).map((r) => {
-    const groups = parse(r.groups) ?? []
-    const first = groups[0] ?? {}
-    return [r.check_id, {
-      scope: r.scope ?? '',
-      logic: first.logic ?? 'all',
-      message: r.message ?? '',
-      rows: first.rows ?? [],
-      groups,
-    }]
-  })))
+  // A check carries its own rule now — one document, saved in one call, so a check
+  // can no longer be stored without the conditions that make it mean anything. The
+  // editor works one group at a time, so the first is flattened beside the tree.
+  rekey(seed.ruleSeeds, Object.fromEntries(
+    (data.checks ?? [])
+      .filter((c) => c.rule)
+      .map((c) => {
+        const groups = c.rule.groups ?? []
+        const first = groups[0] ?? {}
+        return [c.id, {
+          scope: c.rule.scope ?? '',
+          message: c.rule.message ?? '',
+          logic: first.logic ?? 'all',
+          rows: first.rows ?? [],
+          groups,
+        }]
+      }),
+  ))
 
   // --- Agents ------------------------------------------------------------
+  // An agent carries its groups; the console holds one flat list across all
+  // agents, so they are unpacked here rather than stored that way.
   refill(seed.agents, (data.agents ?? []).map((a) => ({
-    id: a.id,
-    name: a.name,
-    cat: a.category ?? '',
-    status: a.status === 'ACTIVE' ? 'Active' : 'Draft',
-    statusTone: a.status === 'ACTIVE' ? 'success' : 'neutral',
-    cov: '', covColor: '',
-    summary: a.summary ?? '',
-    eyebrow: a.eyebrow ?? '',
-    description: a.description ?? '',
-    domainId: a.domain_id ?? '',
-    owner: a.owner ?? '',
-    version: a.version ?? '',
-    icon: a.icon ?? 'bot',
-    accent: a.accent ?? '#3b6ea5',
-    behavior: a.behavior ?? '',
-    config: parse(a.config) ?? {},
+    icon: 'bot',
+    accent: '#3b6ea5',
+    ...a,
+    cov: '',
+    covColor: '',
+    status: 'Active',
+    statusTone: 'success',
   })))
 
-  refill(seed.groups, (data.groups ?? []).map((g) => ({
-    agentId: g.agent_id, gid: g.id, name: g.name, desc: g.description ?? '',
-  })))
+  refill(seed.groups, (data.agents ?? []).flatMap((a) =>
+    (a.groups ?? []).map((g) => ({ agentId: a.id, gid: g.gid, name: g.name, desc: g.desc ?? '' })),
+  ))
 
   // --- Library -----------------------------------------------------------
-  refill(seed.refBook, (data.articles ?? []).map((a) => ({
-    code: a.code, desc: a.heading ?? a.code,
-  })))
-  rekey(seed.articleInfo, Object.fromEntries((data.articles ?? []).map((a) => [a.code, {
-    summary: a.summary ?? '', read: a.body ?? '',
-  }])))
+  const articles = (data.books ?? []).flatMap((b) =>
+    (b.articles ?? []).map((a) => ({ ...a, bookId: b.id })))
+  refill(seed.books, data.books ?? [])
+  refill(seed.refBook, articles.map((a) => ({ code: a.code, desc: a.title ?? a.code })))
+  rekey(seed.articleInfo, Object.fromEntries(
+    articles.map((a) => [a.code, { summary: a.summary ?? '', read: a.read ?? '' }]),
+  ))
 
   // --- Comments ----------------------------------------------------------
   const byTarget = {}
@@ -153,20 +117,19 @@ export function hydrateSeed(seed, data) {
   })
   rekey(seed.comments, byTarget)
 
+  // A binding naming a document type that no longer exists. The database used to
+  // refuse the delete; the console maintains the reference now, and this is how it
+  // finds out where it did not.
+  seed.dangling = data.dangling ?? []
+
   return seed
 }
 
-function parse(value) {
-  if (value == null) return null
-  if (typeof value !== 'string') return value
-  try {
-    return JSON.parse(value)
-  } catch {
-    return null
-  }
-}
-
 function initialsOf(name) {
-  return String(name ?? '?')
-    .split(/\s+/).slice(0, 2).map((w) => w[0] ?? '').join('').toUpperCase()
+  return String(name || '?')
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0] || '')
+    .join('')
+    .toUpperCase()
 }

@@ -112,115 +112,119 @@ LEFT JOIN LATERAL (
 
 
 -- ----------------------------------------------------------------------------
--- Governance: the Checks list, with its group, agent and gate eligibility.
+-- Governance: the checks list, with the operands its rule reads and whether it can
+-- therefore be a hard check.
 --
--- gate_eligible is computed here, in the one place that owns the dictionary,
--- rather than re-derived by every client that wants to render the toggle:
+-- `operand_docs` used to be a column derived on save — one more thing to recompute and
+-- forget. It is read out of the rule here, so it cannot disagree with the rule it came
+-- from.
 --
---   exact, has conditions, and every document its operands read is available
---   before the presentation has been examined
---
--- gate_on is stored intent narrowed by possibility. A rule that loses eligibility
--- — because an operand moved onto a presented document — stops being a gate,
--- rather than continuing to claim it runs first.
+-- gate_eligible is all three conditions in one place, and eligibility is derived, never
+-- asserted:
+--   exact           an agent cannot read documents before they have been read
+--   has conditions  there is nothing to run
+--   operands ⊆ pre  a rule that reads the bill of lading cannot precede it
 -- ----------------------------------------------------------------------------
 DROP VIEW IF EXISTS helix_gov.v_check_list CASCADE;
 CREATE VIEW helix_gov.v_check_list AS
 WITH pre AS (
     SELECT COALESCE(array_agg(code), '{}') AS codes
-    FROM helix_gov.doc_type WHERE before_reading
+      FROM helix_gov.doc_type WHERE before_reading
 ),
-base AS (
-    SELECT c.*,
-           (r.check_id IS NOT NULL
-            AND jsonb_array_length(COALESCE(r.groups, '[]'::jsonb)) > 0) AS has_conditions,
-           -- All three conditions, in one place. Eligibility is derived, never asserted:
-           --   exact          an agent cannot read documents before they are read
-           --   has conditions there is nothing to run
-           --   operands ⊆ pre a rule that reads the bill of lading cannot precede it
-           (c.check_type = 'PROGRAMMATIC'
-            AND r.check_id IS NOT NULL
-            AND jsonb_array_length(COALESCE(r.groups, '[]'::jsonb)) > 0
-            AND c.operand_docs <@ pre.codes) AS gate_eligible,
-           g.name     AS group_name,
-           a.name     AS agent_name,
-           a.category AS agent_category
-    FROM helix_gov.check_def c
-    CROSS JOIN pre
-    LEFT JOIN helix_gov.check_group g ON g.id = c.group_id
-    LEFT JOIN helix_gov.agent       a ON a.id = c.agent_id
-    LEFT JOIN helix_gov.check_rule  r ON r.check_id = c.id
+operands AS (
+    SELECT c.id,
+           COALESCE(array_agg(DISTINCT d) FILTER (WHERE d IS NOT NULL), '{}') AS docs,
+           COUNT(*) FILTER (WHERE d IS NOT NULL)                              AS row_count
+      FROM helix_gov.check_def c
+      LEFT JOIN LATERAL (
+          SELECT jsonb_path_query(c.body, '$.rule.groups[*].rows[*].l.doc') #>> '{}' AS d
+          UNION ALL
+          SELECT jsonb_path_query(c.body, '$.rule.groups[*].rows[*].r.doc') #>> '{}'
+      ) t ON TRUE
+     GROUP BY c.id
 )
-SELECT b.id,
-       b.version,
-       b.status,
-       b.title,
-       b.domain,
-       b.severity,
-       b.check_type,
-       CASE WHEN b.check_type = 'PROGRAMMATIC' THEN 'EXACT' ELSE 'JUDGED' END AS tier,
-       b.cited_as,
-       b.refs,
-       b.field_refs,
-       b.doc_types,
-       b.operand_docs,
-       b.cases_count,
-       b.group_id,
-       b.group_name,
-       b.agent_id,
-       b.agent_name,
-       b.agent_category,
-       b.has_conditions,
-       b.gate_eligible,
-       -- Stored intent narrowed by possibility, against the WHOLE of eligibility.
-       -- Narrowing by document availability alone lets a judged rule, or an exact
-       -- rule with no conditions authored yet, keep claiming it runs first — which
-       -- is the one thing this column exists to prevent.
-       (b.is_gate AND b.gate_eligible)                              AS gate_on,
+SELECT c.id,
+       c.body,
+       c.status,
+       c.check_type,
+       CASE WHEN c.check_type = 'PROGRAMMATIC' THEN 'EXACT' ELSE 'JUDGED' END AS tier,
+       o.docs                                                     AS operand_docs,
+       (o.row_count > 0)                                          AS has_conditions,
+       (c.check_type = 'PROGRAMMATIC' AND o.row_count > 0
+        AND o.docs <@ pre.codes)                                  AS gate_eligible,
+       -- Stored intent narrowed by possibility. A rule that stops qualifying stops being
+       -- a gate rather than continuing to claim it runs first.
+       (c.is_gate AND c.check_type = 'PROGRAMMATIC' AND o.row_count > 0
+        AND o.docs <@ pre.codes)                                  AS gate_on,
        (SELECT COUNT(*) FROM helix_gov.comment m
-         WHERE m.target_kind = 'CHECK' AND m.target_id = b.id)      AS comment_count,
-       b.updated_at
-FROM base b;
+         WHERE m.target_kind = 'CHECK' AND m.target_id = c.id)    AS comment_count,
+       c.updated_at
+  FROM helix_gov.check_def c
+  CROSS JOIN pre
+  JOIN operands o ON o.id = c.id;
 
 
--- A dictionary field with the documents it is read from, and how often it is
--- named by a check. The usage count is what makes a delete safe to refuse.
+-- ----------------------------------------------------------------------------
+-- Every (field, document) binding, flattened out of the field documents. This is the
+-- extraction spec: what to read off a document, and how to read it there.
+-- ----------------------------------------------------------------------------
+DROP VIEW IF EXISTS helix_gov.v_field_binding CASCADE;
+CREATE VIEW helix_gov.v_field_binding AS
+SELECT f.key                                        AS field_key,
+       f.body ->> 'name'                            AS field_name,
+       f.value_type,
+       b ->> 'doc'                                  AS doc_code,
+       b ->> 'note'                                 AS note,
+       COALESCE(
+           ARRAY(SELECT jsonb_array_elements_text(b -> 'aliases')), '{}') AS aliases,
+       COALESCE((b ->> 'ordinal')::int, 0)          AS ordinal
+  FROM helix_gov.dict_field f,
+       jsonb_array_elements(COALESCE(f.body -> 'bindings', '[]'::jsonb)) b;
+
+
+-- ----------------------------------------------------------------------------
+-- A binding naming a document type that does not exist.
+--
+-- The database used to refuse this with a foreign key, which stopped the mistake and told
+-- the author nothing they could act on. The console maintains the reference now; this is
+-- how anyone sees where it did not.
+-- ----------------------------------------------------------------------------
+DROP VIEW IF EXISTS helix_gov.v_dangling_reference CASCADE;
+CREATE VIEW helix_gov.v_dangling_reference AS
+SELECT 'field_binding'  AS whose, b.field_key AS id, b.doc_code AS missing_doc_code
+  FROM helix_gov.v_field_binding b
+ WHERE NOT EXISTS (SELECT 1 FROM helix_gov.doc_type d WHERE d.code = b.doc_code)
+UNION ALL
+SELECT 'check_operand', c.id, d
+  FROM helix_gov.v_check_list c, unnest(c.operand_docs) d
+ WHERE NOT EXISTS (SELECT 1 FROM helix_gov.doc_type t WHERE t.code = d);
+
+
+-- ----------------------------------------------------------------------------
+-- Dictionary and document usage, for the console's "in use by" counts.
+-- ----------------------------------------------------------------------------
 DROP VIEW IF EXISTS helix_gov.v_dict_field_usage CASCADE;
 CREATE VIEW helix_gov.v_dict_field_usage AS
 SELECT f.key,
-       f.name,
-       f.kind,
+       f.body,
        f.value_type,
-       f.field_group,
-       f.source_tags,
-       f.rule_relevant,
-       f.description,
-       f.seeded,
-       COALESCE(b.doc_codes, '{}') AS doc_codes,
-       COALESCE(b.binding_count, 0) AS binding_count,
-       (SELECT COUNT(*) FROM helix_gov.check_def c WHERE f.key = ANY (c.field_refs)) AS used_by_checks
-FROM helix_gov.dict_field f
-LEFT JOIN LATERAL (
-    SELECT array_agg(fb.doc_code ORDER BY fb.ordinal) AS doc_codes,
-           COUNT(*)                                   AS binding_count
-    FROM helix_gov.field_binding fb WHERE fb.field_key = f.key) b ON TRUE;
+       COALESCE(ARRAY(SELECT b.doc_code FROM helix_gov.v_field_binding b
+                       WHERE b.field_key = f.key ORDER BY b.ordinal), '{}') AS doc_codes,
+       (SELECT COUNT(*) FROM helix_gov.check_def c
+         WHERE c.body -> 'fields' @> to_jsonb(f.key))                       AS used_by_checks,
+       f.updated_at
+  FROM helix_gov.dict_field f;
 
-
--- A document type with what depends on it. before_reading is surfaced because it
--- is the flag that decides which rules can ever be hard checks.
 DROP VIEW IF EXISTS helix_gov.v_doc_type_usage CASCADE;
 CREATE VIEW helix_gov.v_doc_type_usage AS
 SELECT d.code,
-       d.name,
-       d.name_zh,
-       d.description,
-       d.before_reading,
-       -- What this document is TO an examination, when it is anything in particular.
-       -- The console edits it, so the console has to be able to read it back.
+       d.body,
        d.role,
-       d.attrs,
+       d.before_reading,
        d.ordinal,
        d.active,
-       (SELECT COUNT(*) FROM helix_gov.field_binding fb WHERE fb.doc_code = d.code) AS bound_fields,
-       (SELECT COUNT(*) FROM helix_gov.check_def c WHERE d.code = ANY (c.doc_types)) AS used_by_checks
-FROM helix_gov.doc_type d;
+       (SELECT COUNT(*) FROM helix_gov.v_field_binding b WHERE b.doc_code = d.code) AS bound_fields,
+       (SELECT COUNT(*) FROM helix_gov.check_def c
+         WHERE c.body -> 'docs' @> to_jsonb(d.code))                                AS used_by_checks,
+       d.updated_at
+  FROM helix_gov.doc_type d;

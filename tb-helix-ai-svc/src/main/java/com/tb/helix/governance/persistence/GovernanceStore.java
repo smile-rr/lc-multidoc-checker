@@ -9,11 +9,21 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The rulebook's own persistence.
+ * The catalogue, read and written whole.
  *
- * <p>Reads are shaped for the authoring UI, which navigates constantly between checks,
- * dictionary and library — so {@link #bootstrap()} returns all of it at once rather than
- * making first paint eight round trips for a catalogue this size.
+ * <p>Five kinds of thing — document types, dictionary fields, checks, agents, books — each
+ * one row carrying one JSON document. There is no column list here, and that is the point:
+ * the version this replaces enumerated columns in an INSERT, again in an ON CONFLICT, and a
+ * third time in the parameter list, and the bugs were exactly what you would predict.
+ * {@code saveField} named six columns and silently dropped every binding the author had
+ * written; {@code saveDocType} named five and dropped {@code role}. Both looked like they
+ * worked.
+ *
+ * <p>A document cannot lose a field it was given. What arrives is what is stored, and what
+ * is stored is what comes back.
+ *
+ * <p>Governance is CRUD and nothing else — no approval, no attribution, no publish step.
+ * Save writes.
  */
 @Component
 public class GovernanceStore {
@@ -26,229 +36,239 @@ public class GovernanceStore {
         this.json = json;
     }
 
+    // --- Reading -------------------------------------------------------------
+
+    /**
+     * Everything the console renders from, in one request.
+     *
+     * <p>One request rather than eight: the sections are navigated between constantly, and
+     * eight round trips on first paint to render a page that then needs none is the wrong
+     * trade for a catalogue this size.
+     *
+     * <p>Each list is the documents themselves, in the shape the console already works in.
+     * The mapping layer that used to sit between them — a hundred and sixty-nine lines of
+     * row-to-object translation in the browser — had nothing left to do once both sides
+     * spoke the same shape, and it was where a deleted lookup silently took the whole
+     * console back onto its own fixture.
+     */
     public Map<String, Object> bootstrap() {
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("checks", plain(jdbc.queryForList("SELECT * FROM helix_gov.v_check_list ORDER BY id")));
-        out.put("rules", plain(jdbc.queryForList("SELECT check_id, scope, message, groups::text FROM helix_gov.check_rule")));
-        out.put("agents", plain(jdbc.queryForList("SELECT * FROM helix_gov.agent ORDER BY ordinal, id")));
-        out.put("groups", plain(jdbc.queryForList("SELECT * FROM helix_gov.check_group ORDER BY agent_id, ordinal")));
-        out.put("fields", plain(jdbc.queryForList("SELECT * FROM helix_gov.v_dict_field_usage ORDER BY key")));
-        out.put("bindings", plain(jdbc.queryForList("SELECT * FROM helix_gov.field_binding ORDER BY field_key, ordinal")));
-        out.put("docTypes", plain(jdbc.queryForList("SELECT * FROM helix_gov.v_doc_type_usage ORDER BY ordinal, code")));
-        out.put("books", plain(jdbc.queryForList("SELECT * FROM helix_gov.book ORDER BY ordinal, id")));
-        out.put("articles", plain(jdbc.queryForList("SELECT * FROM helix_gov.article ORDER BY book_id, ordinal")));
-        out.put("comments", plain(jdbc.queryForList("SELECT * FROM helix_gov.comment ORDER BY created_at")));
+        out.put("docTypes", docTypes());
+        out.put("fields", fields());
+        out.put("checks", checks());
+        out.put("agents", documents("SELECT body FROM helix_gov.agent ORDER BY ordinal, id"));
+        out.put("books", documents("SELECT body FROM helix_gov.book ORDER BY ordinal, id"));
+        out.put("comments", jdbc.queryForList(
+                "SELECT * FROM helix_gov.comment ORDER BY created_at"));
+        // Reported, not enforced. The console owns referential integrity now; this is how
+        // anyone sees where it slipped.
+        out.put("dangling", jdbc.queryForList("SELECT * FROM helix_gov.v_dangling_reference"));
         return out;
     }
 
-    public int countChecks() {
-        Integer n = jdbc.queryForObject("SELECT COUNT(*) FROM helix_gov.check_def", Integer.class);
-        return n == null ? 0 : n;
+    /** Document types, each with the counts the console shows beside it. */
+    public List<Map<String, Object>> docTypes() {
+        return jdbc.query("""
+                SELECT body, bound_fields, used_by_checks
+                  FROM helix_gov.v_doc_type_usage
+                 ORDER BY ordinal, code
+                """, (rs, i) -> {
+            Map<String, Object> d = document(rs.getString("body"));
+            d.put("boundFields", rs.getInt("bound_fields"));
+            d.put("usedByChecks", rs.getInt("used_by_checks"));
+            return d;
+        });
     }
 
-    // --- Checks -------------------------------------------------------------
-
-    public void saveCheck(Map<String, Object> c) {
-        jdbc.update("""
-                INSERT INTO helix_gov.check_def
-                    (id, title, body, domain, severity, check_type, is_gate, cited_as,
-                     agent_id, group_id, refs, field_refs, doc_types, suggestion, status, authored_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT (id) DO UPDATE SET
-                    title = EXCLUDED.title, body = EXCLUDED.body, domain = EXCLUDED.domain,
-                    severity = EXCLUDED.severity, check_type = EXCLUDED.check_type,
-                    cited_as = EXCLUDED.cited_as, agent_id = EXCLUDED.agent_id,
-                    group_id = EXCLUDED.group_id, refs = EXCLUDED.refs,
-                    field_refs = EXCLUDED.field_refs, doc_types = EXCLUDED.doc_types,
-                    suggestion = EXCLUDED.suggestion, status = EXCLUDED.status,
-                    version = helix_gov.check_def.version + 1, updated_at = NOW()
-                """,
-                c.get("id"), c.get("title"), str(c.get("body")), c.get("domain"),
-                c.getOrDefault("severity", "MAJOR"), c.getOrDefault("checkType", "AGENT"),
-                Boolean.TRUE.equals(c.get("gate")), c.get("citedAs"),
-                c.get("agentId"), c.get("groupId"),
-                arr(c.get("refs")), arr(c.get("fields")), arr(c.get("docs")),
-                c.get("suggestion"), c.getOrDefault("status", "DRAFT"), c.get("authoredBy"));
+    public List<Map<String, Object>> fields() {
+        return jdbc.query("""
+                SELECT body, used_by_checks
+                  FROM helix_gov.v_dict_field_usage
+                 ORDER BY key
+                """, (rs, i) -> {
+            Map<String, Object> f = document(rs.getString("body"));
+            f.put("usedByChecks", rs.getInt("used_by_checks"));
+            return f;
+        });
     }
 
     /**
-     * Saves an exact check's conditions.
+     * Checks, each with what the service worked out about it.
      *
-     * <p>Also recomputes {@code operand_docs} on the check, in the same call. That column
-     * is what makes gate eligibility a SQL predicate; leaving it to drift would mean a rule
-     * whose operands moved onto a presented document kept claiming it can run first.
+     * <p>Gate eligibility is derived from the rule's own operands against the document
+     * types available before a presentation is read. It is answered here rather than in the
+     * browser because the dictionary is here, and a console guessing at it would be a
+     * second implementation of the one rule that decides what may run first.
      */
+    public List<Map<String, Object>> checks() {
+        return jdbc.query("""
+                SELECT body, tier, gate_eligible, gate_on, has_conditions, operand_docs, comment_count
+                  FROM helix_gov.v_check_list
+                 ORDER BY id
+                """, (rs, i) -> {
+            Map<String, Object> c = document(rs.getString("body"));
+            c.put("tier", rs.getString("tier"));
+            c.put("gateEligible", rs.getBoolean("gate_eligible"));
+            c.put("gateOn", rs.getBoolean("gate_on"));
+            c.put("hasConditions", rs.getBoolean("has_conditions"));
+            c.put("operandDocs", array(rs.getArray("operand_docs")));
+            c.put("commentCount", rs.getInt("comment_count"));
+            return c;
+        });
+    }
+
+    // --- Writing -------------------------------------------------------------
+    //
+    // One method per kind, one statement each, no column lists.
+
+    public void saveDocType(Map<String, Object> body) {
+        upsert("doc_type", "code", key(body, "key", "code"), body);
+    }
+
+    public void saveField(Map<String, Object> body) {
+        upsert("dict_field", "key", key(body, "key", "id"), body);
+    }
+
+    public void saveCheck(Map<String, Object> body) {
+        upsert("check_def", "id", key(body, "id"), body);
+    }
+
+    public void saveAgent(Map<String, Object> body) {
+        upsert("agent", "id", key(body, "id"), body);
+    }
+
+    public void saveBook(Map<String, Object> body) {
+        upsert("book", "id", key(body, "id"), body);
+    }
+
+    /**
+     * Merges a change into a document that already exists.
+     *
+     * <p>The console mostly sends whole documents, but a few operations are genuinely
+     * partial — a gate toggle, a rule saved on its own — and re-sending the entire check to
+     * flip one boolean invites the browser's copy to overwrite something edited elsewhere.
+     * Read, merge, write, in one statement.
+     */
+    private void merge(String table, String column, String id, Map<String, Object> patch) {
+        jdbc.update("""
+                UPDATE helix_gov.%s SET body = body || ?::jsonb, updated_at = NOW()
+                 WHERE %s = ?
+                """.formatted(table, column), toJson(patch), id);
+    }
+
+    /** The conditions of an exact check, saved into the check that owns them. */
     public void saveRule(String checkId, Map<String, Object> rule) {
-        jdbc.update("""
-                INSERT INTO helix_gov.check_rule (check_id, scope, message, groups)
-                VALUES (?, ?, ?, ?::jsonb)
-                ON CONFLICT (check_id) DO UPDATE SET
-                    scope = EXCLUDED.scope, message = EXCLUDED.message,
-                    groups = EXCLUDED.groups, updated_at = NOW()
-                """, checkId, rule.get("scope"), rule.get("message"), toJson(rule.get("groups")));
-
-        jdbc.update("""
-                UPDATE helix_gov.check_def SET operand_docs = COALESCE((
-                    SELECT array_agg(DISTINCT COALESCE(dt.code, t.d))
-                      FROM helix_gov.check_rule r,
-                           LATERAL jsonb_array_elements(r.groups) g,
-                           LATERAL jsonb_array_elements(g->'rows') rw,
-                           LATERAL (VALUES (rw->'l'->>'doc'), (rw->'r'->>'doc')) AS t(d)
-                      -- The editor names documents by label; this column has to be codes,
-                      -- or the gate predicate compares 'Letter of credit' with
-                      -- LETTER_OF_CREDIT and every rule looks ineligible.
-                      LEFT JOIN helix_gov.doc_type dt ON dt.name = t.d
-                     WHERE r.check_id = ? AND t.d IS NOT NULL), '{}')
-                 WHERE id = ?
-                """, checkId, checkId);
+        merge("check_def", "id", checkId, Map.of("rule", rule));
     }
 
+    /** Whether this check is a hard check. Intent; eligibility is derived separately. */
     public void setGate(String checkId, boolean on) {
-        jdbc.update("UPDATE helix_gov.check_def SET is_gate = ?, updated_at = NOW() WHERE id = ?", on, checkId);
+        merge("check_def", "id", checkId, Map.of("gate", on));
     }
 
-    /** Whether this check could be a hard check, and why not when it cannot. */
+    /**
+     * Whether this check could run before the presentation is read, and why not.
+     *
+     * <p>Derived, never stored: exact, has conditions, and every document its operands read
+     * is available before reading. A stored flag contradicting that derivation is a lie the
+     * run would have to resolve, and it would resolve it by not running the gate at all.
+     */
     public Map<String, Object> gateEligibility(String checkId) {
-        List<Map<String, Object>> rows = jdbc.queryForList(
-                "SELECT gate_eligible, gate_on, tier, has_conditions, operand_docs FROM helix_gov.v_check_list WHERE id = ?",
-                checkId);
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT gate_eligible, gate_on, has_conditions, check_type, operand_docs
+                  FROM helix_gov.v_check_list WHERE id = ?
+                """, checkId);
         if (rows.isEmpty()) return Map.of("eligible", false, "why", "No such check.");
 
         Map<String, Object> r = rows.get(0);
         boolean eligible = Boolean.TRUE.equals(r.get("gate_eligible"));
-        String why;
-        if (eligible) {
-            why = "Every operand comes from the credit or the covering schedule, so this can run "
-                    + "before anything is examined.";
-        } else if (!"EXACT".equals(r.get("tier"))) {
-            why = "Only an exact rule can run first — an agent cannot read documents before they are read.";
-        } else if (!Boolean.TRUE.equals(r.get("has_conditions"))) {
-            why = "Add a condition first — there is nothing to run.";
-        } else {
-            List<String> outside = jdbc.queryForList("""
-                    SELECT DISTINCT d FROM helix_gov.check_def c, LATERAL unnest(c.operand_docs) d
-                     WHERE c.id = ? AND d NOT IN (SELECT code FROM helix_gov.doc_type WHERE before_reading)
-                    """, String.class, checkId);
-            why = "Reads " + String.join(" and ", outside) + ", which "
-                    + (outside.size() > 1 ? "are" : "is") + " not available until the presentation has been read.";
+        return Map.of(
+                "eligible", eligible,
+                "on", Boolean.TRUE.equals(r.get("gate_on")),
+                "why", eligible ? "Every document it reads is available before the presentation."
+                        : why(r));
+    }
+
+    private String why(Map<String, Object> r) {
+        if (!"PROGRAMMATIC".equals(r.get("check_type"))) {
+            return "A judged check reads documents; it cannot run before they are read.";
         }
-        return Map.of("eligible", eligible, "on", Boolean.TRUE.equals(r.get("gate_on")), "why", why);
+        if (!Boolean.TRUE.equals(r.get("has_conditions"))) {
+            return "It has no conditions authored yet, so there is nothing to run.";
+        }
+        return "It reads a document that is not available until the presentation has been read.";
     }
 
     public void deleteCheck(String id) {
-        jdbc.update("DELETE FROM helix_gov.check_def WHERE id = ?", id);
+        delete("check_def", "id", id);
     }
 
-    // --- Agents, dictionary, library ----------------------------------------
-
-    public void saveAgent(Map<String, Object> a) {
-        jdbc.update("""
-                INSERT INTO helix_gov.agent (id, name, category, domain_id, eyebrow, summary,
-                    description, behavior, owner, version, status, icon, accent, config, ordinal)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?)
-                ON CONFLICT (id) DO UPDATE SET
-                    name = EXCLUDED.name, category = EXCLUDED.category, summary = EXCLUDED.summary,
-                    description = EXCLUDED.description, behavior = EXCLUDED.behavior,
-                    icon = EXCLUDED.icon, accent = EXCLUDED.accent, config = EXCLUDED.config,
-                    updated_at = NOW()
-                """,
-                a.get("id"), a.get("name"), a.get("cat"), a.get("domainId"), a.get("eyebrow"),
-                a.get("summary"), a.get("description"), a.get("behavior"), a.get("owner"),
-                a.get("version"), a.getOrDefault("status", "DRAFT"), a.get("icon"),
-                a.get("accent"), toJson(a.getOrDefault("config", Map.of())), a.getOrDefault("ordinal", 0));
-    }
-
-    public void saveGroup(Map<String, Object> g) {
-        jdbc.update("""
-                INSERT INTO helix_gov.check_group (id, agent_id, name, description, ordinal)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name,
-                    description = EXCLUDED.description, ordinal = EXCLUDED.ordinal
-                """, g.get("gid"), g.get("agentId"), g.get("name"), g.get("desc"), g.getOrDefault("ordinal", 0));
-    }
-
+    /**
+     * A group, saved into the agent that owns it.
+     *
+     * <p>Groups were a table; a group belongs to exactly one agent and has never meant
+     * anything apart from it, so it is an entry in the agent's document. Saving one is a
+     * read-modify-write of that list — the only place in here that is not a single
+     * statement, and it is that because a JSON array has no upsert.
+     */
     @SuppressWarnings("unchecked")
-    public void saveField(Map<String, Object> f) {
-        Object key = f.getOrDefault("key", f.get("id"));
-        jdbc.update("""
-                INSERT INTO helix_gov.dict_field (key, name, description, kind, value_type, seeded)
-                VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name,
-                    description = EXCLUDED.description, value_type = EXCLUDED.value_type,
-                    updated_at = NOW()
-                """, key, f.get("name"), f.get("description"),
-                f.getOrDefault("kind", "LC_FIELD"), f.get("valueType"),
-                Boolean.TRUE.equals(f.get("seeded")));
+    public void saveGroup(Map<String, Object> group) {
+        String agentId = String.valueOf(group.get("agentId"));
+        String gid = String.valueOf(group.get("gid"));
 
-        // The bindings, which this used to drop on the floor.
-        //
-        // A binding is the most load-bearing row in the dictionary — it says which documents
-        // carry this field and, in its note, how to read it there — and it was the one thing
-        // the authoring screen could not save. The edit appeared to work and was gone on
-        // reload.
-        //
-        // Absent means "not stated": a caller sending no bindings key is patching the field,
-        // not clearing its sources. An empty list IS a clear, because that is what removing
-        // the last one looks like.
-        if (!(f.get("bindings") instanceof List<?> bindings)) return;
+        List<Map<String, Object>> agents = jdbc.query(
+                "SELECT body FROM helix_gov.agent WHERE id = ?",
+                (rs, i) -> document(rs.getString("body")), agentId);
+        if (agents.isEmpty()) return;
 
-        jdbc.update("DELETE FROM helix_gov.field_binding WHERE field_key = ?", key);
-        int ordinal = 0;
-        for (Object b : bindings) {
-            if (!(b instanceof Map<?, ?> row)) continue;
-            Object doc = row.get("doc");
-            if (doc == null || String.valueOf(doc).isBlank()) continue;
-            jdbc.update("""
-                    INSERT INTO helix_gov.field_binding (field_key, doc_code, note, ordinal)
-                    VALUES (?, ?, ?, ?)
-                    ON CONFLICT (field_key, doc_code) DO UPDATE SET note = EXCLUDED.note,
-                        ordinal = EXCLUDED.ordinal
-                    """, key, String.valueOf(doc), row.get("note"), ordinal++);
-        }
+        Map<String, Object> agent = agents.get(0);
+        List<Map<String, Object>> groups = agent.get("groups") instanceof List<?> l
+                ? new java.util.ArrayList<>((List<Map<String, Object>>) l)
+                : new java.util.ArrayList<>();
+
+        groups.removeIf(g -> gid.equals(String.valueOf(g.get("gid"))));
+        groups.add(new LinkedHashMap<>(group));
+        agent.put("groups", groups);
+        saveAgent(agent);
     }
 
-    public void saveBinding(String fieldKey, String docCode, String note, int ordinal) {
-        jdbc.update("""
-                INSERT INTO helix_gov.field_binding (field_key, doc_code, note, ordinal)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT (field_key, doc_code) DO UPDATE SET note = EXCLUDED.note
-                """, fieldKey, docCode, note, ordinal);
+    /** An article, saved into the book that holds it. */
+    @SuppressWarnings("unchecked")
+    public void saveArticle(Map<String, Object> article) {
+        String bookId = String.valueOf(article.get("bookId"));
+        String aid = String.valueOf(article.getOrDefault("aid", article.get("code")));
+
+        List<Map<String, Object>> books = jdbc.query(
+                "SELECT body FROM helix_gov.book WHERE id = ?",
+                (rs, i) -> document(rs.getString("body")), bookId);
+        if (books.isEmpty()) return;
+
+        Map<String, Object> book = books.get(0);
+        List<Map<String, Object>> articles = book.get("articles") instanceof List<?> l
+                ? new java.util.ArrayList<>((List<Map<String, Object>>) l)
+                : new java.util.ArrayList<>();
+
+        articles.removeIf(a -> aid.equals(String.valueOf(a.getOrDefault("aid", a.get("code")))));
+        articles.add(new LinkedHashMap<>(article));
+        book.put("articles", articles);
+        saveBook(book);
     }
 
-    public void saveDocType(Map<String, Object> d) {
-        Object role = d.get("role");
+    /** Removes an article from whichever book holds it. */
+    public void deleteArticle(String aid) {
         jdbc.update("""
-                INSERT INTO helix_gov.doc_type (code, name, description, before_reading, role, attrs, ordinal)
-                VALUES (?, ?, ?, ?, ?, ?::jsonb, ?)
-                ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name,
-                    description = EXCLUDED.description, before_reading = EXCLUDED.before_reading,
-                    role = EXCLUDED.role, attrs = EXCLUDED.attrs, updated_at = NOW()
-                """, d.getOrDefault("key", d.get("code")), d.get("name"), d.get("description"),
-                Boolean.TRUE.equals(d.get("beforeReading")),
-                // Blank is not a role. The picker sends "" for "none", and a check
-                // constraint would reject it — an empty select means the author cleared it.
-                role == null || String.valueOf(role).isBlank() ? null : String.valueOf(role),
-                toJson(d.getOrDefault("attrs", Map.of())),
-                d.getOrDefault("ordinal", 0));
+                UPDATE helix_gov.book
+                   SET body = jsonb_set(body, '{articles}', COALESCE((
+                           SELECT jsonb_agg(a) FROM jsonb_array_elements(body -> 'articles') a
+                            WHERE COALESCE(a ->> 'aid', a ->> 'code') <> ?), '[]'::jsonb)),
+                       updated_at = NOW()
+                 WHERE body -> 'articles' @> jsonb_build_array(jsonb_build_object('aid', ?::text))
+                    OR body -> 'articles' @> jsonb_build_array(jsonb_build_object('code', ?::text))
+                """, aid, aid, aid);
     }
 
-    public void saveBook(Map<String, Object> b) {
-        jdbc.update("""
-                INSERT INTO helix_gov.book (id, name, subtitle, kind, ordinal) VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, subtitle = EXCLUDED.subtitle
-                """, b.get("id"), b.get("title"), b.get("subtitle"),
-                b.getOrDefault("kind", "STANDARD"), b.getOrDefault("ordinal", 0));
-    }
-
-    public void saveArticle(Map<String, Object> a) {
-        jdbc.update("""
-                INSERT INTO helix_gov.article (id, book_id, code, section, heading, summary, body, ordinal)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT (id) DO UPDATE SET code = EXCLUDED.code, section = EXCLUDED.section,
-                    heading = EXCLUDED.heading, summary = EXCLUDED.summary, body = EXCLUDED.body,
-                    updated_at = NOW()
-                """, a.get("aid"), a.get("bookId"), a.get("code"), a.get("section"),
-                a.get("title"), a.get("summary"), str(a.getOrDefault("read", "")), a.getOrDefault("ordinal", 0));
+    public void delete(String table, String column, String id) {
+        jdbc.update("DELETE FROM helix_gov." + table + " WHERE " + column + " = ?", id);
     }
 
     public void addComment(Map<String, Object> c) {
@@ -256,65 +276,70 @@ public class GovernanceStore {
                 INSERT INTO helix_gov.comment (target_kind, target_id, author, initials, body, tag)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """, c.getOrDefault("targetKind", "CHECK"), c.get("targetId"),
-                c.getOrDefault("author", "Officer"), c.get("initials"), c.get("text"), c.get("tag"));
+                c.getOrDefault("author", "Officer"), c.get("initials"), c.get("body"), c.get("tag"));
     }
 
-    public void delete(String table, String column, String value) {
-        // Table and column are constants at every call site — never user input.
-        jdbc.update("DELETE FROM helix_gov." + table + " WHERE " + column + " = ?", value);
+    /** Whether anything has been authored yet — the seeder's only question. */
+    public boolean isEmpty() {
+        Integer n = jdbc.queryForObject("SELECT COUNT(*) FROM helix_gov.doc_type", Integer.class);
+        return n == null || n == 0;
     }
 
-    // --- Helpers ------------------------------------------------------------
+    // --- Plumbing ------------------------------------------------------------
 
     /**
-     * Makes JDBC rows serialisable.
+     * Writes a document under its key.
      *
-     * <p>A driver returns an array column as a live object holding its connection, and a
-     * jsonb column as a driver-specific wrapper. Handing either to Jackson serialises the
-     * connection — which is the error you get, and it names a replication protocol class,
-     * so it tells you nothing about arrays.
+     * <p>The table and column names come from the five call sites above and never from a
+     * request, which is what makes the formatting safe. The document itself is a bound
+     * parameter.
      */
-    private List<Map<String, Object>> plain(List<Map<String, Object>> rows) {
-        for (Map<String, Object> row : rows) {
-            row.replaceAll((k, v) -> {
-                if (v instanceof java.sql.Array a) {
-                    try {
-                        return List.of((Object[]) a.getArray());
-                    } catch (Exception e) {
-                        return List.of();
-                    }
-                }
-                // PGobject by name rather than by type: the driver is runtimeOnly, which is
-                // the correct scope, so its classes are not on the compile classpath.
-                if (v != null && "org.postgresql.util.PGobject".equals(v.getClass().getName())) {
-                    String raw = v.toString();
-                    try {
-                        return raw == null ? null : json.readValue(raw, Object.class);
-                    } catch (Exception e) {
-                        return raw;
-                    }
-                }
-                return v;
-            });
+    private void upsert(String table, String column, String id, Map<String, Object> body) {
+        // The key belongs in the document too. A body that does not know its own key
+        // survives a round trip through the browser and comes back unidentifiable.
+        Map<String, Object> stored = new LinkedHashMap<>(body);
+        stored.put("code".equals(column) ? "key" : column, id);
+
+        jdbc.update("""
+                INSERT INTO helix_gov.%s (%s, body) VALUES (?, ?::jsonb)
+                ON CONFLICT (%s) DO UPDATE SET body = EXCLUDED.body, updated_at = NOW()
+                """.formatted(table, column, column), id, toJson(stored));
+    }
+
+    private String key(Map<String, Object> body, String... candidates) {
+        for (String c : candidates) {
+            Object v = body.get(c);
+            if (v != null && !String.valueOf(v).isBlank()) return String.valueOf(v);
         }
-        return rows;
+        throw new IllegalArgumentException("This has no key: " + candidates[0] + " is required");
+    }
+
+    private List<Map<String, Object>> documents(String sql) {
+        return jdbc.query(sql, (rs, i) -> document(rs.getString("body")));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> document(String raw) {
+        try {
+            return json.readValue(raw, LinkedHashMap.class);
+        } catch (Exception e) {
+            throw new IllegalStateException("A stored document could not be read: " + e.getMessage(), e);
+        }
+    }
+
+    private List<String> array(java.sql.Array a) {
+        try {
+            return a == null ? List.of() : List.of((String[]) a.getArray());
+        } catch (Exception e) {
+            return List.of();
+        }
     }
 
     private String toJson(Object o) {
-        if (o == null) return null;
         try {
             return json.writeValueAsString(o);
         } catch (Exception e) {
-            return null;
+            throw new IllegalStateException("This could not be stored as JSON: " + e.getMessage(), e);
         }
-    }
-
-    private static String str(Object o) {
-        return o == null ? "" : String.valueOf(o);
-    }
-
-    private static String[] arr(Object o) {
-        if (o instanceof List<?> l) return l.stream().map(String::valueOf).toArray(String[]::new);
-        return new String[0];
     }
 }

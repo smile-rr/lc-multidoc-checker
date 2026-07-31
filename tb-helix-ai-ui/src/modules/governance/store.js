@@ -45,13 +45,41 @@ function persistCheck(check, rule) {
     docs: check.docs ?? [],
     status: check.draft ? 'DRAFT' : 'ACTIVE',
   }
-  gov.saveCheck(payload).catch(() => {})
-  // An exact rule's conditions are a separate document, and saving them is what
-  // recomputes gate eligibility server-side — so it goes even when unchanged.
+  // The rule travels with the check. They were two calls against two tables, which
+  // meant a check could be saved without the conditions that make it mean anything
+  // and look complete. Sent even when unchanged, because saving it is what
+  // recomputes gate eligibility from its operands.
   if (rule && rule.groups) {
-    gov.saveCheckRule(check.id, { scope: rule.scope, message: rule.message, groups: rule.groups })
-      .catch(() => {})
+    payload.rule = { scope: rule.scope ?? '', message: rule.message ?? '', groups: rule.groups }
   }
+  gov.saveCheck(payload).catch(() => {})
+}
+
+/**
+ * The dictionary rows, on their way to the service.
+ *
+ * A field carries its bindings — which documents it is read from and the note saying
+ * how to read it there — because the service saves them together and a binding
+ * without its field has nowhere to hang.
+ */
+function persistField(f) {
+  gov.saveField({
+    key: f.key,
+    name: (f.name || '').trim(),
+    description: (f.description || '').trim(),
+    valueType: f.valueType ?? null,
+    bindings: (f.bindings || []).map((b) => ({ doc: b.doc, note: (b.note || '').trim() })),
+  }).catch(() => {})
+}
+
+function persistDocType(d) {
+  gov.saveDocType({
+    key: (d.key || '').trim(),
+    name: (d.name || '').trim(),
+    description: (d.description || '').trim(),
+    role: d.role ?? '',
+    beforeReading: !!d.beforeReading,
+  }).catch(() => {})
 }
 
 const START_SECTION = 'checks'
@@ -191,14 +219,11 @@ export function seedFields() {
 }
 
 export function seedBooks() {
-  const rd = (code) => (ARTICLE_INFO[code] || {}).read || ''
-  const ucp = REF_BOOK.filter((b) => b.code.indexOf('ISBP') !== 0).map((b) => ({ aid: b.code, code: b.code, title: b.desc, section: '', read: rd(b.code) }))
-  const isbpSec = { 'ISBP821 A': 'General principles', 'ISBP821 E': 'Transport documents' }
-  const isbp = REF_BOOK.filter((b) => b.code.indexOf('ISBP') === 0).map((b) => ({ aid: b.code, code: b.code, title: b.desc, section: isbpSec[b.code] || '', read: rd(b.code) }))
-  return [
-    { id: 'ucp600', title: 'UCP 600', subtitle: 'Uniform Customs & Practice for Documentary Credits', articles: ucp },
-    { id: 'isbp821', title: 'ISBP 821', subtitle: 'International Standard Banking Practice', articles: isbp },
-  ]
+  // The library as the service holds it: a book carrying its own articles. It used
+  // to be assembled here out of two flat lists and a hardcoded map of section names,
+  // because the fixture had no book — which meant the console could not show a title
+  // nobody had written into this function.
+  return seed.books.map((b) => ({ ...b, articles: (b.articles || []).map((a) => ({ ...a })) }))
 }
 
 // ---- Initial state ---------------------------------------------------------
@@ -524,11 +549,11 @@ export function deriveVals(state, setState) {
   })
   // Check lifecycle: inactivate (excluded from runs) and delete (with confirm).
   const toggleInactive = (id) => setState((s) => ({ inactiveIds: { ...s.inactiveIds, [id]: !s.inactiveIds[id] } }))
-  const deleteAgent = (id) => setState((s) => {
+  const deleteAgent = (id) => (gov.deleteAgent(id).catch(() => {}), setState((s) => {
     const placements = { ...s.placements }
     allChecks().forEach((c) => { const cur = s.placements[c.id] || { agentId: c.agentId || null, groupId: c.groupId || null }; if (cur.agentId === id) placements[c.id] = { agentId: null, groupId: null } })
     return { deletedAgentIds: { ...s.deletedAgentIds, [id]: true }, agentGroups: s.agentGroups.filter((g) => g.agentId !== id), placements, activeAgentId: s.activeAgentId === id ? null : s.activeAgentId, view: s.activeAgentId === id ? 'list' : s.view }
-  })
+  }))
   const deleteCheck = (id) => setState((s) => {
     const placements = { ...s.placements }; delete placements[id]
     const overrides = { ...s.overrides }; delete overrides[id]
@@ -733,7 +758,13 @@ export function deriveVals(state, setState) {
       gateEligible: gate.ok,
       gateWhy: gate.why,
       onToggleGate: gate.ok
-        ? () => setState((st) => ({ overrides: { ...st.overrides, [c.id]: { ...st.overrides[c.id], gate: !isGateOn } }, editingId: st.editingId ?? c.id }))
+        ? () => {
+            // Sent on its own rather than folded into the next save: a gate is the one
+            // property whose truth the service can refuse, and the author should learn
+            // that when they press it.
+            gov.setGate(c.id, !isGateOn).catch(() => {})
+            setState((st) => ({ overrides: { ...st.overrides, [c.id]: { ...st.overrides[c.id], gate: !isGateOn } }, editingId: st.editingId ?? c.id }))
+          }
         : null,
       typeLabel: meta.label, typeIcon: meta.icon, typeColor: meta.color, typeBg: meta.bg, typeHint: meta.hint,
       showFieldRows,
@@ -787,7 +818,7 @@ export function deriveVals(state, setState) {
               title: 'Delete draft check?',
               message: `${c.id} “${title}” has never run. It will be permanently removed.`,
               confirmLabel: 'Delete draft',
-              onConfirm: () => deleteCheck(c.id),
+              onConfirm: () => { deleteCheck(c.id); gov.deleteCheck(c.id).catch(() => {}) },
             })
           : requestConfirm({
               title: 'This check cannot be deleted',
@@ -1033,7 +1064,10 @@ export function deriveVals(state, setState) {
   const active = books.find((b) => b.id === S.activeBookId) || books[0] || { id: '', title: '', subtitle: '', articles: [] }
   const deleteBook = (id) => setState((s) => { const bs = (s.books || seedBooks()).filter((b) => b.id !== id); return { books: bs, activeBookId: s.activeBookId === id ? (bs[0] ? bs[0].id : null) : s.activeBookId } })
   const aidOf = (x) => (x.aid != null ? x.aid : x.code)
-  const deleteArticle = (bookId, aid) => setBooks((bs) => bs.map((b) => (b.id === bookId ? { ...b, articles: b.articles.filter((x) => aidOf(x) !== aid) } : b)))
+  const deleteArticle = (bookId, aid) => {
+    gov.deleteArticle(aid).catch(() => {})
+    setBooks((bs) => bs.map((b) => (b.id === bookId ? { ...b, articles: b.articles.filter((x) => aidOf(x) !== aid) } : b)))
+  }
   const deleteSection = (bookId, name) => setBooks((bs) => bs.map((b) => (b.id === bookId ? { ...b, articles: b.articles.filter((x) => (x.section || '') !== name) } : b)))
   const bq = (S.bookQuery || '').toLowerCase()
   const bookStrip = books
@@ -1054,7 +1088,12 @@ export function deriveVals(state, setState) {
       onChangeCode: (e) => patch('code', e.target.value),
       onChangeTitle: (e) => patch('title', e.target.value),
       onChangeRead: (e) => patch('read', e.target.value),
-      onSave: () => { setBooks((bs) => bs.map((b) => (b.id === bookId ? { ...b, articles: b.articles.map((x) => (aidOf(x) === aid ? { ...x, code: (x.code || '').trim(), title: (x.title || '').trim(), read: (x.read || '').trim(), isNew: false } : x)) } : b))); setState({ artEditingId: null }) },
+      onSave: () => {
+        const saved = { ...a, code: (a.code || '').trim(), title: (a.title || '').trim(), read: (a.read || '').trim(), isNew: false }
+        setBooks((bs) => bs.map((b) => (b.id === bookId ? { ...b, articles: b.articles.map((x) => (aidOf(x) === aid ? saved : x)) } : b)))
+        gov.saveArticle({ ...saved, bookId }).catch(() => {})
+        setState({ artEditingId: null })
+      },
       // Discard on an article that was never written removes it, the same rule
       // the check cards follow: Cancel reverts, Discard un-creates.
       onCancel: () => { if (a.isNew) deleteArticle(bookId, aid); setState({ artEditingId: null }) },
@@ -1115,7 +1154,13 @@ export function deriveVals(state, setState) {
     editing: e.editing, locked: e.locked,
     onFocus: e.start,
     cancelLabel: e.created ? 'Discard' : 'Cancel',
-    onSave: () => { setDF((fs) => fs.map((x) => (x.id === f.id ? { ...x, name: (x.name || '').trim(), description: (x.description || '').trim(), bindings: (x.bindings || []).map((b) => ({ ...b, note: (b.note || '').trim() })) } : x))); dictClose(f) },
+    onSave: () => {
+      const saved = { ...f, name: (f.name || '').trim(), description: (f.description || '').trim(),
+                      bindings: (f.bindings || []).map((b) => ({ ...b, note: (b.note || '').trim() })) }
+      setDF((fs) => fs.map((x) => (x.id === f.id ? saved : x)))
+      persistField(saved)
+      dictClose(f)
+    },
     onCancel: () => {
       if (e.created) { setDF((fs) => fs.filter((x) => x.id !== f.id)); dictClose(f); setState({ dictDetail: null }); return }
       const snap = S.editSnap[f.id]
@@ -1143,7 +1188,7 @@ export function deriveVals(state, setState) {
             title: 'Delete field?',
             message: `“${f.name}” is not read by any check. It will be removed from the dictionary.`,
             confirmLabel: 'Delete field',
-            onConfirm: () => { setDF((fs) => fs.filter((x) => x.id !== f.id)); setState({ dictDetail: null }) },
+            onConfirm: () => { setDF((fs) => fs.filter((x) => x.id !== f.id)); gov.deleteField(f.key).catch(() => {}); setState({ dictDetail: null }) },
           })
     },
     // Each source carries one note: what the field is called on that document
@@ -1164,7 +1209,13 @@ export function deriveVals(state, setState) {
     id: d.id, key: d.key, name: d.name, description: d.description, isNew: S.createdId === d.id,
     editing: e.editing, locked: e.locked, onFocus: e.start,
     cancelLabel: e.created ? 'Discard' : 'Cancel',
-    onSave: () => { setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, key: (x.key || '').trim().toUpperCase(), name: (x.name || '').trim(), description: (x.description || '').trim() } : x))); dictClose(d) },
+    onSave: () => {
+      const saved = { ...d, key: (d.key || '').trim().toUpperCase(),
+                      name: (d.name || '').trim(), description: (d.description || '').trim() }
+      setDD((ds) => ds.map((x) => (x.id === d.id ? saved : x)))
+      persistDocType(saved)
+      dictClose(d)
+    },
     onCancel: () => {
       if (e.created) { setDD((ds) => ds.filter((x) => x.id !== d.id)); dictClose(d); setState({ dictDetail: null }); return }
       const snap = S.editSnap[d.id]
@@ -1204,7 +1255,7 @@ export function deriveVals(state, setState) {
             title: 'Delete document type?',
             message: `No field is extracted from “${d.name}”. It will be removed from the dictionary.`,
             confirmLabel: 'Delete document type',
-            onConfirm: () => { setDD((ds) => ds.filter((x) => x.id !== d.id)); setState({ dictDetail: null }) },
+            onConfirm: () => { setDD((ds) => ds.filter((x) => x.id !== d.id)); gov.deleteDocType(d.key).catch(() => {}); setState({ dictDetail: null }) },
           })
     },
   }}

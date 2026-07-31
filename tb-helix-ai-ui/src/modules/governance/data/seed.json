@@ -1634,5 +1634,101 @@
         }
       ]
     }
-  }
+  },
+  "books": [
+    {
+      "id": "ucp600",
+      "title": "UCP 600",
+      "subtitle": "Uniform Customs & Practice for Documentary Credits",
+      "articles": [
+        {
+          "aid": "UCP600 Art.6",
+          "code": "UCP600 Art.6",
+          "title": "Availability, expiry date and place for presentation",
+          "section": "",
+          "summary": "Where, how and until when the credit may be used.",
+          "read": "A credit must name the bank with which it is available and the way it is available — sight payment, deferred payment, acceptance or negotiation. It must also state an expiry date and the place where documents are to be presented; presentation must be made on or before that date."
+        },
+        {
+          "aid": "UCP600 Art.14",
+          "code": "UCP600 Art.14",
+          "title": "Standard for examination of documents",
+          "section": "",
+          "summary": "The standard banks apply when examining documents.",
+          "read": "Banks examine documents on their face to decide whether they form a complying presentation, taking up to five banking days. Data across documents need not be identical but must not conflict; addresses need only sit in the same country; a document may be dated before the credit but not after presentation."
+        },
+        {
+          "aid": "UCP600 Art.18",
+          "code": "UCP600 Art.18",
+          "title": "Commercial invoice",
+          "section": "",
+          "summary": "What a commercial invoice must show.",
+          "read": "The invoice appears to be issued by the beneficiary, is made out to the applicant, is in the currency of the credit, and describes the goods in a way that corresponds to the credit. It need not be signed."
+        },
+        {
+          "aid": "UCP600 Art.20",
+          "code": "UCP600 Art.20",
+          "title": "Bill of lading",
+          "section": "",
+          "summary": "Requirements for a bill of lading.",
+          "read": "A bill of lading, however named, identifies the carrier and is signed correctly, shows the goods loaded on board a named vessel at the stated port of loading, and is the sole original or the full set issued."
+        },
+        {
+          "aid": "UCP600 Art.28",
+          "code": "UCP600 Art.28",
+          "title": "Insurance document and coverage",
+          "section": "",
+          "summary": "Insurance documents and the level of cover.",
+          "read": "The insurance document is issued and signed by an insurer or agent, is dated no later than shipment unless it shows cover effective from shipment, is in the currency of the credit, and covers at least 110% of the CIF or CIP value."
+        },
+        {
+          "aid": "UCP600 Art.29",
+          "code": "UCP600 Art.29",
+          "title": "Extension of expiry date",
+          "section": "",
+          "summary": "When the last day falls on a closed day.",
+          "read": "If the expiry date or last day for presentation falls on a day the bank is closed for reasons other than force majeure, it extends to the first following banking day; the shipment-to-presentation period is not extended this way."
+        },
+        {
+          "aid": "UCP600 Art.36",
+          "code": "UCP600 Art.36",
+          "title": "Force majeure",
+          "section": "",
+          "summary": "Force majeure.",
+          "read": "Banks assume no liability for business interrupted by acts of God, riots, wars or other causes beyond their control, and will not honour or negotiate under a credit that expired during such an interruption."
+        },
+        {
+          "aid": "UCP600 Art.38",
+          "code": "UCP600 Art.38",
+          "title": "Transferable credits",
+          "section": "",
+          "summary": "Transferable credits.",
+          "read": "A credit can be transferred, in whole or part, to a second beneficiary only when it is expressly stated to be transferable. The transferred credit keeps the original terms except for permitted reductions in amount, unit price, expiry, presentation period and latest shipment."
+        }
+      ]
+    },
+    {
+      "id": "isbp821",
+      "title": "ISBP 821",
+      "subtitle": "International Standard Banking Practice",
+      "articles": [
+        {
+          "aid": "ISBP821 A",
+          "code": "ISBP821 A",
+          "title": "General principles of examination",
+          "section": "General principles",
+          "summary": "General principles running through examination.",
+          "read": "Covers how to treat abbreviations, corrections, dates, spelling slips and the meaning of common terms, so examiners apply consistent judgement rather than mechanical matching."
+        },
+        {
+          "aid": "ISBP821 E",
+          "code": "ISBP821 E",
+          "title": "Transport document practice",
+          "section": "Transport documents",
+          "summary": "Practice specific to transport documents.",
+          "read": "Detailed guidance on dating, consignee and notify parties, on-board notations and clean documents when examining bills of lading and other transport documents."
+        }
+      ]
+    }
+  ]
 }

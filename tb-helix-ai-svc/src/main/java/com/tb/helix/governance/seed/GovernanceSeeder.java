@@ -71,25 +71,24 @@ public class GovernanceSeeder implements ApplicationRunner {
 
     @Override
     public void run(org.springframework.boot.ApplicationArguments args) {
-        if (store.countChecks() > 0) {
+        if (!store.isEmpty()) {
             log.info("Governance catalogue already populated — not seeding");
             return;
         }
         try (var in = resources.getResource(resource).getInputStream()) {
             JsonNode seed = json.readTree(in);
 
-            // Order is the only thing this class knows that the file does not, and it is
-            // not a mapping — it is referential integrity. A field binding names a doc type,
-            // a group names an agent, a check names both.
+            // Five lists, five stores, and no order to get right. A field carries its own
+            // bindings and a check carries its own rule, so there is nothing here that has
+            // to be written before something else can reference it — which is what the
+            // ordering comment this replaces was apologising for.
             rows(seed, "docTypes").forEach(store::saveDocType);
-            rows(seed, "fields").forEach(this::saveFieldWithBindings);
-            rows(seed, "books").forEach(store::saveBook);
-            rows(seed, "articles").forEach(store::saveArticle);
+            rows(seed, "fields").forEach(store::saveField);
             rows(seed, "agents").forEach(store::saveAgent);
-            rows(seed, "groups").forEach(store::saveGroup);
-            rows(seed, "checks").forEach(this::saveCheckWithRule);
+            rows(seed, "checks").forEach(store::saveCheck);
+            rows(seed, "books").forEach(store::saveBook);
 
-            log.info("Seeded governance catalogue from {}: {} checks", resource, store.countChecks());
+            log.info("Seeded the governance catalogue from {}", resource);
         } catch (Exception e) {
             // A service that will not start because a seed file moved is worse than one
             // that starts empty and says so.
@@ -102,30 +101,4 @@ public class GovernanceSeeder implements ApplicationRunner {
         return node.isMissingNode() ? List.of() : json.convertValue(node, ROWS);
     }
 
-    /** A field and the documents it is read from — one object in the file, two tables here. */
-    private void saveFieldWithBindings(Map<String, Object> field) {
-        store.saveField(field);
-        if (!(field.get("bindings") instanceof List<?> list)) return;
-
-        int ordinal = 0;
-        for (Object b : list) {
-            if (b instanceof Map<?, ?> binding) {
-                Object note = binding.get("note");
-                store.saveBinding(String.valueOf(field.get("key")),
-                        String.valueOf(binding.get("doc")),
-                        note == null ? "" : String.valueOf(note),
-                        ordinal++);
-            }
-        }
-    }
-
-    /** A check and its conditions — one object in the file, two tables here. */
-    private void saveCheckWithRule(Map<String, Object> check) {
-        store.saveCheck(check);
-        if (check.get("rule") instanceof Map<?, ?> rule) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> typed = (Map<String, Object>) rule;
-            store.saveRule(String.valueOf(check.get("id")), typed);
-        }
-    }
 }
