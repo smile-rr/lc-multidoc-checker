@@ -10,12 +10,14 @@ import com.tb.helix.harness.llm.vision.VisionResult;
 import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
+import com.tb.helix.infra.pipeline.Step;
+import com.tb.helix.infra.pipeline.StepResult;
 import com.tb.helix.infra.stream.HelixEvent;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.pipeline.*;
-import com.tb.helix.lccheck.types.StageId;
-import com.tb.helix.lccheck.types.pipeline.StepResult;
+import com.tb.helix.lccheck.pipeline.StageContext;
+import com.tb.helix.lccheck.types.pipeline.StageId;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -68,10 +70,10 @@ public class InterpretStage implements Stage {
     }
 
     @Override
-    public List<Step> steps() {
+    public List<Step<StageContext>> steps() {
         return List.of(
-                Step.of("segment", "Sorting the pages into documents", this::runSegment),
-                Step.of("extract", "Reading each document", this::runExtract));
+                Step.<StageContext>of("segment", "Sorting the pages into documents", this::runSegment),
+                Step.<StageContext>of("extract", "Reading each document", this::runExtract));
     }
 
     /**

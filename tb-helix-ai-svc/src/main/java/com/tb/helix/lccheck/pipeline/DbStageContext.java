@@ -1,9 +1,10 @@
 package com.tb.helix.lccheck.pipeline;
 
+import com.tb.helix.infra.pipeline.StepResult;
 import com.tb.helix.infra.stream.EventBus;
 import com.tb.helix.infra.stream.HelixEvent;
 import com.tb.helix.lccheck.persistence.CaseStore;
-import com.tb.helix.lccheck.types.StageId;
+import com.tb.helix.lccheck.types.pipeline.StageId;
 
 import java.util.Map;
 import java.util.Optional;
@@ -55,5 +56,40 @@ public record DbStageContext(
     @Override
     public boolean cancelled() {
         return Boolean.TRUE.equals(cancelledFlags.get(caseId));
+    }
+
+    // --- The engine's journal -----------------------------------------------
+    //
+    // How a step gets announced and written down. The engine calls these; nothing in a
+    // stage does, which is why a step cannot be named one thing on the stream and another
+    // in the tape.
+
+    @Override
+    public void stepStarted(String phase, String key, String label) {
+        announce(key, label);
+    }
+
+    @Override
+    public void stepFinished(String phase, String key, StepResult result, long elapsedMs) {
+        switch (result.status()) {
+            case OK, HALTED -> {
+                Map<String, Object> data = new java.util.LinkedHashMap<>(result.data());
+                data.put("ms", elapsedMs);
+                store.recordStep(caseId, phase, key, "OK", data, null, false, null);
+                // A note means the case now holds something it did not, so the browser is
+                // told to refetch. Only the step knows whether that is warranted; only this
+                // publishes.
+                if (result.note() != null) landed(key, result.note());
+            }
+            case SKIPPED -> stepSkipped(phase, key, result.detail());
+            case FAILED -> store.recordStep(caseId, phase, key, "FAILED", null, result.detail(), false, null);
+        }
+    }
+
+    @Override
+    public void stepSkipped(String phase, String key, String why) {
+        store.recordStep(caseId, phase, key, "NOT_APPLICABLE",
+                Map.of("reason", why == null ? "not applicable to this case" : why),
+                null, false, null);
     }
 }

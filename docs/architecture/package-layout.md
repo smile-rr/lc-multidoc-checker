@@ -54,9 +54,10 @@ lccheck/
 ├── api/            CaseController — routes and status codes, nothing else
 │   └── dto/        request bodies. The API's shape, not the examination's.
 ├── service/        CaseService, CaseAssembler — the only place rows become types
-├── pipeline/       Stage, Step, StageContext (contracts)
-│                   Pipeline        — WHAT the examination is: stages in order, describe()
-│                   PipelineService — HOW it runs: officer pacing, async, halts, the tape
+├── pipeline/       Stage, StageContext   — what a phase is, and what a step may do
+│                   DocCheckPipeline     — WHAT this examination is: six stages, describe()
+│                   ExaminationRunner    — HOW it runs here: officer pacing, halts, async
+│                   DbStageContext       — the seam: journals to the tape and the browser
 ├── stage/          one package per stage: intake, interpret, gate, plan, execute, signoff
 ├── persistence/    CaseStore, Rows — SQL and column names live here and stop here
 └── types/          pure data, mirroring the behaviour side by name
@@ -72,7 +73,9 @@ governance/
 └── types/          Severity, Tier, CheckType, CitedAs, DocType — the shared kernel
 
 harness/            doc/ · llm/ (+ text, vision, tool, chatcompletions)
-infra/              blob/ · cache/ · config/ · error/ · stream/
+infra/              blob/ · cache/ · config/ · error/ · pipeline/ · stream/
+                    pipeline/ is the domain-neutral step engine — Step, StepResult,
+                    StepPhase, StepJournal, PipelineEngine. Flat, as infra always is.
 ```
 
 Interfaces sit **beside** their implementations. There is no `impl/` package and there will not be
@@ -232,26 +235,40 @@ nothing. Keys that nobody looks up stay inline.
 stays a single declared step whose body re-announces with the item it is on. Declaring a step per
 document would make `steps()` depend on the case, which is the one thing a declaration must not do.
 
-### Why `pipeline` is not `infra`
+### The pipeline, split across two layers
 
-It looks like a framework and it is not one. `PipelineService` knows that the gate rides with the
-plan, that a halt sets `gate_halted` and means a discrepancy rather than a fault, that every stage
-after intake waits at `awaiting_officer`, and that an officer can override. Those are UCP 600's rules
-and the bank's, not a scheduler's. In `infra` it would drag `StageId`, `CaseStore` and the meaning of
-a discrepancy into the one layer defined by knowing nothing about letters of credit — and
-`layersDependOnlyDownward` would refuse it.
+| | Where | Knows |
+|---|---|---|
+| `Step`, `StepResult`, `StepPhase`, `StepJournal`, `PipelineEngine` | `infra/pipeline` | how to walk a list of declared steps and report each one. **Nothing else.** |
+| `Stage`, `StageContext`, `DbStageContext` | `lccheck/pipeline` | that a phase belongs to a stage of an examination |
+| `DocCheckPipeline` | `lccheck/pipeline` | **what** this examination is — six stages, in order |
+| `ExaminationRunner` | `lccheck/pipeline` | **how** it runs here — officer pacing, the gate riding with the plan, halts, async |
+| `StageId` | `lccheck/types/pipeline` | the stage names, and which one an officer may ask for next |
 
-`Step` alone genuinely is domain-neutral and could become a small `harness` framework. It has not,
-and the reason is recorded in `pipeline/package-info.java`: one interface, one consumer, and its
-collaborator `StageContext` speaks of cases, officers and a step tape. When a second product wants
-it, the extraction is small.
+Named for what each does, not distinguished by a `Service` suffix. "The pipeline" had been three
+things at once — a registry, a runner, and a loop inside the runner — and one word for three things
+is how a package stops being readable.
 
-**`Pipeline` vs `PipelineService`** — *what it is* versus *how it runs*. They were one class holding
-a registry it also executed, then briefly two that each built their own copy of that registry, which
-had already begun to differ: one ordered by `StageId.ORDER`, one by whatever order Spring handed the
-beans over. The split is the same one the predecessor made between `LcV2Pipeline` and its
-`PipelineService`, and it is why a controller can safely serve `GET /flow` — describing the pipeline
-touches no per-case state and starts nothing.
+**Why the engine is in `infra`.** Because putting it there *proves* it is neutral rather than
+asserting it: `infra` may not reach any layer above it, so the build fails the day the engine learns
+a domain word. It reports through `StepJournal`, a port, and never looks inside the context type.
+
+**Why the rest is not.** `ExaminationRunner` knows the gate rides with the plan, that a halt sets
+`gate_halted` and means a discrepancy rather than a fault, that stages wait at `awaiting_officer`,
+and that an officer can override. Those are UCP 600's rules and the bank's, not a scheduler's. That
+is the split: **infra runs steps; lccheck decides which steps, in what order, and who may start
+them.**
+
+`PipelineEngine` is static and deliberately not a Spring bean — it holds no state and has no
+collaborators. Registering it would also have made domain code depend on a concrete `@Component` in
+`infra`, which `domainTalksToPortsNotBeans` forbids and did catch.
+
+**`DocCheckPipeline` vs `ExaminationRunner`** — *what it is* versus *how it runs*. They were one
+class holding a registry it also executed, then briefly two that each built their own copy of that
+registry, which had already begun to differ: one ordered by `StageId.ORDER`, one by whatever order
+Spring handed the beans over. The split is the same one the predecessor made between `LcV2Pipeline`
+and its `PipelineService`, and it is why a controller can safely serve `GET /flow` — describing the
+pipeline touches no per-case state and starts nothing.
 
 ### Why not Spring Batch or Temporal
 

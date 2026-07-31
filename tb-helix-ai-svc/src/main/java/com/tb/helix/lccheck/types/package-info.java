@@ -5,11 +5,11 @@
  * does it only report something?</b> A class that orchestrates, causes a side effect or
  * moves state lives with the behaviour it belongs to — {@code pipeline}, {@code stage},
  * {@code service}. A class that only holds fields and answers questions about them lives
- * here, even if it is an enum with helpers: {@link com.tb.helix.lccheck.types.StageId} knows
+ * here, even if it is an enum with helpers: {@link com.tb.helix.lccheck.types.pipeline.StageId} knows
  * which stage follows it, and that is self-description, not orchestration.
  *
  * <p>Sub-packages mirror the behaviour side by name, so navigation is symmetric in both
- * directions: {@code stage/*} ↔ {@code types/pipeline}, and the reading and examining
+ * directions: {@code pipeline/} ↔ {@code types/pipeline}, and the reading and examining
  * vocabularies get {@code types/document} and {@code types/examination}.
  *
  * <p>Three things that look like types and are not:

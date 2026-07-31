@@ -4,15 +4,15 @@ import com.tb.helix.harness.doc.PageRenderer;
 import com.tb.helix.infra.blob.BlobStore;
 import com.tb.helix.infra.error.NotFoundException;
 import com.tb.helix.lccheck.persistence.CaseRow;
-import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.CaseStore;
-import com.tb.helix.lccheck.pipeline.PipelineService;
+import com.tb.helix.lccheck.persistence.ReadRows;
+import com.tb.helix.lccheck.pipeline.ExaminationRunner;
 import com.tb.helix.lccheck.stage.intake.IntakeStage;
 import com.tb.helix.lccheck.stage.intake.SwiftReader;
 import com.tb.helix.lccheck.types.*;
-import com.tb.helix.lccheck.types.StageId;
 import com.tb.helix.lccheck.types.document.*;
 import com.tb.helix.lccheck.types.examination.*;
+import com.tb.helix.lccheck.types.pipeline.StageId;
 
 import org.springframework.stereotype.Service;
 
@@ -41,11 +41,11 @@ public class CaseService {
     private final BlobStore blobs;
     private final PageRenderer renderer;
     private final SwiftReader swift;
-    private final PipelineService pipeline;
+    private final ExaminationRunner pipeline;
 
     public CaseService(CaseStore store, CaseAssembler assembler, IntakeStage intake,
                        BlobStore blobs, PageRenderer renderer,
-                       SwiftReader swift, PipelineService pipeline) {
+                       SwiftReader swift, ExaminationRunner pipeline) {
         this.store = store;
         this.assembler = assembler;
         this.intake = intake;

@@ -1,13 +1,14 @@
 package com.tb.helix.lccheck.service;
 
 import com.tb.helix.lccheck.persistence.CaseRow;
-import com.tb.helix.lccheck.stage.intake.IntakeStage;
-import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.CaseStore;
+import com.tb.helix.lccheck.persistence.ReadRows;
+import com.tb.helix.lccheck.stage.intake.IntakeStage;
 import com.tb.helix.lccheck.stage.intake.SwiftMessage;
 import com.tb.helix.lccheck.types.*;
 import com.tb.helix.lccheck.types.document.*;
 import com.tb.helix.lccheck.types.examination.*;
+import com.tb.helix.lccheck.types.pipeline.StageId;
 
 import org.springframework.stereotype.Component;
 

@@ -4,12 +4,12 @@ import com.tb.helix.infra.stream.EventStream;
 import com.tb.helix.lccheck.api.dto.DecisionRequest;
 import com.tb.helix.lccheck.api.dto.NewCheckRequest;
 import com.tb.helix.lccheck.api.dto.SignoffRequest;
-import com.tb.helix.lccheck.pipeline.PipelineService;
+import com.tb.helix.lccheck.pipeline.ExaminationRunner;
 import com.tb.helix.lccheck.service.CaseService;
 import com.tb.helix.lccheck.types.CaseDetail;
 import com.tb.helix.lccheck.types.CaseSummary;
-import com.tb.helix.lccheck.types.StageId;
 import com.tb.helix.lccheck.types.examination.PlanCheckView;
+import com.tb.helix.lccheck.types.pipeline.StageId;
 
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -37,10 +37,10 @@ import java.util.Map;
 public class CaseController {
 
     private final CaseService cases;
-    private final PipelineService pipeline;
+    private final ExaminationRunner pipeline;
     private final EventStream stream;
 
-    public CaseController(CaseService cases, PipelineService pipeline, EventStream stream) {
+    public CaseController(CaseService cases, ExaminationRunner pipeline, EventStream stream) {
         this.cases = cases;
         this.pipeline = pipeline;
         this.stream = stream;

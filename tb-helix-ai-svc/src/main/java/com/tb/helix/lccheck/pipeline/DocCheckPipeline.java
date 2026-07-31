@@ -1,6 +1,6 @@
 package com.tb.helix.lccheck.pipeline;
 
-import com.tb.helix.lccheck.types.StageId;
+import com.tb.helix.lccheck.types.pipeline.StageId;
 
 import org.springframework.stereotype.Component;
 
@@ -12,7 +12,7 @@ import java.util.Optional;
 /**
  * What the examination is: the stages, in order, and the steps each is made of.
  *
- * <p>Answers "what is this pipeline". {@link PipelineService} answers "run it". They were one
+ * <p>Answers "what is this pipeline". {@link ExaminationRunner} answers "run it". They were one
  * class holding a registry it also executed, and then briefly two classes each building their
  * own copy of the same registry — which had already started to differ, one ordered and one in
  * whatever order Spring handed the beans over. This is the registry, once.
@@ -21,11 +21,11 @@ import java.util.Optional;
  * it safe to ask at any time, including from a controller serving {@code GET /flow}.
  */
 @Component
-public class Pipeline {
+public class DocCheckPipeline {
 
     private final Map<StageId, Stage> stages = new LinkedHashMap<>();
 
-    public Pipeline(List<Stage> discovered) {
+    public DocCheckPipeline(List<Stage> discovered) {
         // Ordered by StageId.ORDER, not by bean-definition order. Spring's order is
         // arbitrary and can change when an unrelated class is renamed; the pipeline's is
         // the product.

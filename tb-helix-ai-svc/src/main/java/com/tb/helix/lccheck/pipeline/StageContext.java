@@ -1,7 +1,8 @@
 package com.tb.helix.lccheck.pipeline;
 
+import com.tb.helix.infra.pipeline.StepJournal;
 import com.tb.helix.infra.stream.HelixEvent;
-import com.tb.helix.lccheck.types.StageId;
+import com.tb.helix.lccheck.types.pipeline.StageId;
 
 import java.util.Map;
 import java.util.Optional;
@@ -21,7 +22,7 @@ import java.util.Optional;
  * implementation was constructed with, and the build fails if a stage imports one
  * directly.
  */
-public interface StageContext {
+public interface StageContext extends StepJournal {
 
     /** The examination being run. */
     String caseId();
@@ -99,8 +100,17 @@ public interface StageContext {
     /**
      * Whether the officer has abandoned this run.
      *
-     * <p>Long stages should check between units of work. A run the officer walked away
-     * from should stop costing money at the next natural boundary, not at the end.
+     * <p>The engine checks it between steps; a long step should check it between units of
+     * its own work. A run the officer walked away from should stop costing money at the next
+     * natural boundary, not at the end.
+     *
+     * <p>Named {@code cancelled} here and {@code abandoned} on the journal because the two
+     * words belong to different readers — an officer cancels, an engine sees work abandoned.
      */
     boolean cancelled();
+
+    @Override
+    default boolean abandoned() {
+        return cancelled();
+    }
 }

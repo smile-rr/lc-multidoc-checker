@@ -7,14 +7,16 @@ import com.tb.helix.harness.llm.text.TextRequest;
 import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
+import com.tb.helix.infra.pipeline.Step;
+import com.tb.helix.infra.pipeline.StepResult;
 import com.tb.helix.lccheck.persistence.CaseStore;
-import com.tb.helix.lccheck.stage.intake.IntakeStage;
 import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.pipeline.*;
-import com.tb.helix.lccheck.types.StageId;
+import com.tb.helix.lccheck.pipeline.StageContext;
+import com.tb.helix.lccheck.stage.intake.IntakeStage;
 import com.tb.helix.lccheck.types.examination.Areas;
-import com.tb.helix.lccheck.types.pipeline.StepResult;
+import com.tb.helix.lccheck.types.pipeline.StageId;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -65,10 +67,10 @@ public class PlanStage implements Stage {
     }
 
     @Override
-    public List<Step> steps() {
+    public List<Step<StageContext>> steps() {
         return List.of(
-                Step.of("select", "Selecting the rules that apply", this::selectRules),
-                Step.of("requirements", "Reading what the credit asks for", this::readRequirements));
+                Step.<StageContext>of("select", "Selecting the rules that apply", this::selectRules),
+                Step.<StageContext>of("requirements", "Reading what the credit asks for", this::readRequirements));
     }
 
     /**

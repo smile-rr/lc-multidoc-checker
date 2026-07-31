@@ -1,6 +1,6 @@
 package com.tb.helix.lccheck.persistence;
 
-import com.tb.helix.lccheck.types.StageId;
+import com.tb.helix.lccheck.types.pipeline.StageId;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;

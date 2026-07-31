@@ -2,13 +2,13 @@ package com.tb.helix.lccheck.pipeline;
 
 import com.tb.helix.infra.error.ConflictException;
 import com.tb.helix.infra.error.NotFoundException;
+import com.tb.helix.infra.pipeline.PipelineEngine;
+import com.tb.helix.infra.pipeline.StepResult;
 import com.tb.helix.infra.stream.EventBus;
 import com.tb.helix.infra.stream.HelixEvent;
 import com.tb.helix.lccheck.persistence.CaseRow;
 import com.tb.helix.lccheck.persistence.CaseStore;
-import com.tb.helix.lccheck.types.StageId;
-import com.tb.helix.lccheck.types.pipeline.StageOutcome;
-import com.tb.helix.lccheck.types.pipeline.StepResult;
+import com.tb.helix.lccheck.types.pipeline.StageId;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,16 +34,16 @@ import java.util.concurrent.ConcurrentHashMap;
  * costs a run that keeps going rather than a case that cannot continue.
  */
 @Service
-public class PipelineService {
+public class ExaminationRunner {
 
-    private static final Logger log = LoggerFactory.getLogger(PipelineService.class);
+    private static final Logger log = LoggerFactory.getLogger(ExaminationRunner.class);
 
-    private final Pipeline pipeline;
+    private final DocCheckPipeline pipeline;
     private final CaseStore cases;
     private final EventBus events;
     private final Map<String, Boolean> cancelled = new ConcurrentHashMap<>();
 
-    public PipelineService(Pipeline pipeline, CaseStore cases, EventBus events) {
+    public ExaminationRunner(DocCheckPipeline pipeline, CaseStore cases, EventBus events) {
         this.pipeline = pipeline;
         this.cases = cases;
         this.events = events;
@@ -112,7 +112,7 @@ public class PipelineService {
                 log.warn("No implementation for stage {} — skipping", id.key());
                 continue;
             }
-            StageOutcome outcome = runOne(caseId, stage.get(), officerId);
+            StepResult outcome = runOne(caseId, stage.get(), officerId);
             if (!outcome.canContinue()) return;
         }
 
@@ -130,14 +130,14 @@ public class PipelineService {
         }
     }
 
-    private StageOutcome runOne(String caseId, Stage stage, String officerId) {
+    private StepResult runOne(String caseId, Stage stage, String officerId) {
         StageId id = stage.id();
         events.publish(HelixEvent.of(caseId, HelixEvent.STAGE_STARTED, Map.of("stage", id.key())));
         long started = System.currentTimeMillis();
         StageContext ctx = new DbStageContext(caseId, id, officerId, cases, events, cancelled);
 
         try {
-            StageOutcome outcome = runSteps(ctx, stage);
+            StepResult outcome = PipelineEngine.run(stage, ctx);
             long ms = System.currentTimeMillis() - started;
 
             switch (outcome.status()) {
@@ -151,12 +151,12 @@ public class PipelineService {
                     // answer is that this presentation cannot be accepted.
                     cases.patchCase(caseId, Map.of(
                             "gate_halted", true,
-                            "gate_halt_check_id", String.valueOf(outcome.haltingCheckId()),
+                            "gate_halt_check_id", String.valueOf(outcome.haltKey()),
                             "status", "discrepancies"));
                     events.publish(HelixEvent.of(caseId, HelixEvent.GATE_HALTED, Map.of(
-                            "checkId", String.valueOf(outcome.haltingCheckId()),
+                            "checkId", String.valueOf(outcome.haltKey()),
                             "statement", String.valueOf(outcome.detail()))));
-                    log.info("Case {} halted at {} by {}", caseId, id.key(), outcome.haltingCheckId());
+                    log.info("Case {} halted at {} by {}", caseId, id.key(), outcome.haltKey());
                 }
                 case FAILED -> {
                     cases.patchCase(caseId, Map.of("error", String.valueOf(outcome.detail())));
@@ -172,79 +172,17 @@ public class PipelineService {
             cases.patchCase(caseId, Map.of("error", String.valueOf(e.getMessage())));
             events.publish(HelixEvent.of(caseId, HelixEvent.STAGE_FAILED,
                     Map.of("stage", id.key(), "message", String.valueOf(e.getMessage()))));
-            return StageOutcome.failed(e.getMessage());
+            return StepResult.failed(e.getMessage());
         }
     }
 
-    /**
-     * Walks a stage's declared steps.
-     *
-     * <p>Every step is announced before it runs and recorded after, from its own
-     * declaration — which is why no stage calls {@code progress} or {@code recordStep} any
-     * more, and why the label on the wire cannot disagree with the key in the database.
-     *
-     * <p>A step that does not apply is recorded as {@code SKIPPED} with its reason rather
-     * than passed over. An examiner has to be able to say what was not checked; a step that
-     * quietly returned would look identical to one that passed.
-     */
-    private StageOutcome runSteps(StageContext ctx, Stage stage) {
-        String stageKey = stage.id().key();
-
-        for (Step step : stage.steps()) {
-            if (ctx.cancelled()) {
-                log.info("Case {} cancelled before step {}:{}", ctx.caseId(), stageKey, step.key());
-                return StageOutcome.ok();
-            }
-
-            if (!step.appliesTo(ctx)) {
-                cases.recordStep(ctx.caseId(), stageKey, step.key(), "NOT_APPLICABLE",
-                        Map.of("reason", "nothing for this step to do on this case"), null, false, null);
-                continue;
-            }
-
-            ctx.announce(step.key(), step.label());
-            long started = System.currentTimeMillis();
-            StepResult result = step.run(ctx);
-            long ms = System.currentTimeMillis() - started;
-
-            switch (result.status()) {
-                case OK -> {
-                    cases.recordStep(ctx.caseId(), stageKey, step.key(), "OK",
-                            withTiming(result.data(), ms), null, false, null);
-                    // A note means the case now holds something it did not, so the browser
-                    // is told to refetch. Emitted here rather than by the step, so every
-                    // publish in the pipeline goes through one place.
-                    if (result.note() != null) ctx.landed(step.key(), result.note());
-                }
-                case SKIPPED -> cases.recordStep(ctx.caseId(), stageKey, step.key(), "SKIPPED",
-                        Map.of("reason", String.valueOf(result.detail())), null, false, null);
-                case HALTED -> {
-                    cases.recordStep(ctx.caseId(), stageKey, step.key(), "OK",
-                            withTiming(result.data(), ms), null, false, null);
-                    return result.asStageOutcome();
-                }
-                case FAILED -> {
-                    cases.recordStep(ctx.caseId(), stageKey, step.key(), "FAILED",
-                            null, result.detail(), false, null);
-                    return result.asStageOutcome();
-                }
-            }
-        }
-        return StageOutcome.ok();
-    }
-
-    private Map<String, Object> withTiming(Map<String, Object> data, long ms) {
-        Map<String, Object> out = new LinkedHashMap<>(data == null ? Map.of() : data);
-        out.put("ms", ms);
-        return out;
-    }
 
     public void cancel(String caseId) {
         cancelled.put(caseId, true);
     }
 
     /** What the pipeline is, for anything that needs to show it rather than run it. */
-    public Pipeline pipeline() {
+    public DocCheckPipeline pipeline() {
         return pipeline;
     }
 }

@@ -1,4 +1,4 @@
-package com.tb.helix.lccheck.types;
+package com.tb.helix.lccheck.types.pipeline;
 
 import java.util.List;
 import java.util.Optional;
@@ -14,7 +14,7 @@ import java.util.Optional;
  * <p>A type rather than part of the pipeline's contract: a stage name is a noun that appears
  * in a URL, in a database column and in a clear-downstream call, so half the codebase names
  * it. {@code Stage} and {@code StageContext} are the contract and stay in {@code pipeline}
- * with the runner that speaks it. {@code StageOutcome} sits in {@code types.pipeline} —
+ * with the runner that speaks it. {@code StepResult} sits in {@code types.pipeline} —
  * pure data, mirroring the behaviour package it serves.
  *
  * <p>{@link #GATE} is a stage in the code and a step on the wire, but it is triggered by

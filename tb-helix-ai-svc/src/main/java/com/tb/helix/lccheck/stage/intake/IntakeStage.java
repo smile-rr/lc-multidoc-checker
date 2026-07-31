@@ -4,15 +4,15 @@ import com.tb.helix.harness.doc.DocumentConverter;
 import com.tb.helix.harness.doc.PageRenderer;
 import com.tb.helix.infra.blob.BlobOwner;
 import com.tb.helix.infra.blob.BlobStore;
+import com.tb.helix.infra.pipeline.Step;
+import com.tb.helix.infra.pipeline.StepResult;
 import com.tb.helix.lccheck.persistence.CaseRow;
-import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.CaseStore;
+import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.pipeline.Stage;
-import com.tb.helix.lccheck.pipeline.Step;
 import com.tb.helix.lccheck.pipeline.StageContext;
-import com.tb.helix.lccheck.types.StageId;
-import com.tb.helix.lccheck.types.pipeline.StepResult;
+import com.tb.helix.lccheck.types.pipeline.StageId;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -150,16 +150,16 @@ public class IntakeStage implements Stage {
      * makes intake repeatable at all: the bytes are the input, and they are still there.
      */
     @Override
-    public List<Step> steps() {
+    public List<Step<StageContext>> steps() {
         return List.of(
-                Step.of(CREDIT, "Reading the credit",
+                Step.<StageContext>of(CREDIT, "Reading the credit",
                         ctx -> row(ctx).creditTextSha() != null, this::readCredit),
-                Step.of(BUNDLE, "Converting the scan to PDF",
+                Step.<StageContext>of(BUNDLE, "Converting the scan to PDF",
                         ctx -> row(ctx).sourceBundleSha() != null && row(ctx).bundlePdfSha() == null,
                         this::convertBundle),
-                Step.of(MANIFEST, "Counting the pages",
+                Step.<StageContext>of(MANIFEST, "Counting the pages",
                         ctx -> row(ctx).sourceBundleSha() != null, this::countPages),
-                Step.of(READY, "Finishing intake", this::markReady));
+                Step.<StageContext>of(READY, "Finishing intake", this::markReady));
     }
 
     /**

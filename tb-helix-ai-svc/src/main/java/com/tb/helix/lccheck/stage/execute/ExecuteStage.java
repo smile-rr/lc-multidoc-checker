@@ -8,14 +8,16 @@ import com.tb.helix.harness.llm.text.TextRequest;
 import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
+import com.tb.helix.infra.pipeline.Step;
+import com.tb.helix.infra.pipeline.StepResult;
 import com.tb.helix.infra.stream.HelixEvent;
 import com.tb.helix.lccheck.persistence.CaseRow;
-import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.CaseStore;
+import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.pipeline.*;
-import com.tb.helix.lccheck.types.StageId;
-import com.tb.helix.lccheck.types.pipeline.StepResult;
+import com.tb.helix.lccheck.pipeline.StageContext;
+import com.tb.helix.lccheck.types.pipeline.StageId;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -61,10 +63,10 @@ public class ExecuteStage implements Stage {
     }
 
     @Override
-    public List<Step> steps() {
+    public List<Step<StageContext>> steps() {
         return List.of(
-                Step.of("facts", "Assembling what the documents say", this::assembleFacts),
-                Step.of("checks", "Running the planned checks", this::runChecks));
+                Step.<StageContext>of("facts", "Assembling what the documents say", this::assembleFacts),
+                Step.<StageContext>of("checks", "Running the planned checks", this::runChecks));
     }
 
     /**
