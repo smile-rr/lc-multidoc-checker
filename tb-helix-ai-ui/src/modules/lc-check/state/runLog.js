@@ -141,15 +141,23 @@ export function foldRunLog(events = [], now = Date.now()) {
       continue
     }
 
-    // A cache hit marks its step and gets no row of its own. As a row it said
-    // "answered from cache" next to a step already flagged as answered from cache
-    // — and there is one per document, so a six-document read spent half its
-    // height repeating a fact the ⚡ beside the step already carries.
+    // `cache_hit` came from the stage and said only that something was cached.
+    // `llm_cached` comes from the cache itself and says which model was not called
+    // and what it would have cost. The ⚡ hangs off the second one now, so the mark
+    // means an avoided model call rather than a stage's claim about one.
+    //
+    // The old type is still folded, because tapes written before the change exist
+    // and a run log that could not read them would be a run log with a cliff in it.
     if (event.type === 'cache_hit') {
       const stage = stageFor(event.stage)
       const step = [...stage.steps].reverse().find((s) => s.key === event.step)
       if (step) step.cacheHit = true
       continue
+    }
+    if (event.type === 'llm_cached') {
+      const stage = stageFor(event.stage)
+      const step = openStep ?? [...stage.steps].reverse().find((s) => s.key === event.step)
+      if (step) step.cacheHit = true
     }
 
     // Everything else is a leaf: it happened inside whatever was open. Kept even

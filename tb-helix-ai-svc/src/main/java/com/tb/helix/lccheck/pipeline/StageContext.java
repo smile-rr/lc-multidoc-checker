@@ -84,12 +84,17 @@ public final class StageContext implements StepJournal {
         finished(stepKey, null, "OK", 0, false);
     }
 
-    /** Records a step that was answered from cache, with the entry that answered it. */
+    /**
+     * Records a step that was answered from cache, with the entry that answered it.
+     *
+     * <p>Writes the fact down and says nothing on the stream. The cache announces its own
+     * hits — {@code llm_cached}, with the model and the tokens the original call reported —
+     * and it is the only layer that can, because it is the only one that knows what was
+     * avoided. A stage emitting {@code cache_hit} beside it was the same news twice, told
+     * less well, from the layer that should know least about how an answer was obtained.
+     */
     public void recordCachedStep(String stepKey, Map<String, Object> result, String derivationKey) {
         store.recordStep(caseId, stage.key(), stepKey, "OK", result, null, true, derivationKey);
-        // Reported, not silent: a run that finishes in four seconds looks broken unless the
-        // officer can see it was free.
-        emit(HelixEvent.CACHE_HIT, Map.of("stage", stage.key(), "step", stepKey));
         closedByStage.add(stepKey);
         finished(stepKey, null, "OK", 0, false);
     }
