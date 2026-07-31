@@ -129,7 +129,6 @@ public class ExecuteStage implements Stage {
             ctx.emit(HelixEvent.AREA_DONE, Map.of("areaId", area.getKey()));
         }
 
-        cases.patchCase(ctx.caseId(), Map.of("status", raised > 0 ? "discrepancies" : "clean"));
         return StepResult.done(raised + (raised == 1 ? " finding" : " findings"),
                 Map.of("checks", plan.size(), "findings", raised));
     }

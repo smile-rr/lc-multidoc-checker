@@ -290,6 +290,31 @@ Spring handed the beans over. The split is the same one the predecessor made bet
 and its `PipelineService`, and it is why a controller can safely serve `GET /flow` — describing the
 pipeline touches no per-case state and starts nothing.
 
+### Why not a state machine library either
+
+The pipeline is a state machine — one stage, then the next, with the case parked between. So
+Spring StateMachine, or Squirrel, or Statefulj?
+
+No, and the reason is specific: **`lc_case.status` is a derived value, not independent state.**
+Every status is a function of which stage just ended and what it found —
+
+```java
+INTAKE                 -> AWAITING_CHECK
+INTERPRET, GATE, PLAN  -> TO_DECIDE
+EXECUTE                -> findings > 0 ? DISCREPANCIES : CLEAN
+SIGNOFF                -> grounds  > 0 ? WITH_AUTHORISER : CLEAN
+```
+
+— and the counts are already in the `StepResult` the stage returns. Those libraries model states
+you move *between* on an event, with guards and actions. Nothing moves a case from
+`DISCREPANCIES` to `CLEAN`; a stage ends and the status follows. There are no transitions to
+declare, only an answer to compute, and a library would be a dependency, a factory, a persister
+and a second home for state — to replace a `switch`.
+
+What was genuinely wrong was that the switch did not exist: four stages each patched the column
+on their way out, so a case's status depended on which stage finished last, and two of them could
+write the same value for different reasons. `StageLauncher.statusAfter` is the whole rule now.
+
 ### Why not Spring Batch or Temporal
 
 Both were considered. Spring Batch is chunk-oriented batch processing and its `JobRepository` owns

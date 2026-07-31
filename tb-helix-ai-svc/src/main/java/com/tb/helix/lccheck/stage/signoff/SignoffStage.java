@@ -63,7 +63,6 @@ public class SignoffStage implements Stage {
 
         String mt734 = mt734(row, agreed);
         cases.patchCase(ctx.caseId(), Map.of(
-                "status", agreed.isEmpty() ? "clean" : "with_authoriser",
                 "completed_at", java.sql.Timestamp.from(java.time.Instant.now())));
 
         return StepResult.ok(Map.of(

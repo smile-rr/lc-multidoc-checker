@@ -13,6 +13,7 @@ import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.pipeline.Stage;
 import com.tb.helix.lccheck.pipeline.StageContext;
+import com.tb.helix.lccheck.types.CaseStatus;
 import com.tb.helix.lccheck.types.pipeline.StageId;
 
 import org.slf4j.Logger;
@@ -151,7 +152,7 @@ public class IntakeStage implements Stage {
         // deployment sets this from the bank's own service standard; it is a default, not
         // a rule, and it exists so the list view has something honest to count down.
         patch.put("reply_due_date", java.sql.Date.valueOf(LocalDate.now().plusDays(5)));
-        patch.put("status", "running");
+        patch.put("status", CaseStatus.RUNNING.key());
         cases.patchCase(caseId, patch);
         // Deliberately not awaiting the officer: reading has not finished, and a case that
         // offered its next stage now would be offering to examine a bundle nobody has
@@ -236,7 +237,6 @@ public class IntakeStage implements Stage {
     }
 
     private StepResult markReady(StageContext ctx) {
-        cases.patchCase(ctx.caseId(), Map.of("status", "awaiting_check"));
         return StepResult.done("Ready to examine");
     }
 

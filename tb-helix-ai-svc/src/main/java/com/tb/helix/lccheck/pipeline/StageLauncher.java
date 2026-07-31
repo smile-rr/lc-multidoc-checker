@@ -9,6 +9,7 @@ import com.tb.helix.infra.stream.EventBus;
 import com.tb.helix.infra.stream.HelixEvent;
 import com.tb.helix.lccheck.persistence.CaseRow;
 import com.tb.helix.lccheck.persistence.CaseStore;
+import com.tb.helix.lccheck.types.CaseStatus;
 import com.tb.helix.lccheck.types.pipeline.StageId;
 
 import org.slf4j.Logger;
@@ -145,7 +146,7 @@ public class StageLauncher {
         switch (outcome.result().status()) {
             case HALTED -> halt(caseId, last, outcome.result());
             case FAILED -> fail(caseId, last, outcome.result().detail());
-            default -> awaitOfficer(caseId, last);
+            default -> awaitOfficer(caseId, last, outcome.result());
         }
     }
 
@@ -160,7 +161,7 @@ public class StageLauncher {
         cases.patchCase(caseId, Map.of(
                 "gate_halted", true,
                 "gate_halt_check_id", String.valueOf(result.haltKey()),
-                "status", "discrepancies"));
+                "status", CaseStatus.DISCREPANCIES.key()));
         events.publish(HelixEvent.of(caseId, HelixEvent.GATE_HALTED, Map.of(
                 "checkId", String.valueOf(result.haltKey()),
                 "statement", String.valueOf(result.detail()))));
@@ -180,14 +181,42 @@ public class StageLauncher {
      * next stage somebody can ask for, and waits. When there is no next, the examination is
      * over and it goes to the authoriser.
      */
-    private void awaitOfficer(String caseId, StageId last) {
+    private void awaitOfficer(String caseId, StageId last, StepResult result) {
+        cases.patchCase(caseId, Map.of("status", statusAfter(last, result).key()));
+
         StageId next = pipeline.nextOfficerStageAfter(last).orElse(null);
         cases.setStage(caseId, last, next, next != null);
         if (next != null) {
             events.publish(HelixEvent.of(caseId, HelixEvent.AWAITING_OFFICER, Map.of("next", next.key())));
-        } else {
-            cases.patchCase(caseId, Map.of("status", "with_authoriser"));
         }
+    }
+
+    /**
+     * What a case's status becomes when a stage ends well.
+     *
+     * <p>The whole rule, in one place. It used to be four stages each patching the column on
+     * their way out, so what a case's status <em>was</em> depended on which stage happened to
+     * finish last, and two of them could write the same value for different reasons. Nothing
+     * checked, because nothing could: there was no one place to check in.
+     *
+     * <p>A function rather than a transition table, because a status is not independent
+     * state. Nothing moves a case from {@code DISCREPANCIES} to {@code CLEAN}; a stage ends
+     * and the status follows from what it found. That is also why this is not a state machine
+     * library — there are no transitions to declare, only an answer to compute.
+     */
+    private CaseStatus statusAfter(StageId stage, StepResult result) {
+        return switch (stage) {
+            case INTAKE -> CaseStatus.AWAITING_CHECK;
+            case INTERPRET, GATE, PLAN -> CaseStatus.TO_DECIDE;
+            case EXECUTE -> count(result, "findings") > 0 ? CaseStatus.DISCREPANCIES : CaseStatus.CLEAN;
+            // Only findings the officer agreed to become grounds; none means nothing was
+            // raised, which is a clean presentation rather than one sent on.
+            case SIGNOFF -> count(result, "grounds") > 0 ? CaseStatus.WITH_AUTHORISER : CaseStatus.CLEAN;
+        };
+    }
+
+    private long count(StepResult result, String key) {
+        return result.data().get(key) instanceof Number n ? n.longValue() : 0;
     }
 
     public void cancel(String caseId) {

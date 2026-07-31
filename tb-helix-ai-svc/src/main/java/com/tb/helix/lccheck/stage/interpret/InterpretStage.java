@@ -114,7 +114,6 @@ public class InterpretStage implements Stage {
         for (var p : cases.bundlePages(ctx.caseId())) byPage.put(p.pageNo(), p.docCode());
 
         int read = extractAll(ctx, pdfSha, byPage);
-        cases.patchCase(ctx.caseId(), Map.of("status", "to_decide"));
         return StepResult.done(read + " documents read", Map.of("documents", read));
     }
 
