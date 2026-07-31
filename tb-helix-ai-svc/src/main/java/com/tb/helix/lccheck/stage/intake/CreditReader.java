@@ -6,6 +6,8 @@ import com.tb.helix.harness.llm.text.TextRequest;
 import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
+import com.tb.helix.lccheck.service.DocumentTypes;
+import com.tb.helix.lccheck.service.ExtractionSpec;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -47,11 +49,16 @@ public class CreditReader {
 
     private final LlmGateway models;
     private final DerivationCache cache;
+    private final DocumentTypes docTypes;
+    private final ExtractionSpec spec;
     private final ObjectMapper json;
 
-    public CreditReader(LlmGateway models, DerivationCache cache, ObjectMapper json) {
+    public CreditReader(LlmGateway models, DerivationCache cache, DocumentTypes docTypes,
+                        ExtractionSpec spec, ObjectMapper json) {
         this.models = models;
         this.cache = cache;
+        this.docTypes = docTypes;
+        this.spec = spec;
         this.json = json;
     }
 
@@ -68,6 +75,9 @@ public class CreditReader {
         String prompt = prompt(file);
         var key = new DerivationKey(CacheOp.EXTRACT_CREDIT, CacheOp.EXTRACT_CREDIT_V,
                 DerivationKey.sha256Hex(file.raw()), scope(file),
+                // The prompt is assembled from the dictionary, so its hash carries the
+                // bindings: change a read note in the console and the credit is read again
+                // rather than answered from a cache that used the old instruction.
                 DerivationKey.sha256Hex(prompt), "role:read_text", null, Map.of());
 
         try {
@@ -115,7 +125,25 @@ public class CreditReader {
                 .append(" — ").append(m.type().label()).append(" ===\n")
                 .append(m.block4().strip()).append("\n\n");
         }
-        return READ_PROMPT.formatted(file.messages().size(), body.toString().strip());
+        return READ_PROMPT.formatted(file.messages().size(), body.toString().strip(), fields());
+    }
+
+    /**
+     * The terms to ask for — the credit's own dictionary bindings.
+     *
+     * <p>This was sixteen lines of Java naming fields and their SWIFT tags, which is the
+     * same list the dictionary holds and an author can edit. Two copies of one thing, and
+     * only one of them was visible to the people who maintain the vocabulary.
+     *
+     * <p>The note on each binding is the tag guidance, verbatim: "Tag 31D — first six
+     * digits, YYMMDD" is an instruction someone wrote in the console, and it goes to the
+     * model unchanged.
+     */
+    private String fields() {
+        String lines = spec.fieldLines(docTypes.creditCode());
+        return lines.isBlank()
+                ? "  (the dictionary has no fields bound to the credit — report what the messages state)\n"
+                : lines;
     }
 
     /**
@@ -171,25 +199,6 @@ public class CreditReader {
             Answer only in the JSON shape you are given. No prose outside it.
             """;
 
-    private static final String FIELDS = """
-              creditRef          :20:  the credit's own reference
-              issuedDate         :31C: ISO
-              applicant          :50:  first line — the name
-              beneficiary        :59:  first line — the name
-              currency           :32B: the three-letter code
-              amount             :32B: a number, decimal point, no separators
-              tolerancePct       :39A: the plus percentage, 0 when absent
-              latestShipment     :44C: ISO
-              expiry             :31D: ISO — the date part only
-              expiryPlace        :31D: the place part only
-              presentationDays   :48:  a whole number of days
-              tenor              :42C: as written
-              goods              :45A: as written, newlines kept
-              availableWith      :41D: or :41A: — first line
-              requiredDocs       :46A: as written, newlines kept
-              conditions         :47A: as written, newlines kept
-            """;
-
     private static final String READ_PROMPT = """
             Below are %d SWIFT messages from one file, in the order they were sent.
 
@@ -214,10 +223,10 @@ public class CreditReader {
             %s
             ---
 
-            Report these fields, as they stand after everything above:
+            Report these fields, as they stand after everything above, under exactly these
+            names:
 
-            """ + FIELDS + """
-
+            %s
             Omit any field the messages do not carry. Do not guess, and do not carry a value
             across from a similar tag.
 

@@ -321,10 +321,14 @@ export function deriveVals(state, setState) {
   // reads better and cannot be joined on: a name is a label an author may correct.
   const docNameOf = Object.fromEntries(dictDocList.map((d) => [d.key, d.name]))
   const docLabel = (key) => docNameOf[key] ?? key
+  // Fields the same way. A check cites a field by key; every screen shows its name.
+  const fieldNameOf = Object.fromEntries(dictFieldList.map((f) => [f.key, f.name]))
+  const fieldKeyOf = Object.fromEntries(dictFieldList.map((f) => [f.name, f.key]))
+  const fieldLabel = (key) => fieldNameOf[key] ?? key
   const docKeyBook = dictDocList.map((d) => d.key)
   // Every (field, document) pair the dictionary knows about — the vocabulary a
   // rule row picks its operands from.
-  const operandBook = dictFieldList.flatMap((f) => (f.bindings || []).map((b) => ({ field: f.name, doc: b.doc, docLabel: docLabel(b.doc), note: b.note })))
+  const operandBook = dictFieldList.flatMap((f) => (f.bindings || []).map((b) => ({ field: f.key, fieldLabel: f.name, doc: b.doc, docLabel: docLabel(b.doc), note: b.note })))
   // ---- one open edit at a time --------------------------------------------
   //
   // The console had three independent edit slots — a check being edited, an
@@ -416,8 +420,8 @@ export function deriveVals(state, setState) {
     return g ? g.name : ''
   }
   // What a field is read from, said in one line — the hint under a field chip.
-  const fieldDocHint = (name) => {
-    const f = dictFieldList.find((x) => x.name === name)
+  const fieldDocHint = (key) => {
+    const f = dictFieldList.find((x) => x.key === key)
     if (!f) return 'not in dictionary'
     const ds = (f.bindings || []).map((b) => b.doc)
     if (!ds.length) return 'no source yet'
@@ -644,12 +648,15 @@ export function deriveVals(state, setState) {
     const showBody = editing || !compactMode || expanded
     // Field names the author has already braced in the body text.
     const detectNames = () => {
+      // The body braces a field by NAME, because it is prose a model reads and reads
+      // better in English. What lands on the card is the key.
       const known = dictFieldList.map((f) => f.name)
       const out = []
       const fre = /\{\s*([^}\n]+?)\s*\}/g
       let fm
       while ((fm = fre.exec(body)) !== null) {
-        if (known.includes(fm[1]) && !out.includes(fm[1])) out.push(fm[1])
+        const key = fieldKeyOf[fm[1]]
+        if (known.includes(fm[1]) && key && !out.includes(key)) out.push(key)
       }
       return out
     }
@@ -673,7 +680,7 @@ export function deriveVals(state, setState) {
       return {
         isLiteral: !!o.literal || (side === 'r' && EXPR_OPS.includes(r.op)),
         isField: !o.literal && !(side === 'r' && EXPR_OPS.includes(r.op)),
-        field: o.field || 'Pick a field', doc: o.field ? docLabel(o.doc) : '',
+        field: o.field ? fieldLabel(o.field) : 'Pick a field', doc: o.field ? docLabel(o.doc) : '',
         literal: o.literal || '',
         literalPlaceholder: EXPR_OPS.includes(r.op) ? 'An expression, e.g. matches /^[A-Z]{3}$/' : 'A fixed value…',
         onChangeLiteral: (e) => set({ literal: e.target.value }),
@@ -682,7 +689,7 @@ export function deriveVals(state, setState) {
         bg: unset ? 'transparent' : 'var(--me-grey-08)', color: unset ? 'var(--me-grey-70)' : 'var(--me-ink)',
         open: S.operandOpen === openKey,
         onToggle: (e) => { if (e && e.stopPropagation) e.stopPropagation(); startEdit(); setState((s) => ({ operandOpen: s.operandOpen === openKey ? null : openKey })) },
-        book: operandBook.map((op) => ({ ...op, onPick: () => { set({ field: op.field, doc: op.doc }); setState({ operandOpen: null }) } })),
+        book: operandBook.map((op) => ({ ...op, field: op.fieldLabel, onPick: () => { set({ field: op.field, doc: op.doc }); setState({ operandOpen: null }) } })),
       }
     }
 
@@ -717,7 +724,7 @@ export function deriveVals(state, setState) {
     }))
 
     return {
-      id: c.id, title, body, bodySegments: hl(body), dictFields: dictFieldList.map((f) => ({ name: f.name, docs: fieldDocHint(f.name) })), severity,
+      id: c.id, title, body, bodySegments: hl(body), dictFields: dictFieldList.map((f) => ({ name: f.name, docs: fieldDocHint(f.key) })), severity,
       kind, isExact, isJudged: !isExact,
       // Hard check. `gateOn` is the stored intent narrowed by what is possible, so a
       // rule that stops being eligible (an operand moved to a presented document)
@@ -741,9 +748,9 @@ export function deriveVals(state, setState) {
       onStartEdit: () => startEdit(),
       sevColor: (SEV_META[severity] || SEV_META.MAJOR).color,
       onChangeSev: (e) => write('severity', e.target.value),
-      fieldChips: fields.map((n) => ({ name: n, docHint: fieldDocHint(n), onRemove: (e) => { if (e && e.stopPropagation) e.stopPropagation(); write('fields', fields.filter((x) => x !== n)) } })),
+      fieldChips: fields.map((n) => ({ name: fieldLabel(n), docHint: fieldDocHint(n), onRemove: (e) => { if (e && e.stopPropagation) e.stopPropagation(); write('fields', fields.filter((x) => x !== n)) } })),
       hasFields: fields.length > 0,
-      fieldBook: dictFieldList.filter((f) => !fields.includes(f.name)).map((f) => ({ name: f.name, docs: fieldDocHint(f.name), onAdd: () => { write('fields', [...fields, f.name]); setState({ fieldsOpenId: null }) } })),
+      fieldBook: dictFieldList.filter((f) => !fields.includes(f.key)).map((f) => ({ name: f.name, docs: fieldDocHint(f.key), onAdd: () => { write('fields', [...fields, f.key]); setState({ fieldsOpenId: null }) } })),
       fieldsOpen: S.fieldsOpenId === c.id,
       onToggleFields: (e) => { if (e && e.stopPropagation) e.stopPropagation(); setState((s) => ({ fieldsOpenId: s.fieldsOpenId === c.id ? null : c.id })) },
       onDetectFields: () => { const merged = fields.slice(); detectNames().forEach((n) => { if (!merged.includes(n)) merged.push(n) }); write('fields', merged); setState({ fieldsOpenId: null }) },
@@ -1006,7 +1013,7 @@ export function deriveVals(state, setState) {
   const phases = PHASES.map((p) => ({ ...p, scenarios: p.scenarios.map((r) => ({ ...r, mark: r.status === 'pass' ? '✓' : '!', markBg: r.status === 'pass' ? 'var(--status-success)' : 'var(--status-warning)' })) }))
   const reviewOpen = S.panel === 'review' && !!panelCtx
   // Export reads a rule card off its rows, since it has no prose to export.
-  const operandText = (o) => (!o ? '?' : o.literal ? o.literal : o.field ? `${o.field} @ ${docLabel(o.doc)}` : '?')
+  const operandText = (o) => (!o ? '?' : o.literal ? o.literal : o.field ? `${fieldLabel(o.field)} @ ${docLabel(o.doc)}` : '?')
   const ruleMd = (c) => {
     const r = ruleOf(c.id)
     const blocks = r.groups
@@ -1078,12 +1085,13 @@ export function deriveVals(state, setState) {
   const bindingDocs = (f) => (f.bindings || []).map((b) => b.doc)
   // A field counts as used when a rule names it — as a chip on a judged
   // card, as a braced token in its wording, or as an operand of a rule row.
-  const fieldUsed = (name) =>
+  const fieldUsed = (key) =>
     allChecks().filter((c) => {
       const fs = valueOf(c, 'fields') || (CHECK_DEFAULTS[c.id] || {}).fields || []
-      if (fs.includes(name)) return true
-      if (typeOf(c) === 'exact') return ruleFieldsOf(c.id).includes(name)
-      return (valueOf(c, 'body') || '').includes('{' + name + '}')
+      if (fs.includes(key)) return true
+      if (typeOf(c) === 'exact') return ruleFieldsOf(c.id).includes(key)
+      // The body braces the name, not the key — it is prose.
+      return (valueOf(c, 'body') || '').includes('{' + fieldLabel(key) + '}')
     }).length
   const dq = (S.dictSearch || '').toLowerCase()
   const patchField = (id, fn) => setDF((fs) => fs.map((x) => (x.id === id ? fn(x) : x)))
@@ -1115,16 +1123,16 @@ export function deriveVals(state, setState) {
       dictClose(f)
     },
     onOpen: () => confirmLeave(() => setState({ dictDetail: { kind: 'field', id: f.id } })),
-    usedLabel: fieldUsed(f.name) + (fieldUsed(f.name) === 1 ? ' check' : ' checks'),
+    usedLabel: fieldUsed(f.key) + (fieldUsed(f.key) === 1 ? ' check' : ' checks'),
     docsLine: bindingDocs(f).map(docLabel).join(' · ') || '—',
     onChangeName: (ev) => { e.start(); const val = ev.target.value; patchField(f.id, (x) => ({ ...x, name: val })) },
     onChangeDesc: (ev) => { e.start(); const val = ev.target.value; patchField(f.id, (x) => ({ ...x, description: val })) },
-    usedCount: fieldUsed(f.name),
+    usedCount: fieldUsed(f.key),
     removeTip: S.createdId === f.id ? 'Discard this new field' : 'Remove this field',
     onRemove: () => {
       // Just added and nothing has been said about it yet — no confirm to read.
       if (S.createdId === f.id) { setDF((fs) => fs.filter((x) => x.id !== f.id)); setState({ createdId: null, dictDetail: null }); return }
-      const used = fieldUsed(f.name)
+      const used = fieldUsed(f.key)
       return used
         ? requestConfirm({
             title: 'This field is in use',

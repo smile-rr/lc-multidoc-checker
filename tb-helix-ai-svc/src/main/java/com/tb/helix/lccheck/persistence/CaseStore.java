@@ -281,19 +281,46 @@ public class CaseStore {
     }
 
     /** Clears everything a rerun invalidates. Downstream only — the stage being rerun writes its own. */
-    public void clearFrom(String caseId, StageId stage, List<StageId> downstream) {
+    /**
+     * Undoes a stage and everything after it, so a rerun starts from the same place a first
+     * run did.
+     *
+     * @param keepFactsFor the credit's document code — facts read from it belong to intake,
+     *                     so undoing a later stage must leave them alone
+     *
+     * <p>The comparison is {@code <=}, and it was {@code <}. A stage's own output was
+     * therefore never cleared by rerunning it: rerunning interpret left the old facts in
+     * place beside the new ones, and rerunning execute left every planned check marked DONE,
+     * so nothing ran and the case reported a clean examination it had not performed.
+     * Rerunning <em>intake</em> cleared all three correctly, which is why it looked right.
+     */
+    public void clearFrom(String caseId, StageId stage, List<StageId> downstream, String keepFactsFor) {
         List<String> keys = downstream.stream().map(StageId::key).toList();
-        if (keys.isEmpty()) return;
-        Object[] args = new Object[] { caseId, keys.toArray(String[]::new) };
-        jdbc.update("DELETE FROM helix_check.lc_step WHERE case_id = ?::uuid AND stage = ANY(?)", args);
-        if (stage.ordinal() < StageId.INTERPRET.ordinal()) {
-            jdbc.update("DELETE FROM helix_check.lc_fact WHERE case_id = ?::uuid", caseId);
+        if (!keys.isEmpty()) {
+            Object[] args = new Object[] { caseId, keys.toArray(String[]::new) };
+            jdbc.update("DELETE FROM helix_check.lc_step WHERE case_id = ?::uuid AND stage = ANY(?)", args);
         }
-        if (stage.ordinal() < StageId.PLAN.ordinal()) {
+        if (stage.ordinal() <= StageId.INTAKE.ordinal() || keepFactsFor == null) {
+            jdbc.update("DELETE FROM helix_check.lc_fact WHERE case_id = ?::uuid", caseId);
+        } else if (stage.ordinal() <= StageId.INTERPRET.ordinal()) {
+            // Not every fact belongs to the stage being undone. Intake reads the credit;
+            // interpret reads what was presented. Clearing the lot when interpret is rerun
+            // threw away the terms the examination measures against — and nothing would put
+            // them back, because intake was not being rerun.
+            jdbc.update("DELETE FROM helix_check.lc_fact WHERE case_id = ?::uuid AND doc_code <> ?",
+                    caseId, keepFactsFor);
+        }
+        if (stage.ordinal() <= StageId.PLAN.ordinal()) {
             jdbc.update("DELETE FROM helix_check.lc_plan_check WHERE case_id = ?::uuid AND NOT added_by_officer", caseId);
         }
-        if (stage.ordinal() < StageId.EXECUTE.ordinal()) {
+        if (stage.ordinal() <= StageId.EXECUTE.ordinal()) {
             jdbc.update("DELETE FROM helix_check.lc_finding WHERE case_id = ?::uuid AND NOT raised_by_officer", caseId);
+            // A check the officer added survives the rerun, but it has to run again — it was
+            // marked DONE by the pass being undone.
+            jdbc.update("""
+                    UPDATE helix_check.lc_plan_check SET status = 'PLANNED'
+                     WHERE case_id = ?::uuid AND status IN ('DONE', 'FAILED', 'RUNNING')
+                    """, caseId);
         }
     }
 

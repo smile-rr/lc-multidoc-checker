@@ -14,6 +14,7 @@ import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.pipeline.Stage;
 import com.tb.helix.lccheck.pipeline.StageContext;
 import com.tb.helix.lccheck.service.DocumentTypes;
+import com.tb.helix.lccheck.service.ExtractionSpec;
 import com.tb.helix.lccheck.types.CaseStatus;
 import com.tb.helix.lccheck.types.pipeline.StageId;
 
@@ -73,10 +74,11 @@ public class IntakeStage implements Stage {
     private final CreditReader creditReader;
     private final CaseStore cases;
     private final DocumentTypes docTypes;
+    private final ExtractionSpec spec;
 
     public IntakeStage(BlobStore blobs, DocumentConverter converter, PageRenderer renderer,
                        SwiftReader swift, CreditReader creditReader, CaseStore cases,
-                       DocumentTypes docTypes) {
+                       DocumentTypes docTypes, ExtractionSpec spec) {
         this.blobs = blobs;
         this.converter = converter;
         this.renderer = renderer;
@@ -84,6 +86,7 @@ public class IntakeStage implements Stage {
         this.creditReader = creditReader;
         this.cases = cases;
         this.docTypes = docTypes;
+        this.spec = spec;
     }
 
     @Override
@@ -207,11 +210,46 @@ public class IntakeStage implements Stage {
                 "reference", String.valueOf(reading.terms().getOrDefault("creditRef", "")),
                 "extraction", "text", "ordinal", 0));
 
+        writeCreditFacts(caseId, reading);
+
         return StepResult.done(file.label() + " read", Map.of(
                 "messages", file.manifest(),
                 "credit", reading.terms(),
                 "from", reading.provenance(),
                 "lines", file.lines()));
+    }
+
+    /**
+     * The credit's terms, as facts.
+     *
+     * <p>The columns on {@code lc_case} are a summary — thirteen of them, denormalised so the
+     * cases list is one query — and a rule cannot cite a column. Writing the reading as facts
+     * as well means every operand an author can express is the same shape:
+     * {@code (field_key, doc_code)}, whether it reads the credit or the invoice. Before this,
+     * a rule comparing the invoice value to the credit amount had a fact on one side and a
+     * column on the other, and no way to say so.
+     *
+     * <p>The anchor is what makes the reading checkable: a fact read from tag 31D points at
+     * that line, and the viewer highlights it. On an amended credit the anchor names the
+     * message the value actually came from.
+     */
+    private void writeCreditFacts(String caseId, CreditReader.Reading reading) {
+        String docCode = docTypes.creditCode();
+        for (var fact : spec.read(docCode, reading.terms()).values()) {
+            Object from = reading.provenance().get(fact.key());
+            cases.upsertFact(caseId, Rows.of(
+                    "docId", docCode,
+                    "label", fact.label(),
+                    "fieldKey", fact.key(),
+                    "value", String.valueOf(fact.value()),
+                    "valueNorm", String.valueOf(fact.value()).strip().toUpperCase(),
+                    // Which message stated it, when the file held more than one. "#1 MT700"
+                    // is the credit as issued; "#3 MT707" is an amendment, and an examiner
+                    // reading a term that moved wants to know that without being told twice.
+                    "source", from == null ? "the credit" : String.valueOf(from),
+                    "flag", fact.known() ? null : "Not in the dictionary",
+                    "confidence", "HIGH"));
+        }
     }
 
     /**

@@ -15,6 +15,11 @@ import java.util.Map;
  *
  * <p>Static and stateless. Nothing here touches a database, a model or a case — hand it a map
  * of read fields and it gives back a map of columns.
+ *
+ * <p>The names on the left are the dictionary's keys; the names on the right are this
+ * schema's columns. That is all this class is — a projection of the credit's facts onto the
+ * handful of columns the cases list sorts and filters on. The facts themselves are written
+ * whole, under their dictionary keys, so a rule cites the field rather than the column.
  */
 final class CreditColumns {
 
@@ -30,19 +35,19 @@ final class CreditColumns {
      */
     static Map<String, Object> of(Map<String, Object> read) {
         Map<String, Object> out = new LinkedHashMap<>();
-        put(out, "credit_ref", read.get("creditRef"));
-        put(out, "issued_date", date(read.get("issuedDate")));
-        put(out, "applicant", read.get("applicant"));
-        put(out, "beneficiary", read.get("beneficiary"));
+        put(out, "credit_ref", read.get("credit_reference"));
+        put(out, "issued_date", date(read.get("issue_date")));
+        put(out, "applicant", read.get("applicant_name"));
+        put(out, "beneficiary", read.get("beneficiary_name"));
         put(out, "currency", trim(read.get("currency"), 3));
-        put(out, "amount", decimal(read.get("amount")));
-        put(out, "tolerance_pct", decimal(read.get("tolerancePct")));
-        put(out, "latest_shipment", date(read.get("latestShipment")));
-        put(out, "expiry", date(read.get("expiry")));
-        put(out, "expiry_place", read.get("expiryPlace"));
-        put(out, "presentation_days", integer(read.get("presentationDays")));
-        put(out, "tenor", read.get("tenor"));
-        put(out, "goods", read.get("goods"));
+        put(out, "amount", decimal(read.get("credit_amount")));
+        put(out, "tolerance_pct", decimal(read.get("tolerance_percent")));
+        put(out, "latest_shipment", date(read.get("latest_shipment_date")));
+        put(out, "expiry", date(read.get("expiry_date")));
+        put(out, "expiry_place", read.get("place_of_expiry"));
+        put(out, "presentation_days", integer(read.get("presentation_period")));
+        put(out, "tenor", read.get("draft_tenor"));
+        put(out, "goods", read.get("goods_description"));
         return out;
     }
 

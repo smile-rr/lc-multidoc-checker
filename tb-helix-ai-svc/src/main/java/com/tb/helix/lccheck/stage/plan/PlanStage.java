@@ -135,8 +135,8 @@ public class PlanStage implements Stage {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> credit = (Map<String, Object>) parsed.get().getOrDefault("credit", Map.of());
-        String docs = String.valueOf(credit.getOrDefault("requiredDocs", ""));
-        String conditions = String.valueOf(credit.getOrDefault("conditions", ""));
+        String docs = String.valueOf(credit.getOrDefault("documents_required", ""));
+        String conditions = String.valueOf(credit.getOrDefault("additional_conditions", ""));
         if (docs.isBlank() && conditions.isBlank()) return 0;
 
         String prompt = REQUIREMENTS_PROMPT.formatted(docs, conditions);

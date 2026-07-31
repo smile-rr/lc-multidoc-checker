@@ -15,6 +15,7 @@ import com.tb.helix.infra.stream.HelixEvent;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.service.DocumentTypes;
+import com.tb.helix.lccheck.service.ExtractionSpec;
 import com.tb.helix.lccheck.pipeline.*;
 import com.tb.helix.lccheck.pipeline.StageContext;
 import com.tb.helix.lccheck.types.pipeline.StageId;
@@ -53,17 +54,19 @@ public class InterpretStage implements Stage {
     private final DerivationCache cache;
     private final CaseStore cases;
     private final DocumentTypes docTypes;
+    private final ExtractionSpec spec;
     private final ObjectMapper json;
 
     public InterpretStage(PageRenderer renderer, RenderProperties render, LlmGateway models,
                           DerivationCache cache, CaseStore cases, DocumentTypes docTypes,
-                          ObjectMapper json) {
+                          ExtractionSpec spec, ObjectMapper json) {
         this.renderer = renderer;
         this.render = render;
         this.models = models;
         this.cache = cache;
         this.cases = cases;
         this.docTypes = docTypes;
+        this.spec = spec;
         this.json = json;
     }
 
@@ -233,15 +236,17 @@ public class InterpretStage implements Stage {
                     return DerivationCache.Entry.of(result.fields());
                 });
 
-                writeFacts(ctx, code, pages.get(0), hit.value());
+                int offSchema = writeFacts(ctx, code, pages.get(0), hit.value());
                 read++;
                 // Per document rather than per stage, because a cache hit here is the
                 // difference between four seconds and four minutes and the officer should
                 // see which they got.
+                Map<String, Object> what = new LinkedHashMap<>(Map.of("pages", pages));
+                if (offSchema > 0) what.put("offSchema", offSchema);
                 if (hit.tier() != com.tb.helix.infra.cache.CacheTier.Level.NONE) {
-                    ctx.recordCachedStep("extract:" + code, Map.of("pages", pages), null);
+                    ctx.recordCachedStep("extract:" + code, what, null);
                 } else {
-                    ctx.recordStep("extract:" + code, Map.of("pages", pages));
+                    ctx.recordStep("extract:" + code, what);
                 }
             } catch (RuntimeException e) {
                 // One document that could not be read must not lose the other five.
@@ -252,28 +257,47 @@ public class InterpretStage implements Stage {
         return read;
     }
 
+    /**
+     * What the document said, keyed the dictionary's way.
+     *
+     * <p>Every reading is folded onto a dictionary key where one exists, so a fact can be
+     * joined to the rule that cites it. What will not fold is kept and marked rather than
+     * dropped: an unauthored field is still evidence, and the mark is how anyone learns the
+     * dictionary is missing something. Before this, the key stored was whatever the model
+     * invented — 105 of them across a handful of cases, against 22 dictionary fields, and
+     * the seven that matched did so by coincidence of capitalisation.
+     */
     @SuppressWarnings("unchecked")
-    private void writeFacts(StageContext ctx, String docCode, int firstPage, Object value) {
-        if (!(value instanceof Map<?, ?> map)) return;
-        for (var e : map.entrySet()) {
-            String label = String.valueOf(e.getKey());
-            Object v = e.getValue();
-            if (v == null || label.startsWith("_")) continue;
-            // Nested objects are the model elaborating where a flat value was asked for.
+    private int writeFacts(StageContext ctx, String docCode, int firstPage, Object value) {
+        if (!(value instanceof Map<?, ?> map)) return 0;
+
+        Map<String, Object> returned = new LinkedHashMap<>();
+        map.forEach((k, v) -> returned.put(String.valueOf(k), v));
+
+        int offSchema = 0;
+        for (var reading : spec.read(docCode, returned).values()) {
+            Object v = reading.value();
+            // A nested object is the model elaborating where a flat value was asked for.
             // Kept as JSON rather than dropped: an officer can still read it.
             String text = v instanceof Map || v instanceof List ? toJson(v) : String.valueOf(v);
             if (text.isBlank()) continue;
+            if (!reading.known()) offSchema++;
 
             cases.upsertFact(ctx.caseId(), Rows.of(
                     "docId", docCode,
-                    "label", humanise(label),
-                    "fieldKey", label,
+                    "label", reading.label(),
+                    "fieldKey", reading.key(),
                     "value", text,
                     "valueNorm", text.strip().toUpperCase(),
                     "page", firstPage,
                     "source", "p." + firstPage,
+                    // Said plainly on the fact itself. An officer sorting by it sees what the
+                    // dictionary does not yet cover, which is the only way that list is ever
+                    // going to get shorter.
+                    "flag", reading.known() ? null : "Not in the dictionary",
                     "confidence", "MED"));
         }
+        return offSchema;
     }
 
     private String toJson(Object o) {
@@ -316,9 +340,35 @@ public class InterpretStage implements Stage {
             {"pages": [{"page": 1, "docType": "INV", "why": "short reason"}, ...]}
             """;
 
+    /**
+     * Built from the dictionary, never written by hand.
+     *
+     * <p>The fields asked for are this document's bindings — key, label and the author's own
+     * note on how to read it here — so adding one in the console changes the next
+     * extraction and there is no template to remember to update. The predecessor kept both
+     * and they drifted within a release.
+     *
+     * <p>The reading stays open past that list. A document carries more than the dictionary
+     * has been taught, and an examiner may want it; what the list buys is that everything
+     * the dictionary <em>does</em> know comes back under the key a rule can cite.
+     */
     private String extractPrompt(String code) {
+        String known = spec.fieldLines(code);
+        String asked = known.isBlank()
+                ? """
+                  The dictionary has no fields bound to this document type yet, so there is
+                  nothing specific to ask for. Report what the document carries, naming each
+                  field the way the document itself names it.
+                  """
+                : "Report these first, under exactly these names:\n\n" + known;
+
         return """
-                Read this %s and return the fields written on it.
+                Read this %s and report the fields written on it.
+
+                %s
+                Then report anything else the document carries that is not in that list,
+                naming each one the way the document itself names it, in snake_case. A field
+                nobody has asked for is still evidence.
 
                 Rules:
                 - Copy values exactly as printed. Do not normalise, reformat or convert.
@@ -328,13 +378,7 @@ public class InterpretStage implements Stage {
                 - Omit a field entirely rather than guessing. A missing value is a fact an
                   examiner can act on; an invented one is not.
 
-                Use snake_case keys naming what the document itself calls the field —
-                invoice_number, goods_description, gross_weight, vessel_name, on_board_date,
-                beneficiary_name, applicant_name, total_amount, currency, quantity,
-                unit_price, port_of_loading, port_of_discharge, presentation_date, and any
-                other field actually present.
-
                 Return only JSON: a flat object of field name to value.
-                """.formatted(docTypes.label(code).toLowerCase());
+                """.formatted(docTypes.label(code).toLowerCase(), asked);
     }
 }

@@ -1031,7 +1031,8 @@
           "doc": "CS",
           "note": "Only where the schedule restates it: \"valid until\", \"expires on\""
         }
-      ]
+      ],
+      "key": "expiry_date"
     },
     {
       "id": "f2",
@@ -1042,7 +1043,8 @@
           "doc": "LC",
           "note": "Tag 31D — text following the date"
         }
-      ]
+      ],
+      "key": "place_of_expiry"
     },
     {
       "id": "f3",
@@ -1053,7 +1055,8 @@
           "doc": "LC",
           "note": "41A / 41D — the bank line before \"BY\""
         }
-      ]
+      ],
+      "key": "place_of_presentation"
     },
     {
       "id": "f4",
@@ -1064,7 +1067,8 @@
           "doc": "LC",
           "note": "41A / 41D — the text after \"BY\""
         }
-      ]
+      ],
+      "key": "available_with"
     },
     {
       "id": "f5",
@@ -1079,7 +1083,8 @@
           "doc": "BOE",
           "note": "The tenor phrase on the face: \"at sight\", \"at 60 days after B/L date\""
         }
-      ]
+      ],
+      "key": "draft_tenor"
     },
     {
       "id": "f6",
@@ -1094,7 +1099,8 @@
           "doc": "BOE",
           "note": "Party named after \"drawn on\" or \"to\""
         }
-      ]
+      ],
+      "key": "drawee"
     },
     {
       "id": "f7",
@@ -1105,7 +1111,8 @@
           "doc": "LC",
           "note": "Tag 46A — whole block, kept unparsed for requirement cards"
         }
-      ]
+      ],
+      "key": "documents_required"
     },
     {
       "id": "f8",
@@ -1116,7 +1123,8 @@
           "doc": "LC",
           "note": "Tag 47A — whole block, kept unparsed for requirement cards"
         }
-      ]
+      ],
+      "key": "additional_conditions"
     },
     {
       "id": "f9",
@@ -1135,7 +1143,8 @@
           "doc": "BOL",
           "note": "\"Description of packages and goods\" — may be in general terms"
         }
-      ]
+      ],
+      "key": "goods_description"
     },
     {
       "id": "f10",
@@ -1146,7 +1155,8 @@
           "doc": "LC",
           "note": "Tag 32B, widened by the 39A tolerance when present"
         }
-      ]
+      ],
+      "key": "credit_amount"
     },
     {
       "id": "f11",
@@ -1157,7 +1167,8 @@
           "doc": "INV",
           "note": "Highest-level total: \"total\", \"grand total\", \"total amount due\"; sum the lines if none is shown"
         }
-      ]
+      ],
+      "key": "invoice_value"
     },
     {
       "id": "f12",
@@ -1176,7 +1187,8 @@
           "doc": "INS",
           "note": "Currency of the sum insured"
         }
-      ]
+      ],
+      "key": "currency"
     },
     {
       "id": "f13",
@@ -1187,7 +1199,8 @@
           "doc": "INS",
           "note": "Amount beside \"sum insured\" or \"amount insured\""
         }
-      ]
+      ],
+      "key": "insured_amount"
     },
     {
       "id": "f14",
@@ -1198,7 +1211,8 @@
           "doc": "INS",
           "note": "\"Cover effective from\" if shown, else the date of issue"
         }
-      ]
+      ],
+      "key": "cover_date"
     },
     {
       "id": "f15",
@@ -1209,7 +1223,8 @@
           "doc": "LC",
           "note": "Tag 44C, or derived from the 44D shipment period"
         }
-      ]
+      ],
+      "key": "latest_shipment_date"
     },
     {
       "id": "f16",
@@ -1224,7 +1239,8 @@
           "doc": "AWB",
           "note": "Actual flight-date notation — not the issue date"
         }
-      ]
+      ],
+      "key": "on_board_date"
     },
     {
       "id": "f17",
@@ -1239,7 +1255,8 @@
           "doc": "BOL",
           "note": "\"Port of loading\" or \"from\" — the named port, not a place of receipt"
         }
-      ]
+      ],
+      "key": "port_of_loading"
     },
     {
       "id": "f18",
@@ -1254,7 +1271,8 @@
           "doc": "BOL",
           "note": "\"Port of discharge\" or \"to\" — not an inland final destination"
         }
-      ]
+      ],
+      "key": "port_of_discharge"
     },
     {
       "id": "f19",
@@ -1273,7 +1291,8 @@
           "doc": "BOL",
           "note": "Shipper or consignor box"
         }
-      ]
+      ],
+      "key": "beneficiary_name"
     },
     {
       "id": "f20",
@@ -1288,7 +1307,8 @@
           "doc": "INV",
           "note": "Party the invoice is made out to: \"buyer\", \"consignee\", \"sold to\", \"bill to\""
         }
-      ]
+      ],
+      "key": "applicant_name"
     },
     {
       "id": "f21",
@@ -1299,7 +1319,8 @@
           "doc": "LC",
           "note": "Tag 48; 21 calendar days where the credit is silent"
         }
-      ]
+      ],
+      "key": "presentation_period"
     },
     {
       "id": "f22",
@@ -1309,6 +1330,43 @@
         {
           "doc": "CS",
           "note": "Receipt stamp date, else the date the case was opened"
+        }
+      ],
+      "key": "presentation_date"
+    },
+    {
+      "id": "f23",
+      "key": "credit_reference",
+      "name": "Credit reference",
+      "description": "The credit's own number, as the issuing bank assigned it.",
+      "bindings": [
+        {
+          "doc": "LC",
+          "note": "Tag 20 — the sender's reference for this credit."
+        }
+      ]
+    },
+    {
+      "id": "f24",
+      "key": "issue_date",
+      "name": "Issue date",
+      "description": "The date the credit was issued.",
+      "bindings": [
+        {
+          "doc": "LC",
+          "note": "Tag 31C, YYMMDD."
+        }
+      ]
+    },
+    {
+      "id": "f25",
+      "key": "tolerance_percent",
+      "name": "Tolerance",
+      "description": "The percentage the drawing may exceed the credit amount by.",
+      "bindings": [
+        {
+          "doc": "LC",
+          "note": "Tag 39A — the plus percentage. 0 when the tag is absent."
         }
       ]
     }

@@ -9,6 +9,7 @@ import com.tb.helix.infra.stream.EventBus;
 import com.tb.helix.infra.stream.HelixEvent;
 import com.tb.helix.lccheck.persistence.CaseRow;
 import com.tb.helix.lccheck.persistence.CaseStore;
+import com.tb.helix.lccheck.service.DocumentTypes;
 import com.tb.helix.lccheck.types.CaseStatus;
 import com.tb.helix.lccheck.types.pipeline.StageId;
 
@@ -60,12 +61,15 @@ public class StageLauncher {
     private final DocCheckPipeline pipeline;
     private final CaseStore cases;
     private final EventBus events;
+    private final DocumentTypes docTypes;
     private final Map<String, Boolean> cancelled = new ConcurrentHashMap<>();
 
-    public StageLauncher(DocCheckPipeline pipeline, CaseStore cases, EventBus events) {
+    public StageLauncher(DocCheckPipeline pipeline, CaseStore cases, EventBus events,
+                         DocumentTypes docTypes) {
         this.pipeline = pipeline;
         this.cases = cases;
         this.events = events;
+        this.docTypes = docTypes;
         log.info("Pipeline stages: {}", pipeline.phases().stream().map(p -> p.key()).toList());
     }
 
@@ -100,7 +104,7 @@ public class StageLauncher {
     /** Reruns a stage, clearing what it invalidates downstream. */
     public void rerunStage(String caseId, StageId stage, String officerId) {
         cases.find(caseId).orElseThrow(() -> new NotFoundException("case", caseId));
-        cases.clearFrom(caseId, stage, pipeline.after(stage));
+        cases.clearFrom(caseId, stage, pipeline.after(stage), docTypes.creditCode());
         cases.patchCase(caseId, Map.of("gate_halted", false));
         cases.recordAction(caseId, "rerun_stage", stage.key(), Map.of(), officerId, null);
         cancelled.remove(caseId);

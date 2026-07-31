@@ -74,6 +74,21 @@ public class GovernanceCatalog implements CheckCatalog {
     }
 
     @Override
+    public List<FieldBinding> bindingsFor(String docCode) {
+        return jdbc.query("""
+                SELECT f.key, f.name, f.value_type, b.doc_code, b.note, b.aliases
+                  FROM helix_gov.field_binding b
+                  JOIN helix_gov.dict_field f ON f.key = b.field_key
+                 WHERE b.doc_code = ?
+                 ORDER BY b.ordinal, f.key
+                """, (rs, i) -> new FieldBinding(
+                        rs.getString("key"), rs.getString("name"), rs.getString("value_type"),
+                        rs.getString("doc_code"), rs.getString("note"),
+                        array(rs.getArray("aliases"))),
+                docCode);
+    }
+
+    @Override
     public String articleText(String code) {
         return jdbc.queryForList("SELECT body FROM helix_gov.article WHERE code = ?", String.class, code)
                 .stream().findFirst().orElse("");

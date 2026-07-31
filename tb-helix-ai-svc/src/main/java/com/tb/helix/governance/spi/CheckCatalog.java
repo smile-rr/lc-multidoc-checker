@@ -74,6 +74,36 @@ public interface CheckCatalog {
     List<CheckCard> activeChecks();
 
     /**
+     * One dictionary field, as it is read from one document.
+     *
+     * <p>A binding, not a field: what a field is called and how it is read depends on where
+     * it is read from. An invoice's total is "total", "grand total" or "amount due"; the
+     * same value on a draft is just "amount". The predecessor kept one alias list per field
+     * and had to reject a second field claiming an alias already taken — so "date" could
+     * mean exactly one thing across every document type. A binding already knows which
+     * document it is talking about.
+     *
+     * @param key     the dictionary key — what a fact is stored under and what a rule cites
+     * @param name    the label, for prose and for screens
+     * @param note    how to read it on this document, in the author's words. Goes into the
+     *                extraction prompt verbatim.
+     * @param aliases what this document tends to call it, for folding an open-world reading
+     *                back onto the key
+     */
+    record FieldBinding(String key, String name, String valueType, String docCode,
+                        String note, List<String> aliases) {
+    }
+
+    /**
+     * Everything the dictionary says is readable from this document.
+     *
+     * <p>This is the extraction spec. The prompt that reads a document is built from it, so
+     * the dictionary and the prompt cannot drift — which is exactly what went wrong when
+     * they were a YAML list and a hand-written template that each named the same fields.
+     */
+    List<FieldBinding> bindingsFor(String docCode);
+
+    /**
      * The document vocabulary, in authoring order.
      *
      * <p>The examination's whole knowledge of what a document can be. There is no enum

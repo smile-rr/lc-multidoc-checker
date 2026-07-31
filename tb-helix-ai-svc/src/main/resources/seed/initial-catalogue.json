@@ -110,7 +110,7 @@
   ],
   "fields": [
     {
-      "key": "Expiry date",
+      "key": "expiry_date",
       "name": "Expiry date",
       "description": "The last date documents may be presented under the credit.",
       "kind": "LC_FIELD",
@@ -124,10 +124,11 @@
           "doc": "CS",
           "note": "Only where the schedule restates it: \"valid until\", \"expires on\""
         }
-      ]
+      ],
+      "valueType": "DATE"
     },
     {
-      "key": "Place of expiry",
+      "key": "place_of_expiry",
       "name": "Place of expiry",
       "description": "The counter at which the credit expires.",
       "kind": "LC_FIELD",
@@ -137,10 +138,11 @@
           "doc": "LC",
           "note": "Tag 31D — text following the date"
         }
-      ]
+      ],
+      "valueType": "STRING"
     },
     {
-      "key": "Place of presentation",
+      "key": "place_of_presentation",
       "name": "Place of presentation",
       "description": "Bank and location with which the credit is available.",
       "kind": "LC_FIELD",
@@ -150,10 +152,11 @@
           "doc": "LC",
           "note": "41A / 41D — the bank line before \"BY\""
         }
-      ]
+      ],
+      "valueType": "STRING"
     },
     {
-      "key": "Available with",
+      "key": "available_with",
       "name": "Available with",
       "description": "How the credit is available — sight, acceptance, negotiation or deferred payment.",
       "kind": "LC_FIELD",
@@ -163,10 +166,11 @@
           "doc": "LC",
           "note": "41A / 41D — the text after \"BY\""
         }
-      ]
+      ],
+      "valueType": "STRING"
     },
     {
-      "key": "Draft tenor",
+      "key": "draft_tenor",
       "name": "Draft tenor",
       "description": "The tenor the draft is drawn at.",
       "kind": "LC_FIELD",
@@ -180,10 +184,11 @@
           "doc": "BOE",
           "note": "The tenor phrase on the face: \"at sight\", \"at 60 days after B/L date\""
         }
-      ]
+      ],
+      "valueType": "STRING"
     },
     {
-      "key": "Drawee",
+      "key": "drawee",
       "name": "Drawee",
       "description": "The party the draft is drawn on.",
       "kind": "LC_FIELD",
@@ -197,10 +202,11 @@
           "doc": "BOE",
           "note": "Party named after \"drawn on\" or \"to\""
         }
-      ]
+      ],
+      "valueType": "STRING"
     },
     {
-      "key": "Documents required",
+      "key": "documents_required",
       "name": "Documents required",
       "description": "Free text listing the documents the credit calls for.",
       "kind": "LC_FIELD",
@@ -210,10 +216,11 @@
           "doc": "LC",
           "note": "Tag 46A — whole block, kept unparsed for requirement cards"
         }
-      ]
+      ],
+      "valueType": "STRING"
     },
     {
-      "key": "Additional conditions",
+      "key": "additional_conditions",
       "name": "Additional conditions",
       "description": "Free text conditions added by the applicant or issuing bank.",
       "kind": "LC_FIELD",
@@ -223,10 +230,11 @@
           "doc": "LC",
           "note": "Tag 47A — whole block, kept unparsed for requirement cards"
         }
-      ]
+      ],
+      "valueType": "STRING"
     },
     {
-      "key": "Goods description",
+      "key": "goods_description",
       "name": "Goods description",
       "description": "What is being shipped, as described on each document.",
       "kind": "LC_FIELD",
@@ -244,10 +252,11 @@
           "doc": "BOL",
           "note": "\"Description of packages and goods\" — may be in general terms"
         }
-      ]
+      ],
+      "valueType": "STRING"
     },
     {
-      "key": "Credit amount",
+      "key": "credit_amount",
       "name": "Credit amount",
       "description": "Currency and amount of the credit, with any tolerance.",
       "kind": "LC_FIELD",
@@ -257,10 +266,11 @@
           "doc": "LC",
           "note": "Tag 32B, widened by the 39A tolerance when present"
         }
-      ]
+      ],
+      "valueType": "AMOUNT"
     },
     {
-      "key": "Invoice value",
+      "key": "invoice_value",
       "name": "Invoice value",
       "description": "Total value claimed on the invoice.",
       "kind": "LC_FIELD",
@@ -270,10 +280,11 @@
           "doc": "INV",
           "note": "Highest-level total: \"total\", \"grand total\", \"total amount due\"; sum the lines if none is shown"
         }
-      ]
+      ],
+      "valueType": "AMOUNT"
     },
     {
-      "key": "Currency",
+      "key": "currency",
       "name": "Currency",
       "description": "Currency denomination of the figure on this document.",
       "kind": "LC_FIELD",
@@ -291,10 +302,11 @@
           "doc": "INS",
           "note": "Currency of the sum insured"
         }
-      ]
+      ],
+      "valueType": "CURRENCY_CODE"
     },
     {
-      "key": "Insured amount",
+      "key": "insured_amount",
       "name": "Insured amount",
       "description": "Sum insured shown on the insurance document.",
       "kind": "LC_FIELD",
@@ -304,10 +316,11 @@
           "doc": "INS",
           "note": "Amount beside \"sum insured\" or \"amount insured\""
         }
-      ]
+      ],
+      "valueType": "AMOUNT"
     },
     {
-      "key": "Cover date",
+      "key": "cover_date",
       "name": "Cover date",
       "description": "The date insurance cover takes effect.",
       "kind": "LC_FIELD",
@@ -317,10 +330,11 @@
           "doc": "INS",
           "note": "\"Cover effective from\" if shown, else the date of issue"
         }
-      ]
+      ],
+      "valueType": "DATE"
     },
     {
-      "key": "Latest shipment date",
+      "key": "latest_shipment_date",
       "name": "Latest shipment date",
       "description": "The last date shipment may be effected.",
       "kind": "LC_FIELD",
@@ -330,10 +344,11 @@
           "doc": "LC",
           "note": "Tag 44C, or derived from the 44D shipment period"
         }
-      ]
+      ],
+      "valueType": "DATE"
     },
     {
-      "key": "On-board date",
+      "key": "on_board_date",
       "name": "On-board date",
       "description": "The date the goods were actually shipped.",
       "kind": "LC_FIELD",
@@ -347,10 +362,11 @@
           "doc": "AWB",
           "note": "Actual flight-date notation — not the issue date"
         }
-      ]
+      ],
+      "valueType": "DATE"
     },
     {
-      "key": "Port of loading",
+      "key": "port_of_loading",
       "name": "Port of loading",
       "description": "Where the goods were taken on board.",
       "kind": "LC_FIELD",
@@ -364,10 +380,11 @@
           "doc": "BOL",
           "note": "\"Port of loading\" or \"from\" — the named port, not a place of receipt"
         }
-      ]
+      ],
+      "valueType": "STRING"
     },
     {
-      "key": "Port of discharge",
+      "key": "port_of_discharge",
       "name": "Port of discharge",
       "description": "Where the goods are to be delivered.",
       "kind": "LC_FIELD",
@@ -381,10 +398,11 @@
           "doc": "BOL",
           "note": "\"Port of discharge\" or \"to\" — not an inland final destination"
         }
-      ]
+      ],
+      "valueType": "STRING"
     },
     {
-      "key": "Beneficiary name",
+      "key": "beneficiary_name",
       "name": "Beneficiary name",
       "description": "The party in whose favour the credit is issued.",
       "kind": "LC_FIELD",
@@ -402,10 +420,11 @@
           "doc": "BOL",
           "note": "Shipper or consignor box"
         }
-      ]
+      ],
+      "valueType": "STRING"
     },
     {
-      "key": "Applicant name",
+      "key": "applicant_name",
       "name": "Applicant name",
       "description": "The party on whose request the credit is issued.",
       "kind": "LC_FIELD",
@@ -419,10 +438,11 @@
           "doc": "INV",
           "note": "Party the invoice is made out to: \"buyer\", \"consignee\", \"sold to\", \"bill to\""
         }
-      ]
+      ],
+      "valueType": "STRING"
     },
     {
-      "key": "Presentation period",
+      "key": "presentation_period",
       "name": "Presentation period",
       "description": "Days after shipment within which documents must be presented.",
       "kind": "LC_FIELD",
@@ -432,10 +452,11 @@
           "doc": "LC",
           "note": "Tag 48; 21 calendar days where the credit is silent"
         }
-      ]
+      ],
+      "valueType": "INTEGER"
     },
     {
-      "key": "Presentation date",
+      "key": "presentation_date",
       "name": "Presentation date",
       "description": "The date documents reached the presentation counter.",
       "kind": "LC_FIELD",
@@ -444,6 +465,49 @@
         {
           "doc": "CS",
           "note": "Receipt stamp date, else the date the case was opened"
+        }
+      ],
+      "valueType": "DATE"
+    },
+    {
+      "key": "credit_reference",
+      "name": "Credit reference",
+      "description": "The credit's own number, as the issuing bank assigned it.",
+      "kind": "LC_FIELD",
+      "valueType": "STRING",
+      "seeded": true,
+      "bindings": [
+        {
+          "doc": "LC",
+          "note": "Tag 20 — the sender's reference for this credit."
+        }
+      ]
+    },
+    {
+      "key": "issue_date",
+      "name": "Issue date",
+      "description": "The date the credit was issued.",
+      "kind": "LC_FIELD",
+      "valueType": "DATE",
+      "seeded": true,
+      "bindings": [
+        {
+          "doc": "LC",
+          "note": "Tag 31C, YYMMDD."
+        }
+      ]
+    },
+    {
+      "key": "tolerance_percent",
+      "name": "Tolerance",
+      "description": "The percentage the drawing may exceed the credit amount by.",
+      "kind": "LC_FIELD",
+      "valueType": "INTEGER",
+      "seeded": true,
+      "bindings": [
+        {
+          "doc": "LC",
+          "note": "Tag 39A — the plus percentage. 0 when the tag is absent."
         }
       ]
     }
@@ -948,10 +1012,10 @@
         "UCP600 Art.6"
       ],
       "fields": [
-        "Place of presentation",
-        "Available with",
-        "Place of expiry",
-        "Draft tenor"
+        "place_of_presentation",
+        "available_with",
+        "place_of_expiry",
+        "draft_tenor"
       ],
       "docs": [
         "LC",
@@ -975,9 +1039,9 @@
         "UCP600 Art.38"
       ],
       "fields": [
-        "Available with",
-        "Beneficiary name",
-        "Place of expiry"
+        "available_with",
+        "beneficiary_name",
+        "place_of_expiry"
       ],
       "docs": [
         "LC",
@@ -1003,11 +1067,11 @@
         "UCP600 Art.29"
       ],
       "fields": [
-        "Place of presentation",
-        "Expiry date",
-        "Beneficiary name",
-        "Latest shipment date",
-        "Presentation period"
+        "place_of_presentation",
+        "expiry_date",
+        "beneficiary_name",
+        "latest_shipment_date",
+        "presentation_period"
       ],
       "docs": [
         "LC",
@@ -1026,26 +1090,26 @@
               {
                 "id": "r1",
                 "l": {
-                  "field": "Presentation date",
+                  "field": "presentation_date",
                   "doc": "CS"
                 },
                 "op": "d_lte",
                 "tol": "",
                 "r": {
-                  "field": "Expiry date",
+                  "field": "expiry_date",
                   "doc": "LC"
                 }
               },
               {
                 "id": "r2",
                 "l": {
-                  "field": "Place of presentation",
+                  "field": "place_of_presentation",
                   "doc": "CS"
                 },
                 "op": "eq",
                 "tol": "",
                 "r": {
-                  "field": "Place of expiry",
+                  "field": "place_of_expiry",
                   "doc": "LC"
                 }
               }
@@ -1083,26 +1147,26 @@
               {
                 "id": "r1",
                 "l": {
-                  "field": "Draft tenor",
+                  "field": "draft_tenor",
                   "doc": "BOE"
                 },
                 "op": "eq",
                 "tol": "",
                 "r": {
-                  "field": "Draft tenor",
+                  "field": "draft_tenor",
                   "doc": "LC"
                 }
               },
               {
                 "id": "r2",
                 "l": {
-                  "field": "Drawee",
+                  "field": "drawee",
                   "doc": "BOE"
                 },
                 "op": "same_party",
                 "tol": "",
                 "r": {
-                  "field": "Drawee",
+                  "field": "drawee",
                   "doc": "LC"
                 }
               }
@@ -1140,52 +1204,52 @@
               {
                 "id": "r1",
                 "l": {
-                  "field": "On-board date",
+                  "field": "on_board_date",
                   "doc": "BOL"
                 },
                 "op": "d_lte",
                 "tol": "",
                 "r": {
-                  "field": "Latest shipment date",
+                  "field": "latest_shipment_date",
                   "doc": "LC"
                 }
               },
               {
                 "id": "r2",
                 "l": {
-                  "field": "Port of loading",
+                  "field": "port_of_loading",
                   "doc": "BOL"
                 },
                 "op": "eq",
                 "tol": "",
                 "r": {
-                  "field": "Port of loading",
+                  "field": "port_of_loading",
                   "doc": "LC"
                 }
               },
               {
                 "id": "r3",
                 "l": {
-                  "field": "Port of discharge",
+                  "field": "port_of_discharge",
                   "doc": "BOL"
                 },
                 "op": "eq",
                 "tol": "",
                 "r": {
-                  "field": "Port of discharge",
+                  "field": "port_of_discharge",
                   "doc": "LC"
                 }
               },
               {
                 "id": "r4",
                 "l": {
-                  "field": "Presentation date",
+                  "field": "presentation_date",
                   "doc": "CS"
                 },
                 "op": "d_within",
                 "tol": "21 calendar days",
                 "r": {
-                  "field": "On-board date",
+                  "field": "on_board_date",
                   "doc": "BOL"
                 }
               }
@@ -1223,7 +1287,7 @@
               {
                 "id": "r1",
                 "l": {
-                  "field": "Insured amount",
+                  "field": "insured_amount",
                   "doc": "INS"
                 },
                 "op": "gte",
@@ -1235,26 +1299,26 @@
               {
                 "id": "r2",
                 "l": {
-                  "field": "Currency",
+                  "field": "currency",
                   "doc": "INS"
                 },
                 "op": "eq",
                 "tol": "",
                 "r": {
-                  "field": "Currency",
+                  "field": "currency",
                   "doc": "LC"
                 }
               },
               {
                 "id": "r3",
                 "l": {
-                  "field": "Cover date",
+                  "field": "cover_date",
                   "doc": "INS"
                 },
                 "op": "d_lte",
                 "tol": "",
                 "r": {
-                  "field": "On-board date",
+                  "field": "on_board_date",
                   "doc": "BOL"
                 }
               }
@@ -1276,10 +1340,10 @@
       "groupId": null,
       "refs": [],
       "fields": [
-        "Beneficiary name",
-        "Applicant name",
-        "Port of loading",
-        "Port of discharge"
+        "beneficiary_name",
+        "applicant_name",
+        "port_of_loading",
+        "port_of_discharge"
       ],
       "docs": [
         "INV",
@@ -1318,52 +1382,52 @@
               {
                 "id": "r1",
                 "l": {
-                  "field": "Goods description",
+                  "field": "goods_description",
                   "doc": "INV"
                 },
                 "op": "eq",
                 "tol": "corresponds, not identical",
                 "r": {
-                  "field": "Goods description",
+                  "field": "goods_description",
                   "doc": "LC"
                 }
               },
               {
                 "id": "r2",
                 "l": {
-                  "field": "Goods description",
+                  "field": "goods_description",
                   "doc": "BOL"
                 },
                 "op": "noconflict",
                 "tol": "general terms allowed",
                 "r": {
-                  "field": "Goods description",
+                  "field": "goods_description",
                   "doc": "INV"
                 }
               },
               {
                 "id": "r3",
                 "l": {
-                  "field": "Beneficiary name",
+                  "field": "beneficiary_name",
                   "doc": "INV"
                 },
                 "op": "same_party",
                 "tol": "",
                 "r": {
-                  "field": "Beneficiary name",
+                  "field": "beneficiary_name",
                   "doc": "LC"
                 }
               },
               {
                 "id": "r4",
                 "l": {
-                  "field": "Applicant name",
+                  "field": "applicant_name",
                   "doc": "INV"
                 },
                 "op": "addr_same_country",
                 "tol": "",
                 "r": {
-                  "field": "Applicant name",
+                  "field": "applicant_name",
                   "doc": "LC"
                 }
               }
@@ -1401,26 +1465,26 @@
               {
                 "id": "r1",
                 "l": {
-                  "field": "Invoice value",
+                  "field": "invoice_value",
                   "doc": "INV"
                 },
                 "op": "lte",
                 "tol": "5% tolerance",
                 "r": {
-                  "field": "Credit amount",
+                  "field": "credit_amount",
                   "doc": "LC"
                 }
               },
               {
                 "id": "r2",
                 "l": {
-                  "field": "Currency",
+                  "field": "currency",
                   "doc": "INV"
                 },
                 "op": "eq",
                 "tol": "",
                 "r": {
-                  "field": "Currency",
+                  "field": "currency",
                   "doc": "LC"
                 }
               }
@@ -1444,7 +1508,7 @@
         "UCP600 Art.14"
       ],
       "fields": [
-        "Documents required"
+        "documents_required"
       ],
       "docs": [
         "LC"
@@ -1467,7 +1531,7 @@
         "ISBP821 A"
       ],
       "fields": [
-        "Additional conditions"
+        "additional_conditions"
       ],
       "docs": [
         "LC"
