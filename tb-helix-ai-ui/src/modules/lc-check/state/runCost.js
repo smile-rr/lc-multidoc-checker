@@ -163,6 +163,72 @@ export function summariseRun(steps, completedCount, pageCount) {
 }
 
 /**
+ * What a case cost, from the service's own ledger.
+ *
+ * The counterpart to `summariseRun`, which estimates from a step table and a
+ * rate card held in this file. That was right while the fixtures were the only
+ * source; it is wrong now that `helix_infra.model_call` records every attempt and
+ * prices it against a book somebody maintains. Two rate cards would drift, and
+ * the one on screen would be the one nobody could correct.
+ *
+ * So this does no pricing. It sums what the service already priced, and where
+ * the ledger cannot answer — how many checks a step settled — it says nothing
+ * rather than guessing.
+ *
+ * @param {object[]} spend rows from GET /cases/{id}/spend
+ * @param {number} pageCount pages in the presentation, for the per-page figure
+ */
+export function summariseLedger(spend = [], pageCount = 0) {
+  const rows = spend.map((r, i) => ({
+    id: `${r.stage}/${r.step}`,
+    name: `${r.stage} · ${r.step}`,
+    kind: (r.kind || '').toLowerCase() === 'vision' ? 'read' : 'judged',
+    role: `${r.role || ''}${r.family ? ` · ${r.family}` : ''}`,
+    model: r.modelId,
+    modelLabel: r.family || r.modelId,
+    checks: 0,
+    calls: r.calls || 0,
+    seconds: (r.ms || 0) / 1000,
+    tokensIn: r.tokensIn || 0,
+    tokensOut: r.tokensOut || 0,
+    // Share of this step's calls that never reached a provider.
+    cachePct: r.calls ? Math.round((r.cached / r.calls) * 100) : 0,
+    retries: r.failed || 0,
+    cost: Number(r.cost) || 0,
+    state: 'done',
+  }))
+
+  const sum = (f) => rows.reduce((a, r) => a + f(r), 0)
+  const calls = sum((r) => r.calls)
+  const cached = spend.reduce((a, r) => a + (r.cached || 0), 0)
+  const seconds = sum((r) => r.seconds)
+  const cost = sum((r) => r.cost)
+
+  return {
+    seconds,
+    // No parallelism factor invented here: the ledger records each call's own
+    // latency, and slots that ran at the same time already overlap in it.
+    wallClock: seconds,
+    cost,
+    calls,
+    checks: 0,
+    tokensIn: sum((r) => r.tokensIn),
+    tokensOut: sum((r) => r.tokensOut),
+    tokens: sum((r) => r.tokensIn + r.tokensOut),
+    retries: sum((r) => r.retries),
+    byKind: [],
+    cardsSettled: 0,
+    cardsFree: 0,
+    cacheHitPct: calls ? Math.round((cached / calls) * 100) : 0,
+    pagesRead: pageCount,
+    costPerPage: pageCount ? cost / pageCount : 0,
+    modelCount: new Set(rows.map((r) => r.model)).size,
+    byModel: [],
+    rows,
+  }
+}
+
+/**
  * Portfolio spend across many cases.
  *
  * The per-case drawer answers "what did this one cost". This answers the

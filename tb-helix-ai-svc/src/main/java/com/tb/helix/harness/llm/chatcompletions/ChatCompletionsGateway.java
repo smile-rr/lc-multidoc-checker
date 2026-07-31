@@ -14,6 +14,8 @@ import com.tb.helix.harness.llm.vision.VisionResult;
 import com.tb.helix.infra.cost.CallScope;
 import com.tb.helix.infra.cost.ModelCallLog;
 import com.tb.helix.infra.error.LlmException;
+import com.tb.helix.infra.stream.EventBus;
+import com.tb.helix.infra.stream.HelixEvent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -45,13 +47,16 @@ public class ChatCompletionsGateway implements LlmGateway {
     private final LlmProperties props;
     private final ObjectMapper json;
     private final ModelCallLog calls;
+    private final EventBus events;
     private final Map<String, ChatCompletionsClient> clients = new LinkedHashMap<>();
     private final ExecutorService slotPool = Executors.newVirtualThreadPerTaskExecutor();
 
-    public ChatCompletionsGateway(LlmProperties props, ObjectMapper json, ModelCallLog calls) {
+    public ChatCompletionsGateway(LlmProperties props, ObjectMapper json, ModelCallLog calls,
+                                  EventBus events) {
         this.props = props;
         this.json = json;
         this.calls = calls;
+        this.events = events;
         props.allSlots().forEach((name, slot) -> {
             if (slot.usable()) clients.put(name, new ChatCompletionsClient(name, slot, json));
             else if (slot.enabled()) log.warn("Slot {} is enabled but has no api key or model — skipped", name);
@@ -169,6 +174,26 @@ public class ChatCompletionsGateway implements LlmGateway {
     private void record(ChatCompletionsClient client, LlmRole role, ModelCallLog.Kind kind,
                         ModelCallLog.Status status, Integer in, Integer out, Integer ms, String error) {
         var scope = CallScope.current();
+
+        // On the tape as well as in the ledger. The ledger answers "what did this run
+        // spend"; the tape answers "what was it doing at 17:26:14", and a five-second gap
+        // with nothing in it is the shape of a problem nobody can diagnose later.
+        if (scope.caseId() != null) {
+            Map<String, Object> e = new LinkedHashMap<>();
+            e.put("stage", scope.stage());
+            e.put("step", scope.step());
+            e.put("model", client.model());
+            e.put("slot", client.name());
+            e.put("role", role == null ? null : role.name().toLowerCase());
+            e.put("kind", kind.name());
+            e.put("status", status.name());
+            e.put("tokensIn", in == null ? 0 : in);
+            e.put("tokensOut", out == null ? 0 : out);
+            e.put("ms", ms == null ? 0 : ms);
+            e.values().removeIf(java.util.Objects::isNull);
+            events.publish(HelixEvent.of(scope.caseId(), HelixEvent.LLM_CALL, e));
+        }
+
         calls.record(new ModelCallLog.Call(
                 scope.caseId(), scope.stage(), scope.step(),
                 role == null ? null : role.name().toLowerCase(),

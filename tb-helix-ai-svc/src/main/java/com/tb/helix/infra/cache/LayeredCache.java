@@ -2,6 +2,8 @@ package com.tb.helix.infra.cache;
 
 import com.tb.helix.infra.cost.CallScope;
 import com.tb.helix.infra.cost.ModelCallLog;
+import com.tb.helix.infra.stream.EventBus;
+import com.tb.helix.infra.stream.HelixEvent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -39,6 +41,7 @@ public class LayeredCache implements DerivationCache {
     private final DerivationStore l3;
     private final ObjectMapper json;
     private final ModelCallLog calls;
+    private final EventBus events;
 
     /**
      * What the original call cost, by cache key.
@@ -59,7 +62,8 @@ public class LayeredCache implements DerivationCache {
     private record Saved(String modelId, int promptTokens, int completionTokens) {
     }
 
-    public LayeredCache(List<CacheTier> tiers, DerivationStore l3, ObjectMapper json, ModelCallLog calls) {
+    public LayeredCache(List<CacheTier> tiers, DerivationStore l3, ObjectMapper json, ModelCallLog calls,
+                        EventBus events) {
         // Ordered by level so the walk is cheapest-first regardless of bean discovery order.
         this.tiers = tiers.stream()
                 .filter(CacheTier::enabled)
@@ -68,6 +72,7 @@ public class LayeredCache implements DerivationCache {
         this.l3 = l3;
         this.json = json;
         this.calls = calls;
+        this.events = events;
         log.info("Cache tiers active: {}; L3={}", this.tiers.stream().map(t -> t.level().name()).toList(),
                 l3.getClass().getSimpleName());
     }
@@ -162,12 +167,24 @@ public class LayeredCache implements DerivationCache {
     private void recordAvoided(DerivationKey key) {
         Saved s = saved.get(key.hash());
         var scope = CallScope.current();
+        String model = s != null && s.modelId() != null ? s.modelId()
+                : key.modelId() == null ? "cache" : key.modelId();
+
+        if (scope.caseId() != null) {
+            java.util.Map<String, Object> e = new java.util.LinkedHashMap<>();
+            e.put("stage", scope.stage());
+            e.put("step", scope.step());
+            e.put("model", model);
+            e.put("role", key.op());
+            e.put("status", "CACHED");
+            e.put("tokensIn", s == null ? 0 : s.promptTokens());
+            e.put("tokensOut", s == null ? 0 : s.completionTokens());
+            e.values().removeIf(java.util.Objects::isNull);
+            events.publish(HelixEvent.of(scope.caseId(), HelixEvent.LLM_CACHED, e));
+        }
         calls.record(new ModelCallLog.Call(
                 scope.caseId(), scope.stage(), scope.step(),
-                key.op(), null,
-                s != null && s.modelId() != null ? s.modelId()
-                        : key.modelId() == null ? "cache" : key.modelId(),
-                null,
+                key.op(), null, model, null,
                 ModelCallLog.Kind.TEXT, ModelCallLog.Status.CACHED, 1,
                 s == null ? 0 : s.promptTokens(), s == null ? 0 : s.completionTokens(),
                 0, 0, key.hash(), null));

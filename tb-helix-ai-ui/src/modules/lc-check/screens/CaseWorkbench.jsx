@@ -6,13 +6,14 @@ import CaseHeader from '../components/CaseHeader'
 import AskDrawer from '../components/AskDrawer'
 import CostDrawer from '../components/CostDrawer'
 import RunLogPanel from '../components/RunLogPanel'
+import useRunLog from '../state/useRunLog'
 import IntakeScreen from './IntakeScreen'
 import InterpretScreen from './InterpretScreen'
 import ChecksScreen from './ChecksScreen'
 import ReviewScreen from './ReviewScreen'
 import DecisionScreen from './DecisionScreen'
 import { CaseProvider, useCase } from '../state/CaseContext'
-import { summariseRun } from '../state/runCost'
+import { summariseRun, summariseLedger } from '../state/runCost'
 import { STAGES, RUN_STAGES, stageMeta, stageAfter } from '../state/severity'
 
 // The case workbench. The stage lives in the URL (`/lc-check/cases/:id/:stage`)
@@ -34,6 +35,10 @@ function WorkbenchBody() {
   const { stage } = useParams()
   const navigate = useNavigate()
   const [selectedFindingId, setSelectedFindingId] = useState(null)
+  // Always on, not only while the log panel is open: the cost pill in the header
+  // reads the same numbers, and a pill that was blank until you opened a drawer
+  // would be reporting the drawer's state rather than the case's.
+  const { spend } = useRunLog(caseId, true)
 
   const activeStage = STAGES.some((s) => s.id === stage) ? stage : 'intake'
   const goStage = (id) => navigate(`/lc-check/cases/${caseId}/${id}`)
@@ -69,8 +74,11 @@ function WorkbenchBody() {
             run.completedAreaIds.length,
           data.runSteps.length,
         )
+    // The ledger when the service has one, the estimate otherwise. Never both:
+    // two numbers for one question is how a cost panel loses its authority.
+    if (spend?.length) return summariseLedger(spend, data.bundlePages.length)
     return summariseRun(data.runSteps, completedSteps, data.bundlePages.length)
-  }, [data, run.finished, run.done, run.activeStage, run.completedAreaIds.length])
+  }, [data, spend, run.finished, run.done, run.activeStage, run.completedAreaIds.length])
 
   if (loading) {
     return <WorkbenchSkeleton caseId={caseId} />
