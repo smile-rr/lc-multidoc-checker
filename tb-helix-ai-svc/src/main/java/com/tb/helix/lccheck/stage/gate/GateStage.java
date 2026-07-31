@@ -2,6 +2,7 @@ package com.tb.helix.lccheck.stage.gate;
 
 import com.tb.helix.governance.spi.CheckCatalog;
 import com.tb.helix.infra.pipeline.Step;
+import com.tb.helix.infra.pipeline.Trigger;
 import com.tb.helix.infra.pipeline.StepResult;
 import com.tb.helix.lccheck.persistence.CaseRow;
 import com.tb.helix.lccheck.persistence.CaseStore;
@@ -47,6 +48,18 @@ public class GateStage implements Stage {
     @Override
     public StageId id() {
         return StageId.GATE;
+    }
+
+    /**
+     * No button of its own — it runs as part of asking for the plan.
+     *
+     * <p>"Check whether the credit has expired, but do not plan anything" is not something
+     * anyone wants, and a case parked at "waiting for gate" would be waiting for a request
+     * nobody can make. Running here also puts the halt before the expensive half.
+     */
+    @Override
+    public Trigger trigger() {
+        return Trigger.WITH_NEXT;
     }
 
     @Override

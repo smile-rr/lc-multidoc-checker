@@ -1,5 +1,8 @@
 package com.tb.helix.infra.pipeline;
 
+import java.util.List;
+import java.util.function.Function;
+
 /**
  * Runs a phase's declared steps, in order, reporting each one.
  *
@@ -25,6 +28,41 @@ package com.tb.helix.infra.pipeline;
 public final class PipelineEngine {
 
     private PipelineEngine() {
+    }
+
+    /**
+     * What a run of one or more phases ended with.
+     *
+     * @param lastPhase the phase that ended it — the one that halted or failed, or the last
+     *                  to complete. A caller recording where the work got to needs this: on a
+     *                  halt the answer is the phase that halted, not the one that was asked
+     *                  for.
+     */
+    public record Outcome(String lastPhase, StepResult result) {
+    }
+
+    /**
+     * Runs phases in order, stopping at the first that cannot continue.
+     *
+     * <p>Each phase gets its own context, because a context is usually bound to the phase it
+     * belongs to — which is why this takes a factory rather than one instance.
+     */
+    public static <C extends StepJournal> Outcome run(List<? extends StepPhase<C>> phases,
+                                                      Function<StepPhase<C>, C> contextFor) {
+        String last = null;
+        StepResult result = StepResult.ok();
+        for (StepPhase<C> phase : phases) {
+            last = phase.key();
+            C context = contextFor.apply(phase);
+
+            context.phaseStarted(phase.key());
+            long started = System.currentTimeMillis();
+            result = run(phase, context);
+            context.phaseFinished(phase.key(), result, System.currentTimeMillis() - started);
+
+            if (!result.canContinue()) break;
+        }
+        return new Outcome(last, result);
     }
 
     /**

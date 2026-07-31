@@ -65,6 +65,22 @@ public record DbStageContext(
     // in the tape.
 
     @Override
+    public void phaseStarted(String phase) {
+        events.publish(HelixEvent.of(caseId, HelixEvent.STAGE_STARTED, Map.of("stage", phase)));
+    }
+
+    @Override
+    public void phaseFinished(String phase, StepResult result, long elapsedMs) {
+        // Only a clean finish is announced as done. A halt and a failure each mean something
+        // the officer has to be told about specifically, and the runner says it — publishing
+        // "done" here as well would put two accounts of the same ending on the wire.
+        if (result.status() == StepResult.Status.OK) {
+            events.publish(HelixEvent.of(caseId, HelixEvent.STAGE_DONE,
+                    Map.of("stage", phase, "ms", elapsedMs)));
+        }
+    }
+
+    @Override
     public void stepStarted(String phase, String key, String label) {
         announce(key, label);
     }

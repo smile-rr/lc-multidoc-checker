@@ -13,6 +13,14 @@ package com.tb.helix.infra.pipeline;
  */
 public interface StepJournal {
 
+    /** A phase is about to run. */
+    default void phaseStarted(String phase) {
+    }
+
+    /** A phase ended, however it ended. */
+    default void phaseFinished(String phase, StepResult result, long elapsedMs) {
+    }
+
     /** A step is about to run. */
     void stepStarted(String phase, String key, String label);
 

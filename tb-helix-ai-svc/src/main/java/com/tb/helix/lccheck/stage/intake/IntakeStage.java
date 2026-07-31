@@ -5,6 +5,7 @@ import com.tb.helix.harness.doc.PageRenderer;
 import com.tb.helix.infra.blob.BlobOwner;
 import com.tb.helix.infra.blob.BlobStore;
 import com.tb.helix.infra.pipeline.Step;
+import com.tb.helix.infra.pipeline.Trigger;
 import com.tb.helix.infra.pipeline.StepResult;
 import com.tb.helix.lccheck.persistence.CaseRow;
 import com.tb.helix.lccheck.persistence.CaseStore;
@@ -82,6 +83,12 @@ public class IntakeStage implements Stage {
     @Override
     public StageId id() {
         return StageId.INTAKE;
+    }
+
+    /** Runs the moment files arrive. Nobody asks for intake; it is what an upload is. */
+    @Override
+    public Trigger trigger() {
+        return Trigger.AUTOMATIC;
     }
 
     @Override

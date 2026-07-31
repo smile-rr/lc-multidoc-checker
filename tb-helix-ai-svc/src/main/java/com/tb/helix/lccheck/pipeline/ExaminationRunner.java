@@ -3,6 +3,7 @@ package com.tb.helix.lccheck.pipeline;
 import com.tb.helix.infra.error.ConflictException;
 import com.tb.helix.infra.error.NotFoundException;
 import com.tb.helix.infra.pipeline.PipelineEngine;
+import com.tb.helix.infra.pipeline.PipelineEngine;
 import com.tb.helix.infra.pipeline.StepResult;
 import com.tb.helix.infra.stream.EventBus;
 import com.tb.helix.infra.stream.HelixEvent;
@@ -47,7 +48,7 @@ public class ExaminationRunner {
         this.pipeline = pipeline;
         this.cases = cases;
         this.events = events;
-        log.info("Pipeline stages: {}", pipeline.order().stream().map(StageId::key).toList());
+        log.info("Pipeline stages: {}", pipeline.phases().stream().map(p -> p.key()).toList());
     }
 
     /**
@@ -100,28 +101,70 @@ public class ExaminationRunner {
      */
     @Async
     public void executeAsync(String caseId, StageId requested, String officerId) {
-        // The gate rides with plan, so an expired credit stops the run before the
-        // expensive half rather than after it.
-        List<StageId> toRun = requested == StageId.PLAN
-                ? List.of(StageId.GATE, StageId.PLAN)
-                : List.of(requested);
-
-        for (StageId id : toRun) {
-            Optional<Stage> stage = pipeline.stage(id);
-            if (stage.isEmpty()) {
-                log.warn("No implementation for stage {} — skipping", id.key());
-                continue;
-            }
-            StepResult outcome = runOne(caseId, stage.get(), officerId);
-            if (!outcome.canContinue()) return;
+        // Which stages run is the pipeline's answer — asking for the plan also runs the gate,
+        // because the gate declares itself WITH_NEXT. Walking them is the engine's. What is
+        // left here is what happens afterwards, and that is all policy.
+        List<Stage> toRun = pipeline.runFor(requested);
+        if (toRun.isEmpty()) {
+            log.warn("No implementation for stage {} — nothing to run", requested.key());
+            return;
         }
 
-        StageId last = toRun.get(toRun.size() - 1);
-        // The next stage the officer can ask for, not simply the next in the pipeline:
-        // GATE sits between interpret and plan but has no button, and parking a case at
-        // "waiting for gate" leaves it waiting for something that cannot be pressed.
-        StageId next = pipeline.nextOfficerStageAfter(last).orElse(null);
+        PipelineEngine.Outcome outcome;
+        try {
+            outcome = PipelineEngine.run(toRun,
+                    phase -> new DbStageContext(caseId, ((Stage) phase).id(), officerId, cases, events, cancelled));
+        } catch (RuntimeException e) {
+            // A step threw rather than returning a failure. Either way the case must not be
+            // left looking busy forever — this runs on a pool thread, so an escaping
+            // exception would be swallowed and the officer would watch a spinner.
+            log.error("Stage {} threw for case {}", requested.key(), caseId, e);
+            cases.recordStep(caseId, requested.key(), "-", "FAILED", null, e.toString(), false, null);
+            fail(caseId, requested, e.getMessage());
+            return;
+        }
 
+        StageId last = StageId.fromKey(outcome.lastPhase()).orElse(requested);
+        switch (outcome.result().status()) {
+            case HALTED -> halt(caseId, last, outcome.result());
+            case FAILED -> fail(caseId, last, outcome.result().detail());
+            default -> awaitOfficer(caseId, last);
+        }
+    }
+
+    /**
+     * A hard check stopped the examination.
+     *
+     * <p>Not a failure. The system did exactly what it was asked to, and the answer is that
+     * this presentation cannot be accepted — so it becomes a discrepancy on the case rather
+     * than an error, and the officer has to override it deliberately to go on.
+     */
+    private void halt(String caseId, StageId at, StepResult result) {
+        cases.patchCase(caseId, Map.of(
+                "gate_halted", true,
+                "gate_halt_check_id", String.valueOf(result.haltKey()),
+                "status", "discrepancies"));
+        events.publish(HelixEvent.of(caseId, HelixEvent.GATE_HALTED, Map.of(
+                "checkId", String.valueOf(result.haltKey()),
+                "statement", String.valueOf(result.detail()))));
+        log.info("Case {} halted at {} by {}", caseId, at.key(), result.haltKey());
+    }
+
+    private void fail(String caseId, StageId at, String detail) {
+        cases.patchCase(caseId, Map.of("error", String.valueOf(detail)));
+        events.publish(HelixEvent.of(caseId, HelixEvent.STAGE_FAILED,
+                Map.of("stage", at.key(), "message", String.valueOf(detail))));
+    }
+
+    /**
+     * Hands the case back to a person.
+     *
+     * <p>The officer-paced pipeline in one method: a stage finished, so the case parks at the
+     * next stage somebody can ask for, and waits. When there is no next, the examination is
+     * over and it goes to the authoriser.
+     */
+    private void awaitOfficer(String caseId, StageId last) {
+        StageId next = pipeline.nextOfficerStageAfter(last).orElse(null);
         cases.setStage(caseId, last, next, next != null);
         if (next != null) {
             events.publish(HelixEvent.of(caseId, HelixEvent.AWAITING_OFFICER, Map.of("next", next.key())));
@@ -129,50 +172,6 @@ public class ExaminationRunner {
             cases.patchCase(caseId, Map.of("status", "with_authoriser"));
         }
     }
-
-    private StepResult runOne(String caseId, Stage stage, String officerId) {
-        StageId id = stage.id();
-        events.publish(HelixEvent.of(caseId, HelixEvent.STAGE_STARTED, Map.of("stage", id.key())));
-        long started = System.currentTimeMillis();
-        StageContext ctx = new DbStageContext(caseId, id, officerId, cases, events, cancelled);
-
-        try {
-            StepResult outcome = PipelineEngine.run(stage, ctx);
-            long ms = System.currentTimeMillis() - started;
-
-            switch (outcome.status()) {
-                case OK -> events.publish(HelixEvent.of(caseId, HelixEvent.STAGE_DONE,
-                        Map.of("stage", id.key(), "ms", ms)));
-                case HALTED -> {
-                    // Not a failure. The system did exactly what it was asked to, and the
-                    // answer is that this presentation cannot be accepted.
-                    cases.patchCase(caseId, Map.of(
-                            "gate_halted", true,
-                            "gate_halt_check_id", String.valueOf(outcome.haltKey()),
-                            "status", "discrepancies"));
-                    events.publish(HelixEvent.of(caseId, HelixEvent.GATE_HALTED, Map.of(
-                            "checkId", String.valueOf(outcome.haltKey()),
-                            "statement", String.valueOf(outcome.detail()))));
-                    log.info("Case {} halted at {} by {}", caseId, id.key(), outcome.haltKey());
-                }
-                case FAILED -> {
-                    cases.patchCase(caseId, Map.of("error", String.valueOf(outcome.detail())));
-                    events.publish(HelixEvent.of(caseId, HelixEvent.STAGE_FAILED,
-                            Map.of("stage", id.key(), "message", String.valueOf(outcome.detail()))));
-                }
-            }
-            return outcome;
-
-        } catch (RuntimeException e) {
-            log.error("Stage {} threw for case {}", id.key(), caseId, e);
-            cases.recordStep(caseId, id.key(), "-", "FAILED", null, e.toString(), false, null);
-            cases.patchCase(caseId, Map.of("error", String.valueOf(e.getMessage())));
-            events.publish(HelixEvent.of(caseId, HelixEvent.STAGE_FAILED,
-                    Map.of("stage", id.key(), "message", String.valueOf(e.getMessage()))));
-            return StepResult.failed(e.getMessage());
-        }
-    }
-
 
     public void cancel(String caseId) {
         cancelled.put(caseId, true);

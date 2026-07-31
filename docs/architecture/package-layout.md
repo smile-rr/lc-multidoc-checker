@@ -259,9 +259,9 @@ human pacing is lc-check's addition, not the engine's.
 
 | | Where | Knows |
 |---|---|---|
-| `Step`, `StepResult`, `StepPhase`, `StepJournal`, `PipelineEngine` | `infra/pipeline` | how to walk a list of declared steps and report each one. **Nothing else.** |
+| `Step`, `StepResult`, `StepPhase`, `StepJournal`, `Trigger`, `Pipeline`, `PipelineEngine` | `infra/pipeline` | how phases are ordered, what runs when one is requested, and how to walk their steps reporting each. **Nothing else.** |
 | `Stage`, `StageContext`, `DbStageContext` | `lccheck/pipeline` | that a phase belongs to a stage of an examination |
-| `DocCheckPipeline` | `lccheck/pipeline` | **what** this examination is — six stages, in order |
+| `DocCheckPipeline` | `lccheck/pipeline` | **what** this examination is — six stages, in order. Its constructor is the whole definition; the sequencing is inherited. |
 | `ExaminationRunner` | `lccheck/pipeline` | **how** it runs here — officer pacing, the gate riding with the plan, halts, async |
 | `StageId` | `lccheck/types/pipeline` | the stage names, and which one an officer may ask for next |
 
