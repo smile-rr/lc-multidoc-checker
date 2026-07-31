@@ -35,27 +35,28 @@ const sizeOf = (file) => (file.size == null ? null : `${Math.max(1, Math.round(f
 
 export default function NewCheckModal({ open, onClose, onCreated }) {
   const [files, setFiles] = useState({})
-  const [identity, setIdentity] = useState(null)
   const [creating, setCreating] = useState(false)
   const [failed, setFailed] = useState(null)
   const inputs = useRef({})
 
   useEffect(() => {
-    if (!open) { setFiles({}); setIdentity(null); setCreating(false); setFailed(null) }
+    if (!open) { setFiles({}); setCreating(false); setFailed(null) }
   }, [open])
 
-  // As soon as the credit lands we read it and show what we found, so the
-  // officer can catch a wrong file before committing to a case.
-  useEffect(() => {
-    if (!files.credit || identity) return
-    let alive = true
-    api.peekCredit(files.credit.file).then((rows) => { if (alive) setIdentity(rows) }).catch(() => {})
-    return () => { alive = false }
-  }, [files.credit, identity])
+  // The credit used to be read here, on drop, to show what was in it before
+  // committing to a case. It was a model call inside a dialog: five seconds of a
+  // modal that could not be dismissed, over a file that intake reads again a
+  // moment later. The preview was worth something — you could catch the wrong
+  // file — but not at the price of holding somebody in a box while a model
+  // thinks.
+  //
+  // So the credit is read once, by intake, after the case exists. The case is in
+  // the list immediately and identifies itself when the reading lands. Catching
+  // the wrong file moves to where it costs nothing: the case says which file it
+  // came from, and a case created by mistake is deleted rather than waited out.
 
   const put = (slotId, file) => {
     setFiles((s) => ({ ...s, [slotId]: { name: file.name, size: sizeOf(file), file } }))
-    if (slotId === 'credit') setIdentity(null)
     setFailed(null)
   }
 
@@ -155,15 +156,10 @@ export default function NewCheckModal({ open, onClose, onCreated }) {
         })}
       </div>
 
-      {identity ? (
-        <div style={{ marginTop: 14, padding: '14px 16px', borderRadius: 10, background: 'var(--me-grey-08)', display: 'flex', flexDirection: 'column', gap: 7 }}>
-          <Eyebrow size="sm">Read from the credit</Eyebrow>
-          {identity.map((row) => (
-            <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 14, fontSize: 13 }}>
-              <span style={{ color: 'var(--me-grey-70)' }}>{row.label}</span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, color: 'var(--me-ink)', textAlign: 'right' }}>{row.value}</span>
-            </div>
-          ))}
+      {ready ? (
+        <div style={{ marginTop: 14, padding: '12px 16px', borderRadius: 10, background: 'var(--me-grey-08)', fontSize: 12.5, color: 'var(--me-grey-70)', lineHeight: 1.5 }}>
+          The credit is read once the case is created — it appears in the list straight
+          away and fills in its own reference, amount and parties when the reading lands.
         </div>
       ) : null}
     </Modal>
