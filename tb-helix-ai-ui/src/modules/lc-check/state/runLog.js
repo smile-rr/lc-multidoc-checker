@@ -141,16 +141,21 @@ export function foldRunLog(events = [], now = Date.now()) {
       continue
     }
 
+    // A cache hit marks its step and gets no row of its own. As a row it said
+    // "answered from cache" next to a step already flagged as answered from cache
+    // — and there is one per document, so a six-document read spent half its
+    // height repeating a fact the ⚡ beside the step already carries.
     if (event.type === 'cache_hit') {
       const stage = stageFor(event.stage)
       const step = [...stage.steps].reverse().find((s) => s.key === event.step)
       if (step) step.cacheHit = true
+      continue
     }
 
     // Everything else is a leaf: it happened inside whatever was open. Kept even
     // when nothing was — an event with nowhere to go is usually the interesting one.
     const target = STAGE_LEVEL.has(event.type) || !openStep ? stageFor(event.stage) : openStep
-    target.events.push(row(event, t))
+    push(target.events, row(event, t))
   }
 
   // Elapsed for whatever is still going, measured now.
@@ -162,6 +167,31 @@ export function foldRunLog(events = [], now = Date.now()) {
   }
 
   return stages
+}
+
+/**
+ * Appends an event row, folding a run of the same type into the one before it.
+ *
+ * <p>A six-page bundle reports six `segment` events, each one superseding the
+ * last: "page 1 of 6" through "page 6 of 6". Six rows, of which only the sixth
+ * says anything you did not already know. Folded, it is one row reading
+ * "page 6 of 6" with a ×6 beside it — the progress is still there, and the row
+ * updates in place while the run is live, which is what a progress line should do.
+ *
+ * <p>Consecutive only. Two runs of `segment` with an `area_started` between them
+ * stay two rows, because the thing in the middle is what makes them different.
+ */
+function push(rows, next) {
+  const last = rows[rows.length - 1]
+  if (last && last.type === next.type) {
+    // The newest detail wins: progress supersedes, it does not accumulate.
+    last.detail = next.detail ?? last.detail
+    last.at = next.at
+    last.seq = next.seq
+    last.count = (last.count ?? 1) + 1
+    return
+  }
+  rows.push(next)
 }
 
 /** One leaf row: what happened, when, and the detail worth showing beside it. */

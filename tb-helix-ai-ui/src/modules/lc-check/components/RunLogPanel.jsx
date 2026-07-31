@@ -187,6 +187,12 @@ function EventRow({ event, inset = 0 }) {
       {event.detail && (
         <span style={{ color: LOG_INK.detail, minWidth: 0, ...ellipsis }}>{event.detail}</span>
       )}
+      {event.count > 1 && (
+        <span title={`${event.count} of these, in a row`}
+              style={{ fontFamily: 'var(--font-mono)', color: LOG_INK.time, flexShrink: 0 }}>
+          ×{event.count}
+        </span>
+      )}
     </div>
   )
 }

@@ -35,6 +35,10 @@ public final class StageContext implements StepJournal {
     private final CaseStore store;
     private final EventBus events;
     private final Map<String, Boolean> cancelledFlags;
+    // Steps this stage closed itself. The engine also closes the step it declared,
+    // and when a stage records under the engine's own key — `segment` does — both
+    // fire and the log shows one step ending twice.
+    private final java.util.Set<String> closedByStage = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public StageContext(String caseId, StageId stage, String officerId,
                         CaseStore store, EventBus events, Map<String, Boolean> cancelledFlags) {
@@ -76,6 +80,7 @@ public final class StageContext implements StepJournal {
      */
     public void recordStep(String stepKey, Map<String, Object> result) {
         store.recordStep(caseId, stage.key(), stepKey, "OK", result, null, false, null);
+        closedByStage.add(stepKey);
         finished(stepKey, null, "OK", 0, false);
     }
 
@@ -85,12 +90,14 @@ public final class StageContext implements StepJournal {
         // Reported, not silent: a run that finishes in four seconds looks broken unless the
         // officer can see it was free.
         emit(HelixEvent.CACHE_HIT, Map.of("stage", stage.key(), "step", stepKey));
+        closedByStage.add(stepKey);
         finished(stepKey, null, "OK", 0, false);
     }
 
     /** Records a step that could not be done, and why. */
     public void recordFailedStep(String stepKey, String error) {
         store.recordStep(caseId, stage.key(), stepKey, "FAILED", null, error, false, null);
+        closedByStage.add(stepKey);
         finished(stepKey, error, "FAILED", 0, false);
     }
 
@@ -142,6 +149,17 @@ public final class StageContext implements StepJournal {
      */
     public void landed(String step, String label) {
         finished(step, label, "OK", 0, true);
+    }
+
+    /**
+     * The stage already said this step ended; all that is left is the refetch.
+     *
+     * <p>A step-finished carries two facts — that it ended, and that the case now holds
+     * something new. When the stage closed the step itself the first is already on the
+     * stream, and repeating it draws the step twice. The second still has to be said.
+     */
+    private void landedOnly(String step, String note) {
+        if (note != null) finished(step, note, "OK", 0, true);
     }
 
     /**
@@ -239,7 +257,10 @@ public final class StageContext implements StepJournal {
                 store.recordStep(caseId, phase, key, "OK", data, null, false, null);
                 // A note means the case now holds something it did not, so the browser is
                 // told to refetch. Only the step knows whether that is warranted.
-                finished(key, result.note(), result.status().name(), elapsedMs, result.note() != null);
+                // Unless the stage already closed this key itself. Two endings for one
+                // step is two rows in the log for something that happened once.
+                if (closedByStage.remove(key)) landedOnly(key, result.note());
+                else finished(key, result.note(), result.status().name(), elapsedMs, result.note() != null);
             }
             case SKIPPED -> stepSkipped(phase, key, result.detail());
             case FAILED -> {

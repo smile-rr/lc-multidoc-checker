@@ -37,6 +37,10 @@ import java.util.UUID;
  * <p>Writes go to {@code tmp/} and are atomically renamed into place, so a crash mid-write
  * cannot leave a truncated file at an address that claims to be a complete document — the
  * one corruption that content-addressing would otherwise make invisible.
+ *
+ * <p>The on-disk layout is created at bean construction ({@link #ensureLayout()}). Operators
+ * do not pre-create {@code cas/}, {@code tmp/}, or {@code by-case/} — missing parents under
+ * {@code helix.blob.root} are created on startup.
  */
 @Component
 @ConditionalOnProperty(name = "helix.blob.tier", havingValue = "DISK", matchIfMissing = true)
@@ -53,13 +57,33 @@ public class DiskBlobStore implements BlobStore {
         this.props = props;
         this.catalog = catalog;
         this.root = Path.of(props.root()).toAbsolutePath().normalize();
+        ensureLayout();
+        log.info("Blob store at {} (linkByCase={})", root, props.linkByCase());
+    }
+
+    /**
+     * Creates the default directory tree if it is not already there.
+     *
+     * <pre>
+     *   &lt;root&gt;/
+     *   ├── cas/
+     *   ├── tmp/
+     *   └── by-case/     only when helix.blob.link-by-case is true
+     * </pre>
+     *
+     * <p>Idempotent. Called once at startup; also safe to call again after a manual wipe.
+     */
+    public void ensureLayout() {
         try {
+            Files.createDirectories(root);
             Files.createDirectories(root.resolve("cas"));
             Files.createDirectories(root.resolve("tmp"));
+            if (props.linkByCase()) {
+                Files.createDirectories(root.resolve("by-case"));
+            }
         } catch (IOException e) {
-            throw new IllegalStateException("Cannot create blob store at " + root, e);
+            throw new IllegalStateException("Cannot create blob store layout at " + root, e);
         }
-        log.info("Blob store at {} (linkByCase={})", root, props.linkByCase());
     }
 
     @Override

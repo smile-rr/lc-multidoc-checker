@@ -134,9 +134,16 @@ function reducer(state, action) {
           finished,
           // An already-examined case has every step behind it; a fresh one has none.
           done: finished ? (state.runStages ?? RUN_STAGES).map((s) => s.id) : [],
-          // A refetch triggered by a progress event must not cancel the step it
-          // was reporting on — the run owns activeStage, the load does not.
-          activeStage: action.merge ? state.run.activeStage : null,
+          // The run owns activeStage. The load does not — not on a merge, and not
+          // on a plain load either, which is what this used to say.
+          //
+          // Clearing it on a non-merge load meant any refetch during a running
+          // stage told the auto-runner that nothing was executing, so it started
+          // the same stage again. Four concurrent interprets on one case, each
+          // extracting the same six documents, every one of them writing events:
+          // the quadruple rows in the run log were four real runs, not one run
+          // reported four times.
+          activeStage: state.run.activeStage,
           segmented: loaded?.segmented ?? 0,
           completedAreaIds: loaded?.completedAreaIds ?? [],
           activeAreaId: action.merge ? state.run.activeAreaId : null,
@@ -404,8 +411,12 @@ export function CaseProvider({ caseId, children }) {
   // so switching to Auto halfway through a stepped run picks it up from where it
   // stopped instead of stranding it with no button.
   useEffect(() => {
-    const { mode, live, started, finished, activeStage, done } = state.run
-    if (mode !== 'auto' || !live || !started || finished || activeStage) return
+    const { mode, live, started, finished, activeStage, done, busy } = state.run
+    // `busy` as well as `activeStage`: the first is the service saying a stage is
+    // running, the second is this tab saying it started one. Either is a reason
+    // not to start another, and relying on our own flag alone is what let a
+    // second tab — or a reload — pile a run on top of a run.
+    if (mode !== 'auto' || !live || !started || finished || activeStage || busy) return
     const next = stageAfter(done, state.runStages ?? RUN_STAGES)
     if (next) startStep(next.id)
   }, [state.run, startStep])
