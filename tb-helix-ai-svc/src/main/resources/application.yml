@@ -77,9 +77,14 @@ helix:
   # is what makes dedup free — the same bundle uploaded twice is one file.
   blob:
     tier: ${HELIX_BLOB_TIER:DISK}                       # DISK | S3 (S3 adapter is a stub for now)
-    root: ${HELIX_BLOB_ROOT:./var/blob}
+    # Absolute under the user home so Linux / macOS / Windows share one layout
+    # without depending on the process CWD (./var/blob used to land inside the
+    # Gradle module). Override with HELIX_BLOB_ROOT when needed.
+    root: ${HELIX_BLOB_ROOT:${user.home}/ws/tmp/var/blob}
     # A human-navigable symlink mirror under by-case/. Costs nothing, and makes
-    # "show me what this case actually holds" a shell command.
+    # "show me what this case actually holds" a shell command. Best-effort: if
+    # the OS refuses symlinks (common on Windows without Developer Mode), the
+    # store still works — only the mirror is skipped.
     link-by-case: true
     # How long an unreferenced blob survives before GC will take it. Long,
     # because the thing being collected is evidence.
