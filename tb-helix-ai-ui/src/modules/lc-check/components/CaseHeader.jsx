@@ -44,12 +44,20 @@ export default function CaseHeader({
 
   const c = detail.credit
   const dueUrgent = detail.replyDueDays != null && detail.replyDueDays <= 3
+
+  // The credit is read by intake, after the case exists — so for the first
+  // seconds of a case's life these fields have no answer yet. Blank is the wrong
+  // way to say that: an empty Amount reads as a credit with no amount, which is
+  // a discrepancy, not a pending read. So each one says it is still being read
+  // until it is not.
+  const reading = !c.creditRef
+  const held = (value) => (reading ? '·  ·  ·' : value)
   const facts = [
-    { k: 'Credit', v: c.creditRef, mono: true },
-    { k: 'Amount', v: `${money(c.currency, c.amount)} ±${c.tolerancePct}%`, mono: true, weight: 500 },
-    { k: 'Applicant', v: c.applicant },
+    { k: 'Credit', v: held(c.creditRef), mono: true },
+    { k: 'Amount', v: held(`${money(c.currency, c.amount)} ±${c.tolerancePct}%`), mono: true, weight: 500 },
+    { k: 'Applicant', v: held(c.applicant) },
     { k: 'Documents', v: `${detail.documents.filter((d) => d.role === 'presented').length} of ${detail.bundlePages.length} pages` },
-    { k: 'Expiry', v: c.expiry },
+    { k: 'Expiry', v: held(c.expiry) },
     { k: 'Reply Due', v: dueLabel(detail.replyDueDays) ?? '—', weight: 600, urgent: true },
   ]
 
@@ -83,7 +91,9 @@ export default function CaseHeader({
               </span>
             )}
           </div>
-          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--me-ink)' }}>{c.beneficiary}</h1>
+          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, letterSpacing: '-0.02em', color: reading ? 'var(--me-grey-70)' : 'var(--me-ink)' }}>
+            {reading ? 'Reading the credit…' : c.beneficiary}
+          </h1>
 
           {factsOpen && (
             <div style={{ display: 'flex', flexWrap: 'wrap', margin: '4px 0 14px', border: '1px solid var(--me-grey-15)', borderRadius: 8, background: 'var(--me-grey-08)', overflow: 'hidden', width: 'fit-content' }}>
@@ -95,7 +105,9 @@ export default function CaseHeader({
                       fontSize: 13.5,
                       fontFamily: f.mono ? 'var(--font-mono)' : 'var(--font-sans)',
                       fontWeight: f.weight || 400,
-                      color: f.urgent && dueUrgent ? 'var(--status-warning)' : 'var(--me-ink)',
+                      color: reading && f.v === '·  ·  ·'
+                        ? 'var(--me-grey-50)'
+                        : f.urgent && dueUrgent ? 'var(--status-warning)' : 'var(--me-ink)',
                     }}
                   >
                     {f.v}
