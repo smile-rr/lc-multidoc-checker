@@ -58,7 +58,32 @@ public class SseChannel implements EventBus, EventStream {
     private final Map<String, Deque<Sequenced>> recent = new ConcurrentHashMap<>();
     private final Map<String, AtomicLong> sequences = new ConcurrentHashMap<>();
 
-    private record Sequenced(long seq, HelixEvent event) {
+    /**
+     * An event with the two things only the channel can say about it: where it falls in the
+     * order, and when it happened.
+     *
+     * <p>The instant is taken once, at publish, and used for both the wire and the tape.
+     * Reading it back off {@code created_at} instead would have been a second clock reading
+     * of the same moment — near enough always, and the one time it was not would be a step
+     * that appeared to finish before it started.
+     */
+    private record Sequenced(long seq, java.time.Instant at, HelixEvent event) {
+
+        /**
+         * The event as the browser sees it: envelope and payload, flat.
+         *
+         * <p>Flat rather than {@code {seq, at, event:{...}}} because the live path delivers
+         * the payload as the SSE data and the type as the event name, so anything nested
+         * would arrive shaped differently from the same event replayed out of the tape.
+         */
+        Map<String, Object> wire() {
+            Map<String, Object> out = new java.util.LinkedHashMap<>();
+            out.put("seq", seq);
+            out.put("type", event.type());
+            out.put("at", at.toString());
+            out.putAll(event.payload());
+            return out;
+        }
     }
 
     public SseChannel(JdbcTemplate jdbc, ObjectMapper json) {
@@ -71,14 +96,15 @@ public class SseChannel implements EventBus, EventStream {
         try {
             long seq = sequences.computeIfAbsent(event.caseId(), k -> new AtomicLong(nextSeqFromDb(k)))
                     .incrementAndGet();
-            persist(event, seq);
+            Sequenced s = new Sequenced(seq, java.time.Instant.now(), event);
+            persist(s);
 
             Deque<Sequenced> buffer = recent.computeIfAbsent(event.caseId(), k -> new ArrayDeque<>());
             synchronized (buffer) {
-                buffer.addLast(new Sequenced(seq, event));
+                buffer.addLast(s);
                 while (buffer.size() > REPLAY_BUFFER) buffer.removeFirst();
             }
-            fanOut(event.caseId(), new Sequenced(seq, event));
+            fanOut(event.caseId(), s);
 
         } catch (RuntimeException e) {
             log.warn("Event {} for case {} not published: {}", event.type(), event.caseId(), e.toString());
@@ -111,12 +137,7 @@ public class SseChannel implements EventBus, EventStream {
     /** Everything recorded for a case — for a client that would rather poll than stream. */
     @Override
     public List<Map<String, Object>> history(String caseId, long afterSeq) {
-        return jdbc.query("""
-                SELECT seq, event::text FROM helix_check.lc_event
-                 WHERE case_id = ?::uuid AND seq > ? ORDER BY seq
-                """,
-                (rs, i) -> Map.of("seq", rs.getLong(1), "event", readTree(rs.getString(2))),
-                caseId, afterSeq);
+        return fromTape(caseId, afterSeq).stream().map(Sequenced::wire).toList();
     }
 
     // --- Internals ----------------------------------------------------------
@@ -135,10 +156,13 @@ public class SseChannel implements EventBus, EventStream {
     }
 
     private void send(SseEmitter emitter, Sequenced s) throws IOException {
+        // The id and the name are the SSE protocol's own — the id is what a reconnecting
+        // browser sends back as Last-Event-ID, and the name is what it listens on. They are
+        // also in the body, because the body is the whole event once it is in a panel.
         emitter.send(SseEmitter.event()
                 .id(String.valueOf(s.seq()))
                 .name(s.event().type())
-                .data(s.event().payload()));
+                .data(s.wire()));
     }
 
     private List<Sequenced> replayFrom(String caseId, long lastSeq) {
@@ -152,24 +176,34 @@ public class SseChannel implements EventBus, EventStream {
                 }
             }
         }
-        return jdbc.query("""
-                SELECT seq, event::text FROM helix_check.lc_event
-                 WHERE case_id = ?::uuid AND seq > ? ORDER BY seq
-                """,
-                (rs, i) -> new Sequenced(rs.getLong(1), fromJson(rs.getString(2), caseId)),
-                caseId, lastSeq);
+        return fromTape(caseId, lastSeq);
     }
 
-    private void persist(HelixEvent event, long seq) {
+    /** The tape, read back into the same shape the buffer holds. */
+    private List<Sequenced> fromTape(String caseId, long afterSeq) {
+        return jdbc.query("""
+                SELECT seq, created_at, event::text FROM helix_check.lc_event
+                 WHERE case_id = ?::uuid AND seq > ? ORDER BY seq
+                """,
+                (rs, i) -> new Sequenced(
+                        rs.getLong(1),
+                        rs.getTimestamp(2).toInstant(),
+                        fromJson(rs.getString(3), caseId)),
+                caseId, afterSeq);
+    }
+
+    private void persist(Sequenced s) {
         try {
             jdbc.update("""
-                    INSERT INTO helix_check.lc_event (case_id, seq, event) VALUES (?::uuid, ?, ?::jsonb)
+                    INSERT INTO helix_check.lc_event (case_id, seq, event, created_at)
+                    VALUES (?::uuid, ?, ?::jsonb, ?)
                     ON CONFLICT (case_id, seq) DO NOTHING
                     """,
-                    event.caseId(), seq,
-                    json.writeValueAsString(Map.of("type", event.type(), "payload", event.payload())));
+                    s.event().caseId(), s.seq(),
+                    json.writeValueAsString(Map.of("type", s.event().type(), "payload", s.event().payload())),
+                    java.sql.Timestamp.from(s.at()));
         } catch (Exception e) {
-            log.debug("Event tape write skipped for {}: {}", event.caseId(), e.toString());
+            log.debug("Event tape write skipped for {}: {}", s.event().caseId(), e.toString());
         }
     }
 
@@ -216,14 +250,6 @@ public class SseChannel implements EventBus, EventStream {
             return HelixEvent.of(caseId, node.path("type").asText(), payload);
         } catch (Exception e) {
             return HelixEvent.of(caseId, "unknown");
-        }
-    }
-
-    private Object readTree(String raw) {
-        try {
-            return json.readValue(raw, Map.class);
-        } catch (Exception e) {
-            return Map.of();
         }
     }
 }

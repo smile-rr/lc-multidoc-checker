@@ -123,7 +123,7 @@ public class ExecuteStage implements Stage {
                 // Named per check, not per area. A judged area is several model calls and
                 // can run for a minute; "Time & availability" going quiet for that long is
                 // indistinguishable from a stall.
-                ctx.announce("checks", check.name());
+                ctx.announce(checkId, check.name());
                 try {
                     // An exact check is settled by comparing what was read, not by asking a
                     // model to compare it. That is the whole difference between the two

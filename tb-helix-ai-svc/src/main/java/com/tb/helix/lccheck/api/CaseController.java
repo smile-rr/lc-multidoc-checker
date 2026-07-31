@@ -138,6 +138,23 @@ public class CaseController {
         return stream.subscribe(cases.resolve(ref), lastEventId == null ? 0 : Long.parseLong(lastEventId));
     }
 
+    /**
+     * Progress, after the fact.
+     *
+     * <p>What the stream would have told you had you been watching. A case is examined over
+     * minutes and read over days, so the run has to be legible to somebody who arrives after
+     * it — asking why a stage took ninety seconds is a question people ask about finished
+     * work far more often than about work in flight.
+     *
+     * <p>Same rows as the stream, so a panel opened mid-run fills from here and continues
+     * from there without two ways of holding an event.
+     */
+    @GetMapping("/cases/{ref}/events")
+    public List<Map<String, Object>> events(@PathVariable String ref,
+                                            @RequestParam(defaultValue = "0") long after) {
+        return stream.history(cases.resolve(ref), after);
+    }
+
     // --- Officer decisions --------------------------------------------------
 
     @PostMapping("/cases/{ref}/findings/{findingRef}/decision")

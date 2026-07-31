@@ -5,6 +5,7 @@ import { plural } from '@shared/lib/format'
 import CaseHeader from '../components/CaseHeader'
 import AskDrawer from '../components/AskDrawer'
 import CostDrawer from '../components/CostDrawer'
+import RunLogDrawer from '../components/RunLogDrawer'
 import IntakeScreen from './IntakeScreen'
 import InterpretScreen from './InterpretScreen'
 import ChecksScreen from './ChecksScreen'
@@ -157,6 +158,9 @@ function WorkbenchBody() {
         onToggleCost={() => actions.dispatch({ type: 'toggle_cost' })}
         askOpen={ui.askOpen}
         onToggleAsk={() => actions.dispatch({ type: 'toggle_ask' })}
+        logOpen={ui.logOpen}
+        onToggleLog={() => actions.dispatch({ type: 'toggle_log' })}
+        runBusy={run.busy || !!run.activeStage}
         actionLabel={action?.label}
         actionDisabled={action?.disabled}
         onAction={action?.run}
@@ -189,6 +193,12 @@ function WorkbenchBody() {
         stepCount={data.runSteps.length}
         completedCount={cost.rows.filter((r) => r.state === 'done').length}
         pageCount={data.bundlePages.length}
+      />
+
+      <RunLogDrawer
+        open={ui.logOpen}
+        onClose={() => actions.dispatch({ type: 'toggle_log' })}
+        caseId={data.id}
       />
 
       <Toast message={ui.toast} />

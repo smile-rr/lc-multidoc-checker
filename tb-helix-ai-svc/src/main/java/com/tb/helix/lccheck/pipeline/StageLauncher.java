@@ -166,7 +166,11 @@ public class StageLauncher {
                 "gate_halted", true,
                 "gate_halt_check_id", String.valueOf(result.haltKey()),
                 "status", CaseStatus.DISCREPANCIES.key()));
+        // Carries the stage it halted at, because on a progress panel this is what ends that
+        // stage — there is no stage_done after a halt, and a stage with a beginning and no
+        // ending reads as one still running.
         events.publish(HelixEvent.of(caseId, HelixEvent.GATE_HALTED, Map.of(
+                "stage", at.key(),
                 "checkId", String.valueOf(result.haltKey()),
                 "statement", String.valueOf(result.detail()))));
         log.info("Case {} halted at {} by {}", caseId, at.key(), result.haltKey());
@@ -191,7 +195,8 @@ public class StageLauncher {
         StageId next = pipeline.nextOfficerStageAfter(last).orElse(null);
         cases.setStage(caseId, last, next, next != null);
         if (next != null) {
-            events.publish(HelixEvent.of(caseId, HelixEvent.AWAITING_OFFICER, Map.of("next", next.key())));
+            events.publish(HelixEvent.of(caseId, HelixEvent.AWAITING_OFFICER,
+                    Map.of("stage", last.key(), "next", next.key())));
         }
     }
 

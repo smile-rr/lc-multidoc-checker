@@ -15,6 +15,13 @@ import java.util.Map;
  * is untyped JSON at the far end regardless. A closed set of constants gives the same
  * discipline where it matters without the ceremony.
  *
+ * <p><b>The wire envelope.</b> Two things every event carries that are not on this record,
+ * because only the channel can know them: {@code seq}, its place in the case's order, and
+ * {@code at}, when it happened. {@code SseChannel} adds both, to the live stream and to the
+ * replayed tape alike, so a panel folding events into stages and steps can measure how long
+ * something took without keeping its own clock — and gets the same answer for a run it
+ * watched and a run it arrived after.
+ *
  * @param caseId  which examination
  * @param type    see the constants below
  * @param payload type-specific detail, serialised as the event body
@@ -47,12 +54,18 @@ public record HelixEvent(String caseId, String type, Map<String, Object> payload
     public static final String STEP_STARTED = "step_started";
 
     /**
-     * A step finished. {@code {stage, step, label, refresh}}
+     * A step finished. {@code {stage, step, label, status, ms, refresh}}
      *
-     * <p>{@code refresh} says the case has changed and the browser should refetch. The event
-     * says <em>that</em> something landed, never <em>what</em> — one description of a case,
-     * the case endpoint, and a progress channel shipping domain objects would be a second
-     * weaker copy of it that could drift.
+     * <p>Published for <em>every</em> ending — OK, HALTED, SKIPPED, FAILED — which is what
+     * {@code status} says. It used to be published only when a step had written something,
+     * so a step that announced itself and then went quiet was indistinguishable, to anything
+     * watching, from a step still running.
+     *
+     * <p>{@code refresh} says the case has changed and the browser should refetch — a
+     * separate question, answered yes only by a step that produced something. The event says
+     * <em>that</em> something landed, never <em>what</em>: one description of a case, the
+     * case endpoint, and a progress channel shipping domain objects would be a second weaker
+     * copy of it that could drift.
      */
     public static final String STEP_FINISHED = "step_finished";
 

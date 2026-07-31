@@ -108,6 +108,57 @@ export function watchCase(caseId, onEvent) {
 }
 
 /**
+ * A finished run's tape.
+ *
+ * Authored rather than generated, and fixed in time rather than relative to now,
+ * so the run log renders identically on every load and in the render smoke. It
+ * covers what the real tape covers — a stage that halted, a step that was
+ * skipped, one answered from cache — because a panel only tested against a happy
+ * run is a panel whose interesting states nobody has ever seen.
+ *
+ * @returns {Promise<Array<Record<string, unknown>>>}
+ */
+export async function getEvents() {
+  await wait(LATENCY.read)
+  const t0 = Date.parse('2026-07-31T09:14:02Z')
+  let seq = 0
+  const at = (offsetMs) => new Date(t0 + offsetMs).toISOString()
+  const e = (offset, type, rest) => ({ seq: ++seq, type, at: at(offset), ...rest })
+
+  return [
+    e(0, 'stage_started', { stage: 'intake' }),
+    e(120, 'step_started', { stage: 'intake', step: 'store', label: 'Storing the files' }),
+    e(910, 'step_finished', { stage: 'intake', step: 'store', label: '2 files stored', status: 'OK', ms: 790, refresh: true }),
+    e(950, 'step_started', { stage: 'intake', step: 'credit', label: 'Reading the credit' }),
+    e(7300, 'step_finished', { stage: 'intake', step: 'credit', label: 'Credit read — 18 terms', status: 'OK', ms: 6350, refresh: true }),
+    e(7400, 'stage_done', { stage: 'intake', ms: 7400 }),
+    e(7420, 'awaiting_officer', { stage: 'intake', next: 'interpret' }),
+
+    e(31000, 'stage_started', { stage: 'interpret' }),
+    e(31100, 'step_started', { stage: 'interpret', step: 'segment', label: 'Sorting 6 pages into documents' }),
+    e(33000, 'segment', { done: 3, total: 6 }),
+    e(35200, 'segment', { done: 6, total: 6 }),
+    e(35400, 'step_finished', { stage: 'interpret', step: 'segment', label: '6 documents found', status: 'OK', ms: 4300, refresh: true }),
+    e(35500, 'step_started', { stage: 'interpret', step: 'extract', label: 'Reading the commercial invoice' }),
+    e(48800, 'step_finished', { stage: 'interpret', step: 'extract', label: '21 fields read', status: 'OK', ms: 13300, refresh: true }),
+    e(48900, 'step_started', { stage: 'interpret', step: 'extract', label: 'Reading the bill of lading' }),
+    e(49100, 'cache_hit', { stage: 'interpret', step: 'extract' }),
+    e(49300, 'step_finished', { stage: 'interpret', step: 'extract', label: '27 fields read', status: 'OK', ms: 400, refresh: true }),
+    e(49400, 'stage_done', { stage: 'interpret', ms: 18400 }),
+    e(49420, 'awaiting_officer', { stage: 'interpret', next: 'plan' }),
+
+    e(96000, 'stage_started', { stage: 'gate' }),
+    e(96100, 'step_started', { stage: 'gate', step: 'gate', label: 'Running 1 hard check' }),
+    e(96450, 'step_finished', { stage: 'gate', step: 'gate', label: 'DATE-31D failed', status: 'HALTED', ms: 350, refresh: true }),
+    e(96500, 'gate_halted', {
+      stage: 'gate',
+      checkId: 'DATE-31D',
+      statement: 'PRESENTATION MADE ON 2026-07-31 AFTER CREDIT EXPIRY 2025-12-31.',
+    }),
+  ]
+}
+
+/**
  * What the credit tells us before a case exists — shown in the New check dialog
  * as soon as the MT700 is dropped.
  * @returns {Promise<{ label: string, value: string }[]>}

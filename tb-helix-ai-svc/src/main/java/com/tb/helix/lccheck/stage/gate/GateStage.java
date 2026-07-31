@@ -104,12 +104,15 @@ public class GateStage implements Stage {
             return StepResult.skipped("no hard checks are authored");
         }
 
-        ctx.announce("gate", "Running " + gates.size() + " hard check" + (gates.size() == 1 ? "" : "s"));
-
         LocalDate expiry = row.expiry();
         LocalDate presented = presentationDate(ctx, row);
 
         for (CheckCatalog.CheckCard gate : gates) {
+            // Per gate, under the id it is recorded against. Announcing the group instead
+            // put one beginning on the stream for however many checks ran, and no ending
+            // at all — the group was never a step anything wrote down.
+            ctx.announce(gate.id(), gate.title());
+
             cases.upsertPlanCheck(ctx.caseId(), Rows.of(
                     "id", gate.id(), "origin", Origin.DICTIONARY.name(), "tier", "EXACT",
                     "checkType", gate.checkType(), "gate", true, "citedAs", "practice",
@@ -149,6 +152,11 @@ public class GateStage implements Stage {
                         "creditAnchorId", "tag-31D",
                         "confidence", "HIGH"));
                 log.info("Case {} halted at {}: {}", ctx.caseId(), gate.id(), result.why());
+                // Written down before returning. The gate that stopped the examination is
+                // the one step of the run somebody will certainly come looking for, and it
+                // was the only one that left no row.
+                ctx.recordStep(gate.id(), Map.of("verdict", result.outcome().name(),
+                        "expiry", String.valueOf(expiry), "presented", String.valueOf(presented)));
                 return StepResult.halted(gate.id(), statement);
             }
 

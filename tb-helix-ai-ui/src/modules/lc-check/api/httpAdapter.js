@@ -78,6 +78,16 @@ export function watchCase(caseId, onEvent) {
   return api.stream(`${base}/cases/${encodeURIComponent(caseId)}/stream`, onEvent)
 }
 
+/**
+ * Everything this case has reported, in order.
+ *
+ * The same rows the stream delivers — `{seq, type, at, ...}` — so the run log
+ * fills from here and continues from the stream without two shapes of event.
+ */
+export async function getEvents(caseId, { after = 0 } = {}) {
+  return api.get(`${base}/cases/${encodeURIComponent(caseId)}/events?after=${after}`)
+}
+
 export async function getSpendSummary({ period = '30d' } = {}) {
   return api.get(`${base}/metrics/spend?period=${encodeURIComponent(period)}`)
 }

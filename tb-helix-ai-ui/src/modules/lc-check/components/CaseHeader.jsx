@@ -28,6 +28,9 @@ export default function CaseHeader({
   costOpen,
   onToggleAsk,
   askOpen,
+  onToggleLog,
+  logOpen,
+  runBusy = false,
   actionLabel,
   actionDisabled,
   onAction,
@@ -116,6 +119,13 @@ export default function CaseHeader({
           <PillButton title="Time and cost for this case — open for the per-step breakdown" active={costOpen} onClick={onToggleCost}>
             <Icon name="gauge" size={15} color={cost.cost ? 'var(--me-blue)' : 'var(--me-grey-70)'} />
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--me-grey)' }}>{costPill}</span>
+          </PillButton>
+
+          {/* Beside the cost, because they answer the two halves of the same
+              question — what the run spent, and what it was doing while it spent it. */}
+          <PillButton title="What this examination has done, stage by stage" active={logOpen} onClick={onToggleLog}>
+            <Icon name="activity" size={15} color={runBusy ? 'var(--me-blue)' : 'var(--me-grey-70)'} />
+            <span style={{ fontSize: 12.5, color: 'var(--me-grey)' }}>Log</span>
           </PillButton>
 
           <PillButton title="Ask about this case" active={askOpen} onClick={onToggleAsk}>

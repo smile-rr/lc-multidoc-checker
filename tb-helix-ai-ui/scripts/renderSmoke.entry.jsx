@@ -15,6 +15,7 @@ import DecisionScreen from '@modules/lc-check/screens/DecisionScreen'
 import CaseHeader from '@modules/lc-check/components/CaseHeader'
 import CostDrawer from '@modules/lc-check/components/CostDrawer'
 import AskDrawer from '@modules/lc-check/components/AskDrawer'
+import RunLogDrawer from '@modules/lc-check/components/RunLogDrawer'
 
 const ROUTES = [
   '/',
@@ -137,6 +138,7 @@ function stageCases(value, tag) {
       <CostDrawer open onClose={noop} cost={cost} stepCount={value.data.runSteps.length} completedCount={value.run.finished ? value.data.runSteps.length : 0} pageCount={value.data.bundlePages.length} />,
     ],
     [`${tag} ask drawer`, <AskDrawer open onClose={noop} context="ctx" thread={value.ui.askThread} onAsk={noop} />],
+    [`${tag} run log`, <RunLogDrawer open onClose={noop} caseId={value.data.id} />],
   ]
 }
 

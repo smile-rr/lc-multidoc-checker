@@ -103,6 +103,7 @@ const initial = {
     toast: null,
     askOpen: false,
     costOpen: false,
+    logOpen: false,
     askThread: [
       { who: 'assistant', text: 'Ask me anything about this presentation — why a finding was raised, whether it can be cured, or what a rule says.' },
     ],
@@ -156,8 +157,20 @@ function reducer(state, action) {
       return { ...state, run: { ...state.run, failure: null, activity: action.label } }
     case 'activity_ended':
       return { ...state, run: { ...state.run, activity: null } }
+    // A failed stage ends the run, rather than freeing the auto-runner to try the
+    // same stage again immediately.
+    //
+    // This cleared `activeStage` and left the run live and in auto, so the effect
+    // below saw nothing executing and started the identical step — with no delay,
+    // no attempt limit, and nothing that treated a rejection as a reason to stop.
+    // Against a case parked at a later stage, that is a 409 answered and re-asked
+    // about a hundred and fifty times a second: 25,640 requests in two and a half
+    // minutes, and a third of a gigabyte of log, before anybody noticed.
+    //
+    // `live: false` is the fix and the whole of it. The failure is on screen and
+    // the officer decides what to do about it, which is what officer-paced means.
     case 'stage_failed':
-      return { ...state, run: { ...state.run, busy: false, activity: null, activeStage: null, failure: action.message } }
+      return { ...state, run: { ...state.run, busy: false, live: false, activity: null, activeStage: null, failure: action.message } }
     case 'load_failed':
       return { ...state, loading: false, error: action.error }
 
@@ -244,6 +257,8 @@ function reducer(state, action) {
       return { ...state, ui: { ...state.ui, askOpen: !state.ui.askOpen } }
     case 'toggle_cost':
       return { ...state, ui: { ...state.ui, costOpen: !state.ui.costOpen } }
+    case 'toggle_log':
+      return { ...state, ui: { ...state.ui, logOpen: !state.ui.logOpen } }
     case 'ask_appended':
       return { ...state, ui: { ...state.ui, askThread: [...state.ui.askThread, ...action.turns] } }
     default:

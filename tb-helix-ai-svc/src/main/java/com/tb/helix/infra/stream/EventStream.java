@@ -26,6 +26,13 @@ public interface EventStream {
      */
     SseEmitter subscribe(String caseId, long lastSeq);
 
-    /** The same events as a plain list, for a client that would rather poll. */
+    /**
+     * The same events as a plain list — what a case did, in order.
+     *
+     * <p>Each entry is exactly what the stream sends: {@code seq}, {@code type}, {@code at}
+     * and the event's own payload, flat. One shape, so a panel showing a finished run and a
+     * panel watching a live one are rendering the same rows and cannot disagree about what
+     * an event looks like.
+     */
     List<Map<String, Object>> history(String caseId, long afterSeq);
 }

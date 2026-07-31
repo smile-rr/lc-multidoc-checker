@@ -75,6 +75,7 @@ public final class StageContext implements StepJournal {
      */
     public void recordStep(String stepKey, Map<String, Object> result) {
         store.recordStep(caseId, stage.key(), stepKey, "OK", result, null, false, null);
+        finished(stepKey, null, "OK", 0, false);
     }
 
     /** Records a step that was answered from cache, with the entry that answered it. */
@@ -83,11 +84,13 @@ public final class StageContext implements StepJournal {
         // Reported, not silent: a run that finishes in four seconds looks broken unless the
         // officer can see it was free.
         emit(HelixEvent.CACHE_HIT, Map.of("stage", stage.key(), "step", stepKey));
+        finished(stepKey, null, "OK", 0, false);
     }
 
     /** Records a step that could not be done, and why. */
     public void recordFailedStep(String stepKey, String error) {
         store.recordStep(caseId, stage.key(), stepKey, "FAILED", null, error, false, null);
+        finished(stepKey, error, "FAILED", 0, false);
     }
 
     /** Reads back an earlier step's result — including one from an earlier stage. */
@@ -119,6 +122,12 @@ public final class StageContext implements StepJournal {
                 "stage", stage.key(), "step", step, "label", label));
     }
 
+    // The key announced must be the key recorded. A stage that announced "extract" and
+    // then recorded "extract:BOL" put a beginning on the stream that nothing ever ended
+    // — six of them per run, each shown as still going until the stage closed. All three
+    // stages that announce their own sub-steps did it, which is what a convention nobody
+    // states looks like from the inside.
+
     /**
      * Says the case now holds something it did not a moment ago, so the browser should
      * refetch.
@@ -131,8 +140,33 @@ public final class StageContext implements StepJournal {
      * worth a round trip. Reading the credit is; counting pages is not, on its own.
      */
     public void landed(String step, String label) {
-        emit(HelixEvent.STEP_FINISHED, Map.of(
-                "stage", stage.key(), "step", step, "label", label, "refresh", true));
+        finished(step, label, "OK", 0, true);
+    }
+
+    /**
+     * A step ended, however it ended.
+     *
+     * <p>Published for every ending, not only the ones that changed the case. A step that
+     * announced itself and then said nothing more reads, to anything watching, as a step
+     * still running — so the progress panel showed work in flight that had finished minutes
+     * before, and a skipped step never resolved at all.
+     *
+     * <p>{@code refresh} is the separate question of whether the browser should refetch, and
+     * only a step that wrote something answers yes. Ending and having-produced-something are
+     * two facts; conflating them is what left the other endings silent.
+     */
+    private void finished(String step, String label, String status, long elapsedMs, boolean refresh) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("stage", stage.key());
+        payload.put("step", step);
+        // Only when there is one. A reader keeps the label the step announced itself
+        // with, and an ending that carried the bare key instead would replace
+        // "Reading the bill of lading" with "extract:BOL" the moment it finished.
+        if (label != null) payload.put("label", label);
+        payload.put("status", status);
+        payload.put("ms", elapsedMs);
+        payload.put("refresh", refresh);
+        emit(HelixEvent.STEP_FINISHED, payload);
     }
 
     // --- Cancellation --------------------------------------------------------
@@ -191,19 +225,30 @@ public final class StageContext implements StepJournal {
                 data.put("ms", elapsedMs);
                 store.recordStep(caseId, phase, key, "OK", data, null, false, null);
                 // A note means the case now holds something it did not, so the browser is
-                // told to refetch. Only the step knows whether that is warranted; only this
-                // publishes.
-                if (result.note() != null) landed(key, result.note());
+                // told to refetch. Only the step knows whether that is warranted.
+                finished(key, result.note(), result.status().name(), elapsedMs, result.note() != null);
             }
             case SKIPPED -> stepSkipped(phase, key, result.detail());
-            case FAILED -> store.recordStep(caseId, phase, key, "FAILED", null, result.detail(), false, null);
+            case FAILED -> {
+                store.recordStep(caseId, phase, key, "FAILED", null, result.detail(), false, null);
+                finished(key, result.detail(), "FAILED", elapsedMs, false);
+            }
         }
     }
 
+    /**
+     * A step that did not run, recorded and reported in one place.
+     *
+     * <p>The engine reaches this two ways — a step whose preconditions were not met, which
+     * never announced itself, and a step that ran and declared itself inapplicable. Only the
+     * second has a beginning on the stream, so the ending stands alone and a reader takes it
+     * for a step that took no time. Which is what happened.
+     */
     @Override
     public void stepSkipped(String phase, String key, String why) {
-        store.recordStep(caseId, phase, key, "NOT_APPLICABLE",
-                Map.of("reason", why == null ? "not applicable to this case" : why),
+        String reason = why == null ? "nothing for this step to do" : why;
+        store.recordStep(caseId, phase, key, "NOT_APPLICABLE", Map.of("reason", reason),
                 null, false, null);
+        finished(key, reason, "SKIPPED", 0, false);
     }
 }

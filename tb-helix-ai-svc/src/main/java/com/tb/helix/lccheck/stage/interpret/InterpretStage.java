@@ -227,7 +227,7 @@ public class InterpretStage implements Stage {
             // The slowest thing in the stage — one vision call per document — and until
             // now the only thing the officer saw of it was a progress bar that had
             // already reached the end of segmentation.
-            ctx.announce("extract", "Reading the " + docTypes.label(code).toLowerCase());
+            ctx.announce("extract:" + code, "Reading the " + docTypes.label(code).toLowerCase());
 
             var key = new DerivationKey(CacheOp.EXTRACT_DOC, CacheOp.EXTRACT_DOC_V, pdfSha, scope,
                     DerivationKey.sha256Hex(prompt), "role:extract", null, spec.asCacheParams());
