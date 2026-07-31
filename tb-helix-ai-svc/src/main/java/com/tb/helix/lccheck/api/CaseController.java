@@ -160,6 +160,20 @@ public class CaseController {
     }
 
     /**
+     * What every examination has spent lately.
+     *
+     * <p>Real numbers or none. This panel was a fixture in both mock and API mode, which on
+     * a screen headed with a cost is worse than an empty one — a made-up figure that looks
+     * authoritative gets acted on.
+     */
+    @GetMapping("/metrics/spend")
+    public Map<String, Object> metricsSpend(@RequestParam(defaultValue = "30d") String period) {
+        int days = period.endsWith("d")
+                ? Integer.parseInt(period.substring(0, period.length() - 1)) : 30;
+        return calls.spendSince(java.time.Instant.now().minus(java.time.Duration.ofDays(days)));
+    }
+
+    /**
      * What this examination spent, by model.
      *
      * <p>Priced at read time from the family book, never stored: rates change, and a total

@@ -95,6 +95,61 @@ public class PgModelCallLog implements ModelCallLog {
         return rows;
     }
 
+
+    @Override
+    public Map<String, Object> spendSince(java.time.Instant since) {
+        List<Map<String, Object>> byModel = jdbc.query("""
+                SELECT model_id,
+                       COUNT(*)                                               AS calls,
+                       COUNT(*) FILTER (WHERE status = 'CACHED')              AS cached,
+                       COUNT(*) FILTER (WHERE status IN ('FAILED','TIMEOUT')) AS failed,
+                       COUNT(DISTINCT case_id)                                AS cases,
+                       COALESCE(SUM(prompt_tokens), 0)                        AS tokens_in,
+                       COALESCE(SUM(completion_tokens), 0)                    AS tokens_out,
+                       COALESCE(SUM(latency_ms), 0)                           AS ms
+                  FROM helix_infra.model_call
+                 WHERE at >= ?
+                 GROUP BY model_id
+                 ORDER BY ms DESC
+                """, (rs, i) -> {
+            Map<String, Object> r = new java.util.LinkedHashMap<>();
+            String model = rs.getString("model_id");
+            r.put("modelId", model);
+            r.put("label", prices.of(model).label());
+            r.put("calls", rs.getLong("calls"));
+            r.put("cached", rs.getLong("cached"));
+            r.put("failed", rs.getLong("failed"));
+            r.put("cases", rs.getLong("cases"));
+            r.put("tokensIn", rs.getLong("tokens_in"));
+            r.put("tokensOut", rs.getLong("tokens_out"));
+            r.put("seconds", rs.getLong("ms") / 1000.0);
+            r.put("cost", prices.of(model).cost(rs.getLong("tokens_in"), rs.getLong("tokens_out"), 0));
+            return r;
+        }, java.sql.Timestamp.from(since));
+
+        java.math.BigDecimal total = java.math.BigDecimal.ZERO;
+        long calls = 0, cached = 0;
+        for (Map<String, Object> m : byModel) {
+            total = total.add((java.math.BigDecimal) m.get("cost"));
+            calls += (Long) m.get("calls");
+            cached += (Long) m.get("cached");
+        }
+        Long cases = jdbc.queryForObject(
+                "SELECT COUNT(DISTINCT case_id) FROM helix_infra.model_call WHERE at >= ? AND case_id IS NOT NULL",
+                Long.class, java.sql.Timestamp.from(since));
+        long n = cases == null ? 0 : cases;
+
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("cost", total);
+        out.put("cases", n);
+        out.put("costPerCase", n == 0 ? java.math.BigDecimal.ZERO
+                : total.divide(java.math.BigDecimal.valueOf(n), 6, java.math.RoundingMode.HALF_UP));
+        out.put("calls", calls);
+        out.put("cachedPct", calls == 0 ? 0 : Math.round((cached * 100.0) / calls));
+        out.put("byModel", byModel);
+        return out;
+    }
+
     /** An error message is a note, not an essay — a stack trace here helps nobody. */
     private static String trim(String error) {
         if (error == null) return null;

@@ -55,9 +55,27 @@ export default function useRunLog(caseId, active) {
 
     // The stream carries the same rows. An event that arrives before the fetch
     // returns is kept, not raced away — `seen` is the only arbiter of what is new.
-    const stop = api.watchCase(caseId, (event) => { if (live) absorb([event]) })
+    //
+    // A model event means the ledger has a new row, so the costs are refetched —
+    // the tape is the trigger, the ledger stays the source. Putting the cost on the
+    // event instead would freeze it against a rate that can change; this way the
+    // number is always priced by the book as it stands now.
+    //
+    // Coalesced, because a fan-out lands six of these inside a second and six
+    // refetches would answer the same question six times.
+    let due = null
+    const stop = api.watchCase(caseId, (event) => {
+      if (!live) return
+      absorb([event])
+      if (event.type === 'llm_call' || event.type === 'llm_cached') {
+        clearTimeout(due)
+        due = setTimeout(() => {
+          api.getSpend(caseId).then((rows) => { if (live) setSpend(rows ?? []) }).catch(() => {})
+        }, 600)
+      }
+    })
 
-    return () => { live = false; stop?.() }
+    return () => { live = false; clearTimeout(due); stop?.() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseId, active])
 

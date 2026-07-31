@@ -198,7 +198,7 @@ function WorkbenchBody() {
         open={ui.costOpen}
         onClose={() => actions.dispatch({ type: 'toggle_cost' })}
         cost={cost}
-        stepCount={data.runSteps.length}
+        stepCount={cost.rows.length}
         completedCount={cost.rows.filter((r) => r.state === 'done').length}
         pageCount={data.bundlePages.length}
       />

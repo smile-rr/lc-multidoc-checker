@@ -32,9 +32,12 @@ export const watchCase = pick(mock.watchCase, http.watchCase)
 export const getEvents = pick(mock.getEvents, http.getEvents)
 export const getSpend = pick(mock.getSpend, http.getSpend)
 
-// Mock in both modes, and deliberately — the service has no endpoint behind
-// either yet, and routing them to a 404 would put a toast on the cases list every
-// time it loads. This is the per-function seam doing its job: move the line when
-// the endpoint is real.
+// Mock in both modes, still — and this one is not for want of an endpoint.
+// GET /lc-check/metrics/spend is real and returns the ledger's totals, but
+// SpendPanel asks for `checksRun`, `freeCardPct`, `cardsPerCase` and
+// `costAvoided`, which are examination facts a call ledger does not hold. Pointing
+// it at the service today would render half a panel of NaN, which is worse than a
+// fixture because it looks like a measurement. Move this line when the panel has
+// been reduced to what can actually be answered.
 export const getSpendSummary = pick(mock.getSpendSummary)
 export const ask = pick(mock.ask)

@@ -46,4 +46,14 @@ public interface ModelCallLog {
 
     /** What one examination spent, grouped by model. Cost is priced at read time. */
     java.util.List<java.util.Map<String, Object>> spendForCase(String caseId);
+
+    /**
+     * What every examination has spent over a window.
+     *
+     * <p>The per-case figure answers "what did this one cost". This answers the question an
+     * operations lead has instead: what is this costing us, is it steady per case, and where
+     * is it going. Different denominators, so a total is not enough — a total only ever goes
+     * up, and cannot say whether anything got better.
+     */
+    java.util.Map<String, Object> spendSince(java.time.Instant since);
 }

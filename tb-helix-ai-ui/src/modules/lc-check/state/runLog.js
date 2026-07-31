@@ -218,6 +218,12 @@ function describe(type, p) {
     case 'awaiting_officer': return `waiting for the officer to start ${p.next}`
     case 'stage_done': return null
     case 'cache_hit': return 'answered from cache'
+    // Tokens, never money. The rate can change; the tape cannot.
+    case 'llm_call':
+      return `${p.model}${p.slot ? ` (${p.slot})` : ''} · in ${tokens(p.tokensIn)} out ${tokens(p.tokensOut)}`
+        + `${p.ms ? ` · ${elapsed(p.ms)}` : ''}${p.status && p.status !== 'OK' ? ` · ${p.status}` : ''}`
+    case 'llm_cached':
+      return `${p.model} · not called · would have been in ${tokens(p.tokensIn)} out ${tokens(p.tokensOut)}`
     default: {
       const parts = Object.entries(p).filter(([, v]) => v != null && v !== '')
       return parts.length ? parts.map(([k, v]) => `${k} ${v}`).join(' · ') : null
