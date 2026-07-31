@@ -127,6 +127,7 @@ export default function InterpretScreen() {
             title={isCredit ? 'letter of credit' : shownDoc.docType}
             meta={isCredit ? 'parsed by SWIFT tag' : `read from ${pageRange(shownDoc.pageRange)}`}
             facts={facts}
+            layoutMd={isCredit ? null : shownDoc.layoutMd}
             hoverAnchor={hoverAnchor}
             onHoverAnchor={setHoverAnchor}
             activePage={isCredit ? null : page}

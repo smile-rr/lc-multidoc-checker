@@ -49,6 +49,17 @@ public final class CacheOp {
     public static final String EXTRACT_DOC = "extract.doc";
     public static final int    EXTRACT_DOC_V = 1;
 
+    /**
+     * One document's pages to layout-preserving markdown.
+     *
+     * <p>Separate from {@link #EXTRACT_DOC}: different prompt, different product. The
+     * markdown is the fallback reading when structured fields are thin or wrong, and must
+     * not share a cache entry with the field map — a hit on one must not look like a hit
+     * on the other.
+     */
+    public static final String EXTRACT_DOC_MD = "extract.doc.md";
+    public static final int    EXTRACT_DOC_MD_V = 1;
+
     /** The credit's 46A/47A to requirement cards. */
     public static final String PLAN_REQUIREMENTS = "plan.requirements";
     public static final int    PLAN_REQUIREMENTS_V = 1;

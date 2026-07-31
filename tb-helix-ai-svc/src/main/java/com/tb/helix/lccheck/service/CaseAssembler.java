@@ -77,7 +77,8 @@ public class CaseAssembler {
                 nz(d.docTypeLabel()),
                 pages.isEmpty() ? "" : "bundle pages " + pages.get(0) + "–" + pages.get(pages.size() - 1),
                 isCredit ? creditLines : List.of(),
-                List.of());
+                List.of(),
+                d.layoutMd());
     }
 
     public FactView fact(ReadRows.Fact f) {
@@ -146,7 +147,12 @@ public class CaseAssembler {
         // stream — without it, a workbench opened mid-intake would sit on stale data
         // waiting for an event it never subscribed to.
         boolean busy = !finished && !row.awaitingOfficer() && (error == null || error.isBlank());
-        return new RunState(stage, busy, error, started, finished, segmented,
+        // A halt is not a pause. `blockedAtGate` is true only while nobody has overridden,
+        // which is the same condition the gate itself tests before halting again — one rule,
+        // read in both places, rather than the screen and the engine each having a view.
+        boolean halted = row.halted();
+        return new RunState(stage, busy && !halted, error, started, finished, segmented,
+                row.nextStage(), row.awaitingOfficer(), halted, row.gateHaltCheckId(),
                 finished ? Areas.ALL.stream().map(CheckArea::id).toList() : List.of());
     }
 

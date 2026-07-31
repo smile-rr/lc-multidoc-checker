@@ -61,7 +61,7 @@ public class CaseStore {
                     rs.getString("abbr"), rs.getString("icon"), rs.getString("file_name"),
                     rs.getString("reference"), ints(rs.getArray("pages")),
                     rs.getString("extraction_mode"), rs.getBoolean("low_confidence"),
-                    rs.getString("scan_note"), rs.getInt("ordinal"));
+                    rs.getString("scan_note"), rs.getString("layout_md"), rs.getInt("ordinal"));
 
     private static final org.springframework.jdbc.core.RowMapper<ReadRows.BundlePage> BUNDLE_PAGE =
             (rs, n) -> new ReadRows.BundlePage(
@@ -237,6 +237,15 @@ public class CaseStore {
                 doc.getOrDefault("ordinal", 0));
     }
 
+    /** Layout markdown from {@code extract.doc.md} — officer fallback reading. */
+    public void setDocumentLayoutMd(String caseId, String docCode, String layoutMd) {
+        jdbc.update("""
+                UPDATE helix_check.lc_document
+                   SET layout_md = ?
+                 WHERE case_id = ?::uuid AND doc_code = ?
+                """, layoutMd, caseId, docCode);
+    }
+
     public List<ReadRows.Document> documents(String caseId) {
         return jdbc.query(
                 "SELECT * FROM helix_check.lc_document WHERE case_id = ?::uuid ORDER BY ordinal, doc_code",
@@ -309,6 +318,10 @@ public class CaseStore {
             // them back, because intake was not being rerun.
             jdbc.update("DELETE FROM helix_check.lc_fact WHERE case_id = ?::uuid AND doc_code <> ?",
                     caseId, keepFactsFor);
+            jdbc.update("""
+                    UPDATE helix_check.lc_document SET layout_md = NULL
+                     WHERE case_id = ?::uuid AND role = 'presented'
+                    """, caseId);
         }
         if (stage.ordinal() <= StageId.PLAN.ordinal()) {
             jdbc.update("DELETE FROM helix_check.lc_plan_check WHERE case_id = ?::uuid AND NOT added_by_officer", caseId);

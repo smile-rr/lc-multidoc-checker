@@ -152,6 +152,29 @@ public class CaseService {
         return assembler.peek(swift.read(new String(creditText, StandardCharsets.UTF_8)));
     }
 
+    /**
+     * The officer takes the gate's ground on themselves and lets the examination continue.
+     *
+     * <p>The finding stays. A hard check found something that makes this presentation
+     * refusable and that remains true whoever signs it off — the override says the officer
+     * has read it and accepts the consequence, not that the gate was wrong. That is why it is
+     * recorded against a name in the audit log and why it names the check it releases.
+     *
+     * <p>Without this the case is a dead end: {@code gate_overridden_by} was read by the gate
+     * and written by nothing, so a halted case could neither proceed nor be closed.
+     */
+    public void overrideGate(String ref, String note, String officerId) {
+        String id = resolve(ref);
+        CaseRow row = store.find(id).orElseThrow();
+        if (!row.gateHalted()) {
+            throw new IllegalStateException("Case " + ref + " is not halted at a hard check");
+        }
+        String who = officerId == null || officerId.isBlank() ? "officer" : officerId;
+        store.patchCase(id, Map.of("gate_overridden_by", who));
+        store.recordAction(id, "gate_override", String.valueOf(row.gateHaltCheckId()),
+                Map.of("checkId", String.valueOf(row.gateHaltCheckId())), who, note);
+    }
+
     public void decide(String ref, String findingRef, String disposition, String note, String officerId) {
         store.recordAction(resolve(ref), "disposition", findingRef,
                 Map.of("disposition", disposition == null ? "" : disposition), officerId, note);

@@ -163,6 +163,16 @@ export async function recordDecision(caseId, findingId, { disposition, note }) {
   )
 }
 
+/**
+ * Release a hard check's halt so the examination can go on.
+ *
+ * The finding it raised stays: the officer is taking the ground on themselves,
+ * not saying the gate was wrong.
+ */
+export async function overrideGate(caseId, { note } = {}) {
+  return api.post(`${base}/cases/${encodeURIComponent(caseId)}/gate/override`, { note: note ?? null })
+}
+
 export async function submitCase(caseId, { verdict, note }) {
   return api.post(`${base}/cases/${encodeURIComponent(caseId)}/signoff`, { verdict, note })
 }

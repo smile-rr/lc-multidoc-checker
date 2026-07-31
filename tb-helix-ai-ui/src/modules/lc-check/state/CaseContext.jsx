@@ -68,6 +68,18 @@ const initial = {
     failure: null,
 
     /**
+     * A hard check stopped the examination, and the id of the check that did it.
+     *
+     * Deliberately not folded into `failure`. Nothing went wrong: the system did
+     * exactly what it was asked and the answer is that this presentation cannot
+     * proceed. Nor is it a pause — the workbench used to call it one, which reads
+     * as "still going" and offers a button that runs the same gate into the same
+     * wall. It ends the run and asks the officer a question only they can answer.
+     */
+    halted: false,
+    haltedBy: null,
+
+    /**
      * True only for a run started in this session. A case can arrive already
      * examined, and the stage tabs must not drag the officer to the report the
      * moment they open one.
@@ -132,6 +144,7 @@ function reducer(state, action) {
       // Keep anything this tab already recorded if the service answer is behind
       // (e.g. stage_done landed before the refetch sees the new park).
       const done = [...new Set([...fromService, ...(action.merge ? state.run.done : [])])]
+      const halted = Boolean(loaded?.halted)
       return {
         ...state,
         loading: false,
@@ -143,6 +156,8 @@ function reducer(state, action) {
           started: Boolean(loaded?.started || state.run.started),
           finished,
           done,
+          halted,
+          haltedBy: loaded?.haltedBy ?? null,
           // The run owns activeStage. The load does not — not on a merge, and not
           // on a plain load either, which is what this used to say.
           //
@@ -152,14 +167,18 @@ function reducer(state, action) {
           // extracting the same six documents, every one of them writing events:
           // the quadruple rows in the run log were four real runs, not one run
           // reported four times.
-          activeStage: state.run.activeStage,
+          // …except when a hard check has stopped it. Nothing is executing then, and
+          // leaving the stage set leaves the button reading "Running…" forever.
+          activeStage: halted ? null : state.run.activeStage,
           segmented: loaded?.segmented ?? 0,
           completedAreaIds: loaded?.completedAreaIds ?? [],
           activeAreaId: action.merge ? state.run.activeAreaId : null,
           busy,
           activity: busy ? (action.merge ? state.run.activity : null) : null,
           failure: loaded?.error ?? null,
-          live: action.merge ? state.run.live : false,
+          // A halted run is over until an officer overrides it, so the auto-runner
+          // must not find it live and try the next stage.
+          live: halted ? false : action.merge ? state.run.live : false,
           following: action.merge ? state.run.following : true,
         },
       }
@@ -187,6 +206,10 @@ function reducer(state, action) {
     // the officer decides what to do about it, which is what officer-paced means.
     case 'stage_failed':
       return { ...state, run: { ...state.run, busy: false, live: false, activity: null, activeStage: null, failure: action.message } }
+    // The halt is released. The finding stays where it is — this says only that the
+    // examination may go on, which is why it does not touch findings or status.
+    case 'gate_overridden':
+      return { ...state, run: { ...state.run, halted: false, haltedBy: null, live: true, following: true } }
     case 'load_failed':
       return { ...state, loading: false, error: action.error }
 
@@ -422,6 +445,24 @@ export function CaseProvider({ caseId, children }) {
     startStep(next.id)
   }, [state.run.activeStage, state.run.done, state.run.started, state.run.live, state.runStages, startStep])
 
+  /**
+   * The officer accepts the gate's ground and lets the examination continue.
+   *
+   * Reloads rather than assuming: the service decides whether the halt is really
+   * released, and the case comes back saying so. Then the run resumes from where
+   * it stopped — the same `runNext` an unhalted case would use, because after an
+   * override there is nothing special about this case any more.
+   */
+  const overrideGate = useCallback(async (note) => {
+    try {
+      await api.overrideGate(caseId, { note })
+      await reload(true)
+      dispatch({ type: 'gate_overridden' })
+    } catch (e) {
+      flash(e.message ?? 'The halt could not be released')
+    }
+  }, [caseId, reload, flash])
+
   // Auto: whenever a run is live and nothing is executing, take the next step.
   // Expressed as a consequence of the state rather than as a chain of callbacks,
   // so switching to Auto halfway through a stepped run picks it up from where it
@@ -549,9 +590,9 @@ export function CaseProvider({ caseId, children }) {
       caseId,
       visible,
       stages: STAGES,
-      actions: { flash, runNext, decide, saveNote, addCheck, raiseFinding, submit, askQuestion, dispatch },
+      actions: { flash, runNext, overrideGate, decide, saveNote, addCheck, raiseFinding, submit, askQuestion, dispatch },
     }),
-    [state, caseId, visible, flash, runNext, decide, saveNote, addCheck, raiseFinding, submit, askQuestion],
+    [state, caseId, visible, flash, runNext, overrideGate, decide, saveNote, addCheck, raiseFinding, submit, askQuestion],
   )
 
   return <CaseContext.Provider value={value}>{children}</CaseContext.Provider>

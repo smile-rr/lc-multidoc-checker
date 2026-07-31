@@ -250,6 +250,11 @@ export async function recordDecision(caseId, findingId, decision) {
  * @param {{ verdict: import('../data/contracts.js').Verdict, note: string }} signoff
  * @returns {Promise<{ routedTo: string }>}
  */
+/** No gate halts in the fixtures, so there is nothing to release. */
+export async function overrideGate() {
+  return { overridden: true }
+}
+
 export async function submitCase(caseId, signoff) {
   await wait(LATENCY.mutate)
   void signoff

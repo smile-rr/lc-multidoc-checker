@@ -33,13 +33,17 @@ import java.util.*;
  * Reading the presentation.
  *
  * <p>Two passes, at deliberately different resolutions, because they are different
- * questions:
+ * questions — plus a third, layout markdown dump per document that reuses the same
+ * render and is cached separately:
  *
  * <ul>
  *   <li><b>Segment</b> — "what kind of document is each page?" Answered from layout and
  *       headings, so 800 px is plenty. One call for the whole bundle.
  *   <li><b>Extract</b> — "what does this document say?" Has to read a unit price, so
  *       1600 px. One call per document, over only that document's pages.
+ *   <li><b>Layout markdown</b> — full-page reading as markdown, same pages and render
+ *       spec (so PNG L1 hits). Cached as {@code extract.doc.md}; the officer fallback
+ *       when structured fields are thin or wrong.
  * </ul>
  *
  * <p>Running the bulk pass at extraction resolution is the single largest avoidable cost in
@@ -112,7 +116,8 @@ public class InterpretStage implements Stage {
     }
 
     /**
-     * The fields, one vision call per document.
+     * The fields, one vision call per document — then a layout markdown dump of the
+     * same pages, also cached, as the fallback reading when fields are thin or wrong.
      *
      * <p>One declared step for a fan-out whose width is not known until segmentation has
      * run — so the step is "extract" and its body re-announces with the document it is on.
@@ -259,8 +264,71 @@ public class InterpretStage implements Stage {
                 log.warn("Extraction failed for {} on case {}: {}", code, ctx.caseId(), e.toString());
                 ctx.recordFailedStep("extract:" + code, e.getMessage());
             }
+
+            // Layout markdown — same pages and render spec (so PNG L1 hits), separate
+            // cache op/prompt so a field hit is never mistaken for a layout hit.
+            extractLayoutMd(ctx, pdfSha, code, pages, scope, spec);
         }
         return read;
+    }
+
+    /**
+     * Full-page markdown of one document, for officer fallback and later tools.
+     *
+     * <p>Cached under {@link CacheOp#EXTRACT_DOC_MD}. Keyed on the same PDF + page span +
+     * render params as field extract, with its own prompt SHA — identical input and
+     * parameters reuse the entry across cases.
+     */
+    @SuppressWarnings("unchecked")
+    private void extractLayoutMd(StageContext ctx, String pdfSha, String code,
+                                 List<Integer> pages, String scope,
+                                 com.tb.helix.harness.doc.RenderSpec spec) {
+        if (ctx.cancelled()) return;
+        String prompt = prompts.get("extract-doc-md");
+        ctx.announce("extract-md:" + code, "Layout text · " + docTypes.label(code).toLowerCase());
+
+        var key = new DerivationKey(CacheOp.EXTRACT_DOC_MD, CacheOp.EXTRACT_DOC_MD_V, pdfSha, scope,
+                DerivationKey.sha256Hex(prompt), "role:extract.md", null, spec.asCacheParams());
+
+        try {
+            var hit = cache.computeIfAbsent(key, Map.class, () -> {
+                List<byte[]> images = renderer.render(pdfSha, pages, spec);
+                VisionResult result = models.read(
+                        VisionRequest.of(LlmRole.EXTRACT, images, prompt, pages));
+                String md = markdownOf(result.fields());
+                Map<String, Object> value = new LinkedHashMap<>();
+                value.put("markdown", md);
+                // rawResponse = prose markdown so L3 can write a .md sidecar, not JSON.
+                return new DerivationCache.Entry<>(value, null, md, ModelSpend.of(result.usage(), result.model()));
+            });
+
+            String md = markdownOf(hit.value());
+            if (md != null && !md.isBlank()) {
+                cases.setDocumentLayoutMd(ctx.caseId(), code, md);
+            }
+            Map<String, Object> what = Map.of(
+                    "pages", pages,
+                    "chars", md == null ? 0 : md.length());
+            if (hit.tier() != com.tb.helix.infra.cache.CacheTier.Level.NONE) {
+                ctx.recordCachedStep("extract-md:" + code, what, null);
+            } else {
+                ctx.recordStep("extract-md:" + code, what);
+            }
+        } catch (RuntimeException e) {
+            log.warn("Layout markdown failed for {} on case {}: {}", code, ctx.caseId(), e.toString());
+            ctx.recordFailedStep("extract-md:" + code, e.getMessage());
+        }
+    }
+
+    /** Pulls the markdown string out of the VLM JSON envelope {@code {markdown:…}}. */
+    private static String markdownOf(Object value) {
+        if (value == null) return null;
+        if (value instanceof String s) return s;
+        if (value instanceof Map<?, ?> map) {
+            Object m = map.get("markdown");
+            return m == null ? null : String.valueOf(m);
+        }
+        return null;
     }
 
     /**

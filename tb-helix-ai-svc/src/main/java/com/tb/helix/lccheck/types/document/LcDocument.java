@@ -27,5 +27,7 @@ public record LcDocument(
         String title,
         String meta,
         List<?> lines,
-        List<?> marks) {
+        List<?> marks,
+        /** Layout-preserving markdown of the pages; null until extract.doc.md has run. */
+        String layoutMd) {
 }

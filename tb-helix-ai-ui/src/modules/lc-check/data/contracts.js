@@ -83,6 +83,7 @@
  * @property {string} meta           Provenance line, e.g. 'scan pages 2-3 of 12 · 300 dpi'.
  * @property {DocLine[]} lines
  * @property {Mark[]} marks
+ * @property {string|null} [layoutMd] Layout-preserving markdown of the pages (extract.doc.md).
  */
 
 /**

@@ -131,6 +131,7 @@ helix:
         "[extract.credit]": 0       # deterministic at temperature 0
         "[segment.bundle]": 90d
         "[extract.doc]": 90d
+        "[extract.doc.md]": 90d
         "[plan.requirements]": 30d
         "[judge.rule]": 30d
       purge-cron: "0 30 3 * * *"

@@ -1,9 +1,10 @@
 import { cardSurface } from '@shared/ds/Card'
 import Eyebrow from '@shared/ds/Eyebrow'
+import MarkdownDoc from '@shared/ds/MarkdownDoc'
 import { useState } from 'react'
 
-// What the extractor read, laid out the way the v3 examination UI lays out its
-// parse fields: label, value, confidence. Nothing else.
+// What the extractor read: structured fields by default, and the layout markdown
+// dump when one exists — the fallback reading when a named field was missed.
 //
 // Deliberately quiet. An officer scanning thirty values is not interested in our
 // colour scheme; colour here is a claim that something needs attention, so it is
@@ -16,38 +17,64 @@ export default function FactsPanel({
   title,
   meta,
   facts,
+  layoutMd,
   hoverAnchor,
   onHoverAnchor,
   activePage,
   onPickFact,
 }) {
   const [showSource, setShowSource] = useState(false)
+  const [view, setView] = useState('fields') // fields | layout
+  const hasLayout = !!(layoutMd && layoutMd.trim())
   const uncertain = facts.filter((f) => f.confidence && f.confidence !== 'HIGH').length
+  const showingLayout = hasLayout && view === 'layout'
 
   return (
     <div style={{ ...cardSurface(12), boxShadow: 'none', display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
       <div style={{ padding: '11px 14px', borderBottom: '1px solid var(--me-grey-15)', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
-          <Eyebrow>Extracted fields</Eyebrow>
+          <Eyebrow>{showingLayout ? 'Layout text' : 'Extracted fields'}</Eyebrow>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--me-grey-70)', whiteSpace: 'nowrap' }}>
-            {facts.length} fields{uncertain ? ` · ${uncertain} unsure` : ''}
+            {showingLayout
+              ? `${layoutMd.length.toLocaleString()} chars`
+              : `${facts.length} fields${uncertain ? ` · ${uncertain} unsure` : ''}`}
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 4 }}>
           <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>{title} · {meta}</span>
-          <button
-            onClick={() => setShowSource((s) => !s)}
-            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 11.5, color: 'var(--me-blue)' }}
-          >
-            {showSource ? 'Hide source text' : 'Show source text'}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+            {hasLayout ? (
+              <span style={{ display: 'inline-flex', gap: 2, padding: 2, borderRadius: 6, background: 'var(--me-grey-08)' }}>
+                <TabBtn active={!showingLayout} onClick={() => setView('fields')}>Fields</TabBtn>
+                <TabBtn active={showingLayout} onClick={() => setView('layout')}>Layout</TabBtn>
+              </span>
+            ) : null}
+            {!showingLayout ? (
+              <button
+                onClick={() => setShowSource((s) => !s)}
+                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 11.5, color: 'var(--me-blue)' }}
+              >
+                {showSource ? 'Hide source text' : 'Show source text'}
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
 
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-        {facts.length === 0 ? (
+        {showingLayout ? (
+          <div style={{ padding: 10 }}>
+            <MarkdownDoc
+              text={layoutMd}
+              label="Layout markdown"
+              meta="Full-page reading · cached as extract.doc.md"
+              defaultView="rendered"
+            />
+          </div>
+        ) : facts.length === 0 ? (
           <div style={{ padding: 14, fontSize: 12, color: 'var(--me-grey-70)', fontStyle: 'italic' }}>
             No extracted fields recorded for this document.
+            {hasLayout ? ' Open Layout for the full-page reading.' : ''}
           </div>
         ) : (
           facts.map((f) => (
@@ -66,6 +93,28 @@ export default function FactsPanel({
   )
 }
 
+function TabBtn({ active, onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        border: 'none',
+        cursor: 'pointer',
+        padding: '3px 8px',
+        borderRadius: 4,
+        fontSize: 11,
+        fontWeight: active ? 600 : 500,
+        color: active ? 'var(--me-ink)' : 'var(--me-grey-70)',
+        background: active ? '#fff' : 'transparent',
+        boxShadow: active ? '0 0 0 1px var(--me-grey-15)' : 'none',
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
 function FactRow({ fact, lit, showSource, onHover, onPick }) {
   const clickable = fact.page != null
   return (
@@ -76,9 +125,6 @@ function FactRow({ fact, lit, showSource, onHover, onPick }) {
       style={{
         padding: '9px 14px',
         borderBottom: '1px solid var(--me-grey-08)',
-        // Stays white. A grey fill on the active row read as disabled rather than
-        // selected, and greyed half the panel while the officer moved through it.
-        // A left accent marks position without dimming the value being read.
         background: '#fff',
         boxShadow: lit ? 'inset 2px 0 0 var(--me-blue)' : 'none',
         cursor: clickable ? 'pointer' : 'default',
@@ -122,8 +168,6 @@ function FactRow({ fact, lit, showSource, onHover, onPick }) {
   )
 }
 
-// Nothing for a high-confidence read: that is the normal case. Amber when the
-// extractor was unsure, red when it barely read it at all.
 function ConfChip({ conf }) {
   if (!conf || conf === 'HIGH') return null
   const med = conf === 'MED'

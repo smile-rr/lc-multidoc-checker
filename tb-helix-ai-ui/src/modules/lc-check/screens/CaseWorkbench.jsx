@@ -113,6 +113,19 @@ function WorkbenchBody() {
   const stepping = run.mode === 'step'
   const nextStage = stageAfter(run.done, bar)
   const action = (() => {
+    // A hard check stopped it. Nothing runs until an officer takes that ground on
+    // themselves, so the button offers the only move there is and names the check
+    // it releases — "Continue the review" here would run the same gate into the
+    // same wall and look like a bug.
+    if (run.halted) {
+      return {
+        label: `Override ${run.haltedBy ?? 'the hard check'} and continue`,
+        run: () => {
+          actions.overrideGate(`Officer accepted the ground of ${run.haltedBy ?? 'the hard check'}`)
+          actions.flash('Halt released. The finding stays on the case.')
+        },
+      }
+    }
     // Intake is still reading. Named rather than absent, and disabled rather than
     // hidden: the officer should be able to see that the case is doing something
     // and that starting a review is not yet one of the things they can do.
@@ -153,7 +166,11 @@ function WorkbenchBody() {
     return null
   })()
 
-  const status = run.failure
+  const status = run.halted
+    // Not "Paused". The examination stopped on purpose and will not resume by
+    // itself, which is a different thing to tell an officer than "still going".
+    ? { tone: 'warning', label: `Halted · ${run.haltedBy ?? 'hard check'}` }
+    : run.failure
     ? { tone: 'error', label: 'Stopped' }
     : run.busy && !run.activeStage
     ? { tone: 'blue', label: run.activity ?? 'Reading' }

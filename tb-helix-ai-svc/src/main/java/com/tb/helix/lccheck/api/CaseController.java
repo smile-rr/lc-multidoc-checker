@@ -196,6 +196,17 @@ public class CaseController {
 
     // --- Officer decisions --------------------------------------------------
 
+    /**
+     * Release a hard check's halt. The finding it raised stays where it is.
+     */
+    @PostMapping("/cases/{ref}/gate/override")
+    public Map<String, Object> overrideGate(@PathVariable String ref,
+                                            @RequestBody(required = false) DecisionRequest body,
+                                            @RequestParam(defaultValue = "officer") String officerId) {
+        cases.overrideGate(ref, body == null ? null : body.note(), officerId);
+        return Map.of("overridden", true);
+    }
+
     @PostMapping("/cases/{ref}/findings/{findingRef}/decision")
     public Map<String, Object> decide(@PathVariable String ref, @PathVariable String findingRef,
                                       @RequestBody DecisionRequest body,

@@ -38,6 +38,7 @@ public final class ReadRows {
             String extractionMode,
             boolean lowConfidence,
             String scanNote,
+            String layoutMd,
             int ordinal) {
     }
 
