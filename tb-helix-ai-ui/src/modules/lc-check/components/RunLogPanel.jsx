@@ -214,9 +214,6 @@ function StepRow({ step, cost }) {
 function EventRow({ event, inset = 0 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '2px 0 2px', paddingLeft: inset, fontSize: 11.5 }}>
-      <span style={{ fontFamily: 'var(--font-mono)', color: LOG_INK.time, flexShrink: 0 }}>
-        {clockTime(event.at)}
-      </span>
       <span style={{ fontFamily: 'var(--font-mono)', color: LOG_INK.type, flexShrink: 0 }}>
         {event.type}
       </span>
@@ -229,6 +226,11 @@ function EventRow({ event, inset = 0 }) {
           ×{event.count}
         </span>
       )}
+      <span style={{ flex: 1 }} />
+      {/* Same trailing clock as a step, in the same column. A row that put the time
+          first sat directly under rows that put it last, so the eye had to re-anchor
+          on every line — and the one column you scan a log by was the one that moved. */}
+      <Clock at={event.at} ms={null} />
     </div>
   )
 }
@@ -244,12 +246,14 @@ function Clock({ at, ms, running, strong }) {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 8, flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: 11 }}>
       <span style={{ color: LOG_INK.time }}>{clockTime(at)}</span>
+      {/* Reserved even when empty — an event has a time but no duration, and if the
+          slot collapsed the timestamps above and below it would not line up. */}
       <span style={{
         color: running ? LOG_INK.running : LOG_INK.muted,
         fontWeight: strong ? 600 : 500,
         minWidth: 46, textAlign: 'right',
       }}>
-        {elapsed(ms)}
+        {ms == null ? '' : elapsed(ms)}
       </span>
     </span>
   )
