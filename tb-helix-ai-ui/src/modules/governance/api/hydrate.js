@@ -39,22 +39,20 @@ function rekey(target, source) {
 }
 
 export function hydrateSeed(seed, data) {
-  // Document codes first — bindings and checks both cite documents by code, and
-  // the editor works in names.
-  const nameOf = {}
-  ;(data.docTypes ?? []).forEach((d) => { nameOf[d.code] = d.name })
-
   refill(seed.docTypes, (data.docTypes ?? []).map((d, i) => ({
     id: `d${i}`,
     key: d.code,
     name: d.name,
     description: d.description ?? '',
     ...(d.before_reading ? { beforeReading: true } : {}),
+    ...(d.role ? { role: d.role } : {}),
   })))
 
   const bindingsFor = {}
   ;(data.bindings ?? []).forEach((b) => {
-    ;(bindingsFor[b.field_key] ??= []).push({ doc: nameOf[b.doc_code] ?? b.doc_code, note: b.note ?? '' })
+    // The code, not the name. A name is a label an author may correct; the code is
+    // identity, and it is what every consumer of the dictionary joins on.
+    ;(bindingsFor[b.field_key] ??= []).push({ doc: b.doc_code, note: b.note ?? '' })
   })
   refill(seed.fields, (data.fields ?? []).map((f, i) => ({
     id: `f${i + 1}`,

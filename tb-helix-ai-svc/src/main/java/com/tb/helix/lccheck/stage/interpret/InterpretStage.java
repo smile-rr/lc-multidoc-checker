@@ -1,6 +1,5 @@
 package com.tb.helix.lccheck.stage.interpret;
 
-import com.tb.helix.governance.types.DocType;
 import com.tb.helix.harness.doc.PageRenderer;
 import com.tb.helix.harness.doc.RenderProperties;
 import com.tb.helix.harness.llm.LlmGateway;
@@ -15,6 +14,7 @@ import com.tb.helix.infra.pipeline.StepResult;
 import com.tb.helix.infra.stream.HelixEvent;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.Rows;
+import com.tb.helix.lccheck.service.DocumentTypes;
 import com.tb.helix.lccheck.pipeline.*;
 import com.tb.helix.lccheck.pipeline.StageContext;
 import com.tb.helix.lccheck.types.pipeline.StageId;
@@ -52,15 +52,18 @@ public class InterpretStage implements Stage {
     private final LlmGateway models;
     private final DerivationCache cache;
     private final CaseStore cases;
+    private final DocumentTypes docTypes;
     private final ObjectMapper json;
 
     public InterpretStage(PageRenderer renderer, RenderProperties render, LlmGateway models,
-                          DerivationCache cache, CaseStore cases, ObjectMapper json) {
+                          DerivationCache cache, CaseStore cases, DocumentTypes docTypes,
+                          ObjectMapper json) {
         this.renderer = renderer;
         this.render = render;
         this.models = models;
         this.cache = cache;
         this.cases = cases;
+        this.docTypes = docTypes;
         this.json = json;
     }
 
@@ -124,14 +127,22 @@ public class InterpretStage implements Stage {
         for (int i = 1; i <= pageCount; i++) all.add(i);
 
         var spec = render.specFor("segment");
+        // Built per run, not once at class load: the vocabulary is authored, so it can
+        // change between two cases. Hashing the assembled prompt into the key is what makes
+        // that safe — add a document type in the console and the next bundle is re-read
+        // rather than answered from a cache that never heard of it.
+        String prompt = SEGMENT_PROMPT
+                .replace("{DOC_TYPES}", docTypes.vocabulary())
+                .replace("{UNKNOWN}", DocumentTypes.UNKNOWN)
+                .replace("{PAGES}", String.valueOf(pageCount));
+
         var key = new DerivationKey(CacheOp.SEGMENT_BUNDLE, CacheOp.SEGMENT_BUNDLE_V, pdfSha,
-                "1-" + pageCount, DerivationKey.sha256Hex(SEGMENT_PROMPT), "role:segment", null,
+                "1-" + pageCount, DerivationKey.sha256Hex(prompt), "role:segment", null,
                 spec.asCacheParams());
 
         var hit = cache.computeIfAbsent(key, Map.class, () -> {
             List<byte[]> images = renderer.render(pdfSha, all, spec);
-            VisionResult result = models.read(VisionRequest.of(LlmRole.SEGMENT, images,
-                    SEGMENT_PROMPT.replace("{PAGES}", String.valueOf(pageCount)), all));
+            VisionResult result = models.read(VisionRequest.of(LlmRole.SEGMENT, images, prompt, all));
             return DerivationCache.Entry.of(result.fields());
         });
 
@@ -161,14 +172,14 @@ public class InterpretStage implements Stage {
                         Integer page = asInt(m.get("page"));
                         Object raw = m.get("docType");
                         String type = raw == null ? "UNKNOWN" : String.valueOf(raw);
-                        if (page != null) out.put(page, DocType.ALL.containsKey(type) ? type : "UNKNOWN");
+                        if (page != null) out.put(page, docTypes.known(type) ? type : DocumentTypes.UNKNOWN);
                     }
                 }
             }
         }
         // A page the model did not mention is not silently dropped — it becomes UNKNOWN,
         // which the officer can see and reclassify. A missing page is invisible.
-        for (int p = 1; p <= pageCount; p++) out.putIfAbsent(p, "UNKNOWN");
+        for (int p = 1; p <= pageCount; p++) out.putIfAbsent(p, DocumentTypes.UNKNOWN);
         return out;
     }
 
@@ -178,16 +189,16 @@ public class InterpretStage implements Stage {
 
         int ordinal = 1;
         for (var entry : grouped.entrySet()) {
-            var def = DocType.of(entry.getKey());
+            String code = entry.getKey();
             List<Integer> pages = entry.getValue().stream().sorted().toList();
-            cases.upsertDocument(ctx.caseId(), def.code(), Rows.of(
-                    "role", "presented", "docType", def.label(), "abbr", def.abbr(),
-                    "icon", def.icon(), "fileName", "bundle",
+            cases.upsertDocument(ctx.caseId(), code, Rows.of(
+                    "role", "presented", "docType", docTypes.label(code), "abbr", docTypes.abbr(code),
+                    "icon", "file-text", "fileName", "bundle",
                     "pageFrom", pages.get(0), "pageTo", pages.get(pages.size() - 1),
                     "pages", pages, "extraction", "ocr", "ordinal", ordinal++));
         }
         byPage.forEach((page, code) ->
-                cases.setBundlePage(ctx.caseId(), page, code, DocType.of(code).label()));
+                cases.setBundlePage(ctx.caseId(), page, code, docTypes.label(code)));
     }
 
     // --- Extraction ---------------------------------------------------------
@@ -195,7 +206,7 @@ public class InterpretStage implements Stage {
     private int extractAll(StageContext ctx, String pdfSha, Map<Integer, String> byPage) {
         Map<String, List<Integer>> grouped = new LinkedHashMap<>();
         byPage.forEach((page, code) -> {
-            if (!"UNKNOWN".equals(code)) grouped.computeIfAbsent(code, k -> new ArrayList<>()).add(page);
+            if (!DocumentTypes.UNKNOWN.equals(code)) grouped.computeIfAbsent(code, k -> new ArrayList<>()).add(page);
         });
 
         var spec = render.specFor("extract");
@@ -209,7 +220,7 @@ public class InterpretStage implements Stage {
             // The slowest thing in the stage — one vision call per document — and until
             // now the only thing the officer saw of it was a progress bar that had
             // already reached the end of segmentation.
-            ctx.announce("extract", "Reading the " + DocType.of(code).label().toLowerCase());
+            ctx.announce("extract", "Reading the " + docTypes.label(code).toLowerCase());
 
             var key = new DerivationKey(CacheOp.EXTRACT_DOC, CacheOp.EXTRACT_DOC_V, pdfSha, scope,
                     DerivationKey.sha256Hex(prompt), "role:extract", null, spec.asCacheParams());
@@ -295,10 +306,9 @@ public class InterpretStage implements Stage {
             not from what you expect the order to be.
 
             Document types:
-            """ + DocType.vocabulary() + """
-
-            If a page does not clearly belong to any of these, use UNKNOWN. Guessing is worse
-            than saying so: a wrong type sends the wrong rules at the document.
+            {DOC_TYPES}
+            If a page does not clearly belong to any of these, use {UNKNOWN}. Guessing is
+            worse than saying so: a wrong type sends the wrong rules at the document.
 
             A document may run over several pages. Give every page its own entry.
 
@@ -306,8 +316,7 @@ public class InterpretStage implements Stage {
             {"pages": [{"page": 1, "docType": "INV", "why": "short reason"}, ...]}
             """;
 
-    private static String extractPrompt(String code) {
-        var def = DocType.of(code);
+    private String extractPrompt(String code) {
         return """
                 Read this %s and return the fields written on it.
 
@@ -326,6 +335,6 @@ public class InterpretStage implements Stage {
                 other field actually present.
 
                 Return only JSON: a flat object of field name to value.
-                """.formatted(def.label().toLowerCase());
+                """.formatted(docTypes.label(code).toLowerCase());
     }
 }

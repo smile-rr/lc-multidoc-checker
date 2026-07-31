@@ -1,102 +1,111 @@
 {
   "docTypes": [
     {
-      "code": "LETTER_OF_CREDIT",
+      "code": "LC",
       "name": "Letter of credit",
       "description": "The credit as received by wire — tagged fields and free-text blocks.",
       "beforeReading": true,
-      "ordinal": 0
+      "ordinal": 0,
+      "role": "credit"
     },
     {
-      "code": "COVERING_SCHEDULE",
+      "code": "CS",
       "name": "Covering schedule",
       "description": "The presenting bank's covering letter and receipt stamp.",
       "beforeReading": true,
-      "ordinal": 1
+      "ordinal": 1,
+      "role": "schedule"
     },
     {
-      "code": "DRAFT__BILL_OF_EXCHANGE",
+      "code": "BOE",
       "name": "Draft / bill of exchange",
       "description": "The draft drawn under the credit.",
       "beforeReading": false,
       "ordinal": 2
     },
     {
-      "code": "COMMERCIAL_INVOICE",
+      "code": "INV",
       "name": "Commercial invoice",
       "description": "Issued by the beneficiary; lists goods, quantities and value.",
       "beforeReading": false,
       "ordinal": 3
     },
     {
-      "code": "BILL_OF_LADING",
+      "code": "BOL",
       "name": "Bill of lading",
       "description": "Carrier's receipt and document of title for sea shipment.",
       "beforeReading": false,
       "ordinal": 4
     },
     {
-      "code": "AIR_WAYBILL",
+      "code": "AWB",
       "name": "Air waybill",
       "description": "Air carrier receipt evidencing shipment by air.",
       "beforeReading": false,
       "ordinal": 5
     },
     {
-      "code": "MULTIMODAL_TRANSPORT_DOC",
+      "code": "MTD",
       "name": "Multimodal transport doc",
       "description": "Covers at least two different modes of transport.",
       "beforeReading": false,
       "ordinal": 6
     },
     {
-      "code": "CHARTER_PARTY_B_L",
+      "code": "CPB",
       "name": "Charter-party B/L",
       "description": "Bill of lading issued subject to a charter party.",
       "beforeReading": false,
       "ordinal": 7
     },
     {
-      "code": "INSURANCE_DOCUMENT",
+      "code": "INS",
       "name": "Insurance document",
       "description": "Evidence of cargo insurance cover.",
       "beforeReading": false,
       "ordinal": 8
     },
     {
-      "code": "PACKING_LIST",
+      "code": "PKL",
       "name": "Packing list",
       "description": "Breakdown of how the goods are packed.",
       "beforeReading": false,
       "ordinal": 9
     },
     {
-      "code": "CERTIFICATE_OF_ORIGIN",
+      "code": "COO",
       "name": "Certificate of origin",
       "description": "States the country where goods were produced.",
       "beforeReading": false,
       "ordinal": 10
     },
     {
-      "code": "INSPECTION_CERTIFICATE",
+      "code": "INSP",
       "name": "Inspection certificate",
       "description": "Third-party evidence the goods were inspected.",
       "beforeReading": false,
       "ordinal": 11
     },
     {
-      "code": "BENEFICIARY_CERTIFICATE",
+      "code": "BC",
       "name": "Beneficiary certificate",
       "description": "A statement signed by the beneficiary itself.",
       "beforeReading": false,
       "ordinal": 12
     },
     {
-      "code": "TRANSPORT_DOCUMENT",
+      "code": "TD",
       "name": "Transport document",
       "description": "Any transport document where the credit names no particular form.",
       "beforeReading": false,
       "ordinal": 13
+    },
+    {
+      "code": "WC",
+      "name": "Warranty certificate",
+      "description": "The beneficiary's undertaking as to quality, period and scope of the warranty given.",
+      "beforeReading": false,
+      "ordinal": 90
     }
   ],
   "fields": [
@@ -108,11 +117,11 @@
       "seeded": true,
       "bindings": [
         {
-          "doc": "LETTER_OF_CREDIT",
+          "doc": "LC",
           "note": "Tag 31D — first six digits, YYMMDD"
         },
         {
-          "doc": "COVERING_SCHEDULE",
+          "doc": "CS",
           "note": "Only where the schedule restates it: \"valid until\", \"expires on\""
         }
       ]
@@ -125,7 +134,7 @@
       "seeded": true,
       "bindings": [
         {
-          "doc": "LETTER_OF_CREDIT",
+          "doc": "LC",
           "note": "Tag 31D — text following the date"
         }
       ]
@@ -138,7 +147,7 @@
       "seeded": true,
       "bindings": [
         {
-          "doc": "LETTER_OF_CREDIT",
+          "doc": "LC",
           "note": "41A / 41D — the bank line before \"BY\""
         }
       ]
@@ -151,7 +160,7 @@
       "seeded": true,
       "bindings": [
         {
-          "doc": "LETTER_OF_CREDIT",
+          "doc": "LC",
           "note": "41A / 41D — the text after \"BY\""
         }
       ]
@@ -164,11 +173,11 @@
       "seeded": true,
       "bindings": [
         {
-          "doc": "LETTER_OF_CREDIT",
+          "doc": "LC",
           "note": "Tag 42C, \"drafts at\""
         },
         {
-          "doc": "DRAFT__BILL_OF_EXCHANGE",
+          "doc": "BOE",
           "note": "The tenor phrase on the face: \"at sight\", \"at 60 days after B/L date\""
         }
       ]
@@ -181,11 +190,11 @@
       "seeded": true,
       "bindings": [
         {
-          "doc": "LETTER_OF_CREDIT",
+          "doc": "LC",
           "note": "Tag 42A or 42D"
         },
         {
-          "doc": "DRAFT__BILL_OF_EXCHANGE",
+          "doc": "BOE",
           "note": "Party named after \"drawn on\" or \"to\""
         }
       ]
@@ -198,7 +207,7 @@
       "seeded": true,
       "bindings": [
         {
-          "doc": "LETTER_OF_CREDIT",
+          "doc": "LC",
           "note": "Tag 46A — whole block, kept unparsed for requirement cards"
         }
       ]
@@ -211,7 +220,7 @@
       "seeded": true,
       "bindings": [
         {
-          "doc": "LETTER_OF_CREDIT",
+          "doc": "LC",
           "note": "Tag 47A — whole block, kept unparsed for requirement cards"
         }
       ]
@@ -224,15 +233,15 @@
       "seeded": true,
       "bindings": [
         {
-          "doc": "LETTER_OF_CREDIT",
+          "doc": "LC",
           "note": "Tag 45A"
         },
         {
-          "doc": "COMMERCIAL_INVOICE",
+          "doc": "INV",
           "note": "Goods lines under \"description of goods\" — ignore packing and freight notes"
         },
         {
-          "doc": "BILL_OF_LADING",
+          "doc": "BOL",
           "note": "\"Description of packages and goods\" — may be in general terms"
         }
       ]
@@ -245,7 +254,7 @@
       "seeded": true,
       "bindings": [
         {
-          "doc": "LETTER_OF_CREDIT",
+          "doc": "LC",
           "note": "Tag 32B, widened by the 39A tolerance when present"
         }
       ]
@@ -258,7 +267,7 @@
       "seeded": true,
       "bindings": [
         {
-          "doc": "COMMERCIAL_INVOICE",
+          "doc": "INV",
           "note": "Highest-level total: \"total\", \"grand total\", \"total amount due\"; sum the lines if none is shown"
         }
       ]
@@ -271,15 +280,15 @@
       "seeded": true,
       "bindings": [
         {
-          "doc": "LETTER_OF_CREDIT",
+          "doc": "LC",
           "note": "Tag 32B — first three characters"
         },
         {
-          "doc": "COMMERCIAL_INVOICE",
+          "doc": "INV",
           "note": "Code beside the total"
         },
         {
-          "doc": "INSURANCE_DOCUMENT",
+          "doc": "INS",
           "note": "Currency of the sum insured"
         }
       ]
@@ -292,7 +301,7 @@
       "seeded": true,
       "bindings": [
         {
-          "doc": "INSURANCE_DOCUMENT",
+          "doc": "INS",
           "note": "Amount beside \"sum insured\" or \"amount insured\""
         }
       ]
@@ -305,7 +314,7 @@
       "seeded": true,
       "bindings": [
         {
-          "doc": "INSURANCE_DOCUMENT",
+          "doc": "INS",
           "note": "\"Cover effective from\" if shown, else the date of issue"
         }
       ]
@@ -318,7 +327,7 @@
       "seeded": true,
       "bindings": [
         {
-          "doc": "LETTER_OF_CREDIT",
+          "doc": "LC",
           "note": "Tag 44C, or derived from the 44D shipment period"
         }
       ]
@@ -331,11 +340,11 @@
       "seeded": true,
       "bindings": [
         {
-          "doc": "BILL_OF_LADING",
+          "doc": "BOL",
           "note": "Dated on-board notation; the issue date only where the wording is pre-printed"
         },
         {
-          "doc": "AIR_WAYBILL",
+          "doc": "AWB",
           "note": "Actual flight-date notation — not the issue date"
         }
       ]
@@ -348,11 +357,11 @@
       "seeded": true,
       "bindings": [
         {
-          "doc": "LETTER_OF_CREDIT",
+          "doc": "LC",
           "note": "Tag 44E"
         },
         {
-          "doc": "BILL_OF_LADING",
+          "doc": "BOL",
           "note": "\"Port of loading\" or \"from\" — the named port, not a place of receipt"
         }
       ]
@@ -365,11 +374,11 @@
       "seeded": true,
       "bindings": [
         {
-          "doc": "LETTER_OF_CREDIT",
+          "doc": "LC",
           "note": "Tag 44F"
         },
         {
-          "doc": "BILL_OF_LADING",
+          "doc": "BOL",
           "note": "\"Port of discharge\" or \"to\" — not an inland final destination"
         }
       ]
@@ -382,15 +391,15 @@
       "seeded": true,
       "bindings": [
         {
-          "doc": "LETTER_OF_CREDIT",
+          "doc": "LC",
           "note": "Tag 59 — first line"
         },
         {
-          "doc": "COMMERCIAL_INVOICE",
+          "doc": "INV",
           "note": "Issuer of the invoice, however labelled: \"seller\", \"exporter\", \"shipper\", \"from\""
         },
         {
-          "doc": "BILL_OF_LADING",
+          "doc": "BOL",
           "note": "Shipper or consignor box"
         }
       ]
@@ -403,11 +412,11 @@
       "seeded": true,
       "bindings": [
         {
-          "doc": "LETTER_OF_CREDIT",
+          "doc": "LC",
           "note": "Tag 50"
         },
         {
-          "doc": "COMMERCIAL_INVOICE",
+          "doc": "INV",
           "note": "Party the invoice is made out to: \"buyer\", \"consignee\", \"sold to\", \"bill to\""
         }
       ]
@@ -420,7 +429,7 @@
       "seeded": true,
       "bindings": [
         {
-          "doc": "LETTER_OF_CREDIT",
+          "doc": "LC",
           "note": "Tag 48; 21 calendar days where the credit is silent"
         }
       ]
@@ -433,7 +442,7 @@
       "seeded": true,
       "bindings": [
         {
-          "doc": "COVERING_SCHEDULE",
+          "doc": "CS",
           "note": "Receipt stamp date, else the date the case was opened"
         }
       ]
@@ -945,8 +954,8 @@
         "Draft tenor"
       ],
       "docs": [
-        "LETTER_OF_CREDIT",
-        "DRAFT__BILL_OF_EXCHANGE"
+        "LC",
+        "BOE"
       ],
       "suggestion": "Add a condition for credits available by mixed payment (part sight, part deferred) — confirm each portion matches its own draft.",
       "status": "ACTIVE"
@@ -971,8 +980,8 @@
         "Place of expiry"
       ],
       "docs": [
-        "LETTER_OF_CREDIT",
-        "COMMERCIAL_INVOICE"
+        "LC",
+        "INV"
       ],
       "suggestion": "No condition yet for transferring the insurance benefit to the second beneficiary — consider adding one.",
       "status": "DRAFT"
@@ -1001,8 +1010,8 @@
         "Presentation period"
       ],
       "docs": [
-        "LETTER_OF_CREDIT",
-        "COVERING_SCHEDULE"
+        "LC",
+        "CS"
       ],
       "suggestion": "Runs before anything is read. If it fails, nothing in the documents can cure it.",
       "status": "ACTIVE",
@@ -1018,26 +1027,26 @@
                 "id": "r1",
                 "l": {
                   "field": "Presentation date",
-                  "doc": "Covering schedule"
+                  "doc": "CS"
                 },
                 "op": "d_lte",
                 "tol": "",
                 "r": {
                   "field": "Expiry date",
-                  "doc": "Letter of credit"
+                  "doc": "LC"
                 }
               },
               {
                 "id": "r2",
                 "l": {
                   "field": "Place of presentation",
-                  "doc": "Covering schedule"
+                  "doc": "CS"
                 },
                 "op": "eq",
                 "tol": "",
                 "r": {
                   "field": "Place of expiry",
-                  "doc": "Letter of credit"
+                  "doc": "LC"
                 }
               }
             ]
@@ -1075,26 +1084,26 @@
                 "id": "r1",
                 "l": {
                   "field": "Draft tenor",
-                  "doc": "Draft / bill of exchange"
+                  "doc": "BOE"
                 },
                 "op": "eq",
                 "tol": "",
                 "r": {
                   "field": "Draft tenor",
-                  "doc": "Letter of credit"
+                  "doc": "LC"
                 }
               },
               {
                 "id": "r2",
                 "l": {
                   "field": "Drawee",
-                  "doc": "Draft / bill of exchange"
+                  "doc": "BOE"
                 },
                 "op": "same_party",
                 "tol": "",
                 "r": {
                   "field": "Drawee",
-                  "doc": "Letter of credit"
+                  "doc": "LC"
                 }
               }
             ]
@@ -1132,52 +1141,52 @@
                 "id": "r1",
                 "l": {
                   "field": "On-board date",
-                  "doc": "Bill of lading"
+                  "doc": "BOL"
                 },
                 "op": "d_lte",
                 "tol": "",
                 "r": {
                   "field": "Latest shipment date",
-                  "doc": "Letter of credit"
+                  "doc": "LC"
                 }
               },
               {
                 "id": "r2",
                 "l": {
                   "field": "Port of loading",
-                  "doc": "Bill of lading"
+                  "doc": "BOL"
                 },
                 "op": "eq",
                 "tol": "",
                 "r": {
                   "field": "Port of loading",
-                  "doc": "Letter of credit"
+                  "doc": "LC"
                 }
               },
               {
                 "id": "r3",
                 "l": {
                   "field": "Port of discharge",
-                  "doc": "Bill of lading"
+                  "doc": "BOL"
                 },
                 "op": "eq",
                 "tol": "",
                 "r": {
                   "field": "Port of discharge",
-                  "doc": "Letter of credit"
+                  "doc": "LC"
                 }
               },
               {
                 "id": "r4",
                 "l": {
                   "field": "Presentation date",
-                  "doc": "Covering schedule"
+                  "doc": "CS"
                 },
                 "op": "d_within",
                 "tol": "21 calendar days",
                 "r": {
                   "field": "On-board date",
-                  "doc": "Bill of lading"
+                  "doc": "BOL"
                 }
               }
             ]
@@ -1215,7 +1224,7 @@
                 "id": "r1",
                 "l": {
                   "field": "Insured amount",
-                  "doc": "Insurance document"
+                  "doc": "INS"
                 },
                 "op": "gte",
                 "tol": "",
@@ -1227,26 +1236,26 @@
                 "id": "r2",
                 "l": {
                   "field": "Currency",
-                  "doc": "Insurance document"
+                  "doc": "INS"
                 },
                 "op": "eq",
                 "tol": "",
                 "r": {
                   "field": "Currency",
-                  "doc": "Letter of credit"
+                  "doc": "LC"
                 }
               },
               {
                 "id": "r3",
                 "l": {
                   "field": "Cover date",
-                  "doc": "Insurance document"
+                  "doc": "INS"
                 },
                 "op": "d_lte",
                 "tol": "",
                 "r": {
                   "field": "On-board date",
-                  "doc": "Bill of lading"
+                  "doc": "BOL"
                 }
               }
             ]
@@ -1273,8 +1282,8 @@
         "Port of discharge"
       ],
       "docs": [
-        "COMMERCIAL_INVOICE",
-        "BILL_OF_LADING"
+        "INV",
+        "BOL"
       ],
       "suggestion": "Link this check to the party fields so screening runs on every named party automatically.",
       "status": "DRAFT"
@@ -1310,52 +1319,52 @@
                 "id": "r1",
                 "l": {
                   "field": "Goods description",
-                  "doc": "Commercial invoice"
+                  "doc": "INV"
                 },
                 "op": "eq",
                 "tol": "corresponds, not identical",
                 "r": {
                   "field": "Goods description",
-                  "doc": "Letter of credit"
+                  "doc": "LC"
                 }
               },
               {
                 "id": "r2",
                 "l": {
                   "field": "Goods description",
-                  "doc": "Bill of lading"
+                  "doc": "BOL"
                 },
                 "op": "noconflict",
                 "tol": "general terms allowed",
                 "r": {
                   "field": "Goods description",
-                  "doc": "Commercial invoice"
+                  "doc": "INV"
                 }
               },
               {
                 "id": "r3",
                 "l": {
                   "field": "Beneficiary name",
-                  "doc": "Commercial invoice"
+                  "doc": "INV"
                 },
                 "op": "same_party",
                 "tol": "",
                 "r": {
                   "field": "Beneficiary name",
-                  "doc": "Letter of credit"
+                  "doc": "LC"
                 }
               },
               {
                 "id": "r4",
                 "l": {
                   "field": "Applicant name",
-                  "doc": "Commercial invoice"
+                  "doc": "INV"
                 },
                 "op": "addr_same_country",
                 "tol": "",
                 "r": {
                   "field": "Applicant name",
-                  "doc": "Letter of credit"
+                  "doc": "LC"
                 }
               }
             ]
@@ -1393,26 +1402,26 @@
                 "id": "r1",
                 "l": {
                   "field": "Invoice value",
-                  "doc": "Commercial invoice"
+                  "doc": "INV"
                 },
                 "op": "lte",
                 "tol": "5% tolerance",
                 "r": {
                   "field": "Credit amount",
-                  "doc": "Letter of credit"
+                  "doc": "LC"
                 }
               },
               {
                 "id": "r2",
                 "l": {
                   "field": "Currency",
-                  "doc": "Commercial invoice"
+                  "doc": "INV"
                 },
                 "op": "eq",
                 "tol": "",
                 "r": {
                   "field": "Currency",
-                  "doc": "Letter of credit"
+                  "doc": "LC"
                 }
               }
             ]
@@ -1438,7 +1447,7 @@
         "Documents required"
       ],
       "docs": [
-        "LETTER_OF_CREDIT"
+        "LC"
       ],
       "suggestion": "Add an assertion for legalisation wording — three recent cases turned on it.",
       "status": "ACTIVE"
@@ -1461,7 +1470,7 @@
         "Additional conditions"
       ],
       "docs": [
-        "LETTER_OF_CREDIT"
+        "LC"
       ],
       "suggestion": "Split non-documentary conditions into their own assertion so they are reported as notes.",
       "status": "ACTIVE"

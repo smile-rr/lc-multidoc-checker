@@ -13,6 +13,7 @@ import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.pipeline.Stage;
 import com.tb.helix.lccheck.pipeline.StageContext;
+import com.tb.helix.lccheck.service.DocumentTypes;
 import com.tb.helix.lccheck.types.CaseStatus;
 import com.tb.helix.lccheck.types.pipeline.StageId;
 
@@ -64,15 +65,6 @@ public class IntakeStage implements Stage {
     public static final String MANIFEST = "manifest";
     public static final String READY = "ready";
 
-    /**
-     * The document code the credit is filed under.
-     *
-     * <p>One document, however many messages are in the file — the officer opens "the
-     * credit", not four of them, and every fact and finding that points at the credit points
-     * here. It was the literal {@code "mt700"} in two places, which stopped being true the
-     * moment an amendment could be in the same upload.
-     */
-    public static final String CREDIT_DOC = "LC";
 
     private final BlobStore blobs;
     private final DocumentConverter converter;
@@ -80,15 +72,18 @@ public class IntakeStage implements Stage {
     private final SwiftReader swift;
     private final CreditReader creditReader;
     private final CaseStore cases;
+    private final DocumentTypes docTypes;
 
     public IntakeStage(BlobStore blobs, DocumentConverter converter, PageRenderer renderer,
-                       SwiftReader swift, CreditReader creditReader, CaseStore cases) {
+                       SwiftReader swift, CreditReader creditReader, CaseStore cases,
+                       DocumentTypes docTypes) {
         this.blobs = blobs;
         this.converter = converter;
         this.renderer = renderer;
         this.swift = swift;
         this.creditReader = creditReader;
         this.cases = cases;
+        this.docTypes = docTypes;
     }
 
     @Override
@@ -140,7 +135,7 @@ public class IntakeStage implements Stage {
             // A placeholder document, so the intake screen has the filename to show while
             // the message behind it is still being read. It carries no reading of the
             // credit — everything below `fileName` is filled in by execute().
-            cases.upsertDocument(caseId, CREDIT_DOC, Rows.of(
+            cases.upsertDocument(caseId, docTypes.creditCode(), Rows.of(
                     "role", "credit", "docType", "Letter of credit", "abbr", "LC",
                     "icon", "file-text", "fileName", creditName,
                     "extraction", "text", "ordinal", 0));
@@ -204,7 +199,7 @@ public class IntakeStage implements Stage {
         // No fileName: the upsert leaves file_name alone on conflict, so the name recorded
         // at receive survives this and every rerun after it. The upload is the only thing
         // that knows what the file was called.
-        cases.upsertDocument(caseId, CREDIT_DOC, Rows.of(
+        cases.upsertDocument(caseId, docTypes.creditCode(), Rows.of(
                 "role", "credit",
                 "docType", file.label(),
                 "abbr", file.hasCredit() ? "LC" : file.messages().get(0).type().code(),

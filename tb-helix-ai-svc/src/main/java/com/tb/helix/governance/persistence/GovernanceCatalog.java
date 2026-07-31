@@ -62,6 +62,18 @@ public class GovernanceCatalog implements CheckCatalog {
     }
 
     @Override
+    public List<DocTypeDef> docTypes() {
+        return jdbc.query("""
+                SELECT code, name, description, role, before_reading
+                  FROM helix_gov.doc_type
+                 WHERE active
+                 ORDER BY ordinal, code
+                """, (rs, i) -> new DocTypeDef(
+                        rs.getString("code"), rs.getString("name"), rs.getString("description"),
+                        rs.getString("role"), rs.getBoolean("before_reading")));
+    }
+
+    @Override
     public String articleText(String code) {
         return jdbc.queryForList("SELECT body FROM helix_gov.article WHERE code = ?", String.class, code)
                 .stream().findFirst().orElse("");

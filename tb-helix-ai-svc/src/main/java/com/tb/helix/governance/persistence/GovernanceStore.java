@@ -167,15 +167,44 @@ public class GovernanceStore {
                 """, g.get("gid"), g.get("agentId"), g.get("name"), g.get("desc"), g.getOrDefault("ordinal", 0));
     }
 
+    @SuppressWarnings("unchecked")
     public void saveField(Map<String, Object> f) {
+        Object key = f.getOrDefault("key", f.get("id"));
         jdbc.update("""
                 INSERT INTO helix_gov.dict_field (key, name, description, kind, value_type, seeded)
                 VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name,
-                    description = EXCLUDED.description, updated_at = NOW()
-                """, f.getOrDefault("key", f.get("id")), f.get("name"), f.get("description"),
+                    description = EXCLUDED.description, value_type = EXCLUDED.value_type,
+                    updated_at = NOW()
+                """, key, f.get("name"), f.get("description"),
                 f.getOrDefault("kind", "LC_FIELD"), f.get("valueType"),
                 Boolean.TRUE.equals(f.get("seeded")));
+
+        // The bindings, which this used to drop on the floor.
+        //
+        // A binding is the most load-bearing row in the dictionary — it says which documents
+        // carry this field and, in its note, how to read it there — and it was the one thing
+        // the authoring screen could not save. The edit appeared to work and was gone on
+        // reload.
+        //
+        // Absent means "not stated": a caller sending no bindings key is patching the field,
+        // not clearing its sources. An empty list IS a clear, because that is what removing
+        // the last one looks like.
+        if (!(f.get("bindings") instanceof List<?> bindings)) return;
+
+        jdbc.update("DELETE FROM helix_gov.field_binding WHERE field_key = ?", key);
+        int ordinal = 0;
+        for (Object b : bindings) {
+            if (!(b instanceof Map<?, ?> row)) continue;
+            Object doc = row.get("doc");
+            if (doc == null || String.valueOf(doc).isBlank()) continue;
+            jdbc.update("""
+                    INSERT INTO helix_gov.field_binding (field_key, doc_code, note, ordinal)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT (field_key, doc_code) DO UPDATE SET note = EXCLUDED.note,
+                        ordinal = EXCLUDED.ordinal
+                    """, key, String.valueOf(doc), row.get("note"), ordinal++);
+        }
     }
 
     public void saveBinding(String fieldKey, String docCode, String note, int ordinal) {
@@ -187,14 +216,20 @@ public class GovernanceStore {
     }
 
     public void saveDocType(Map<String, Object> d) {
+        Object role = d.get("role");
         jdbc.update("""
-                INSERT INTO helix_gov.doc_type (code, name, description, before_reading, ordinal)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO helix_gov.doc_type (code, name, description, before_reading, role, attrs, ordinal)
+                VALUES (?, ?, ?, ?, ?, ?::jsonb, ?)
                 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name,
                     description = EXCLUDED.description, before_reading = EXCLUDED.before_reading,
-                    updated_at = NOW()
+                    role = EXCLUDED.role, attrs = EXCLUDED.attrs, updated_at = NOW()
                 """, d.getOrDefault("key", d.get("code")), d.get("name"), d.get("description"),
-                Boolean.TRUE.equals(d.get("beforeReading")), d.getOrDefault("ordinal", 0));
+                Boolean.TRUE.equals(d.get("beforeReading")),
+                // Blank is not a role. The picker sends "" for "none", and a check
+                // constraint would reject it — an empty select means the author cleared it.
+                role == null || String.valueOf(role).isBlank() ? null : String.valueOf(role),
+                toJson(d.getOrDefault("attrs", Map.of())),
+                d.getOrDefault("ordinal", 0));
     }
 
     public void saveBook(Map<String, Object> b) {

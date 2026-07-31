@@ -8,6 +8,7 @@ import com.tb.helix.lccheck.persistence.CaseRow;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.Rows;
+import com.tb.helix.lccheck.service.DocumentTypes;
 import com.tb.helix.lccheck.pipeline.*;
 import com.tb.helix.lccheck.pipeline.StageContext;
 import com.tb.helix.lccheck.types.examination.Origin;
@@ -41,9 +42,12 @@ public class GateStage implements Stage {
     private final CheckCatalog catalog;
     private final CaseStore cases;
 
-    public GateStage(CheckCatalog catalog, CaseStore cases) {
+    private final DocumentTypes docTypes;
+
+    public GateStage(CheckCatalog catalog, CaseStore cases, DocumentTypes docTypes) {
         this.catalog = catalog;
         this.cases = cases;
+        this.docTypes = docTypes;
     }
 
     @Override
@@ -116,7 +120,7 @@ public class GateStage implements Stage {
                 cases.upsertFinding(ctx.caseId(), Rows.of(
                         "id", "gate-" + gate.id(), "checkId", gate.id(),
                         "severity", "discrepancy", "area", "Time & availability", "areaId", "gate",
-                        "docId", "CS", "title", gate.title(),
+                        "docId", docTypes.scheduleCode(), "title", gate.title(),
                         "statement", statement, "statementSource", "derived",
                         "expected", "Presented on or before " + expiry,
                         "quote", "Presented " + presented,
@@ -140,8 +144,12 @@ public class GateStage implements Stage {
      * as such rather than quietly presented as fact.
      */
     private LocalDate presentationDate(StageContext ctx, CaseRow row) {
+        // Which document is the schedule is the dictionary's answer, not this file's. It
+        // was the literal "CS" — a code an author is free to rename, and would have found
+        // renaming quietly disabled the only date the gate depends on.
+        String schedule = docTypes.scheduleCode();
         for (ReadRows.Fact f : cases.facts(ctx.caseId())) {
-            if (!"CS".equals(f.docCode())) continue;
+            if (!schedule.equals(f.docCode())) continue;
             String label = String.valueOf(f.label()).toLowerCase();
             if (label.contains("presentation") && label.contains("date")) {
                 LocalDate d = date(f.value());

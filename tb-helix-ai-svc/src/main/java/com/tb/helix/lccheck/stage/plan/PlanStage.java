@@ -15,6 +15,7 @@ import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.pipeline.*;
 import com.tb.helix.lccheck.pipeline.StageContext;
 import com.tb.helix.lccheck.types.examination.Origin;
+import com.tb.helix.lccheck.service.DocumentTypes;
 import com.tb.helix.lccheck.stage.intake.IntakeStage;
 import com.tb.helix.lccheck.types.examination.Areas;
 import com.tb.helix.lccheck.types.pipeline.StageId;
@@ -49,14 +50,16 @@ public class PlanStage implements Stage {
 
     private final CheckCatalog catalog;
     private final CaseStore cases;
+    private final DocumentTypes docTypes;
     private final LlmGateway models;
     private final DerivationCache cache;
     private final ObjectMapper json;
 
-    public PlanStage(CheckCatalog catalog, CaseStore cases, LlmGateway models,
-                     DerivationCache cache, ObjectMapper json) {
+    public PlanStage(CheckCatalog catalog, CaseStore cases, DocumentTypes docTypes,
+                     LlmGateway models, DerivationCache cache, ObjectMapper json) {
         this.catalog = catalog;
         this.cases = cases;
+        this.docTypes = docTypes;
         this.models = models;
         this.cache = cache;
         this.json = json;
@@ -82,7 +85,7 @@ public class PlanStage implements Stage {
      * officer nothing about which was slow.
      */
     private StepResult selectRules(StageContext ctx) {
-        Set<String> present = presentDocTypes(ctx);
+        Set<String> present = docTypesOnCase(ctx);
 
         int ordinal = 1;
         int planned = 0;
@@ -95,8 +98,10 @@ public class PlanStage implements Stage {
             boolean applies = card.docTypes().isEmpty() || present.stream().anyMatch(card.docTypes()::contains);
             String because = applies
                     ? (card.docTypes().isEmpty() ? "Applies to every presentation"
-                        : "The presentation includes " + String.join(", ", card.docTypes()))
-                    : "Not run — the credit does not call for " + String.join(" or ", card.docTypes());
+                        : "The presentation includes " + String.join(", ",
+                                card.docTypes().stream().map(docTypes::label).toList()))
+                    : "Not run — this presentation has no " + String.join(" or ",
+                            card.docTypes().stream().map(docTypes::label).toList());
 
             cases.upsertPlanCheck(ctx.caseId(), Rows.of(
                     "id", card.id(), "origin", Origin.DICTIONARY.name(), "tier", card.tier(),
@@ -174,12 +179,21 @@ public class PlanStage implements Stage {
         return n;
     }
 
-    private Set<String> presentDocTypes(StageContext ctx) {
+    /**
+     * Every document type this case holds — the credit included.
+     *
+     * <p>The credit used to be excluded, which was defensible while it was filed under a code
+     * of its own and "present" meant "presented by the beneficiary". Now that it is a
+     * document type like any other, a check declaring it reads the credit was being told the
+     * credit was not there: {@code COND-47A}, whose whole subject is {@code :47A:}, skipped
+     * itself on every case with "the credit does not call for LC".
+     *
+     * <p>What the trigger asks is not "what did the beneficiary present" but "are the
+     * documents this check reads available to read".
+     */
+    private Set<String> docTypesOnCase(StageContext ctx) {
         Set<String> out = new LinkedHashSet<>();
-        for (ReadRows.Document d : cases.documents(ctx.caseId())) {
-            String code = d.docCode();
-            if (!IntakeStage.CREDIT_DOC.equals(code)) out.add(code);
-        }
+        for (ReadRows.Document d : cases.documents(ctx.caseId())) out.add(d.docCode());
         return out;
     }
 

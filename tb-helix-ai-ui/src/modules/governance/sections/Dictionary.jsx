@@ -216,11 +216,41 @@ function DocCard({ d }) {
   return (
     <Card pad="sm" data-item-id={d.id} style={d.isNew ? newCard : undefined}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <input className="inline-edit" value={d.key} onChange={d.onChangeKey} onFocus={d.onFocus} readOnly={d.locked} placeholder="KEY" style={{ width: 180, flexShrink: 0, padding: '6px 9px', fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--me-blue-deep)' }} />
+        <input
+          className="inline-edit"
+          value={d.key}
+          onChange={d.onChangeKey}
+          onFocus={d.onFocus}
+          /* Fixed once a field is read from it: the code is what those fields are stored
+             against, and in cases already examined and signed off. The title says why. */
+          readOnly={d.locked || d.keyLocked}
+          title={d.keyLocked ? d.keyLockedWhy : 'The code everything cites this document by'}
+          placeholder="KEY"
+          style={{ width: 180, flexShrink: 0, padding: '6px 9px', fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: d.keyLocked ? 'var(--me-grey-70)' : 'var(--me-blue-deep)' }}
+        />
         <input ref={nameRef} className="inline-edit" value={d.name} onChange={d.onChangeName} onFocus={d.onFocus} readOnly={d.locked} placeholder="Document name" style={nameInput} />
         <IconButton icon="trash-2" title={d.removeTip} tone="danger" onClick={d.onRemove} />
       </div>
-      <TextArea className="inline-edit" value={d.description} onChange={d.onChangeDesc} onFocus={d.onFocus} readOnly={d.locked} placeholder="Short description of this document type…" maxLines={3} maxLength={DESC_MAX} style={descArea} />
+      <TextArea className="inline-edit" value={d.description} onChange={d.onChangeDesc} onFocus={d.onFocus} readOnly={d.locked} placeholder="Short description of this document type — this is what the classifier is given to recognise a page by…" maxLines={3} maxLength={DESC_MAX} style={descArea} />
+      {/* What this document is TO an examination. Almost always nothing in particular,
+          so it sits quietly under the description rather than beside the name. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+        <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)', flexShrink: 0 }}>Role</span>
+        <select
+          className="inline-edit"
+          value={d.role}
+          onChange={d.onChangeRole}
+          onFocus={d.onFocus}
+          disabled={d.locked}
+          style={{ flex: 1, padding: '5px 8px', fontFamily: 'inherit', fontSize: 12.5, color: d.role ? 'var(--me-ink)' : 'var(--me-grey-70)' }}
+        >
+          {d.roleOptions.map((r) => (
+            <option key={r.value} value={r.value} disabled={r.value !== '' && r.value !== d.role && d.roleTaken(r.value)}>
+              {r.label}
+            </option>
+          ))}
+        </select>
+      </div>
       {d.editing && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--me-grey-08)' }}>
           <div style={{ flex: 1 }} />

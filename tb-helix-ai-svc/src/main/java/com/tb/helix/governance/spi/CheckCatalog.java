@@ -44,8 +44,43 @@ public interface CheckCatalog {
         }
     }
 
+    /**
+     * One document type, as the dictionary defines it.
+     *
+     * <p>Authored, not enumerated. The code is whatever the author typed — this bank writes
+     * short ones as a matter of practice, and nothing in code may depend on that. A
+     * consumer that branches on a code value has moved the vocabulary back into Java.
+     *
+     * @param role        {@code credit} or {@code schedule} when this document plays a part
+     *                    an examination has to locate, null for the rest. It is how
+     *                    lc-check finds the credit without naming it.
+     * @param description what the document is, in the author's words. Load-bearing: this is
+     *                    what the classifier is given to recognise a page by, so a better
+     *                    description is better segmentation.
+     */
+    record DocTypeDef(String code, String name, String description,
+                      String role, boolean beforeReading) {
+
+        public boolean isCredit() {
+            return "credit".equals(role);
+        }
+
+        public boolean isSchedule() {
+            return "schedule".equals(role);
+        }
+    }
+
     /** Every active check in the pinned catalogue. */
     List<CheckCard> activeChecks();
+
+    /**
+     * The document vocabulary, in authoring order.
+     *
+     * <p>The examination's whole knowledge of what a document can be. There is no enum
+     * beside this and no list in a resource file — the dictionary is the definition, and
+     * adding a type is an edit in the console.
+     */
+    List<DocTypeDef> docTypes();
 
     /**
      * The hard checks, in the order they should run.

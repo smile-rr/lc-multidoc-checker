@@ -924,89 +924,97 @@
   "docTypes": [
     {
       "id": "d0",
-      "key": "LETTER_OF_CREDIT",
+      "key": "LC",
       "name": "Letter of credit",
       "description": "The credit as received by wire — tagged fields and free-text blocks.",
-      "beforeReading": true
+      "beforeReading": true,
+      "role": "credit"
     },
     {
       "id": "d1",
-      "key": "COVERING_SCHEDULE",
+      "key": "CS",
       "name": "Covering schedule",
       "description": "The presenting bank's covering letter and receipt stamp.",
-      "beforeReading": true
+      "beforeReading": true,
+      "role": "schedule"
     },
     {
       "id": "d2",
-      "key": "DRAFT__BILL_OF_EXCHANGE",
+      "key": "BOE",
       "name": "Draft / bill of exchange",
       "description": "The draft drawn under the credit."
     },
     {
       "id": "d3",
-      "key": "COMMERCIAL_INVOICE",
+      "key": "INV",
       "name": "Commercial invoice",
       "description": "Issued by the beneficiary; lists goods, quantities and value."
     },
     {
       "id": "d4",
-      "key": "BILL_OF_LADING",
+      "key": "BOL",
       "name": "Bill of lading",
       "description": "Carrier's receipt and document of title for sea shipment."
     },
     {
       "id": "d5",
-      "key": "AIR_WAYBILL",
+      "key": "AWB",
       "name": "Air waybill",
       "description": "Air carrier receipt evidencing shipment by air."
     },
     {
       "id": "d6",
-      "key": "MULTIMODAL_TRANSPORT_DOC",
+      "key": "MTD",
       "name": "Multimodal transport doc",
       "description": "Covers at least two different modes of transport."
     },
     {
       "id": "d7",
-      "key": "CHARTER_PARTY_B_L",
+      "key": "CPB",
       "name": "Charter-party B/L",
       "description": "Bill of lading issued subject to a charter party."
     },
     {
       "id": "d8",
-      "key": "INSURANCE_DOCUMENT",
+      "key": "INS",
       "name": "Insurance document",
       "description": "Evidence of cargo insurance cover."
     },
     {
       "id": "d9",
-      "key": "PACKING_LIST",
+      "key": "PKL",
       "name": "Packing list",
       "description": "Breakdown of how the goods are packed."
     },
     {
       "id": "d10",
-      "key": "CERTIFICATE_OF_ORIGIN",
+      "key": "COO",
       "name": "Certificate of origin",
       "description": "States the country where goods were produced."
     },
     {
       "id": "d11",
-      "key": "INSPECTION_CERTIFICATE",
+      "key": "INSP",
       "name": "Inspection certificate",
       "description": "Third-party evidence the goods were inspected."
     },
     {
       "id": "d12",
-      "key": "BENEFICIARY_CERTIFICATE",
+      "key": "BC",
       "name": "Beneficiary certificate",
       "description": "A statement signed by the beneficiary itself."
     },
     {
       "id": "d13",
-      "key": "TRANSPORT_DOCUMENT",
+      "key": "TD",
       "name": "Transport document",
       "description": "Any transport document where the credit names no particular form."
+    },
+    {
+      "id": "d14",
+      "key": "WC",
+      "name": "Warranty certificate",
+      "description": "The beneficiary's undertaking as to quality, period and scope of the warranty given."
     }
   ],
   "fields": [
@@ -1016,11 +1024,11 @@
       "description": "The last date documents may be presented under the credit.",
       "bindings": [
         {
-          "doc": "Letter of credit",
+          "doc": "LC",
           "note": "Tag 31D — first six digits, YYMMDD"
         },
         {
-          "doc": "Covering schedule",
+          "doc": "CS",
           "note": "Only where the schedule restates it: \"valid until\", \"expires on\""
         }
       ]
@@ -1031,7 +1039,7 @@
       "description": "The counter at which the credit expires.",
       "bindings": [
         {
-          "doc": "Letter of credit",
+          "doc": "LC",
           "note": "Tag 31D — text following the date"
         }
       ]
@@ -1042,7 +1050,7 @@
       "description": "Bank and location with which the credit is available.",
       "bindings": [
         {
-          "doc": "Letter of credit",
+          "doc": "LC",
           "note": "41A / 41D — the bank line before \"BY\""
         }
       ]
@@ -1053,7 +1061,7 @@
       "description": "How the credit is available — sight, acceptance, negotiation or deferred payment.",
       "bindings": [
         {
-          "doc": "Letter of credit",
+          "doc": "LC",
           "note": "41A / 41D — the text after \"BY\""
         }
       ]
@@ -1064,11 +1072,11 @@
       "description": "The tenor the draft is drawn at.",
       "bindings": [
         {
-          "doc": "Letter of credit",
+          "doc": "LC",
           "note": "Tag 42C, \"drafts at\""
         },
         {
-          "doc": "Draft / bill of exchange",
+          "doc": "BOE",
           "note": "The tenor phrase on the face: \"at sight\", \"at 60 days after B/L date\""
         }
       ]
@@ -1079,11 +1087,11 @@
       "description": "The party the draft is drawn on.",
       "bindings": [
         {
-          "doc": "Letter of credit",
+          "doc": "LC",
           "note": "Tag 42A or 42D"
         },
         {
-          "doc": "Draft / bill of exchange",
+          "doc": "BOE",
           "note": "Party named after \"drawn on\" or \"to\""
         }
       ]
@@ -1094,7 +1102,7 @@
       "description": "Free text listing the documents the credit calls for.",
       "bindings": [
         {
-          "doc": "Letter of credit",
+          "doc": "LC",
           "note": "Tag 46A — whole block, kept unparsed for requirement cards"
         }
       ]
@@ -1105,7 +1113,7 @@
       "description": "Free text conditions added by the applicant or issuing bank.",
       "bindings": [
         {
-          "doc": "Letter of credit",
+          "doc": "LC",
           "note": "Tag 47A — whole block, kept unparsed for requirement cards"
         }
       ]
@@ -1116,15 +1124,15 @@
       "description": "What is being shipped, as described on each document.",
       "bindings": [
         {
-          "doc": "Letter of credit",
+          "doc": "LC",
           "note": "Tag 45A"
         },
         {
-          "doc": "Commercial invoice",
+          "doc": "INV",
           "note": "Goods lines under \"description of goods\" — ignore packing and freight notes"
         },
         {
-          "doc": "Bill of lading",
+          "doc": "BOL",
           "note": "\"Description of packages and goods\" — may be in general terms"
         }
       ]
@@ -1135,7 +1143,7 @@
       "description": "Currency and amount of the credit, with any tolerance.",
       "bindings": [
         {
-          "doc": "Letter of credit",
+          "doc": "LC",
           "note": "Tag 32B, widened by the 39A tolerance when present"
         }
       ]
@@ -1146,7 +1154,7 @@
       "description": "Total value claimed on the invoice.",
       "bindings": [
         {
-          "doc": "Commercial invoice",
+          "doc": "INV",
           "note": "Highest-level total: \"total\", \"grand total\", \"total amount due\"; sum the lines if none is shown"
         }
       ]
@@ -1157,15 +1165,15 @@
       "description": "Currency denomination of the figure on this document.",
       "bindings": [
         {
-          "doc": "Letter of credit",
+          "doc": "LC",
           "note": "Tag 32B — first three characters"
         },
         {
-          "doc": "Commercial invoice",
+          "doc": "INV",
           "note": "Code beside the total"
         },
         {
-          "doc": "Insurance document",
+          "doc": "INS",
           "note": "Currency of the sum insured"
         }
       ]
@@ -1176,7 +1184,7 @@
       "description": "Sum insured shown on the insurance document.",
       "bindings": [
         {
-          "doc": "Insurance document",
+          "doc": "INS",
           "note": "Amount beside \"sum insured\" or \"amount insured\""
         }
       ]
@@ -1187,7 +1195,7 @@
       "description": "The date insurance cover takes effect.",
       "bindings": [
         {
-          "doc": "Insurance document",
+          "doc": "INS",
           "note": "\"Cover effective from\" if shown, else the date of issue"
         }
       ]
@@ -1198,7 +1206,7 @@
       "description": "The last date shipment may be effected.",
       "bindings": [
         {
-          "doc": "Letter of credit",
+          "doc": "LC",
           "note": "Tag 44C, or derived from the 44D shipment period"
         }
       ]
@@ -1209,11 +1217,11 @@
       "description": "The date the goods were actually shipped.",
       "bindings": [
         {
-          "doc": "Bill of lading",
+          "doc": "BOL",
           "note": "Dated on-board notation; the issue date only where the wording is pre-printed"
         },
         {
-          "doc": "Air waybill",
+          "doc": "AWB",
           "note": "Actual flight-date notation — not the issue date"
         }
       ]
@@ -1224,11 +1232,11 @@
       "description": "Where the goods were taken on board.",
       "bindings": [
         {
-          "doc": "Letter of credit",
+          "doc": "LC",
           "note": "Tag 44E"
         },
         {
-          "doc": "Bill of lading",
+          "doc": "BOL",
           "note": "\"Port of loading\" or \"from\" — the named port, not a place of receipt"
         }
       ]
@@ -1239,11 +1247,11 @@
       "description": "Where the goods are to be delivered.",
       "bindings": [
         {
-          "doc": "Letter of credit",
+          "doc": "LC",
           "note": "Tag 44F"
         },
         {
-          "doc": "Bill of lading",
+          "doc": "BOL",
           "note": "\"Port of discharge\" or \"to\" — not an inland final destination"
         }
       ]
@@ -1254,15 +1262,15 @@
       "description": "The party in whose favour the credit is issued.",
       "bindings": [
         {
-          "doc": "Letter of credit",
+          "doc": "LC",
           "note": "Tag 59 — first line"
         },
         {
-          "doc": "Commercial invoice",
+          "doc": "INV",
           "note": "Issuer of the invoice, however labelled: \"seller\", \"exporter\", \"shipper\", \"from\""
         },
         {
-          "doc": "Bill of lading",
+          "doc": "BOL",
           "note": "Shipper or consignor box"
         }
       ]
@@ -1273,11 +1281,11 @@
       "description": "The party on whose request the credit is issued.",
       "bindings": [
         {
-          "doc": "Letter of credit",
+          "doc": "LC",
           "note": "Tag 50"
         },
         {
-          "doc": "Commercial invoice",
+          "doc": "INV",
           "note": "Party the invoice is made out to: \"buyer\", \"consignee\", \"sold to\", \"bill to\""
         }
       ]
@@ -1288,7 +1296,7 @@
       "description": "Days after shipment within which documents must be presented.",
       "bindings": [
         {
-          "doc": "Letter of credit",
+          "doc": "LC",
           "note": "Tag 48; 21 calendar days where the credit is silent"
         }
       ]
@@ -1299,7 +1307,7 @@
       "description": "The date documents reached the presentation counter.",
       "bindings": [
         {
-          "doc": "Covering schedule",
+          "doc": "CS",
           "note": "Receipt stamp date, else the date the case was opened"
         }
       ]

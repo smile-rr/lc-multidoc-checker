@@ -163,6 +163,20 @@ const ruleIssues = (rule) => {
   return out
 }
 
+// The parts an examination has to be able to locate by something other than a name.
+//
+// Only two, and both are singular: one document establishes the terms, one states when
+// the presentation was made. Everything else — invoices, transport documents,
+// certificates — is examined, not looked up, so it needs no role at all.
+//
+// This exists so lc-check can find the credit without knowing that this bank calls it
+// "LC". Codes are a convention an author owns; a role is a contract.
+export const DOC_ROLES = [
+  { value: '', label: 'None — an ordinary document type' },
+  { value: 'credit', label: 'The credit — carries the terms examined against' },
+  { value: 'schedule', label: 'The covering schedule — states the presentation date' },
+]
+
 // ---- Seed builders (document types, dictionary fields, reference books) -----
 export function seedDocTypes() {
   return seed.docTypes.map((d) => ({ ...d }))
@@ -303,10 +317,14 @@ export function deriveVals(state, setState) {
   // truth for what checks can reference.
   const dictFieldList = S.dictFields || seedFields()
   const dictDocList = S.dictDocs || seedDocTypes()
-  const docNameBook = dictDocList.map((d) => d.name)
+  // Keyed by code, labelled by name — everywhere. The console worked in names, which
+  // reads better and cannot be joined on: a name is a label an author may correct.
+  const docNameOf = Object.fromEntries(dictDocList.map((d) => [d.key, d.name]))
+  const docLabel = (key) => docNameOf[key] ?? key
+  const docKeyBook = dictDocList.map((d) => d.key)
   // Every (field, document) pair the dictionary knows about — the vocabulary a
   // rule row picks its operands from.
-  const operandBook = dictFieldList.flatMap((f) => (f.bindings || []).map((b) => ({ field: f.name, doc: b.doc, note: b.note })))
+  const operandBook = dictFieldList.flatMap((f) => (f.bindings || []).map((b) => ({ field: f.name, doc: b.doc, docLabel: docLabel(b.doc), note: b.note })))
   // ---- one open edit at a time --------------------------------------------
   //
   // The console had three independent edit slots — a check being edited, an
@@ -433,7 +451,7 @@ export function deriveVals(state, setState) {
   // Which documents exist before reading is authored in the dictionary
   // (`beforeReading`), not hardcoded here, so adding a pre-presentation document type
   // makes its rules eligible without a code change.
-  const beforeReadingDocs = () => new Set((S.dictDocs ?? seedDocTypes()).filter((d) => d.beforeReading).map((d) => d.name))
+  const beforeReadingDocs = () => new Set((S.dictDocs ?? seedDocTypes()).filter((d) => d.beforeReading).map((d) => d.key))
 
   function gateEligibility(c) {
     const kind = hasConditions(c) ? 'exact' : typeOf(c)
@@ -655,7 +673,7 @@ export function deriveVals(state, setState) {
       return {
         isLiteral: !!o.literal || (side === 'r' && EXPR_OPS.includes(r.op)),
         isField: !o.literal && !(side === 'r' && EXPR_OPS.includes(r.op)),
-        field: o.field || 'Pick a field', doc: o.field ? o.doc : '',
+        field: o.field || 'Pick a field', doc: o.field ? docLabel(o.doc) : '',
         literal: o.literal || '',
         literalPlaceholder: EXPR_OPS.includes(r.op) ? 'An expression, e.g. matches /^[A-Z]{3}$/' : 'A fixed value…',
         onChangeLiteral: (e) => set({ literal: e.target.value }),
@@ -729,9 +747,9 @@ export function deriveVals(state, setState) {
       fieldsOpen: S.fieldsOpenId === c.id,
       onToggleFields: (e) => { if (e && e.stopPropagation) e.stopPropagation(); setState((s) => ({ fieldsOpenId: s.fieldsOpenId === c.id ? null : c.id })) },
       onDetectFields: () => { const merged = fields.slice(); detectNames().forEach((n) => { if (!merged.includes(n)) merged.push(n) }); write('fields', merged); setState({ fieldsOpenId: null }) },
-      docChips: docs.map((d) => ({ name: d, onRemove: (e) => { if (e && e.stopPropagation) e.stopPropagation(); write('docs', docs.filter((x) => x !== d)) } })),
+      docChips: docs.map((d) => ({ name: docLabel(d), onRemove: (e) => { if (e && e.stopPropagation) e.stopPropagation(); write('docs', docs.filter((x) => x !== d)) } })),
       hasDocs: docs.length > 0,
-      docBook: docNameBook.filter((d) => !docs.includes(d)).map((d) => ({ name: d, onAdd: () => { write('docs', [...docs, d]); setState({ docsOpenId: null }) } })),
+      docBook: docKeyBook.filter((d) => !docs.includes(d)).map((d) => ({ name: docLabel(d), onAdd: () => { write('docs', [...docs, d]); setState({ docsOpenId: null }) } })),
       docsOpen: S.docsOpenId === c.id,
       onToggleDocs: (e) => { if (e && e.stopPropagation) e.stopPropagation(); setState((s) => ({ docsOpenId: s.docsOpenId === c.id ? null : c.id })) },
       refChips: refs.map((code) => ({ code, desc: bookDesc(code), onRemove: (e) => { if (e && e.stopPropagation) e.stopPropagation(); write('refs', refs.filter((x) => x !== code)) } })),
@@ -988,7 +1006,7 @@ export function deriveVals(state, setState) {
   const phases = PHASES.map((p) => ({ ...p, scenarios: p.scenarios.map((r) => ({ ...r, mark: r.status === 'pass' ? '✓' : '!', markBg: r.status === 'pass' ? 'var(--status-success)' : 'var(--status-warning)' })) }))
   const reviewOpen = S.panel === 'review' && !!panelCtx
   // Export reads a rule card off its rows, since it has no prose to export.
-  const operandText = (o) => (!o ? '?' : o.literal ? o.literal : o.field ? `${o.field} @ ${o.doc}` : '?')
+  const operandText = (o) => (!o ? '?' : o.literal ? o.literal : o.field ? `${o.field} @ ${docLabel(o.doc)}` : '?')
   const ruleMd = (c) => {
     const r = ruleOf(c.id)
     const blocks = r.groups
@@ -1056,7 +1074,7 @@ export function deriveVals(state, setState) {
   const dictFields = dictFieldList
   const setDF = (fn) => setState((s) => ({ dictFields: fn(s.dictFields || seedFields()) }))
   const setDD = (fn) => setState((s) => ({ dictDocs: fn(s.dictDocs || seedDocTypes()) }))
-  const docNames = docNameBook
+  const docKeys = docKeyBook
   const bindingDocs = (f) => (f.bindings || []).map((b) => b.doc)
   // A field counts as used when a rule names it — as a chip on a judged
   // card, as a braced token in its wording, or as an operand of a rule row.
@@ -1098,7 +1116,7 @@ export function deriveVals(state, setState) {
     },
     onOpen: () => confirmLeave(() => setState({ dictDetail: { kind: 'field', id: f.id } })),
     usedLabel: fieldUsed(f.name) + (fieldUsed(f.name) === 1 ? ' check' : ' checks'),
-    docsLine: bindingDocs(f).join(' · ') || '—',
+    docsLine: bindingDocs(f).map(docLabel).join(' · ') || '—',
     onChangeName: (ev) => { e.start(); const val = ev.target.value; patchField(f.id, (x) => ({ ...x, name: val })) },
     onChangeDesc: (ev) => { e.start(); const val = ev.target.value; patchField(f.id, (x) => ({ ...x, description: val })) },
     usedCount: fieldUsed(f.name),
@@ -1123,38 +1141,51 @@ export function deriveVals(state, setState) {
     // Each source carries one note: what the field is called on that document
     // and how to read it. That note is the whole extraction instruction.
     bindings: (f.bindings || []).map((b, i) => ({
-      doc: b.doc, note: b.note || '',
+      doc: docLabel(b.doc), note: b.note || '',
       onChangeNote: (ev) => { e.start(); const val = ev.target.value; patchField(f.id, (x) => ({ ...x, bindings: x.bindings.map((y, j) => (j === i ? { ...y, note: val } : y)) })) },
       onRemove: () => { e.start(); patchField(f.id, (x) => ({ ...x, bindings: x.bindings.filter((y, j) => j !== i) })) },
     })),
     pickerOpen: S.dictDocPickerId === f.id,
     onTogglePicker: () => setState((s) => ({ dictDocPickerId: s.dictDocPickerId === f.id ? null : f.id })),
-    docBook: docNames.filter((dn) => !bindingDocs(f).includes(dn)).map((dn) => ({ name: dn, onAdd: () => { e.start(); patchField(f.id, (x) => ({ ...x, bindings: [...(x.bindings || []), { doc: dn, note: '' }] })); setState({ dictDocPickerId: null }) } })),
+    docBook: docKeys.filter((dk) => !bindingDocs(f).includes(dk)).map((dk) => ({ name: docLabel(dk), onAdd: () => { e.start(); patchField(f.id, (x) => ({ ...x, bindings: [...(x.bindings || []), { doc: dk, note: '' }] })); setState({ dictDocPickerId: null }) } })),
   }}
-  const docUsed = (name) => dictFields.filter((f) => bindingDocs(f).includes(name)).length
+  const docUsed = (key) => dictFields.filter((f) => bindingDocs(f).includes(key)).length
   const buildDocRow = (d) => {
     const e = dictEdit(d.id, JSON.parse(JSON.stringify(d)))
     return {
     id: d.id, key: d.key, name: d.name, description: d.description, isNew: S.createdId === d.id,
     editing: e.editing, locked: e.locked, onFocus: e.start,
     cancelLabel: e.created ? 'Discard' : 'Cancel',
-    onSave: () => { setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, key: (x.key || '').trim(), name: (x.name || '').trim(), description: (x.description || '').trim() } : x))); dictClose(d) },
+    onSave: () => { setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, key: (x.key || '').trim().toUpperCase(), name: (x.name || '').trim(), description: (x.description || '').trim() } : x))); dictClose(d) },
     onCancel: () => {
       if (e.created) { setDD((ds) => ds.filter((x) => x.id !== d.id)); dictClose(d); setState({ dictDetail: null }); return }
       const snap = S.editSnap[d.id]
       if (snap) setDD((ds) => ds.map((x) => (x.id === d.id ? snap : x)))
       dictClose(d)
     },
-    usedLabel: docUsed(d.name) + (docUsed(d.name) === 1 ? ' field' : ' fields'),
+    usedLabel: docUsed(d.key) + (docUsed(d.key) === 1 ? ' field' : ' fields'),
     onOpen: () => confirmLeave(() => setState({ dictDetail: { kind: 'doc', id: d.id } })),
+    // The key is identity. Once a field is read from this document — or a case has
+    // classified a page as one — everything that cites it cites the code, so a rename
+    // would orphan facts in examinations that are already closed and audited. Editable
+    // until it is used, then fixed; the name and description never lock.
+    keyLocked: docUsed(d.key) > 0 && S.createdId !== d.id,
+    keyLockedWhy: 'In use by ' + docUsed(d.key) + ' field' + (docUsed(d.key) === 1 ? '' : 's') + ' — the code is what they are stored against.',
     onChangeKey: (ev) => { e.start(); const val = ev.target.value; setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, key: val } : x))) },
     onChangeName: (ev) => { e.start(); const val = ev.target.value; setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, name: val } : x))) },
     onChangeDesc: (ev) => { e.start(); const val = ev.target.value; setDD((ds) => ds.map((x) => (x.id === d.id ? { ...x, description: val } : x))) },
-    usedCount: docUsed(d.name),
+    // What this document IS to an examination, when it is anything in particular. The
+    // credit carries the terms; the schedule carries the presentation date. Everything
+    // else is just a document type, and that is the common case — so "none" is first.
+    role: d.role || '',
+    roleOptions: DOC_ROLES,
+    roleTaken: (r) => dictDocs.some((x) => x.role === r && x.id !== d.id),
+    onChangeRole: (ev) => { e.start(); const val = ev.target.value; setDD((ds) => ds.map((x) => (x.id === d.id ? (val ? { ...x, role: val } : (({ role, ...rest }) => rest)(x)) : (x.role === val && val ? (({ role, ...rest }) => rest)(x) : x)))) },
+    usedCount: docUsed(d.key),
     removeTip: S.createdId === d.id ? 'Discard this new document type' : 'Remove this document type',
     onRemove: () => {
       if (S.createdId === d.id) { setDD((ds) => ds.filter((x) => x.id !== d.id)); setState({ createdId: null, dictDetail: null }); return }
-      const used = docUsed(d.name)
+      const used = docUsed(d.key)
       return used
         ? requestConfirm({
             title: 'This document type is in use',

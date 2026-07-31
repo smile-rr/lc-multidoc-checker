@@ -1,7 +1,6 @@
 package com.tb.helix.lccheck.stage.execute;
 
 import com.tb.helix.governance.spi.CheckCatalog;
-import com.tb.helix.governance.types.DocType;
 import com.tb.helix.harness.llm.LlmGateway;
 import com.tb.helix.harness.llm.LlmRole;
 import com.tb.helix.harness.llm.text.TextRequest;
@@ -15,6 +14,7 @@ import com.tb.helix.lccheck.persistence.CaseRow;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.Rows;
+import com.tb.helix.lccheck.service.DocumentTypes;
 import com.tb.helix.lccheck.pipeline.*;
 import com.tb.helix.lccheck.pipeline.StageContext;
 import com.tb.helix.lccheck.types.pipeline.StageId;
@@ -44,14 +44,16 @@ public class ExecuteStage implements Stage {
 
     private final CheckCatalog catalog;
     private final CaseStore cases;
+    private final DocumentTypes docTypes;
     private final LlmGateway models;
     private final DerivationCache cache;
     private final ObjectMapper json;
 
-    public ExecuteStage(CheckCatalog catalog, CaseStore cases, LlmGateway models,
-                        DerivationCache cache, ObjectMapper json) {
+    public ExecuteStage(CheckCatalog catalog, CaseStore cases, DocumentTypes docTypes,
+                        LlmGateway models, DerivationCache cache, ObjectMapper json) {
         this.catalog = catalog;
         this.cases = cases;
+        this.docTypes = docTypes;
         this.models = models;
         this.cache = cache;
         this.json = json;
@@ -236,7 +238,7 @@ public class ExecuteStage implements Stage {
         for (ReadRows.Fact f : cases.facts(ctx.caseId())) {
             String doc = f.docCode();
             if (!doc.equals(current)) {
-                sb.append("  ").append(DocType.of(doc).label()).append(" (").append(doc).append(")\n");
+                sb.append("  ").append(docTypes.label(doc)).append(" (").append(doc).append(")\n");
                 current = doc;
             }
             sb.append("    ").append(f.label()).append(": ").append(f.value());
