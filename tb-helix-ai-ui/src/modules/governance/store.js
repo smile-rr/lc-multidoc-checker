@@ -610,9 +610,13 @@ export function deriveVals(state, setState) {
   // the Draft chip, one screen over. The service filters RETIRED out of the
   // catalogue, so this is what makes the button mean anything.
   const toggleInactive = (id) => setState((s) => {
-    const now = !s.inactiveIds[id]
     const c = allChecks().find((x) => x.id === id)
-    if (c) persistCheck({ ...c, ...(S.overrides[id] || {}), inactive: now }, ruleOf(id))
+    // Read the same way the card does — this session's answer if there is one, the
+    // service's otherwise. Reading only `inactiveIds` made the first press on a
+    // retired check retire it again.
+    const was = s.inactiveIds[id] ?? (c && c.status === 'RETIRED')
+    const now = !was
+    if (c) persistCheck({ ...c, ...(s.overrides[id] || {}), inactive: now }, ruleOf(id))
     return { inactiveIds: { ...s.inactiveIds, [id]: now } }
   })
   const deleteAgent = (id) => (gov.deleteAgent(id).catch(() => {}), setState((s) => {
@@ -929,7 +933,17 @@ export function deriveVals(state, setState) {
         // Write through to the service before the edit slot closes. Under mock this
         // resolves without doing anything, which is honest: the store already holds
         // the edit, and persistence is the only thing missing.
-        persistCheck({ ...c, title: (title || '').trim(), body: (body || '').trim() }, rule)
+        //
+        // The overrides have to be in it. Every edit on this card except the title and
+        // the body is held there — the fields it reads, the documents it applies to,
+        // the articles it cites, its severity — and this used to send the check as it
+        // arrived plus those two. So picking a field showed the chip, saved nothing,
+        // and the chip was gone on reload: the one thing an author would swear they
+        // had just done.
+        persistCheck(
+          { ...c, ...(S.overrides[c.id] || {}), title: (title || '').trim(), body: (body || '').trim() },
+          rule,
+        )
         setState((s) => {
           const es = { ...s.editSnap }; delete es[c.id]
           const rs = { ...s.ruleSnap }; delete rs[c.id]
