@@ -122,9 +122,19 @@ class ChatCompletionsClient {
         throw last;
     }
 
-    /** The parts of a completion anything here cares about. */
+    /**
+     * The parts of a completion anything here cares about.
+     *
+     * @param cachedPromptTokens how many of {@code promptTokens} the provider served from its
+     *                           own prompt cache. Billed, at roughly a tenth of the input rate
+     *                           — which makes it a different thing from our derivation cache,
+     *                           where no call happens and nothing is billed at all. Both get
+     *                           called "cache" in conversation and they must not be added
+     *                           together anywhere.
+     */
     record Response(String content, List<ToolCall> toolCalls, String raw,
-                    Integer promptTokens, Integer completionTokens, int latencyMs) {
+                    Integer promptTokens, Integer completionTokens, Integer cachedPromptTokens,
+                    int latencyMs) {
 
         boolean wantsTools() {
             return toolCalls != null && !toolCalls.isEmpty();
@@ -150,12 +160,18 @@ class ChatCompletionsClient {
             }
 
             JsonNode usage = root.path("usage");
+            // Two places, because providers disagree: OpenAI and DashScope nest it under
+            // prompt_tokens_details, others put it straight on usage. Absent means zero
+            // rather than unknown — a provider with no prompt cache reports nothing.
+            JsonNode cached = usage.path("prompt_tokens_details").path("cached_tokens");
+            if (!cached.isInt()) cached = usage.path("cached_tokens");
             return new Response(
                     LlmText.clean(content),
                     calls,
                     raw,
                     usage.hasNonNull("prompt_tokens") ? usage.get("prompt_tokens").asInt() : null,
                     usage.hasNonNull("completion_tokens") ? usage.get("completion_tokens").asInt() : null,
+                    cached.isInt() ? cached.asInt() : 0,
                     latencyMs);
 
         } catch (Exception e) {

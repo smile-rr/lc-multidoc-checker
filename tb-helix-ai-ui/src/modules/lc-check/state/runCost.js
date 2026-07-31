@@ -149,6 +149,10 @@ export function summariseRun(steps, completedCount, pageCount) {
     cardsSettled: examining.reduce((a, k) => a + k.checks, 0),
     cardsFree: examining.filter((k) => k.free).reduce((a, k) => a + k.checks, 0),
     cacheHitPct: weightedCache(done),
+    // The fixture table records a per-step `cachePct` against input tokens, which is
+    // the provider's prompt cache — a discount on calls that happened. It is not the
+    // local derivation cache and must not be labelled as one.
+    promptCachePct: weightedCache(done),
     pagesRead: Math.min(pageCount, completedCount * 2),
     costPerPage: pageCount ? totals.cost / pageCount : 0,
     modelCount: byModel.length,
@@ -197,6 +201,7 @@ export function summariseLedger(spend = [], pageCount = 0) {
       failed: 0,
       tokensIn: 0,
       tokensOut: 0,
+      tokensCachedIn: 0,
       tokensInAvoided: 0,
       tokensOutAvoided: 0,
       ms: 0,
@@ -208,6 +213,7 @@ export function summariseLedger(spend = [], pageCount = 0) {
     at.failed += r.failed || 0
     at.tokensIn += r.tokensIn || 0
     at.tokensOut += r.tokensOut || 0
+    at.tokensCachedIn += r.tokensCached || 0
     at.tokensInAvoided += r.tokensInAvoided || 0
     at.tokensOutAvoided += r.tokensOutAvoided || 0
     at.ms += r.ms || 0
@@ -242,6 +248,10 @@ export function summariseLedger(spend = [], pageCount = 0) {
         seconds: (r.ms || 0) / 1000,
         tokensIn: r.tokensIn || 0,
         tokensOut: r.tokensOut || 0,
+        // Part of the billed input, not a saving beside it: the provider recognised
+        // the prefix and charged those tokens at about a tenth of the rate. Shown
+        // inside the input figure it discounts, never added to it.
+        tokensCachedIn: r.tokensCachedIn || 0,
         // Kept apart from the billed pair rather than added to it. A cache hit's
         // tokens are what the original call reported, so summing the two would
         // report work this run never did — and would make a fully cached step,
@@ -259,7 +269,7 @@ export function summariseLedger(spend = [], pageCount = 0) {
         // would have been charged had the cache been cold.
         note: fullyCached
           ? (r.costAvoided ? `would have cost $${Number(r.costAvoided).toFixed(5)}` : null)
-          : (r.cached ? `${r.cached} of ${r.calls} calls cached` : null),
+          : (r.cached ? `${r.cached} of ${r.calls} calls from the local cache` : null),
         state: 'done',
       }
     })
@@ -283,12 +293,24 @@ export function summariseLedger(spend = [], pageCount = 0) {
     tokensIn: sum((r) => r.tokensIn),
     tokensOut: sum((r) => r.tokensOut),
     tokens: sum((r) => r.tokensIn + r.tokensOut),
+    tokensCachedIn: sum((r) => r.tokensCachedIn),
     tokensInAvoided: sum((r) => r.tokensInAvoided),
     tokensOutAvoided: sum((r) => r.tokensOutAvoided),
     retries: sum((r) => r.retries),
     byKind: [],
     cardsSettled: 0,
     cardsFree: 0,
+    // Two different facts, named apart. `localCachePct` is the share of *calls* our
+    // derivation store answered — none of which happened. `promptCachePct` is the
+    // share of *input tokens* the provider served from its own cache, on calls that
+    // did happen and were billed for them at a reduced rate. They were one field
+    // called `cacheHitPct` and the drawer printed it under whichever of the two
+    // labels was nearest, which is how a 100%-free run came to be described as a
+    // prompt-cache hit rate.
+    localCachePct: calls ? Math.round((cached / calls) * 100) : 0,
+    promptCachePct: sum((r) => r.tokensIn)
+      ? Math.round((sum((r) => r.tokensCachedIn) / sum((r) => r.tokensIn)) * 100)
+      : 0,
     cacheHitPct: calls ? Math.round((cached / calls) * 100) : 0,
     pagesRead: pageCount,
     costPerPage: pageCount ? cost / pageCount : 0,

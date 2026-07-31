@@ -298,15 +298,21 @@ function describe(type, p) {
     case 'stage_failed': return p.message
     case 'awaiting_officer': return `waiting for the officer to start ${p.next}`
     case 'stage_done': return null
-    case 'cache_hit': return 'answered from cache'
+    case 'cache_hit': return `answered from the ${CACHE.local.word}`
     // Tokens live only on infra model events — not on pipeline steps.
+    // A call that happened. `tokensCachedIn` is the provider's prompt cache — part of
+    // the input, billed at a reduced rate — so it is named as such and shown inside the
+    // input figure it discounts, never as a saving of its own.
     case 'llm_call':
-      return `${p.model}${p.slot ? ` (${p.slot})` : ''} · in ${tokens(p.tokensIn)} out ${tokens(p.tokensOut)}`
+      return `${p.model}${p.slot ? ` (${p.slot})` : ''} · in ${tokens(p.tokensIn)}`
+        + `${p.tokensCachedIn ? ` (${tokens(p.tokensCachedIn)} ${CACHE.prompt.word})` : ''}`
+        + ` out ${tokens(p.tokensOut)}`
         + `${p.ms ? ` · ${elapsed(p.ms)}` : ''}${p.status && p.status !== 'OK' ? ` · ${p.status}` : ''}`
+    // A call that did not happen. The sizes are the *avoided* ones, kept so a reader can
+    // see what was skipped; no money, because there is none and "$0" beside a token count
+    // invites the reading that the other rows' zeros mean the same thing.
     case 'llm_cached':
-      // Avoided call: still show the sizes so a reader can see what was skipped,
-      // but money is zero — "would have cost" on a free hit reads as a bill.
-      return `${p.model} · cached · in ${tokens(p.tokensIn)} out ${tokens(p.tokensOut)} · $0`
+      return `${p.model} · ${CACHE.local.word} · in ${tokens(p.tokensIn)} out ${tokens(p.tokensOut)}`
     default: {
       const parts = Object.entries(p).filter(([, v]) => v != null && v !== '')
       return parts.length ? parts.map(([k, v]) => `${k} ${v}`).join(' · ') : null
@@ -347,6 +353,27 @@ export const LOG_INK = {
  * the cheapest way to make the difference visible without reading the digits.
  */
 export const tokens = (n) => (n == null ? '' : Number(n).toLocaleString('en-US'))
+
+/**
+ * The two caches, named apart wherever either one is shown.
+ *
+ * They are not degrees of the same thing:
+ *
+ *   **local**   our derivation store answered, so no call was made and nothing was
+ *               billed. A saving of 100%.
+ *   **prompt**  the provider recognised the prefix of a call that *did* happen and
+ *               charged those input tokens at roughly a tenth of the rate. A saving
+ *               of about 90%, on part of one call.
+ *
+ * "Not charged" was the earlier wording for the first and it forecloses the second:
+ * once the panel starts reporting prompt-cache tokens, a reader who has learnt that
+ * "cache" means free will read a real bill as zero. So the word is always qualified,
+ * and the two are never added together — one counts calls that never happened.
+ */
+export const CACHE = {
+  local: { word: 'local cache', title: 'Answered from the local cache — no model was asked, nothing was billed' },
+  prompt: { word: 'prompt cache', title: "The provider's own prompt cache — these input tokens were billed at a reduced rate" },
+}
 
 /** Is anything still in flight? Drives whether the panel ticks. */
 export const isRunning = (stages) =>

@@ -89,7 +89,8 @@ public class ChatCompletionsGateway implements LlmGateway {
                     null, request.overrides());
 
             record(client, request.role(), ModelCallLog.Kind.TEXT, ModelCallLog.Status.OK,
-                    response.promptTokens(), response.completionTokens(), response.latencyMs(), null, null);
+                    response.promptTokens(), response.completionTokens(), response.cachedPromptTokens(),
+                    response.latencyMs(), null, null);
 
             return new TextResult(response.content(), response.raw(), client.model(),
                     new TokenUsage(response.promptTokens(), response.completionTokens(),
@@ -99,7 +100,7 @@ public class ChatCompletionsGateway implements LlmGateway {
             // A failure costs latency and no tokens, so it leaves no trace in a token
             // ledger — and it is the row somebody looking into a slow run wants first.
             record(client, request.role(), ModelCallLog.Kind.TEXT, statusOf(e),
-                    0, 0, (int) (System.currentTimeMillis() - began), e.getMessage(), null);
+                    0, 0, 0, (int) (System.currentTimeMillis() - began), e.getMessage(), null);
             throw e;
         }
     }
@@ -150,7 +151,8 @@ public class ChatCompletionsGateway implements LlmGateway {
 
             Map<String, Object> fields = parseFields(response.content());
             record(client, request.role(), ModelCallLog.Kind.VISION, ModelCallLog.Status.OK,
-                    response.promptTokens(), response.completionTokens(), response.latencyMs(), null, request);
+                    response.promptTokens(), response.completionTokens(), response.cachedPromptTokens(),
+                    response.latencyMs(), null, request);
 
             return new VisionResult.SlotResult(client.name(), client.model(), fields, response.raw(),
                     false, null,
@@ -162,7 +164,7 @@ public class ChatCompletionsGateway implements LlmGateway {
             // Per slot, not per read. Three slots where one always times out is a fact about
             // that slot, and a read recorded as a single success would hide it completely.
             record(client, request.role(), ModelCallLog.Kind.VISION, statusOf(e),
-                    0, 0, (int) (System.currentTimeMillis() - began), e.getMessage(), request);
+                    0, 0, 0, (int) (System.currentTimeMillis() - began), e.getMessage(), request);
             return new VisionResult.SlotResult(client.name(), client.model(), Map.of(), null,
                     true, e.getMessage(), new TokenUsage(0, 0, 0, false));
         }
@@ -182,8 +184,8 @@ public class ChatCompletionsGateway implements LlmGateway {
      * @param vision the request when this was a vision call; null for text
      */
     private void record(ChatCompletionsClient client, LlmRole role, ModelCallLog.Kind kind,
-                        ModelCallLog.Status status, Integer in, Integer out, Integer ms, String error,
-                        VisionRequest vision) {
+                        ModelCallLog.Status status, Integer in, Integer out, Integer cachedIn,
+                        Integer ms, String error, VisionRequest vision) {
         var scope = CallScope.current();
 
         // On the tape as well as in the ledger. The ledger answers "what did this run
@@ -200,6 +202,9 @@ public class ChatCompletionsGateway implements LlmGateway {
             e.put("status", status.name());
             e.put("tokensIn", in == null ? 0 : in);
             e.put("tokensOut", out == null ? 0 : out);
+            // Only when there was one. A zero here would read as "the prompt cache
+            // missed", which is a claim about a provider that may not have one.
+            if (cachedIn != null && cachedIn > 0) e.put("tokensCachedIn", cachedIn);
             e.put("ms", ms == null ? 0 : ms);
             Map<String, Object> detail = callDetail(client, kind, vision);
             if (!detail.isEmpty()) e.put("detail", detail);
@@ -212,7 +217,7 @@ public class ChatCompletionsGateway implements LlmGateway {
                 role == null ? null : role.name().toLowerCase(),
                 client.name(), client.model(), null,
                 kind, status, 1,
-                in == null ? 0 : in, out == null ? 0 : out, 0,
+                in == null ? 0 : in, out == null ? 0 : out, cachedIn == null ? 0 : cachedIn,
                 ms, null, error));
     }
 

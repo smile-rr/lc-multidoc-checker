@@ -79,7 +79,16 @@ public record HelixEvent(String caseId, String type, Map<String, Object> payload
 
     /**
      * A model was asked something. {@code {stage, step, model, slot, role, kind, status,
-     * tokensIn, tokensOut, ms, detail?}}
+     * tokensIn, tokensOut, tokensCachedIn?, ms, detail?}}
+     *
+     * <p><b>Two caches, and they are not the same fact.</b> {@code tokensCachedIn} is the
+     * <em>provider's</em> prompt cache: the call happened, and that many input tokens were
+     * billed at roughly a tenth of the usual rate. {@link #LLM_CACHED} is our own local
+     * derivation cache: no call happened and nothing was billed. Both get called "cache" in
+     * conversation, so every place that reports one names which it means — a saving of 90%
+     * and a saving of 100% lead to different decisions, and a reader who adds them together
+     * is counting a call that never took place. The field is absent, not zero, when the
+     * provider has no prompt cache to report.
      *
      * <p>One per attempt on a provider, which is finer than a step: a step can fan out
      * across slots, loop with tools, or retry, and its own timing shows only the sum. Which
@@ -100,7 +109,9 @@ public record HelixEvent(String caseId, String type, Map<String, Object> payload
     public static final String LLM_CALL = "llm_call";
 
     /**
-     * A model was <em>not</em> asked, because the answer was already known.
+     * A model was <em>not</em> asked, because the local derivation cache already held the
+     * answer. Nothing was sent and nothing was billed — see {@link #LLM_CALL} for why this
+     * is deliberately a different event from the provider's own prompt cache.
      *
      * <p>Same shape as {@link #LLM_CALL} with {@code status: CACHED} (and the same optional
      * nested {@code detail} from the cache key — dpi, scope). Reported through the

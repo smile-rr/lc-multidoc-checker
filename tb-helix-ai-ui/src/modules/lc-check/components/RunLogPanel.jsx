@@ -4,7 +4,7 @@ import Icon from '@shared/ds/Icon'
 import Badge from '@shared/ds/Badge'
 import { ellipsis } from '@shared/ds/text'
 import useRunLog from '../state/useRunLog'
-import { foldRunLog, isRunning, elapsed, clockTime, LOG_INK } from '../state/runLog'
+import { foldRunLog, isRunning, elapsed, clockTime, LOG_INK, CACHE } from '../state/runLog'
 
 // Run log — what the examination did, while it does it.
 //
@@ -205,8 +205,9 @@ function StepRow({ step }) {
         </span>
         <span style={{ fontSize: 13, color: LOG_INK.label, minWidth: 0, ...ellipsis }}>{step.label}</span>
         {step.cacheHit && (
-          <span title="Answered from cache — no model was asked" style={{ display: 'inline-flex', flexShrink: 0 }}>
-            <Icon name="zap" size={12} color={LOG_INK.ok} />
+          <span title={CACHE.local.title} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: 10.5, color: LOG_INK.ok }}>
+            <Icon name="zap" size={12} color="currentColor" />
+            {CACHE.local.word}
           </span>
         )}
         {step.status !== 'ok' && step.status !== 'running' && (
@@ -246,6 +247,15 @@ function EventRow({ event }) {
   const [open, setOpen] = useState(false)
   const expandable = event.info && Object.keys(event.info).length > 0
   return (
+    // Indented a notch inside the rail. A step and an event share the sequence but
+    // not the rank — the step is what the examination did, the event is something
+    // that happened while it did it — and one notch says so without breaking the
+    // time order the way nesting did.
+    //
+    // The notch is not empty space: it is exactly where the disclosure chevron
+    // sits. Rows with detail and rows without therefore start their type at the
+    // same column, so the left edge stays a column to scan rather than a ragged
+    // one that shifts by whether a row happens to be expandable.
     <Rail>
       <div
         role={expandable ? 'button' : undefined}
@@ -260,9 +270,11 @@ function EventRow({ event }) {
           background: open ? 'var(--me-grey-08)' : undefined,
         }}
       >
-        {expandable ? (
-          <Icon name={open ? 'chevron-down' : 'chevron-right'} size={11} color={LOG_INK.time} />
-        ) : null}
+        <span style={{ width: 13, flexShrink: 0, display: 'inline-flex', justifyContent: 'center' }}>
+          {expandable ? (
+            <Icon name={open ? 'chevron-down' : 'chevron-right'} size={11} color={LOG_INK.time} />
+          ) : null}
+        </span>
         <span style={{ fontFamily: 'var(--font-mono)', color: LOG_INK.type, flexShrink: 0 }}>
           {event.type}
         </span>

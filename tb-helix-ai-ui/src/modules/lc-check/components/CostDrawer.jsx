@@ -6,7 +6,7 @@ import Icon from '@shared/ds/Icon'
 import { duration, durationShort, thousands, usd, usdFine, seconds2, percent, plural } from '@shared/lib/format'
 // The same grouping the run log uses. Two formatters for one fact would let the
 // panel and the log disagree about a number they both read off the ledger.
-import { tokens as tok } from '../state/runLog.js'
+import { tokens as tok, CACHE } from '../state/runLog.js'
 
 // Run cost — what the review spent, in time and money, and where it went.
 //
@@ -77,7 +77,8 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
                 note={finished
                   ? [
                       `${usdFine(cost.costPerPage)} per page`,
-                      cost.cacheHitPct ? `${percent(cost.cacheHitPct)} cached` : null,
+                      cost.localCachePct ? `${percent(cost.localCachePct)} local cache` : null,
+                      cost.promptCachePct ? `${percent(cost.promptCachePct)} prompt cache` : null,
                       cost.costAvoided ? `${usdFine(cost.costAvoided)} avoided` : null,
                     ].filter(Boolean).join(' · ')
                   : 'so far'}
@@ -145,7 +146,8 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
                 plural(cost.calls, 'call'),
                 cost.retries ? plural(cost.retries, 'repair') : null,
                 `${cost.pagesRead} pages read`,
-                cost.cacheHitPct ? `prompt cache ${percent(cost.cacheHitPct)}` : null,
+                cost.localCachePct ? `local cache ${percent(cost.localCachePct)}` : null,
+                cost.promptCachePct ? `prompt cache ${percent(cost.promptCachePct)}` : null,
               ].filter(Boolean).join(', ')}
             </span>
             <div style={{ marginTop: 8, fontSize: 12, color: 'var(--me-grey-70)' }}>Charged to the trade-finance AI budget.</div>
@@ -196,12 +198,16 @@ function Section({ name, note, last, collapsible, count, children }) {
 }
 
 /**
- * The run's token totals: what was billed, and what the cache kept off the bill.
+ * The run's token totals: what was billed, and what the local cache kept off the bill.
  *
- * Two clusters, never one sum. A cache hit's tokens are the *original* call's,
+ * Two clusters, never one sum. A local-cache hit's tokens are the *original* call's,
  * replayed from the derivation store — adding them to the billed pair would report
  * work this run did not do, and would make the cheapest possible run look like the
- * busiest. The ⚡ says which side of that line the second cluster is on.
+ * busiest.
+ *
+ * The provider's prompt cache is a third figure and belongs to neither: it is part
+ * of the billed input, at a reduced rate. It shows inside the billed cluster for
+ * that reason, and is named `prompt cache` so it can never be read as free.
  */
 function TokenLine({ cost }) {
   const billed = (cost.tokensIn ?? 0) + (cost.tokensOut ?? 0)
@@ -209,7 +215,7 @@ function TokenLine({ cost }) {
   if (!billed && !avoided) return null
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 14px', marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--me-grey-08)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
-      <Tokens tokensIn={cost.tokensIn} tokensOut={cost.tokensOut} />
+      <Tokens tokensIn={cost.tokensIn} tokensOut={cost.tokensOut} promptCached={cost.tokensCachedIn} />
       {avoided ? (
         <Tokens tokensIn={cost.tokensInAvoided} tokensOut={cost.tokensOutAvoided} cached />
       ) : null}
@@ -218,23 +224,34 @@ function TokenLine({ cost }) {
 }
 
 /**
- * `in 1,718  out 664`, with a ⚡ in front when these are tokens nobody was charged for.
+ * `in 1,718  out 664`, with a ⚡ and the word `local cache` when these are tokens no
+ * call was made for.
  *
  * Words rather than arrows: `↓`/`↑` read as either direction depending on whether
  * you picture the request or the response, and on a flash model output costs eight
  * times input — so reading them the wrong way round inverts the conclusion.
+ *
+ * And `local cache` rather than `not charged`, which was true of this one cache and
+ * would quietly mislead about the other: the provider's prompt cache is charged, at
+ * about a tenth of the rate. A reader who has learnt that "cache" means free would
+ * read a real bill as zero the first time one appears.
  */
-function Tokens({ tokensIn, tokensOut, cached }) {
+function Tokens({ tokensIn, tokensOut, cached, promptCached }) {
   const ink = cached ? 'var(--status-success)' : 'var(--me-grey-70)'
   return (
     <span
-      title={cached ? 'Answered from cache — these tokens were not charged' : 'Tokens sent to and returned by the model'}
+      title={cached ? CACHE.local.title : 'Tokens sent to and returned by the model'}
       style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: ink, whiteSpace: 'nowrap' }}
     >
       {cached ? <Icon name="zap" size={11} color="currentColor" /> : null}
       <span>in {tok(tokensIn ?? 0)}</span>
+      {promptCached ? (
+        <span title={CACHE.prompt.title} style={{ color: 'var(--me-grey-50)' }}>
+          ({tok(promptCached)} {CACHE.prompt.word})
+        </span>
+      ) : null}
       <span>out {tok(tokensOut ?? 0)}</span>
-      {cached ? <span style={{ opacity: 0.8 }}>not charged</span> : null}
+      {cached ? <span style={{ opacity: 0.8 }}>{CACHE.local.word}</span> : null}
     </span>
   )
 }
@@ -335,7 +352,7 @@ function StepList({ cost, completedCount }) {
                   counts are what tell them apart. */}
               {done && (r.tokensIn || r.tokensOut || avoided) ? (
                 <span style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 12px', marginTop: 2, fontFamily: 'var(--font-mono)', fontSize: 10.5 }}>
-                  {r.tokensIn || r.tokensOut ? <Tokens tokensIn={r.tokensIn} tokensOut={r.tokensOut} /> : null}
+                  {r.tokensIn || r.tokensOut ? <Tokens tokensIn={r.tokensIn} tokensOut={r.tokensOut} promptCached={r.tokensCachedIn} /> : null}
                   {avoided ? <Tokens tokensIn={r.tokensInAvoided} tokensOut={r.tokensOutAvoided} cached /> : null}
                 </span>
               ) : null}
