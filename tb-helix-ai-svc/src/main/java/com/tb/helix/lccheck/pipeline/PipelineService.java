@@ -38,17 +38,16 @@ public class PipelineService {
 
     private static final Logger log = LoggerFactory.getLogger(PipelineService.class);
 
-    private final Map<StageId, Stage> stages = new LinkedHashMap<>();
+    private final Pipeline pipeline;
     private final CaseStore cases;
     private final EventBus events;
     private final Map<String, Boolean> cancelled = new ConcurrentHashMap<>();
 
-    public PipelineService(List<Stage> discovered, CaseStore cases, EventBus events) {
-        discovered.forEach(s -> stages.put(s.id(), s));
+    public PipelineService(Pipeline pipeline, CaseStore cases, EventBus events) {
+        this.pipeline = pipeline;
         this.cases = cases;
         this.events = events;
-        log.info("Pipeline stages: {}", StageId.ORDER.stream()
-                .filter(stages::containsKey).map(StageId::key).toList());
+        log.info("Pipeline stages: {}", pipeline.order().stream().map(StageId::key).toList());
     }
 
     /**
@@ -108,12 +107,12 @@ public class PipelineService {
                 : List.of(requested);
 
         for (StageId id : toRun) {
-            Stage stage = stages.get(id);
-            if (stage == null) {
+            Optional<Stage> stage = pipeline.stage(id);
+            if (stage.isEmpty()) {
                 log.warn("No implementation for stage {} — skipping", id.key());
                 continue;
             }
-            StageOutcome outcome = runOne(caseId, stage, officerId);
+            StageOutcome outcome = runOne(caseId, stage.get(), officerId);
             if (!outcome.canContinue()) return;
         }
 
@@ -244,7 +243,8 @@ public class PipelineService {
         cancelled.put(caseId, true);
     }
 
-    public Optional<Stage> stage(StageId id) {
-        return Optional.ofNullable(stages.get(id));
+    /** What the pipeline is, for anything that needs to show it rather than run it. */
+    public Pipeline pipeline() {
+        return pipeline;
     }
 }

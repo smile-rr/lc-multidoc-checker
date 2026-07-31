@@ -54,7 +54,9 @@ lccheck/
 ├── api/            CaseController — routes and status codes, nothing else
 │   └── dto/        request bodies. The API's shape, not the examination's.
 ├── service/        CaseService, CaseAssembler — the only place rows become types
-├── pipeline/       Stage, StageContext (contracts) + PipelineService, DbStageContext (impl)
+├── pipeline/       Stage, Step, StageContext (contracts)
+│                   Pipeline        — WHAT the examination is: stages in order, describe()
+│                   PipelineService — HOW it runs: officer pacing, async, halts, the tape
 ├── stage/          one package per stage: intake, interpret, gate, plan, execute, signoff
 ├── persistence/    CaseStore, Rows — SQL and column names live here and stop here
 └── types/          pure data, mirroring the behaviour side by name
@@ -229,6 +231,27 @@ nothing. Keys that nobody looks up stay inline.
 **A fan-out whose width the code does not know** — one call per document, one per planned check —
 stays a single declared step whose body re-announces with the item it is on. Declaring a step per
 document would make `steps()` depend on the case, which is the one thing a declaration must not do.
+
+### Why `pipeline` is not `infra`
+
+It looks like a framework and it is not one. `PipelineService` knows that the gate rides with the
+plan, that a halt sets `gate_halted` and means a discrepancy rather than a fault, that every stage
+after intake waits at `awaiting_officer`, and that an officer can override. Those are UCP 600's rules
+and the bank's, not a scheduler's. In `infra` it would drag `StageId`, `CaseStore` and the meaning of
+a discrepancy into the one layer defined by knowing nothing about letters of credit — and
+`layersDependOnlyDownward` would refuse it.
+
+`Step` alone genuinely is domain-neutral and could become a small `harness` framework. It has not,
+and the reason is recorded in `pipeline/package-info.java`: one interface, one consumer, and its
+collaborator `StageContext` speaks of cases, officers and a step tape. When a second product wants
+it, the extraction is small.
+
+**`Pipeline` vs `PipelineService`** — *what it is* versus *how it runs*. They were one class holding
+a registry it also executed, then briefly two that each built their own copy of that registry, which
+had already begun to differ: one ordered by `StageId.ORDER`, one by whatever order Spring handed the
+beans over. The split is the same one the predecessor made between `LcV2Pipeline` and its
+`PipelineService`, and it is why a controller can safely serve `GET /flow` — describing the pipeline
+touches no per-case state and starts nothing.
 
 ### Why not Spring Batch or Temporal
 
