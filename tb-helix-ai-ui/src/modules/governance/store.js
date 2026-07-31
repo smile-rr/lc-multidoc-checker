@@ -410,7 +410,29 @@ export function deriveVals(state, setState) {
   const docKeyBook = dictDocList.map((d) => d.key)
   // Every (field, document) pair the dictionary knows about — the vocabulary a
   // rule row picks its operands from.
-  const operandBook = dictFieldList.flatMap((f) => (f.bindings || []).map((b) => ({ field: f.key, fieldLabel: f.name, doc: b.doc, docLabel: docLabel(b.doc), note: b.note })))
+  // The operand book, and the two indexes over it.
+  //
+  // A field is DEFINED once and read from several documents — that is what lets a rule
+  // compare goods_description on the invoice with goods_description on the credit, and
+  // it is why the dictionary is field-first. But an operand is not a field, it is a
+  // field ON a document: you pick "the invoice's value", not "the value, on the
+  // invoice". So the definition is field-first and the picker is document-first, over
+  // exactly the same rows. Both derived, neither stored, so they cannot disagree.
+  const operandBook = dictFieldList.flatMap((f) =>
+    (f.bindings || []).map((b) => ({ field: f.key, fieldLabel: f.name, doc: b.doc, docLabel: docLabel(b.doc), note: b.note })))
+
+  /** Every field readable from a document — the document-first index. */
+  const fieldsByDoc = dictFieldList.reduce((acc, f) => {
+    ;(f.bindings || []).forEach((b) => {
+      ;(acc[b.doc] ??= []).push({ key: f.key, name: f.name, note: b.note || '', valueType: f.valueType })
+    })
+    return acc
+  }, {})
+
+  // A field nobody has said where to read is not pickable as an operand — there is no
+  // document to name. Said out loud rather than left absent, because "the field I just
+  // added is missing from the list" is indistinguishable from a bug.
+  const unboundFields = dictFieldList.filter((f) => !(f.bindings || []).length).map((f) => f.name)
   // ---- one open edit at a time --------------------------------------------
   //
   // The console had three independent edit slots — a check being edited, an
@@ -791,7 +813,23 @@ export function deriveVals(state, setState) {
         bg: unset ? 'transparent' : 'var(--me-grey-08)', color: unset ? 'var(--me-grey-70)' : 'var(--me-ink)',
         open: S.operandOpen === openKey,
         onToggle: (e) => { if (e && e.stopPropagation) e.stopPropagation(); startEdit(); setState((s) => ({ operandOpen: s.operandOpen === openKey ? null : openKey })) },
-        book: operandBook.map((op) => ({ ...op, field: op.fieldLabel, onPick: () => { set({ field: op.field, doc: op.doc }); setState({ operandOpen: null }) } })),
+        // Grouped by document, dictionary order within each. Picking reads
+        // "Commercial invoice → Invoice value", which is the order the operand is
+        // addressed in and the order an examiner says it out loud.
+        book: Object.entries(
+          operandBook.reduce((acc, op) => { (acc[op.docLabel] ??= []).push(op); return acc }, {}),
+        )
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([docName, ops]) => ({
+            docName,
+            fields: ops.map((op) => ({
+              field: op.fieldLabel,
+              note: op.note,
+              selected: op.field === o.field && op.doc === o.doc,
+              onPick: () => { set({ field: op.field, doc: op.doc }); setState({ operandOpen: null }) },
+            })),
+          })),
+        unbound: unboundFields,
       }
     }
 
@@ -1137,7 +1175,7 @@ export function deriveVals(state, setState) {
   const phases = PHASES.map((p) => ({ ...p, scenarios: p.scenarios.map((r) => ({ ...r, mark: r.status === 'pass' ? '✓' : '!', markBg: r.status === 'pass' ? 'var(--status-success)' : 'var(--status-warning)' })) }))
   const reviewOpen = S.panel === 'review' && !!panelCtx
   // Export reads a rule card off its rows, since it has no prose to export.
-  const operandText = (o) => (!o ? '?' : o.literal ? o.literal : o.field ? `${fieldLabel(o.field)} @ ${docLabel(o.doc)}` : '?')
+  const operandText = (o) => (!o ? '?' : o.literal ? o.literal : o.field ? `${docLabel(o.doc)} · ${fieldLabel(o.field)}` : '?')
   const ruleMd = (c) => {
     const r = ruleOf(c.id)
     const blocks = r.groups
@@ -1394,6 +1432,10 @@ export function deriveVals(state, setState) {
     roleTaken: (r) => dictDocs.some((x) => x.role === r && x.id !== d.id),
     onChangeRole: (ev) => { e.start(); const val = ev.target.value; setDD((ds) => ds.map((x) => (x.id === d.id ? (val ? { ...x, role: val } : (({ role, ...rest }) => rest)(x)) : (x.role === val && val ? (({ role, ...rest }) => rest)(x) : x)))) },
     usedCount: docUsed(d.key),
+    // What this document is read for. The reverse of the dictionary's own direction,
+    // derived rather than stored — a note has one home, on the field, so the two have
+    // nowhere to drift apart. Read-only here for the same reason.
+    readFields: (fieldsByDoc[d.key] || []).slice().sort((a, b) => a.name.localeCompare(b.name)),
     removeTip: S.createdId === d.id ? 'Discard this new document type' : 'Remove this document type',
     onRemove: () => {
       if (S.createdId === d.id) { setDD((ds) => ds.filter((x) => x.id !== d.id)); setState({ createdId: null, dictDetail: null }); return }

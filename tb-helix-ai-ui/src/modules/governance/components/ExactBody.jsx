@@ -3,7 +3,7 @@ import Eyebrow from '@shared/ds/Eyebrow'
 import IconButton from '@shared/ds/IconButton'
 import Select from '@shared/ds/Select'
 import TextArea from '@shared/ds/TextArea'
-import { Menu, MenuItem, MenuHeader } from '@shared/ds/Menu'
+import { Menu, MenuItem, MenuHeader, MenuEmpty } from '@shared/ds/Menu'
 import { ellipsis } from '@shared/ds/text'
 
 // The body of a Rule card.
@@ -230,10 +230,24 @@ function Operand({ o, flag }) {
       }
     >
       {o.onUseLiteral && <MenuItem label="A fixed value or expression…" icon="pencil" onClick={o.onUseLiteral} />}
-      <MenuHeader>Field, as read from a document</MenuHeader>
-      {o.book.map((op, i) => (
-        <MenuItem key={i} label={op.field} hint={op.doc} title={op.note} onClick={op.onPick} selected={op.field === o.field && op.doc === o.doc} />
+      {/* Grouped by document, because an operand is a field ON a document — you are
+          picking the invoice's value, not the value that happens to be on an invoice.
+          The dictionary defines a field once and lists where it is read; this is the
+          same rows read the other way round. */}
+      {o.book.map((group) => (
+        <div key={group.docName}>
+          <MenuHeader>{group.docName}</MenuHeader>
+          {group.fields.map((op, i) => (
+            <MenuItem key={i} label={op.field} title={op.note} onClick={op.onPick} selected={op.selected} />
+          ))}
+        </div>
       ))}
+      {o.unbound && o.unbound.length ? (
+        <MenuEmpty>
+          {o.unbound.length === 1 ? `“${o.unbound[0]}” is not here` : `${o.unbound.length} fields are not here`}
+          {' '}— a field can only be compared once the dictionary says which document it is read from.
+        </MenuEmpty>
+      ) : null}
     </Menu>
   )
 }

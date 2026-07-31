@@ -322,6 +322,22 @@ function DocCard({ d }) {
         maxLength={DESC_MAX}
         style={descArea}
       />
+      {/* What is read from this document.
+          The dictionary defines a field once and lists the documents it is read from,
+          because that is what lets one rule compare the same field across two of them.
+          This is the same rows the other way round — read-only, so a read note keeps
+          one home and the two views have nowhere to drift apart. */}
+      {d.readFields.length > 0 && (
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--me-grey-08)' }}>
+          <Eyebrow size="sm">Read from this document</Eyebrow>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+            {d.readFields.map((rf) => (
+              <Chip key={rf.key} size="sm" title={rf.note || 'No read note yet'}>{rf.name}</Chip>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* What this document is TO an examination. Almost always nothing in particular,
           so it sits quietly under the description rather than beside the name. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
