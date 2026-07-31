@@ -31,6 +31,18 @@ public record VisionResult(
         List<SlotResult> slotResults,
         TokenUsage usage) {
 
+    /**
+     * The model that answered, for the record.
+     *
+     * <p>The first slot that succeeded. With one slot that is simply the model; with
+     * several it is the one whose vote leads, and the rest are in {@code slotResults} for
+     * anyone asking which slot was slow or wrong.
+     */
+    public String model() {
+        return slotResults.stream().filter(r -> !r.failed()).map(SlotResult::model)
+                .filter(java.util.Objects::nonNull).findFirst().orElse(null);
+    }
+
     /** How much to trust a value. */
     public enum Confidence {
         HIGH, MED, LOW

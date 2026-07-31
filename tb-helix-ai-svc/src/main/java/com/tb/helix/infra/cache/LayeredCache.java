@@ -13,6 +13,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Optional;
 import java.util.function.Supplier;
 
@@ -37,6 +39,25 @@ public class LayeredCache implements DerivationCache {
     private final DerivationStore l3;
     private final ObjectMapper json;
     private final ModelCallLog calls;
+
+    /**
+     * What the original call cost, by cache key.
+     *
+     * <p>The memory tiers hold the answer and not what producing it cost, so an L1 hit has
+     * nothing to report on its own. This is populated at the two moments a key can enter
+     * those tiers — a store, and a promotion after an L3 read — so any key capable of
+     * producing an L1 hit has already been through here.
+     *
+     * <p>Bounded, and dropped wholesale when it fills. Losing it costs a cached row its
+     * token counts until the next L3 read repopulates it, which is the right way for an
+     * accounting nicety to fail.
+     */
+    private static final int SAVED_MAX = 4096;
+    private final Map<String, Saved> saved = new ConcurrentHashMap<>();
+
+    /** What a call cost the first time, so a hit can say what it avoided. */
+    private record Saved(String modelId, int promptTokens, int completionTokens) {
+    }
 
     public LayeredCache(List<CacheTier> tiers, DerivationStore l3, ObjectMapper json, ModelCallLog calls) {
         // Ordered by level so the walk is cheapest-first regardless of bean discovery order.
@@ -77,6 +98,7 @@ public class LayeredCache implements DerivationCache {
         if (value.isEmpty() && row.get().blobSha() == null) return Optional.empty();
 
         promote(k, row.get().resultJson(), key);
+        remember(k, row.get().modelId(), row.get().promptTokens(), row.get().completionTokens());
         return Optional.of(new Hit<>(value.orElse(null), CacheTier.Level.L3,
                 row.get().blobSha(), row.get().hitCount()));
     }
@@ -85,6 +107,10 @@ public class LayeredCache implements DerivationCache {
     public <T> void store(DerivationKey key, Entry<T> entry) {
         String k = key.hash();
         l3.store(key, entry.value(), entry.blobSha(), entry.rawResponse(), entry.usage());
+        remember(k, entry.usage() != null && entry.usage().modelId() != null
+                        ? entry.usage().modelId() : key.modelId(),
+                entry.usage() == null ? null : entry.usage().promptTokens(),
+                entry.usage() == null ? null : entry.usage().completionTokens());
         if (entry.value() != null) {
             try {
                 byte[] bytes = json.writeValueAsBytes(entry.value());
@@ -106,12 +132,7 @@ public class LayeredCache implements DerivationCache {
             // provider calls and so left no ledger rows at all — which reads as a stage
             // that did nothing rather than one that did everything for free. What was
             // avoided is the most interesting number a cache has.
-            var scope = CallScope.current();
-            calls.record(new ModelCallLog.Call(
-                    scope.caseId(), scope.stage(), scope.step(),
-                    key.op(), null, key.modelId() == null ? "cache" : key.modelId(), null,
-                    ModelCallLog.Kind.TEXT, ModelCallLog.Status.CACHED, 1,
-                    0, 0, 0, 0, key.hash(), null));
+            recordAvoided(key);
             return hit.get();
         }
 
@@ -128,6 +149,34 @@ public class LayeredCache implements DerivationCache {
         int removed = l3.purgeExpired();
         if (removed > 0) log.info("Purged {} expired derivation(s)", removed);
         return removed;
+    }
+
+    /**
+     * Writes down a hit as a call that did not have to be made.
+     *
+     * <p>With the model and the tokens the original call reported, so the row prices like
+     * any other and a cached run can be asked what it saved. It used to say
+     * {@code role:extract} — a placeholder from the cache key — with zero tokens, which
+     * resolved to no family and therefore to no money at all.
+     */
+    private void recordAvoided(DerivationKey key) {
+        Saved s = saved.get(key.hash());
+        var scope = CallScope.current();
+        calls.record(new ModelCallLog.Call(
+                scope.caseId(), scope.stage(), scope.step(),
+                key.op(), null,
+                s != null && s.modelId() != null ? s.modelId()
+                        : key.modelId() == null ? "cache" : key.modelId(),
+                null,
+                ModelCallLog.Kind.TEXT, ModelCallLog.Status.CACHED, 1,
+                s == null ? 0 : s.promptTokens(), s == null ? 0 : s.completionTokens(),
+                0, 0, key.hash(), null));
+    }
+
+    private void remember(String hash, String modelId, Integer in, Integer out) {
+        if (modelId == null && in == null && out == null) return;
+        if (saved.size() >= SAVED_MAX) saved.clear();
+        saved.put(hash, new Saved(modelId, in == null ? 0 : in, out == null ? 0 : out));
     }
 
     private <T> Optional<T> decode(byte[] bytes, Class<T> type) {

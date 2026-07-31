@@ -258,7 +258,7 @@ public class ExecuteStage implements Stage {
         var hit = cache.computeIfAbsent(key, Map.class, () -> {
             var result = models.complete(TextRequest.json(LlmRole.JUDGE, prompts.get("examine-system"), prompt));
             return new DerivationCache.Entry<>(parse(result.content()), null,
-                    result.rawResponse(), ModelSpend.of(result.usage()));
+                    result.rawResponse(), ModelSpend.of(result.usage(), result.model()));
         });
         @SuppressWarnings("unchecked")
         Map<String, Object> out = (Map<String, Object>) hit.value();

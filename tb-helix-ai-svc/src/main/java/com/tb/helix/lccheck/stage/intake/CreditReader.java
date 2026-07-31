@@ -88,7 +88,7 @@ public class CreditReader {
             var hit = cache.computeIfAbsent(key, Map.class, () -> {
                 var result = models.complete(TextRequest.json(LlmRole.READ_TEXT, prompts.get("credit-system"), prompt));
                 return new DerivationCache.Entry<>(parse(result.content()), null,
-                        result.rawResponse(), ModelSpend.of(result.usage()));
+                        result.rawResponse(), ModelSpend.of(result.usage(), result.model()));
             });
             @SuppressWarnings("unchecked")
             Map<String, Object> fields = (Map<String, Object>) hit.value();

@@ -43,6 +43,17 @@ public class PgDerivationStore implements DerivationStore {
         log.info("L3 derivation store: Postgres (helix_infra.derivation)");
     }
 
+    /**
+     * The model that actually charged, falling back to the key's role placeholder.
+     *
+     * <p>The key names a role — {@code role:extract} — because it is built before a slot is
+     * chosen. Storing that as the model meant a cache hit could never be priced: no family
+     * matches it, so the row resolved to no money at all.
+     */
+    private static String modelOf(DerivationKey key, DerivationCache.Usage usage) {
+        return usage != null && usage.modelId() != null ? usage.modelId() : key.modelId();
+    }
+
     @Override
     public boolean enabled() {
         return cfg.enabled();
@@ -57,9 +68,11 @@ public class PgDerivationStore implements DerivationStore {
                        SET hit_count = hit_count + 1, last_hit_at = NOW()
                      WHERE cache_key = ?
                        AND (expires_at IS NULL OR expires_at > NOW())
-                    RETURNING result::text, result_blob_sha, hit_count
+                    RETURNING result::text, result_blob_sha, hit_count,
+                              model_id, prompt_tokens, completion_tokens
                     """,
-                    (rs, i) -> new Row(rs.getString(1), rs.getString(2), rs.getInt(3)),
+                    (rs, i) -> new Row(rs.getString(1), rs.getString(2), rs.getInt(3),
+                            rs.getString(4), (Integer) rs.getObject(5), (Integer) rs.getObject(6)),
                     cacheKey).stream().findFirst();
         } catch (RuntimeException e) {
             log.warn("L3 lookup failed, treating as miss: {}", e.toString());
@@ -93,7 +106,7 @@ public class PgDerivationStore implements DerivationStore {
                         created_at      = NOW()
                     """,
                     key.hash(), key.op(), key.opVersion(), key.inputSha(), key.inputScope(),
-                    key.promptSha(), key.modelId(), key.providerUrl(),
+                    key.promptSha(), modelOf(key, usage), key.providerUrl(),
                     json.writeValueAsString(key.params()),
                     value == null ? null : json.writeValueAsString(value),
                     blobSha,

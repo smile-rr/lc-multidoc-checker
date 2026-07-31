@@ -83,7 +83,11 @@ public class DiskDerivationStore implements DerivationStore {
             String resultJson = node.has("result") && !node.get("result").isNull()
                     ? json.writeValueAsString(node.get("result")) : null;
             String blobSha = textOrNull(node, "resultBlobSha");
-            return Optional.of(new Row(resultJson, blobSha, hits));
+            var usage = node.path("usage");
+            return Optional.of(new Row(resultJson, blobSha, hits,
+                    textOrNull(node, "modelId"),
+                    usage.has("promptTokens") ? usage.get("promptTokens").asInt() : null,
+                    usage.has("completionTokens") ? usage.get("completionTokens").asInt() : null));
         } catch (Exception e) {
             log.warn("L3 disk lookup failed, treating as miss: {}", e.toString());
             return Optional.empty();
@@ -109,12 +113,19 @@ public class DiskDerivationStore implements DerivationStore {
             node.put("inputSha", key.inputSha());
             if (key.inputScope() != null) node.put("inputScope", key.inputScope());
             if (key.promptSha() != null) node.put("promptSha", key.promptSha());
-            if (key.modelId() != null) node.put("modelId", key.modelId());
+            String modelId = usage != null && usage.modelId() != null ? usage.modelId() : key.modelId();
+            if (modelId != null) node.put("modelId", modelId);
             if (key.providerUrl() != null) node.put("providerUrl", key.providerUrl());
             node.set("params", json.valueToTree(key.params()));
             node.set("result", value == null ? null : json.valueToTree(value));
             if (blobSha != null) node.put("resultBlobSha", blobSha);
-            if (rawResponse != null) node.put("rawResponse", rawResponse);
+            // Prose goes to the .md and a pointer stays here; JSON stays here and gets no
+            // .md at all. Writing the raw response to both was two copies of the same text
+            // in two files, and an .md holding a JSON object is a file nobody can read that
+            // nobody needed. One body, one home.
+            boolean asMarkdown = cfg.writeMd() && isProse(rawResponse);
+            if (rawResponse != null && !asMarkdown) node.put("rawResponse", rawResponse);
+            if (asMarkdown) node.put("rawResponseFile", key.hash() + ".md");
             if (usage != null) {
                 ObjectNode u = node.putObject("usage");
                 if (usage.promptTokens() != null) u.put("promptTokens", usage.promptTokens());
@@ -128,7 +139,7 @@ public class DiskDerivationStore implements DerivationStore {
 
             Files.writeString(jsonFile, json.writerWithDefaultPrettyPrinter().writeValueAsString(node));
 
-            if (cfg.writeMd() && rawResponse != null && !rawResponse.isBlank()) {
+            if (asMarkdown) {
                 Path md = mdPath(jsonFile);
                 String body = """
                         ---
@@ -141,7 +152,7 @@ public class DiskDerivationStore implements DerivationStore {
                         """.formatted(
                         key.op(),
                         key.hash(),
-                        key.modelId() == null ? "" : key.modelId(),
+                        modelId == null ? "" : modelId,
                         rawResponse);
                 Files.writeString(md, body);
             }
@@ -213,6 +224,20 @@ public class DiskDerivationStore implements DerivationStore {
             }
         }
         return Optional.empty();
+    }
+
+    /**
+     * Whether a response is prose rather than a JSON payload.
+     *
+     * <p>A structured answer is already in the {@code .json} in a form that can be queried;
+     * copying it into a {@code .md} produces a markdown file containing a JSON object, which
+     * serves no reader. Markdown earns its own file precisely because JSON is the wrong
+     * container for it — escaped newlines, unreadable without decoding, twice the size.
+     */
+    private static boolean isProse(String raw) {
+        if (raw == null || raw.isBlank()) return false;
+        char first = raw.strip().charAt(0);
+        return first != '{' && first != '[';
     }
 
     private static Path mdPath(Path jsonFile) {

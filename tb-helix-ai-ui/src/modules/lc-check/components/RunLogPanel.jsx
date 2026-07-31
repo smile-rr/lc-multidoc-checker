@@ -4,7 +4,7 @@ import Icon from '@shared/ds/Icon'
 import Badge from '@shared/ds/Badge'
 import { ellipsis } from '@shared/ds/text'
 import useRunLog from '../state/useRunLog'
-import { foldRunLog, isRunning, elapsed, clockTime, LOG_INK } from '../state/runLog'
+import { foldRunLog, isRunning, elapsed, clockTime, tokens, LOG_INK } from '../state/runLog'
 
 // Run log — what the examination did, while it does it.
 //
@@ -54,10 +54,12 @@ export default function RunLogPanel({ open, onClose, caseId }) {
   const costs = new Map()
   for (const row of spend) {
     const k = `${row.stage}/${row.step}`
-    const at = costs.get(k) ?? { tokensIn: 0, tokensOut: 0, cost: 0, model: row.family || row.modelId }
+    const at = costs.get(k) ?? { tokensIn: 0, tokensOut: 0, cost: 0, calls: 0, cached: 0, model: row.family || row.modelId }
     at.tokensIn += row.tokensIn || 0
     at.tokensOut += row.tokensOut || 0
     at.cost += Number(row.cost) || 0
+    at.calls += row.calls || 0
+    at.cached += row.cached || 0
     costs.set(k, at)
   }
 
@@ -183,14 +185,21 @@ function StepRow({ step, cost }) {
             are both natural readings and they are opposites. Output costs eight
             times input on a flash model, so reading it backwards makes an expensive
             step look cheap, which is the one mistake this number exists to prevent. */}
-        {cost && (cost.tokensIn > 0 || cost.cost > 0) && (
-          <span title={`${cost.model} · ${cost.tokensIn} tokens in, ${cost.tokensOut} out`}
-                style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: LOG_INK.detail, flexShrink: 0 }}>
-            <span style={{ color: LOG_INK.time }}>in</span> {cost.tokensIn}
-            {' '}<span style={{ color: LOG_INK.time }}>out</span> {cost.tokensOut}
-            {' '}{usdCents(cost.cost)}
-          </span>
-        )}
+        {/* Spent and avoided are not the same number and must not look alike. A step
+            answered entirely from cache shows what it would have cost, marked `saved`
+            and in the same green as the ⚡ — otherwise a cached run reads as an
+            expensive one, which inverts the thing the cache is there to prove. */}
+        {cost && (cost.tokensIn > 0 || cost.cost > 0) && (() => {
+          const free = cost.calls > 0 && cost.cached === cost.calls
+          return (
+            <span title={`${cost.model} · ${tokens(cost.tokensIn)} tokens in, ${tokens(cost.tokensOut)} out`}
+                  style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: free ? LOG_INK.ok : LOG_INK.detail, flexShrink: 0 }}>
+              <span style={{ color: LOG_INK.time }}>in</span> {tokens(cost.tokensIn)}
+              {' '}<span style={{ color: LOG_INK.time }}>out</span> {tokens(cost.tokensOut)}
+              {' '}{free ? 'saved ' : ''}{usdCents(cost.cost)}
+            </span>
+          )
+        })()}
         <Clock at={step.startedAt} ms={step.ms} running={step.status === 'running'} />
       </div>
       {step.events.map((ev) => <EventRow key={ev.seq} event={ev} />)}

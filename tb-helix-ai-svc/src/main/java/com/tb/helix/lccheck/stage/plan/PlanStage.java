@@ -155,7 +155,7 @@ public class PlanStage implements Stage {
             var hit = cache.computeIfAbsent(key, Map.class, () -> {
                 var result = models.complete(TextRequest.json(LlmRole.PLAN, prompts.get("plan-system"), prompt));
                 return new DerivationCache.Entry<>(parse(result.content()), null,
-                        result.rawResponse(), ModelSpend.of(result.usage()));
+                        result.rawResponse(), ModelSpend.of(result.usage(), result.model()));
             });
             found = readList(hit.value());
         } catch (RuntimeException e) {

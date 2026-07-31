@@ -16,8 +16,16 @@ import java.util.Optional;
  */
 public interface DerivationStore {
 
-    /** One stored answer, before it is decoded to the caller's type. */
-    record Row(String resultJson, String blobSha, int hitCount) {
+    /**
+     * One stored answer, before it is decoded to the caller's type.
+     *
+     * <p>Carries what the original call cost as well as what it returned. A cache hit is
+     * the one event that knows what was <em>avoided</em>, and it could not say so: the
+     * ledger recorded cached calls with a placeholder model and zero tokens, so the single
+     * number a cache exists to produce was the one number missing from it.
+     */
+    record Row(String resultJson, String blobSha, int hitCount,
+               String modelId, Integer promptTokens, Integer completionTokens) {
     }
 
     boolean enabled();

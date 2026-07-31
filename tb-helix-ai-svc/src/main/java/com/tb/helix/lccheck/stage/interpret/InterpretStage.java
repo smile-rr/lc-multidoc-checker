@@ -150,7 +150,7 @@ public class InterpretStage implements Stage {
         var hit = cache.computeIfAbsent(key, Map.class, () -> {
             List<byte[]> images = renderer.render(pdfSha, all, spec);
             VisionResult result = models.read(VisionRequest.of(LlmRole.SEGMENT, images, prompt, all));
-            return new DerivationCache.Entry<>(result.fields(), null, null, ModelSpend.of(result.usage()));
+            return new DerivationCache.Entry<>(result.fields(), null, null, ModelSpend.of(result.usage(), result.model()));
         });
 
         if (hit.tier() != com.tb.helix.infra.cache.CacheTier.Level.NONE) {
@@ -237,7 +237,7 @@ public class InterpretStage implements Stage {
                     List<byte[]> images = renderer.render(pdfSha, pages, spec);
                     VisionResult result = models.read(
                             VisionRequest.of(LlmRole.EXTRACT, images, prompt, pages));
-                    return new DerivationCache.Entry<>(result.fields(), null, null, ModelSpend.of(result.usage()));
+                    return new DerivationCache.Entry<>(result.fields(), null, null, ModelSpend.of(result.usage(), result.model()));
                 });
 
                 int offSchema = writeFacts(ctx, code, pages.get(0), hit.value());

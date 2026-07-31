@@ -57,7 +57,16 @@ public interface DerivationCache {
     }
 
     /** Tokens and latency for one call, recorded alongside its answer. */
-    record Usage(Integer promptTokens, Integer completionTokens, Integer totalTokens, Integer latencyMs) {
+    /**
+     * What one call cost, and which model charged it.
+     *
+     * <p>The model is here rather than taken from the cache key, because the key holds a
+     * role placeholder — {@code role:extract} — chosen before a slot was picked. A cached
+     * row priced off that placeholder resolves to no family and therefore to no money,
+     * which is the whole of what a cache is meant to be able to report.
+     */
+    record Usage(Integer promptTokens, Integer completionTokens, Integer totalTokens,
+                 Integer latencyMs, String modelId) {
 
         /**
          * Nothing was spent — the answer came from somewhere that costs nothing.
@@ -66,7 +75,7 @@ public interface DerivationCache {
          * usage row and a run that genuinely cost nothing look identical on a bill, and
          * only one of them is a reporting bug.
          */
-        public static final Usage FREE = new Usage(0, 0, 0, 0);
+        public static final Usage FREE = new Usage(0, 0, 0, 0, null);
     }
 
     /** Looks up an answer without computing one. */

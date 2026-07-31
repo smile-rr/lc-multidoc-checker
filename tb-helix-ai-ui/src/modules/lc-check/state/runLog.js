@@ -250,6 +250,15 @@ export const LOG_INK = {
   muted: 'var(--me-grey-70)',
 }
 
+/**
+ * Token counts, grouped.
+ *
+ * `1468` and `14680` are the same shape at a glance and an order of magnitude
+ * apart — which is the one distinction a token count exists to make. Grouping is
+ * the cheapest way to make the difference visible without reading the digits.
+ */
+export const tokens = (n) => (n == null ? '' : Number(n).toLocaleString('en-US'))
+
 /** Is anything still in flight? Drives whether the panel ticks. */
 export const isRunning = (stages) =>
   stages.some((s) => s.status === 'running' && s.startedAt)
