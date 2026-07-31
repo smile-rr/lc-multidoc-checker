@@ -513,4 +513,49 @@ public class CaseStore {
         if (list == null) return new String[0];
         return list.stream().map(String::valueOf).toArray(String[]::new);
     }
+
+    /**
+     * The examination side of the portfolio figures.
+     *
+     * <p>Here rather than beside the call ledger, because these are facts about examinations
+     * — pages read, cards run, findings raised — and {@code infra.cost} has no business
+     * knowing what a card is. The controller puts the two halves together; neither reaches
+     * into the other's tables.
+     */
+    public Map<String, Object> portfolioSince(java.time.Instant since) {
+        java.sql.Timestamp from = java.sql.Timestamp.from(since);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+
+        jdbc.query("""
+                SELECT COUNT(*)                                        AS cases,
+                       COALESCE(SUM(page_count), 0)                    AS pages,
+                       COALESCE(AVG(EXTRACT(EPOCH FROM (COALESCE(completed_at, NOW()) - created_at))), 0) AS secs
+                  FROM helix_check.lc_case
+                 WHERE created_at >= ?
+                """, rs -> {
+            out.put("casesExamined", rs.getLong("cases"));
+            out.put("totalPages", rs.getLong("pages"));
+            out.put("medianWallClock", rs.getDouble("secs"));
+        }, from);
+
+        jdbc.query("""
+                SELECT COUNT(*) FILTER (WHERE p.status = 'DONE')                          AS ran,
+                       COUNT(*) FILTER (WHERE p.status = 'DONE' AND p.tier = 'EXACT')      AS free
+                  FROM helix_check.lc_plan_check p
+                  JOIN helix_check.lc_case c ON c.id = p.case_id
+                 WHERE c.created_at >= ?
+                """, rs -> {
+            out.put("checksRun", rs.getLong("ran"));
+            out.put("checksFree", rs.getLong("free"));
+        }, from);
+
+        Long findings = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM helix_check.lc_finding f
+                  JOIN helix_check.lc_case c ON c.id = f.case_id
+                 WHERE c.created_at >= ?
+                """, Long.class, from);
+        out.put("findingsRaised", findings == null ? 0 : findings);
+        return out;
+    }
+
 }

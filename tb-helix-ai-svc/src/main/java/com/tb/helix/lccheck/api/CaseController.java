@@ -170,7 +170,12 @@ public class CaseController {
     public Map<String, Object> metricsSpend(@RequestParam(defaultValue = "30d") String period) {
         int days = period.endsWith("d")
                 ? Integer.parseInt(period.substring(0, period.length() - 1)) : 30;
-        return calls.spendSince(java.time.Instant.now().minus(java.time.Duration.ofDays(days)));
+        java.time.Instant since = java.time.Instant.now().minus(java.time.Duration.ofDays(days));
+        Map<String, Object> out = new java.util.LinkedHashMap<>(calls.spendSince(since));
+        // Two halves, joined here: what the models cost, and what the examinations did.
+        // Neither side reaches into the other's tables to get it.
+        out.putAll(cases.portfolio(since));
+        return out;
     }
 
     /**

@@ -39,7 +39,35 @@ export function durationShort(totalSeconds) {
 
 export const thousands = (n, digits = 0) => `${(n / 1000).toFixed(digits)}K`
 
-export const usd = (n) => `$${n.toFixed(2)}`
+export const usd = (n) => `$${(n ?? 0).toFixed(2)}`
+
+/**
+ * Money that may be a fraction of a cent.
+ *
+ * Two decimals is right for a bill and wrong for a model call: at flash rates a
+ * real call is $0.00035, which `usd` renders as `$0.00` — a number that reads as
+ * *free* rather than *small*, and quietly removes the reason to look. Anything
+ * under a cent gets the digits that make it a number.
+ */
+export const usdFine = (n) => {
+  const v = Number(n) || 0
+  if (v === 0) return '$0'
+  return v < 0.01 ? `$${v.toFixed(5)}` : `$${v.toFixed(2)}`
+}
+
+/**
+ * Seconds, down to the millisecond when that is all there is.
+ *
+ * `0 s` beside a step that plainly did something reads as a broken meter. A run
+ * answered from cache genuinely takes milliseconds, and saying so is the point.
+ */
+export const seconds2 = (s) => {
+  const v = Math.max(0, Number(s) || 0)
+  if (v === 0) return '0 s'
+  if (v < 1) return `${Math.round(v * 1000)} ms`
+  if (v < 90) return `${v.toFixed(1)} s`
+  return `${(v / 60).toFixed(1)} min`
+}
 
 export const percent = (n) => `${Math.round(n)}%`
 

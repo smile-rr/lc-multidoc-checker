@@ -225,4 +225,9 @@ public class CaseService {
         long n = store.list("all", null).size() + 1;
         return "CHK-%02d-%02d%02d-%03d".formatted(d.getYear() % 100, d.getMonthValue(), d.getDayOfMonth(), n);
     }
+    /** Portfolio figures from the examination side, for the spend panel. */
+    public java.util.Map<String, Object> portfolio(java.time.Instant since) {
+        return store.portfolioSince(since);
+    }
+
 }

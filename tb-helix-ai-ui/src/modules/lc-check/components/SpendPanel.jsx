@@ -4,7 +4,7 @@ import Eyebrow from '@shared/ds/Eyebrow'
 import Icon from '@shared/ds/Icon'
 import InfoTip from '@shared/ds/InfoTip'
 import { usePersistedState } from '@shared/lib/usePersistedState'
-import { duration, durationShort, usd, percent, plural } from '@shared/lib/format'
+import { duration, durationShort, usd, usdFine, percent, plural } from '@shared/lib/format'
 import { qualityRates } from '../data/fixtures.js'
 
 // How the automated examination is performing, across the queue.
@@ -24,12 +24,23 @@ import { qualityRates } from '../data/fixtures.js'
 // An unexplained metric in a governance panel is worse than no metric: someone
 // will quote it in a meeting having guessed at its definition.
 export default function SpendPanel({ spend }) {
+  // Accuracy against a labelled set is measured, not derived: nothing in a run
+  // record tells you whether a finding was right. When nobody has measured it, the
+  // panel shows what is known and says the rest is unmeasured — rather than
+  // standing a fixture beside real numbers, where it borrows their credibility and
+  // gets acted on.
+  if (!spend?.benchmark) return <SpendOnly spend={spend} />
+
   const [open, setOpen] = usePersistedState('lcCheck.spendPanel', true)
 
   if (!spend) {
     return <div style={{ ...shell, padding: '12px 16px', fontSize: 12.5, color: 'var(--me-grey-70)' }}>Loading…</div>
   }
 
+  // Accuracy against a labelled set is measured, not derived — nothing in the run
+  // records tells you whether a finding was right. Absent until something measures
+  // it, rather than a fixture presented beside real numbers, where it would borrow
+  // their credibility.
   const b = spend.benchmark
   const windowHours = b.examinationWindowDays * 24
   const headroom = (1 - b.slowestHoursToDecision / windowHours) * 100
@@ -232,6 +243,52 @@ export default function SpendPanel({ spend }) {
  * the panel and invite someone to quote whichever is higher. Three counts each, in
  * the columns that matter: what stood, what did not, and what was missed.
  */
+/**
+ * The ledger's half of the panel, when there is no accuracy benchmark to show.
+ *
+ * Cost, cases and the exact/judged split — every one of them a count or a sum the
+ * service can defend. Timeliness and quality are absent, not zeroed: a zero is a
+ * measurement and this is the lack of one.
+ */
+function SpendOnly({ spend }) {
+  if (!spend) return null
+  return (
+    <section style={{ border: '1px solid var(--me-grey-15)', borderRadius: 12, background: '#fff', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 16px', borderBottom: '1px solid var(--me-grey-15)' }}>
+        <Icon name="gauge" size={15} color="var(--me-grey-50)" />
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)' }}>AI Spend</span>
+        <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>last 30 days</span>
+        <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--me-grey)' }}>
+          {usdFine(spend.totalCost)} · {plural(spend.casesExamined, 'case')}
+        </span>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 1, background: 'var(--me-grey-15)' }}>
+        <Cell><Unit label="total" value={usdFine(spend.totalCost)} tip="Every model call in the period, priced from the family rate book." /></Cell>
+        <Cell><Unit label="per case" value={usdFine(spend.avgCostPerCase)} tip="Total divided by cases opened in the period." /></Cell>
+        <Cell><Unit label="per page" value={usdFine(spend.avgCostPerPage)} tip="Total divided by presentation pages — the fairest way to compare bundles of different sizes." /></Cell>
+        <Cell><Unit label="avoided" value={usdFine(spend.costAvoided)} tip="What the cache saved: cached calls priced at what the original call cost." /></Cell>
+        <Cell><Unit label="cards run" value={String(spend.checksRun)} tip="Rules executed. Excludes rules whose trigger the credit did not meet — those are recorded as not applicable, never as passes." /></Cell>
+        <Cell><Unit label="settled free" value={`${spend.freeCardsPerCase} / ${spend.cardsPerCase}`} tip="Cards per case settled by comparison rather than by asking a model — deterministic, and identical on every run." /></Cell>
+        <Cell><Unit label="findings" value={String(spend.findingsRaised)} tip="Conclusions returned, of every severity." /></Cell>
+        <Cell><Unit label="cached" value={percent(spend.cachedInputPct)} tip="Share of model calls answered without reaching a provider." /></Cell>
+      </div>
+
+      {spend.byModel?.length ? (
+        <div style={{ padding: '10px 16px', borderTop: '1px solid var(--me-grey-15)' }}>
+          <Note>
+            {spend.byModel.map((m) => `${m.label} · ${plural(m.calls, 'call')} · ${usdFine(m.cost)}`).join('   ')}
+          </Note>
+        </div>
+      ) : null}
+
+      <div style={{ padding: '9px 16px', borderTop: '1px solid var(--me-grey-15)' }}>
+        <Note>Accuracy is not measured yet — it needs a labelled set, and no run record can stand in for one.</Note>
+      </div>
+    </section>
+  )
+}
+
 function KindSplit({ current, previous }) {
   const rows = [
     { key: 'exact', label: 'Exact rules', icon: 'equal', colour: 'var(--me-blue-deep)', tip: 'Rules settled by an expression over extracted fields. Deterministic — the comparison cannot be wrong, so a finding that does not stand means a misread field or a mis-authored rule.' },

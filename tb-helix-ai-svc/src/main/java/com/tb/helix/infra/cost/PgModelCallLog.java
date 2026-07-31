@@ -139,8 +139,23 @@ public class PgModelCallLog implements ModelCallLog {
                 Long.class, java.sql.Timestamp.from(since));
         long n = cases == null ? 0 : cases;
 
+        // What the cache saved: cached rows carry the tokens the original call reported,
+        // priced the same way. It is the one figure that says whether the cache is worth
+        // having, and it can only be stated because a hit records what it avoided.
+        java.math.BigDecimal avoided = jdbc.query("""
+                SELECT model_id, COALESCE(SUM(prompt_tokens),0) AS tin,
+                       COALESCE(SUM(completion_tokens),0) AS tout
+                  FROM helix_infra.model_call
+                 WHERE at >= ? AND status = 'CACHED'
+                 GROUP BY model_id
+                """, (rs, i) -> prices.of(rs.getString("model_id"))
+                        .cost(rs.getLong("tin"), rs.getLong("tout"), 0),
+                java.sql.Timestamp.from(since))
+                .stream().reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("cost", total);
+        out.put("costAvoided", avoided);
         out.put("cases", n);
         out.put("costPerCase", n == 0 ? java.math.BigDecimal.ZERO
                 : total.divide(java.math.BigDecimal.valueOf(n), 6, java.math.RoundingMode.HALF_UP));

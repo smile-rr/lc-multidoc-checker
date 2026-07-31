@@ -93,8 +93,48 @@ export async function getSpend(caseId) {
   return api.get(`${base}/cases/${encodeURIComponent(caseId)}/spend`)
 }
 
+/**
+ * What every examination has spent lately, from the call ledger.
+ *
+ * Fewer numbers than the fixture it replaces, and deliberately. The ledger knows
+ * what was asked of a model and what it cost; it does not know how many checks
+ * ran or how many were settled without one — those are examination facts, and
+ * inventing them here to fill a panel is how a made-up figure ends up being acted
+ * on. What is missing is missing.
+ */
 export async function getSpendSummary({ period = '30d' } = {}) {
-  return api.get(`${base}/metrics/spend?period=${encodeURIComponent(period)}`)
+  const raw = await api.get(`${base}/metrics/spend?period=${encodeURIComponent(period)}`)
+  const pages = raw.totalPages || 0
+  const cases = raw.casesExamined || 0
+  const ran = raw.checksRun || 0
+  const free = raw.checksFree || 0
+  return {
+    totalCost: Number(raw.cost) || 0,
+    casesExamined: cases,
+    avgCostPerCase: Number(raw.costPerCase) || 0,
+    avgCostPerPage: pages ? (Number(raw.cost) || 0) / pages : 0,
+    totalPages: pages,
+    checksRun: ran,
+    findingsRaised: raw.findingsRaised || 0,
+    medianWallClock: raw.medianWallClock || 0,
+    // Cards settled by comparison rather than by asking a model — per case, and as
+    // a share. The whole return on the exact/judged split, in one number.
+    cardsPerCase: cases ? Math.round(ran / cases) : 0,
+    freeCardsPerCase: cases ? Math.round(free / cases) : 0,
+    freeCardPct: ran ? Math.round((free / ran) * 100) : 0,
+    costAvoided: Number(raw.costAvoided) || 0,
+    calls: raw.calls || 0,
+    cachedInputPct: raw.cachedPct || 0,
+    byModel: (raw.byModel ?? []).map((m) => ({
+      model: m.modelId,
+      label: m.label,
+      calls: m.calls,
+      cases: m.cases,
+      tokens: (m.tokensIn || 0) + (m.tokensOut || 0),
+      seconds: m.seconds,
+      cost: Number(m.cost) || 0,
+    })),
+  }
 }
 
 export async function addCheck(caseId, { name }) {

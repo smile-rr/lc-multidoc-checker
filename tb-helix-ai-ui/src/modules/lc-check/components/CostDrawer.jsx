@@ -3,7 +3,7 @@ import Eyebrow from '@shared/ds/Eyebrow'
 import Drawer from '@shared/ds/Drawer'
 import Badge from '@shared/ds/Badge'
 import Icon from '@shared/ds/Icon'
-import { duration, durationShort, thousands, usd, percent, plural } from '@shared/lib/format'
+import { duration, durationShort, thousands, usd, usdFine, seconds2, percent, plural } from '@shared/lib/format'
 
 // Run cost — what the review spent, in time and money, and where it went.
 //
@@ -42,14 +42,18 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
               <Metric
                 label="Wall Clock"
-                value={duration(cost.wallClock)}
-                note={`${duration(cost.seconds)} of agent time, 1.8× parallel${cost.retries ? ` · ${cost.retries} retried` : ''}`}
+                value={seconds2(cost.wallClock)}
+                // The parallelism factor was a fixture-era estimate. The ledger
+                // records each call's own latency, so slots that ran at once already
+                // overlap in it — restating a multiplier on top would be counting the
+                // same saving twice, in a number nobody could check.
+                note={`${seconds2(cost.seconds)} of model time${cost.retries ? ` · ${cost.retries} failed` : ''}`}
               />
               <Metric
                 label="Cost"
-                value={usd(cost.cost)}
+                value={usdFine(cost.cost)}
                 note={finished
-                  ? `${usd(cost.costPerPage)} per page${cost.cacheHitPct ? ` · ${percent(cost.cacheHitPct)} of input cached` : ''}`
+                  ? `${usdFine(cost.costPerPage)} per page${cost.cacheHitPct ? ` · ${percent(cost.cacheHitPct)} of input cached` : ''}`
                   : 'so far'}
               />
             </div>
@@ -204,7 +208,7 @@ function KindRow({ kind: k, pagesRead, pageCount }) {
       </div>
       <div style={{ textAlign: 'right', whiteSpace: 'nowrap', flexShrink: 0 }}>
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: k.free ? 'var(--status-success)' : 'var(--me-ink)' }}>
-          {k.free ? 'no model' : usd(k.cost)}
+          {k.free ? 'no model' : usdFine(k.cost)}
         </div>
         <div style={{ fontSize: 10.5, color: 'var(--me-grey-70)' }}>
           {k.free ? 'free' : `${percent(k.costShare * 100)} of spend`}
@@ -242,7 +246,7 @@ function StepList({ cost, completedCount }) {
             </span>
             {done ? (
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: r.cost ? 'var(--me-grey-70)' : 'var(--status-success)', whiteSpace: 'nowrap' }}>
-                {r.cost ? `${durationShort(r.seconds)} · ${usd(r.cost)}` : 'no model'}
+                {r.cost || r.seconds ? `${seconds2(r.seconds)} · ${usdFine(r.cost)}` : 'no model'}
               </span>
             ) : (
               <Badge tone={running ? 'blue' : 'neutral'}>{running ? 'running' : 'queued'}</Badge>
