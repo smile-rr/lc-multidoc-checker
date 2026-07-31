@@ -68,10 +68,17 @@ public final class PipelineEngine {
     /**
      * Walks the phase.
      *
-     * @return the result that ended it — the first halt or failure, or OK when every step
-     *         ran. A caller maps that onto whatever "the phase ended" means to it.
+     * @return the result of the step that ended it — the first halt or failure, or the last
+     *         step to run. A caller maps that onto whatever "the phase ended" means to it.
+     *
+     *         <p>The last step's result, not a fresh OK. That looked like a detail and was
+     *         not: a caller deciding what the run <em>means</em> — how many findings came
+     *         out of it, whether there is anything to sign off — has only this to read, and
+     *         handing it a blank made every completed phase indistinguishable from an empty
+     *         one. It stayed hidden for as long as no case got past the gate.
      */
     public static <C extends StepJournal> StepResult run(StepPhase<C> phase, C context) {
+        StepResult last = StepResult.ok();
         for (Step<C> step : phase.steps()) {
             if (context.abandoned()) {
                 return StepResult.skipped("abandoned before " + step.key());
@@ -83,11 +90,11 @@ public final class PipelineEngine {
 
             context.stepStarted(phase.key(), step.key(), step.label());
             long started = System.currentTimeMillis();
-            StepResult result = step.run(context);
-            context.stepFinished(phase.key(), step.key(), result, System.currentTimeMillis() - started);
+            last = step.run(context);
+            context.stepFinished(phase.key(), step.key(), last, System.currentTimeMillis() - started);
 
-            if (!result.canContinue()) return result;
+            if (!last.canContinue()) return last;
         }
-        return StepResult.ok();
+        return last;
     }
 }

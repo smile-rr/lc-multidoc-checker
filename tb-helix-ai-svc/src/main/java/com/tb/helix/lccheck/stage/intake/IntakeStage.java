@@ -64,6 +64,16 @@ public class IntakeStage implements Stage {
     public static final String MANIFEST = "manifest";
     public static final String READY = "ready";
 
+    /**
+     * The document code the credit is filed under.
+     *
+     * <p>One document, however many messages are in the file — the officer opens "the
+     * credit", not four of them, and every fact and finding that points at the credit points
+     * here. It was the literal {@code "mt700"} in two places, which stopped being true the
+     * moment an amendment could be in the same upload.
+     */
+    public static final String CREDIT_DOC = "LC";
+
     private final BlobStore blobs;
     private final DocumentConverter converter;
     private final PageRenderer renderer;
@@ -130,7 +140,7 @@ public class IntakeStage implements Stage {
             // A placeholder document, so the intake screen has the filename to show while
             // the message behind it is still being read. It carries no reading of the
             // credit — everything below `fileName` is filled in by execute().
-            cases.upsertDocument(caseId, "mt700", Rows.of(
+            cases.upsertDocument(caseId, CREDIT_DOC, Rows.of(
                     "role", "credit", "docType", "Letter of credit", "abbr", "LC",
                     "icon", "file-text", "fileName", creditName,
                     "extraction", "text", "ordinal", 0));
@@ -183,31 +193,30 @@ public class IntakeStage implements Stage {
         byte[] bytes = blobs.get(creditSha).orElseThrow(
                 () -> new IllegalStateException("Credit blob " + creditSha + " is missing"));
 
-        SwiftMessage message = swift.read(new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
-        Map<String, Object> credit = creditReader.read(message);
+        SwiftFile file = swift.read(new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
+        CreditReader.Reading reading = creditReader.read(file);
 
-        // An amendment changes terms rather than establishing them, so only what it
-        // actually states is written — CreditReader has already dropped the rest, and a
-        // field absent from a 707 means "unchanged", never "cleared".
-        cases.patchCase(caseId, CreditColumns.of(credit));
+        // The terms as they now stand — the model has already applied every amendment in
+        // the file and dropped what none of the messages carries. A field it omits is left
+        // alone here, because absent means "the credit does not say", never "cleared".
+        cases.patchCase(caseId, CreditColumns.of(reading.terms()));
 
         // No fileName: the upsert leaves file_name alone on conflict, so the name recorded
         // at receive survives this and every rerun after it. The upload is the only thing
         // that knows what the file was called.
-        cases.upsertDocument(caseId, "mt700", Rows.of(
+        cases.upsertDocument(caseId, CREDIT_DOC, Rows.of(
                 "role", "credit",
-                "docType", message.type().isCredit() ? "Letter of credit" : message.type().label(),
-                "abbr", message.type().isCredit() ? "LC" : message.type().code(),
+                "docType", file.label(),
+                "abbr", file.hasCredit() ? "LC" : file.messages().get(0).type().code(),
                 "icon", "file-text",
-                "reference", String.valueOf(credit.getOrDefault("creditRef", "")),
+                "reference", String.valueOf(reading.terms().getOrDefault("creditRef", "")),
                 "extraction", "text", "ordinal", 0));
 
-        return StepResult.done(message.type().label() + " read", Map.of(
-                "messageType", message.type().code(),
-                "messageLabel", message.type().label(),
-                "tags", message.tags(),
-                "credit", credit,
-                "lines", message.lines()));
+        return StepResult.done(file.label() + " read", Map.of(
+                "messages", file.manifest(),
+                "credit", reading.terms(),
+                "from", reading.provenance(),
+                "lines", file.lines()));
     }
 
     /**

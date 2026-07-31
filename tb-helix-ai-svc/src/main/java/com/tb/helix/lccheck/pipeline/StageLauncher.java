@@ -182,7 +182,7 @@ public class StageLauncher {
      * over and it goes to the authoriser.
      */
     private void awaitOfficer(String caseId, StageId last, StepResult result) {
-        cases.patchCase(caseId, Map.of("status", statusAfter(last, result).key()));
+        cases.patchCase(caseId, Map.of("status", statusAfter(caseId, last).key()));
 
         StageId next = pipeline.nextOfficerStageAfter(last).orElse(null);
         cases.setStage(caseId, last, next, next != null);
@@ -204,19 +204,34 @@ public class StageLauncher {
      * and the status follows from what it found. That is also why this is not a state machine
      * library — there are no transitions to declare, only an answer to compute.
      */
-    private CaseStatus statusAfter(StageId stage, StepResult result) {
+    /**
+     * What the case is now, given where it got to.
+     *
+     * <p>Derived, never independently set — which is why one method can own it. Nothing moves
+     * a case from DISCREPANCIES to CLEAN; a stage ends and the status follows.
+     *
+     * <p>Read from the <b>case</b>, not from the run that just finished. A rerun of a stage
+     * whose work is already done legitimately does nothing — every check was DONE, so nought
+     * checks ran and nought findings came out — and a status taken from that run would report
+     * a case with nine discrepancies as clean. The run is an event; the status is a property
+     * of the case.
+     */
+    private CaseStatus statusAfter(String caseId, StageId stage) {
         return switch (stage) {
             case INTAKE -> CaseStatus.AWAITING_CHECK;
             case INTERPRET, GATE, PLAN -> CaseStatus.TO_DECIDE;
-            case EXECUTE -> count(result, "findings") > 0 ? CaseStatus.DISCREPANCIES : CaseStatus.CLEAN;
+            case EXECUTE -> cases.findings(caseId).isEmpty() ? CaseStatus.CLEAN : CaseStatus.DISCREPANCIES;
             // Only findings the officer agreed to become grounds; none means nothing was
             // raised, which is a clean presentation rather than one sent on.
-            case SIGNOFF -> count(result, "grounds") > 0 ? CaseStatus.WITH_AUTHORISER : CaseStatus.CLEAN;
+            case SIGNOFF -> agreedCount(caseId) > 0 ? CaseStatus.WITH_AUTHORISER : CaseStatus.CLEAN;
         };
     }
 
-    private long count(StepResult result, String key) {
-        return result.data().get(key) instanceof Number n ? n.longValue() : 0;
+    /** Findings the officer agreed to — the grounds a refusal would stand on. */
+    private long agreedCount(String caseId) {
+        return cases.decisions(caseId).stream()
+                .filter(d -> "agreed".equals(String.valueOf(d.disposition())))
+                .count();
     }
 
     public void cancel(String caseId) {

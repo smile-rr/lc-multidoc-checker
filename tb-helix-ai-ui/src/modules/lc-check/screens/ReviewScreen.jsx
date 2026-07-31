@@ -127,7 +127,9 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
   const noteValue = draft ?? savedNote
   const noteDirty = draft !== undefined && draft !== savedNote
 
-  const isCreditFinding = selected?.docId === 'mt700'
+  // Which document a finding sits in is answered by the document's role, never by a
+  // doc code — the credit's code names the file, and the file is not always an MT700.
+  const isCreditFinding = selected?.docId === data.documents.find((d) => d.role === 'credit')?.id
 
   const subtitleFor = (f) => docById[f.docId]?.docType ?? f.quoteSource
 

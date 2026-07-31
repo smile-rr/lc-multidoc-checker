@@ -178,7 +178,7 @@ public class PlanStage implements Stage {
         Set<String> out = new LinkedHashSet<>();
         for (ReadRows.Document d : cases.documents(ctx.caseId())) {
             String code = d.docCode();
-            if (!"mt700".equals(code)) out.add(code);
+            if (!IntakeStage.CREDIT_DOC.equals(code)) out.add(code);
         }
         return out;
     }

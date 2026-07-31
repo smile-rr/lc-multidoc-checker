@@ -27,7 +27,10 @@ import { useCase } from '../state/CaseContext'
 export default function InterpretScreen() {
   const { data, run } = useCase()
 
-  const [selectedId, setSelectedId] = useState('mt700')
+  // No document is chosen until one is clicked; the fallback below picks the first,
+  // which is the credit. Naming a doc code here would name one message type, and a
+  // credit file can hold several.
+  const [selectedId, setSelectedId] = useState(null)
   const [hoverAnchor, setHoverAnchor] = useState(null)
   const [page, setPage] = useState(1)
   const [panelWidth, setPanelWidth] = useState(460)

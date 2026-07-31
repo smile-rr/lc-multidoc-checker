@@ -118,8 +118,8 @@ export default function ExaminePane({ findings, onOpenFinding }) {
   if (!doc) return null
 
   const demands = data.creditDemands?.[doc.id] ?? null
-  const creditFacts = data.facts.filter((f) => f.docId === 'mt700')
   const creditDoc = data.documents.find((d) => d.role === 'credit')
+  const creditFacts = data.facts.filter((f) => f.docId === creditDoc?.id)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, ...PANE_FILL }}>

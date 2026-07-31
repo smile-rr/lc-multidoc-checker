@@ -4,6 +4,7 @@ import com.tb.helix.lccheck.persistence.CaseRow;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.stage.intake.IntakeStage;
+import com.tb.helix.lccheck.stage.intake.SwiftFile;
 import com.tb.helix.lccheck.stage.intake.SwiftMessage;
 import com.tb.helix.lccheck.types.*;
 import com.tb.helix.lccheck.types.document.*;
@@ -168,9 +169,18 @@ public class CaseAssembler {
      * <p>Deliberately not the same reading the examination uses. That one is a model's, it
      * happens in intake, and it reports itself as it goes.
      */
-    public List<Map<String, String>> peek(SwiftMessage m) {
+    public List<Map<String, String>> peek(SwiftFile file) {
         List<Map<String, String>> out = new ArrayList<>();
-        out.add(Map.of("label", "Message", "value", m.type().label()));
+        if (file.messages().isEmpty()) return out;
+
+        // The issue, when there is one — its tags are the ones a person recognises the
+        // credit by. A file of amendments alone falls back to whatever arrived first, which
+        // is more useful than four blank rows.
+        SwiftMessage m = file.hasCredit() ? file.credit() : file.messages().get(0);
+
+        out.add(Map.of("label", "Message", "value", file.messages().size() == 1
+                ? m.type().label()
+                : m.type().label() + " + " + (file.messages().size() - 1) + " more"));
         out.add(Map.of("label", "Credit", "value", firstLine(m.tag("20"))));
         out.add(Map.of("label", "Amount", "value", firstLine(m.tag("32B"))));
         out.add(Map.of("label", "Beneficiary", "value", firstLine(m.tag("59"))));
