@@ -14,7 +14,8 @@
 // The mapping is the interesting part. The service normalises what the fixture
 // keeps convenient:
 //
-//   binding.doc     a document NAME in the fixture, a doc_code in the service
+//   binding.doc     a doc_code both sides — the console shows the name, but the
+//                   code is the identity and nothing joins on a label
 //   check.cases     a usage count the service calls cases_count
 //   check_rule      one groups[] tree; the fixture kept a flat {logic, rows}
 //   comments        a flat table here, keyed by target in the fixture
@@ -85,7 +86,11 @@ export function hydrateSeed(seed, data) {
 
   rekey(seed.checkDefaults, Object.fromEntries((data.checks ?? []).map((c) => [c.id, {
     fields: c.field_refs ?? [],
-    docs: (c.doc_types ?? []).map((code) => nameOf[code] ?? code),
+    // Codes, not names. The store resolves a code to its label at the point of
+    // display — the whole console does now — and translating here left this line
+    // reaching for a lookup that had been deleted, which took governance off the
+    // service entirely and onto the built-in seed with a warning.
+    docs: c.doc_types ?? [],
   }])))
 
   // The service keeps one groups[] tree; the fixture kept a flat rule and let

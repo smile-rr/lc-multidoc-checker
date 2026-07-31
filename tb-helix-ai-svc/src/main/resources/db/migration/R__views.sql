@@ -215,6 +215,10 @@ SELECT d.code,
        d.name_zh,
        d.description,
        d.before_reading,
+       -- What this document is TO an examination, when it is anything in particular.
+       -- The console edits it, so the console has to be able to read it back.
+       d.role,
+       d.attrs,
        d.ordinal,
        d.active,
        (SELECT COUNT(*) FROM helix_gov.field_binding fb WHERE fb.doc_code = d.code) AS bound_fields,
