@@ -3,6 +3,7 @@ import Icon from '@shared/ds/Icon'
 import Button from '@shared/ds/Button'
 import Page from '@shared/ds/Page'
 import TextArea from '@shared/ds/TextArea'
+import TextField from '@shared/ds/TextField'
 import DetailBack from '@shared/ds/DetailBack'
 import Toolbar from '@shared/ds/Toolbar'
 import SearchBar from '@shared/ds/SearchBar'
@@ -140,11 +141,35 @@ function FieldCard({ f, defaultOpen = false }) {
   return (
     <Card pad="sm" data-item-id={f.id} style={f.isNew ? newCard : undefined}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <input ref={nameRef} className="inline-edit" value={f.name} onChange={f.onChangeName} onFocus={f.onFocus} readOnly={f.locked} placeholder="Business field name" style={nameInput} />
+        <TextField
+          ref={nameRef}
+          value={f.name}
+          onChange={f.onChangeName}
+          onFocus={f.onFocus}
+          readOnly={f.locked}
+          required
+          invalid={f.nameMissing}
+          hint="A field with no name cannot be found again, and a check cannot cite it."
+          placeholder="Business field name"
+          style={nameInput}
+        />
         <Chip size="sm" title="Checks that read this field" style={{ flexShrink: 0, fontWeight: 600, color: 'var(--me-grey-70)' }}>{f.usedLabel}</Chip>
         <IconButton icon="trash-2" title={f.removeTip} tone="danger" onClick={f.onRemove} />
       </div>
-      <TextArea className="inline-edit" value={f.description} onChange={f.onChangeDesc} onFocus={f.onFocus} readOnly={f.locked} placeholder="What this field holds, in one line…" maxLines={3} maxLength={DESC_MAX} style={descArea} />
+      <TextArea
+        className="inline-edit"
+        value={f.description}
+        onChange={f.onChangeDesc}
+        onFocus={f.onFocus}
+        readOnly={f.locked}
+        required
+        invalid={f.descMissing}
+        hint="What this field holds. The extraction prompt is built from the dictionary, so this is read by a model as well as a person."
+        placeholder="What this field holds, in one line…"
+        maxLines={3}
+        maxLength={DESC_MAX}
+        style={descArea}
+      />
 
       <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--me-grey-08)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -196,6 +221,14 @@ function FieldCard({ f, defaultOpen = false }) {
       </div>
       {f.editing && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--me-grey-08)' }}>
+          {/* What is still missing, next to the button it is holding back — never a
+              disabled control with no reason given. The checks section says it this
+              way; a dictionary row should not invent a second way of saying it. */}
+          {f.saveBlockedWhy ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: '#946400' }}>
+              <Icon name="circle-alert" size={13} color="currentColor" />{f.saveBlockedWhy}
+            </span>
+          ) : null}
           <div style={{ flex: 1 }} />
           <button
             onClick={f.onCancel}
@@ -204,7 +237,7 @@ function FieldCard({ f, defaultOpen = false }) {
           >
             {f.cancelLabel}
           </button>
-          <Button variant="primary" size="sm" onClick={f.onSave}>Save</Button>
+          <Button variant="primary" size="sm" onClick={f.onSave} disabled={!f.canSave}>Save</Button>
         </div>
       )}
     </Card>
@@ -216,8 +249,7 @@ function DocCard({ d }) {
   return (
     <Card pad="sm" data-item-id={d.id} style={d.isNew ? newCard : undefined}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <input
-          className="inline-edit"
+        <TextField
           value={d.key}
           onChange={d.onChangeKey}
           onFocus={d.onFocus}
@@ -225,13 +257,41 @@ function DocCard({ d }) {
              against, and in cases already examined and signed off. The title says why. */
           readOnly={d.locked || d.keyLocked}
           title={d.keyLocked ? d.keyLockedWhy : 'The code everything cites this document by'}
+          required
+          mono
+          invalid={d.keyMissing || d.keyTaken}
+          hint={d.keyTaken ? 'Another document type already uses this code.' : 'The code every binding, check and fact cites this document by.'}
           placeholder="KEY"
-          style={{ width: 180, flexShrink: 0, padding: '6px 9px', fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: d.keyLocked ? 'var(--me-grey-70)' : 'var(--me-blue-deep)' }}
+          style={{ width: 180, flexShrink: 0, color: d.keyLocked ? 'var(--me-grey-70)' : 'var(--me-blue-deep)' }}
         />
-        <input ref={nameRef} className="inline-edit" value={d.name} onChange={d.onChangeName} onFocus={d.onFocus} readOnly={d.locked} placeholder="Document name" style={nameInput} />
+        <TextField
+          ref={nameRef}
+          value={d.name}
+          onChange={d.onChangeName}
+          onFocus={d.onFocus}
+          readOnly={d.locked}
+          required
+          invalid={d.nameMissing}
+          hint="Shown wherever this document appears — the rail, a finding, a skip reason."
+          placeholder="Document name"
+          style={nameInput}
+        />
         <IconButton icon="trash-2" title={d.removeTip} tone="danger" onClick={d.onRemove} />
       </div>
-      <TextArea className="inline-edit" value={d.description} onChange={d.onChangeDesc} onFocus={d.onFocus} readOnly={d.locked} placeholder="Short description of this document type — this is what the classifier is given to recognise a page by…" maxLines={3} maxLength={DESC_MAX} style={descArea} />
+      <TextArea
+        className="inline-edit"
+        value={d.description}
+        onChange={d.onChangeDesc}
+        onFocus={d.onFocus}
+        readOnly={d.locked}
+        required
+        invalid={d.descMissing}
+        hint="This is what the classifier is given to recognise a page by. A blank one makes every page harder to place."
+        placeholder="Short description of this document type…"
+        maxLines={3}
+        maxLength={DESC_MAX}
+        style={descArea}
+      />
       {/* What this document is TO an examination. Almost always nothing in particular,
           so it sits quietly under the description rather than beside the name. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
@@ -253,6 +313,14 @@ function DocCard({ d }) {
       </div>
       {d.editing && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--me-grey-08)' }}>
+          {/* What is still missing, next to the button it is holding back — never a
+              disabled control with no reason given. The checks section says it this
+              way; a dictionary row should not invent a second way of saying it. */}
+          {d.saveBlockedWhy ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: '#946400' }}>
+              <Icon name="circle-alert" size={13} color="currentColor" />{d.saveBlockedWhy}
+            </span>
+          ) : null}
           <div style={{ flex: 1 }} />
           <button
             onClick={d.onCancel}
@@ -261,7 +329,7 @@ function DocCard({ d }) {
           >
             {d.cancelLabel}
           </button>
-          <Button variant="primary" size="sm" onClick={d.onSave}>Save</Button>
+          <Button variant="primary" size="sm" onClick={d.onSave} disabled={!d.canSave}>Save</Button>
         </div>
       )}
     </Card>

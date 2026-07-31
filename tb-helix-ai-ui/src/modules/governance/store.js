@@ -9,6 +9,7 @@
 // ============================================================================
 
 import { focusItem } from '@shared/lib/useNewItemFocus'
+import { isBlank, allPresent } from '@shared/ds/TextField'
 import seed from './data/seed.json' with { type: 'json' }
 import { hydrateSeed } from './api/hydrate'
 import * as gov from './api/governanceApi'
@@ -180,14 +181,31 @@ const tidyRule = (ru) => {
 
 // What still has to be filled in before this rule can be saved. Each line says
 // what to do, not what is wrong.
-const ruleIssues = (rule) => {
+/**
+ * What a check cannot be saved without.
+ *
+ * The first two apply to both tiers and used to apply to neither: this only ran for
+ * exact checks, and only looked at the rule — so a judged check could be saved with an
+ * empty body, and a judged check's body IS the prompt. A check that asks nothing runs
+ * against every presentation and reports whatever the model makes of a blank
+ * instruction.
+ */
+const checkIssues = (check, rule, isExact) => {
   const out = []
+  if (isBlank(check.title)) out.push('Give it a title — it is how this check is read in a finding.')
+  if (isBlank(check.body)) {
+    out.push(isExact
+      ? 'Say in plain language what this check is for.'
+      : 'Write the check — for a judged check this text is the instruction the examiner is given.')
+  }
+  if (!isExact) return out
+
   const rows = rule.groups.flatMap((g) => g.rows)
   if (!rows.length) out.push('Add a condition.')
   const side = (o) => !!(o && (o.field || o.literal))
   const incomplete = rows.filter((r) => !side(r.l) || (!UNARY_OPS.includes(r.op) && !side(r.r)))
   if (incomplete.length) out.push(`${incomplete.length} condition${incomplete.length === 1 ? ' has' : 's have'} nothing to compare — pick a field on both sides.`)
-  if (!(rule.message || '').trim()) out.push('Say what this raises when it fails.')
+  if (isBlank(rule.message)) out.push('Say what this raises when it fails.')
   return out
 }
 
@@ -695,7 +713,7 @@ export function deriveVals(state, setState) {
     // plain-language body belong to judged rules only.
     const showFieldRows = !isExact
     const patchRule = (fn) => { setRule(c.id, fn); startEdit() }
-    const issues = isExact && editing ? ruleIssues(rule) : []
+    const issues = editing ? checkIssues({ title, body }, rule, isExact) : []
 
     const operandVM = (gid, r, side) => {
       const o = (side === 'l' ? r.l : r.r) || {}
@@ -1154,7 +1172,17 @@ export function deriveVals(state, setState) {
     editing: e.editing, locked: e.locked,
     onFocus: e.start,
     cancelLabel: e.created ? 'Discard' : 'Cancel',
+    // What a field cannot be saved without. A nameless field cannot be found again
+    // or cited by a check; a description-less one goes into the extraction prompt as
+    // a bare key, which is the model's only clue about what it is being asked for.
+    nameMissing: isBlank(f.name),
+    descMissing: isBlank(f.description),
+    canSave: allPresent(f.name, f.description),
+    saveBlockedWhy: isBlank(f.name)
+      ? 'Give it a name first.'
+      : isBlank(f.description) ? 'Say what it holds — the extraction prompt is built from this.' : '',
     onSave: () => {
+      if (!allPresent(f.name, f.description)) return
       const saved = { ...f, name: (f.name || '').trim(), description: (f.description || '').trim(),
                       bindings: (f.bindings || []).map((b) => ({ ...b, note: (b.note || '').trim() })) }
       setDF((fs) => fs.map((x) => (x.id === f.id ? saved : x)))
@@ -1209,9 +1237,28 @@ export function deriveVals(state, setState) {
     id: d.id, key: d.key, name: d.name, description: d.description, isNew: S.createdId === d.id,
     editing: e.editing, locked: e.locked, onFocus: e.start,
     cancelLabel: e.created ? 'Discard' : 'Cancel',
+    // A document type cannot be saved without a code — it is the primary key, and the
+    // service refuses it — nor without a name, which is what every screen shows, nor a
+    // description, which is what the classifier is given to recognise a page by.
+    keyMissing: isBlank(d.key),
+    keyTaken: !isBlank(d.key) && dictDocs.some((x) => x.id !== d.id
+      && String(x.key).trim().toUpperCase() === String(d.key).trim().toUpperCase()),
+    nameMissing: isBlank(d.name),
+    descMissing: isBlank(d.description),
+    canSave: allPresent(d.key, d.name, d.description)
+      && !dictDocs.some((x) => x.id !== d.id
+        && String(x.key).trim().toUpperCase() === String(d.key).trim().toUpperCase()),
+    saveBlockedWhy: isBlank(d.key)
+      ? 'Give it a code first — everything cites this document by it.'
+      : dictDocs.some((x) => x.id !== d.id && String(x.key).trim().toUpperCase() === String(d.key).trim().toUpperCase())
+        ? 'Another document type already uses this code.'
+        : isBlank(d.name) ? 'Give it a name.'
+        : isBlank(d.description) ? 'Describe it — this is what the classifier recognises a page by.' : '',
     onSave: () => {
-      const saved = { ...d, key: (d.key || '').trim().toUpperCase(),
-                      name: (d.name || '').trim(), description: (d.description || '').trim() }
+      const key = (d.key || '').trim().toUpperCase()
+      if (!allPresent(key, d.name, d.description)) return
+      if (dictDocs.some((x) => x.id !== d.id && String(x.key).trim().toUpperCase() === key)) return
+      const saved = { ...d, key, name: (d.name || '').trim(), description: (d.description || '').trim() }
       setDD((ds) => ds.map((x) => (x.id === d.id ? saved : x)))
       persistDocType(saved)
       dictClose(d)

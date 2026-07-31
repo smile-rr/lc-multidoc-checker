@@ -1,4 +1,4 @@
-import { useRef, useLayoutEffect } from 'react'
+import { useRef, useState, useLayoutEffect } from 'react'
 
 // The multi-line text field.
 //
@@ -15,6 +15,10 @@ import { useRef, useLayoutEffect } from 'react'
 //              is within 10% of the character cap
 //   singleLine strip newlines as they arrive, for a field that must stay one
 //              line but still needs the growing/limiting behaviour
+//   required   the value may not be blank. Marks itself once touched, the same
+//              way TextField does — a description and a name should not disagree
+//              about what "you have to fill this in" looks like.
+//   hint       what is wrong, shown under the field when it is
 export default function TextArea({
   value = '',
   onChange,
@@ -22,10 +26,16 @@ export default function TextArea({
   maxLength,
   showCount = false,
   singleLine = false,
+  required = false,
+  invalid = false,
+  hint,
   style,
+  onBlur,
   ...rest
 }) {
   const ref = useRef(null)
+  const [touched, setTouched] = useState(false)
+  const bad = invalid || (required && touched && String(value ?? '').trim() === '')
 
   // Grow to the content, then clamp at maxLines and hand the overflow to a
   // scrollbar. Measured from the element's own line-height so the ceiling holds
@@ -65,11 +75,22 @@ export default function TextArea({
         value={value}
         onChange={handle}
         onKeyDown={singleLine ? (e) => { if (e.key === 'Enter') e.preventDefault() } : undefined}
+        onBlur={(e) => { setTouched(true); onBlur?.(e) }}
         maxLength={maxLength}
         rows={1}
-        style={{ resize: 'none', overflow: 'hidden', ...style }}
+        aria-required={required || undefined}
+        aria-invalid={bad || undefined}
+        style={{
+          resize: 'none',
+          overflow: 'hidden',
+          ...style,
+          ...(bad ? { borderColor: 'var(--status-warning)', background: 'var(--status-warning-bg, #fff8ee)' } : null),
+        }}
         {...rest}
       />
+      {bad && hint ? (
+        <div style={{ fontSize: 11, color: 'var(--status-warning)', paddingLeft: 9 }}>{hint}</div>
+      ) : null}
       {counted && (
         <div style={{ marginTop: 2, textAlign: 'right', fontSize: 11, fontVariantNumeric: 'tabular-nums', color: len >= maxLength ? 'var(--status-warning)' : 'var(--me-grey-50)' }}>
           {len} / {maxLength}
