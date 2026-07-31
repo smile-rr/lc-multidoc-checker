@@ -4,6 +4,9 @@ import Drawer from '@shared/ds/Drawer'
 import Badge from '@shared/ds/Badge'
 import Icon from '@shared/ds/Icon'
 import { duration, durationShort, thousands, usd, usdFine, seconds2, percent, plural } from '@shared/lib/format'
+// The same grouping the run log uses. Two formatters for one fact would let the
+// panel and the log disagree about a number they both read off the ledger.
+import { tokens as tok } from '../state/runLog.js'
 
 // Run cost — what the review spent, in time and money, and where it went.
 //
@@ -33,11 +36,15 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
         </Section>
       ) : (
         <>
-          {/* Time and money. Tokens were the third metric here and they are the same
-              fact as the cost in a unit that needs a rate card to read — worse, they
-              do not track it: 38k tokens on GPT-4o and 38k on Qwen are an order of
-              magnitude apart. They still appear per row below, where they explain a
-              number instead of restating it. */}
+          {/* Time and money as the two headline figures; tokens beneath them rather
+              than beside them.
+
+              Tokens are not a third metric of the same rank — 38k on GPT-4o and 38k
+              on Qwen are an order of magnitude apart in money, so a token tile next
+              to a cost tile invites a comparison that does not hold. What they are
+              is the *working* behind the cost: the one line that lets someone check
+              a figure they think is wrong, and the only place the input/output split
+              shows, which matters because output runs 8× input on a flash model. */}
           <Section name="Totals">
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
               <Metric
@@ -53,10 +60,15 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
                 label="Cost"
                 value={usdFine(cost.cost)}
                 note={finished
-                  ? `${usdFine(cost.costPerPage)} per page${cost.cacheHitPct ? ` · ${percent(cost.cacheHitPct)} of input cached` : ''}`
+                  ? [
+                      `${usdFine(cost.costPerPage)} per page`,
+                      cost.cacheHitPct ? `${percent(cost.cacheHitPct)} cached` : null,
+                      cost.costAvoided ? `${usdFine(cost.costAvoided)} avoided` : null,
+                    ].filter(Boolean).join(' · ')
                   : 'so far'}
               />
             </div>
+            <TokenLine cost={cost} />
           </Section>
 
           {/* The split that decides anything, and now the body of the drawer rather
@@ -168,6 +180,50 @@ function Section({ name, note, last, collapsible, count, children }) {
   )
 }
 
+/**
+ * The run's token totals: what was billed, and what the cache kept off the bill.
+ *
+ * Two clusters, never one sum. A cache hit's tokens are the *original* call's,
+ * replayed from the derivation store — adding them to the billed pair would report
+ * work this run did not do, and would make the cheapest possible run look like the
+ * busiest. The ⚡ says which side of that line the second cluster is on.
+ */
+function TokenLine({ cost }) {
+  const billed = (cost.tokensIn ?? 0) + (cost.tokensOut ?? 0)
+  const avoided = (cost.tokensInAvoided ?? 0) + (cost.tokensOutAvoided ?? 0)
+  if (!billed && !avoided) return null
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 14px', marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--me-grey-08)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+      <Tokens tokensIn={cost.tokensIn} tokensOut={cost.tokensOut} />
+      {avoided ? (
+        <Tokens tokensIn={cost.tokensInAvoided} tokensOut={cost.tokensOutAvoided} cached />
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * `in 1,718  out 664`, with a ⚡ in front when these are tokens nobody was charged for.
+ *
+ * Words rather than arrows: `↓`/`↑` read as either direction depending on whether
+ * you picture the request or the response, and on a flash model output costs eight
+ * times input — so reading them the wrong way round inverts the conclusion.
+ */
+function Tokens({ tokensIn, tokensOut, cached }) {
+  const ink = cached ? 'var(--status-success)' : 'var(--me-grey-70)'
+  return (
+    <span
+      title={cached ? 'Answered from cache — these tokens were not charged' : 'Tokens sent to and returned by the model'}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: ink, whiteSpace: 'nowrap' }}
+    >
+      {cached ? <Icon name="zap" size={11} color="currentColor" /> : null}
+      <span>in {tok(tokensIn ?? 0)}</span>
+      <span>out {tok(tokensOut ?? 0)}</span>
+      {cached ? <span style={{ opacity: 0.8 }}>not charged</span> : null}
+    </span>
+  )
+}
+
 function Metric({ label, value, note }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
@@ -202,7 +258,12 @@ function KindRow({ kind: k, pagesRead, pageCount }) {
               which is where "pages read" lived before Coverage was cut. */}
           {k.key === 'read' && pageCount ? <span>{pagesRead} of {pageCount} pages</span> : null}
           <span>{k.calls ? plural(k.calls, 'call') : 'no calls'}</span>
-          <span>{k.tokens ? `${thousands(k.tokens, 1)} tok` : 'no tokens'}</span>
+          {/* Split, not totalled. `38.2K tok` says nothing a reader can act on;
+              the ratio between the two halves does, because output is priced
+              several times higher than input on every model here. */}
+          {k.tokens
+            ? <span>in {tok(k.tokensIn)} out {tok(k.tokensOut)}</span>
+            : <span>no tokens</span>}
           <span>{durationShort(k.seconds)}</span>
         </span>
       </div>
@@ -224,6 +285,12 @@ function StepList({ cost, completedCount }) {
       {cost.rows.map((r) => {
         const done = r.state === 'done'
         const running = r.state === 'running' && completedCount > 0
+        // Only the derivation cache earns the ⚡ — it means *no model was asked*.
+        // `cachePct` is a different thing wearing the same word: the provider's own
+        // prompt cache, which discounts a call that still happened. Treating 100%
+        // of that as free would report a real bill as zero.
+        const cached = r.fullyCached === true
+        const avoided = (r.tokensInAvoided ?? 0) + (r.tokensOutAvoided ?? 0)
         return (
           <div
             key={r.id}
@@ -238,15 +305,31 @@ function StepList({ cost, completedCount }) {
             <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: done ? 'var(--me-ink)' : running ? 'var(--me-blue-deep)' : 'var(--me-grey-50)' }}>
               {r.name}
               <span style={{ marginLeft: 7, fontSize: 11, color: 'var(--me-grey-50)' }}>{r.modelLabel}</span>
+              {cached ? (
+                <span title="Answered from cache — no model was asked" style={{ display: 'inline-flex', marginLeft: 6, verticalAlign: 'middle' }}>
+                  <Icon name="zap" size={12} color="var(--status-success)" />
+                </span>
+              ) : null}
               {/* Why a step cost nothing. Without it, a $0.00 row reads as a step
                   that failed to report rather than one that had no model to call. */}
               {r.note ? (
                 <span style={{ display: 'block', fontSize: 10.5, lineHeight: 1.45, color: 'var(--me-grey-70)' }}>{r.note}</span>
               ) : null}
+              {/* The work behind the row's money. A step that reads six pages and
+                  one that answers a yes/no both cost fractions of a cent; the token
+                  counts are what tell them apart. */}
+              {done && (r.tokensIn || r.tokensOut || avoided) ? (
+                <span style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 12px', marginTop: 2, fontFamily: 'var(--font-mono)', fontSize: 10.5 }}>
+                  {r.tokensIn || r.tokensOut ? <Tokens tokensIn={r.tokensIn} tokensOut={r.tokensOut} /> : null}
+                  {avoided ? <Tokens tokensIn={r.tokensInAvoided} tokensOut={r.tokensOutAvoided} cached /> : null}
+                </span>
+              ) : null}
             </span>
             {done ? (
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: r.cost ? 'var(--me-grey-70)' : 'var(--status-success)', whiteSpace: 'nowrap' }}>
-                {r.cost || r.seconds ? `${seconds2(r.seconds)} · ${usdFine(r.cost)}` : 'no model'}
+                {cached
+                  ? '$0'
+                  : (r.cost || r.seconds ? `${seconds2(r.seconds)} · ${usdFine(r.cost)}` : 'no model')}
               </span>
             ) : (
               <Badge tone={running ? 'blue' : 'neutral'}>{running ? 'running' : 'queued'}</Badge>

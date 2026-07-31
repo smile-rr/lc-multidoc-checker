@@ -179,30 +179,97 @@ export function summariseRun(steps, completedCount, pageCount) {
  * @param {number} pageCount pages in the presentation, for the per-page figure
  */
 export function summariseLedger(spend = [], pageCount = 0) {
-  const rows = spend.map((r, i) => ({
-    id: `${r.stage}/${r.step}`,
-    name: `${r.stage} · ${r.step}`,
-    kind: (r.kind || '').toLowerCase() === 'vision' ? 'read' : 'judged',
-    role: `${r.role || ''}${r.family ? ` · ${r.family}` : ''}`,
-    model: r.modelId,
-    modelLabel: r.family || r.modelId,
-    checks: 0,
-    calls: r.calls || 0,
-    seconds: (r.ms || 0) / 1000,
-    tokensIn: r.tokensIn || 0,
-    tokensOut: r.tokensOut || 0,
-    // Share of this step's calls that never reached a provider.
-    cachePct: r.calls ? Math.round((r.cached / r.calls) * 100) : 0,
-    retries: r.failed || 0,
-    cost: Number(r.cost) || 0,
-    state: 'done',
-  }))
+  // Roll extract:INV / extract:WC up to "extract" so the drawer shows the
+  // pipeline steps an officer names (segment, extract, credit), not every fan-out.
+  const rolled = new Map()
+  for (const r of spend) {
+    const step = pipelineStep(r.step)
+    const id = `${r.stage || '—'}/${step}`
+    const at = rolled.get(id) ?? {
+      stage: r.stage,
+      step,
+      modelId: r.modelId,
+      family: r.family,
+      role: r.role,
+      kind: r.kind,
+      calls: 0,
+      cached: 0,
+      failed: 0,
+      tokensIn: 0,
+      tokensOut: 0,
+      tokensInAvoided: 0,
+      tokensOutAvoided: 0,
+      ms: 0,
+      cost: 0,
+      costAvoided: 0,
+    }
+    at.calls += r.calls || 0
+    at.cached += r.cached || 0
+    at.failed += r.failed || 0
+    at.tokensIn += r.tokensIn || 0
+    at.tokensOut += r.tokensOut || 0
+    at.tokensInAvoided += r.tokensInAvoided || 0
+    at.tokensOutAvoided += r.tokensOutAvoided || 0
+    at.ms += r.ms || 0
+    at.cost += Number(r.cost) || 0
+    at.costAvoided += Number(r.costAvoided) || 0
+    if (!at.modelId && r.modelId) {
+      at.modelId = r.modelId
+      at.family = r.family
+    }
+    rolled.set(id, at)
+  }
+
+  const STAGE_ORDER = ['intake', 'interpret', 'gate', 'plan', 'execute', 'signoff']
+  const rows = [...rolled.values()]
+    .sort((a, b) => {
+      const sa = STAGE_ORDER.indexOf(a.stage)
+      const sb = STAGE_ORDER.indexOf(b.stage)
+      if (sa !== sb) return (sa < 0 ? 99 : sa) - (sb < 0 ? 99 : sb)
+      return String(a.step).localeCompare(String(b.step))
+    })
+    .map((r) => {
+      const fullyCached = r.calls > 0 && r.cached === r.calls
+      return {
+        id: `${r.stage}/${r.step}`,
+        name: stepTitle(r.stage, r.step),
+        kind: (r.kind || '').toLowerCase() === 'vision' ? 'read' : 'judged',
+        role: `${r.role || ''}${r.family ? ` · ${r.family}` : ''}`,
+        model: r.modelId,
+        modelLabel: r.family || r.modelId,
+        checks: 0,
+        calls: r.calls || 0,
+        seconds: (r.ms || 0) / 1000,
+        tokensIn: r.tokensIn || 0,
+        tokensOut: r.tokensOut || 0,
+        // Kept apart from the billed pair rather than added to it. A cache hit's
+        // tokens are what the original call reported, so summing the two would
+        // report work this run never did — and would make a fully cached step,
+        // the cheapest thing that can happen, look like the busiest.
+        tokensInAvoided: r.tokensInAvoided || 0,
+        tokensOutAvoided: r.tokensOutAvoided || 0,
+        cachePct: r.calls ? Math.round((r.cached / r.calls) * 100) : 0,
+        retries: r.failed || 0,
+        cost: Number(r.cost) || 0,
+        costAvoided: Number(r.costAvoided) || 0,
+        fullyCached,
+        // What the row cannot show for itself. That it was cached is said by the ⚡
+        // and by the token cluster beside it, so repeating "cached · $0" here was
+        // the same fact three times; what only this line can say is what the run
+        // would have been charged had the cache been cold.
+        note: fullyCached
+          ? (r.costAvoided ? `would have cost $${Number(r.costAvoided).toFixed(5)}` : null)
+          : (r.cached ? `${r.cached} of ${r.calls} calls cached` : null),
+        state: 'done',
+      }
+    })
 
   const sum = (f) => rows.reduce((a, r) => a + f(r), 0)
   const calls = sum((r) => r.calls)
   const cached = spend.reduce((a, r) => a + (r.cached || 0), 0)
   const seconds = sum((r) => r.seconds)
   const cost = sum((r) => r.cost)
+  const costAvoided = sum((r) => r.costAvoided)
 
   return {
     seconds,
@@ -210,11 +277,14 @@ export function summariseLedger(spend = [], pageCount = 0) {
     // latency, and slots that ran at the same time already overlap in it.
     wallClock: seconds,
     cost,
+    costAvoided,
     calls,
     checks: 0,
     tokensIn: sum((r) => r.tokensIn),
     tokensOut: sum((r) => r.tokensOut),
     tokens: sum((r) => r.tokensIn + r.tokensOut),
+    tokensInAvoided: sum((r) => r.tokensInAvoided),
+    tokensOutAvoided: sum((r) => r.tokensOutAvoided),
     retries: sum((r) => r.retries),
     byKind: [],
     cardsSettled: 0,
@@ -222,10 +292,30 @@ export function summariseLedger(spend = [], pageCount = 0) {
     cacheHitPct: calls ? Math.round((cached / calls) * 100) : 0,
     pagesRead: pageCount,
     costPerPage: pageCount ? cost / pageCount : 0,
-    modelCount: new Set(rows.map((r) => r.model)).size,
+    modelCount: new Set(rows.map((r) => r.model).filter(Boolean)).size,
     byModel: [],
     rows,
   }
+}
+
+/** Fan-out keys like extract:INV collapse to the declared pipeline step. */
+function pipelineStep(step) {
+  if (!step) return '—'
+  const i = String(step).indexOf(':')
+  return i > 0 ? String(step).slice(0, i) : String(step)
+}
+
+function stepTitle(stage, step) {
+  const labels = {
+    'intake/credit': 'Intake · credit',
+    'intake/store': 'Intake · store',
+    'interpret/segment': 'Interpret · segment',
+    'interpret/extract': 'Interpret · extract',
+    'plan/requirements': 'Plan · requirements',
+    'execute/judge': 'Execute · judge',
+  }
+  const id = `${stage}/${step}`
+  return labels[id] || `${stage || '—'} · ${step}`
 }
 
 /**
