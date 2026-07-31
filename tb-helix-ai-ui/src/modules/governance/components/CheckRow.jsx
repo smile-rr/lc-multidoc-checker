@@ -3,7 +3,6 @@ import Badge from '@shared/ds/Badge'
 import Chip from '@shared/ds/Chip'
 import { ellipsis } from '@shared/ds/text'
 import { TypeBadge, GateBadge } from './Check'
-import { AGENT_LINK } from '../features'
 
 const SEV_TONE = { CRITICAL: 'error', MAJOR: 'warning', MINOR: 'neutral' }
 const SEV_LABEL = { CRITICAL: 'Critical', MAJOR: 'Major', MINOR: 'Minor' }
@@ -11,14 +10,7 @@ const SEV_LABEL = { CRITICAL: 'Critical', MAJOR: 'Major', MINOR: 'Minor' }
 // Shared column template for the Checks list (header + rows must match).
 // Id first: it is the stable handle. A title is reworded; an id is quoted in a
 // refusal advice and an audit file, and must never change.
-// The In Agent column comes and goes with the agent link (features.js); the
-// title column takes the width back, rather than the row growing a gap.
-export const CHECKS_COLS = {
-  display: 'grid',
-  gridTemplateColumns: `18px 104px 108px minmax(0,1fr) 96px ${AGENT_LINK ? 'minmax(0,1.1fr) ' : ''}24px`,
-  gap: 12,
-  alignItems: 'center',
-}
+export const CHECKS_COLS = { display: 'grid', gridTemplateColumns: '18px 104px 108px minmax(0,1fr) 96px minmax(0,1.1fr) 24px', gap: 12, alignItems: 'center' }
 
 // One-line dense row for the Checks list view. Click navigates into the
 // Check detail page (check.onOpen).
@@ -40,7 +32,7 @@ export default function CheckRow({ check }) {
         {check.retired && <Chip size="sm" tone="warning" style={statePill}>Retired</Chip>}
       </span>
       <span><Badge tone={SEV_TONE[check.severity] || 'neutral'}>{SEV_LABEL[check.severity] || check.severity}</Badge></span>
-      {AGENT_LINK && <span style={{ fontSize: 12, color: 'var(--me-grey-70)', ...ellipsis }}>{check.inLabel}</span>}
+      <span style={{ fontSize: 12, color: 'var(--me-grey-70)', ...ellipsis }}>{check.inLabel}</span>
       <span style={{ display: 'flex', justifyContent: 'flex-end', color: 'var(--me-grey-50)' }}>
         <Icon name="chevron-right" size={18} color="currentColor" />
       </span>

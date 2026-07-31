@@ -13,7 +13,6 @@ import { listWrap, listHead } from '@shared/ds/listStyles'
 import Check from '../components/Check'
 import CheckRow, { CHECKS_COLS } from '../components/CheckRow'
 import PendingNotice from '../components/PendingNotice'
-import { AGENT_LINK } from '../features'
 
 // Checks library — Cards (layer-1 inline edit) or List (rows → detail page).
 //
@@ -72,7 +71,7 @@ export default function ChecksSection({ v }) {
             <SortHeader label="Kind" {...v.checkSortCol('kind')} />
             <SortHeader label="Check" {...v.checkSortCol('title')} />
             <SortHeader label="Severity" {...v.checkSortCol('severity')} />
-            {AGENT_LINK && <SortHeader label="In Agent" {...v.checkSortCol('agent')} />}
+            <SortHeader label="In Agent" {...v.checkSortCol('agent')} />
             <span />
           </div>
           {v.libChecks.map((check) => (

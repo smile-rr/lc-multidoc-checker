@@ -21,7 +21,7 @@ const ROUTES = [
   '/lc-check/cases',
     '/lc-check/cases/CHK-25-0128-014/intake',
   '/governance/checks',
-  '/governance/agents',   // no tab while AGENT_LINK is off — must land on Checks, not crash
+  '/governance/agents',
   '/governance/dictionary',
   '/governance/library',
   '/nonsense',

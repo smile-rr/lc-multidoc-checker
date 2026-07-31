@@ -13,7 +13,6 @@ import { isBlank, allPresent } from '@shared/ds/TextField'
 import seed from './data/seed.json' with { type: 'json' }
 import { hydrateSeed } from './api/hydrate'
 import * as gov from './api/governanceApi'
-import { AGENT_LINK } from './features'
 
 // Fills `seed` in place from the service, before anything below reads it.
 //
@@ -945,10 +944,8 @@ export function deriveVals(state, setState) {
       trackBg: active ? 'var(--me-blue)' : 'var(--me-grey-20)', knobLeft: active ? '16px' : '2px',
       showDrag: inAgent && S.agentArrange, draggable: inAgent && S.agentArrange && !editing,
       showToggle: inAgent, showComment: true,
-      // Where a check sits, and how to move it, are both agent-linked (features.js).
-      // `place` is still read and still written — only shown while the link is on.
-      showInLine: AGENT_LINK, inLabel,
-      showAssign: AGENT_LINK && !inAgent, assignLabel: place.agentId ? agentName(place.agentId) : 'Add to agent',
+      showInLine: true, inLabel,
+      showAssign: !inAgent, assignLabel: place.agentId ? agentName(place.agentId) : 'Add to agent',
       assignBorder: place.agentId ? 'var(--me-blue)' : 'var(--me-grey-20)', assignBg: place.agentId ? 'var(--me-blue-20)' : '#fff', assignColor: place.agentId ? 'var(--me-blue-deep)' : 'var(--me-grey-70)', assignIcon: place.agentId ? 'bot' : 'plus',
       assignOpen: S.assignOpenId === c.id,
       onToggleAssign: (e) => { if (e && e.stopPropagation) e.stopPropagation(); setState((s) => ({ assignOpenId: s.assignOpenId === c.id ? null : c.id })) },
@@ -1098,7 +1095,7 @@ export function deriveVals(state, setState) {
     kind: (c) => c.typeLabel,
     title: (c) => c.title,
     severity: (c) => SEV_RANK[c.severity] ?? 9,
-    ...(AGENT_LINK ? { agent: (c) => c.inLabel } : null),
+    agent: (c) => c.inLabel,
   }
   const built = shown.map((c) => buildCheck(c, 'library'))
   const libChecks = CHECK_SORT[checkSort.key] ? sortBy(built, CHECK_SORT[checkSort.key], checkSort.dir) : built
@@ -1112,7 +1109,7 @@ export function deriveVals(state, setState) {
     none: null,
     kind: { label: 'Kind', of: (c) => c.typeLabel },
     severity: { label: 'Severity', of: (c) => ({ CRITICAL: 'Critical', MAJOR: 'Major', MINOR: 'Minor' }[c.severity] || c.severity), order: ['Critical', 'Major', 'Minor'] },
-    ...(AGENT_LINK ? { agent: { label: 'Agent', of: (c) => c.inLabel.split(' · ')[0] } } : null),
+    agent: { label: 'Agent', of: (c) => c.inLabel.split(' · ')[0] },
   }
   const groupBy = S.checkGroupBy || 'none'
   const grouper = GROUPERS[groupBy]
@@ -1127,9 +1124,7 @@ export function deriveVals(state, setState) {
         })
         let keys = [...buckets.keys()]
         if (grouper.order) keys.sort((a, b) => (grouper.order.indexOf(a) + 1 || 99) - (grouper.order.indexOf(b) + 1 || 99))
-        // Named groups alphabetically; whatever fell through last, so the run
-        // that says nothing about a check does not head the page.
-        else keys.sort((a, b) => (a === 'Unassigned' ? 1 : b === 'Unassigned' ? -1 : a.localeCompare(b)))
+        else keys.sort((a, b) => (a === 'Not in an agent' ? 1 : b === 'Not in an agent' ? -1 : a.localeCompare(b)))
         return keys.map((k) => ({ key: k, name: k, count: buckets.get(k).length, checks: buckets.get(k) }))
       })()
   const typeFilters = [
