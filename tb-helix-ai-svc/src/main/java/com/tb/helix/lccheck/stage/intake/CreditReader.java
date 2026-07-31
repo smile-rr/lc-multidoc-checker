@@ -6,6 +6,7 @@ import com.tb.helix.harness.llm.text.TextRequest;
 import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
+import com.tb.helix.infra.prompt.Prompts;
 import com.tb.helix.lccheck.service.DocumentTypes;
 import com.tb.helix.lccheck.service.ExtractionSpec;
 
@@ -51,14 +52,16 @@ public class CreditReader {
     private final DerivationCache cache;
     private final DocumentTypes docTypes;
     private final ExtractionSpec spec;
+    private final Prompts prompts;
     private final ObjectMapper json;
 
     public CreditReader(LlmGateway models, DerivationCache cache, DocumentTypes docTypes,
-                        ExtractionSpec spec, ObjectMapper json) {
+                        ExtractionSpec spec, Prompts prompts, ObjectMapper json) {
         this.models = models;
         this.cache = cache;
         this.docTypes = docTypes;
         this.spec = spec;
+        this.prompts = prompts;
         this.json = json;
     }
 
@@ -82,7 +85,7 @@ public class CreditReader {
 
         try {
             var hit = cache.computeIfAbsent(key, Map.class, () -> {
-                var result = models.complete(TextRequest.json(LlmRole.READ_TEXT, SYSTEM, prompt));
+                var result = models.complete(TextRequest.json(LlmRole.READ_TEXT, prompts.get("credit-system"), prompt));
                 return DerivationCache.Entry.of(parse(result.content()));
             });
             @SuppressWarnings("unchecked")
@@ -125,7 +128,10 @@ public class CreditReader {
                 .append(" — ").append(m.type().label()).append(" ===\n")
                 .append(m.block4().strip()).append("\n\n");
         }
-        return READ_PROMPT.formatted(file.messages().size(), body.toString().strip(), fields());
+        return prompts.fill("credit-read", Map.of(
+                "count", file.messages().size(),
+                "messages", body.toString().strip(),
+                "fields", fields()));
     }
 
     /**
@@ -181,58 +187,5 @@ public class CreditReader {
         }
     }
 
-    private static final String SYSTEM = """
-            You read SWIFT documentary-credit messages and report what they say.
 
-            You are not examining anything and not advising. You are stating the terms so a
-            colleague can measure documents against them.
-
-            Rules you do not depart from:
-
-            1. Report only what the messages say. A field that is not there is absent, not
-               empty and not inferred from another field.
-            2. SWIFT writes decimals with a comma. USD60000,00 is sixty thousand.
-            3. Dates in tags are YYMMDD. Return ISO — 2024-12-31 — and nothing else.
-            4. Where a tag carries a date and a place (31D), separate them.
-            5. Never round, never convert currency, never tidy a party name.
-
-            Answer only in the JSON shape you are given. No prose outside it.
-            """;
-
-    private static final String READ_PROMPT = """
-            Below are %d SWIFT messages from one file, in the order they were sent.
-
-            They concern a single documentary credit. Read them together and report the terms
-            **as they now stand**.
-
-            How the messages relate:
-
-            - An issue (MT700, MT710, MT720) establishes the terms.
-            - A continuation (MT701, MT708, MT711) is not a message of its own — it is the
-              overflow of the one before it. Join its text onto that field.
-            - An amendment (MT707) changes some of the terms and is silent about the rest.
-              Silence means unchanged. Apply amendments in order; a later one beats an
-              earlier one on the same field.
-            - An amendment may state a change in words rather than as a value — "expiry
-              extended by 30 days", "amount increased by USD 10,000". Work out the resulting
-              value from the term it changes, and report the result.
-            - Free format (MT799) is context. Take a term from it only if it plainly states
-              one; never let prose about a credit override the credit.
-
-            ---
-            %s
-            ---
-
-            Report these fields, as they stand after everything above, under exactly these
-            names:
-
-            %s
-            Omit any field the messages do not carry. Do not guess, and do not carry a value
-            across from a similar tag.
-
-            Also report "_from": an object mapping each field you filled to the message that
-            last stated it, written as it appears in the heading — "#1 MT700", "#3 MT707".
-
-            Return only a JSON object: the fields at the top level, plus "_from".
-            """;
 }

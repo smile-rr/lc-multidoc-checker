@@ -8,6 +8,7 @@ import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
 import com.tb.helix.infra.pipeline.Step;
+import com.tb.helix.infra.prompt.Prompts;
 import com.tb.helix.infra.pipeline.StepResult;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.ReadRows;
@@ -51,15 +52,18 @@ public class PlanStage implements Stage {
     private final CheckCatalog catalog;
     private final CaseStore cases;
     private final DocumentTypes docTypes;
+    private final Prompts prompts;
     private final LlmGateway models;
     private final DerivationCache cache;
     private final ObjectMapper json;
 
     public PlanStage(CheckCatalog catalog, CaseStore cases, DocumentTypes docTypes,
-                     LlmGateway models, DerivationCache cache, ObjectMapper json) {
+                     LlmGateway models, DerivationCache cache, Prompts prompts,
+                     ObjectMapper json) {
         this.catalog = catalog;
         this.cases = cases;
         this.docTypes = docTypes;
+        this.prompts = prompts;
         this.models = models;
         this.cache = cache;
         this.json = json;
@@ -139,7 +143,8 @@ public class PlanStage implements Stage {
         String conditions = String.valueOf(credit.getOrDefault("additional_conditions", ""));
         if (docs.isBlank() && conditions.isBlank()) return 0;
 
-        String prompt = REQUIREMENTS_PROMPT.formatted(docs, conditions);
+        String prompt = prompts.fill("plan-requirements", Map.of(
+                "documentsRequired", docs, "additionalConditions", conditions));
         var key = new DerivationKey(CacheOp.PLAN_REQUIREMENTS, CacheOp.PLAN_REQUIREMENTS_V,
                 DerivationKey.sha256Hex(docs + "|" + conditions), "46A+47A",
                 DerivationKey.sha256Hex(prompt), "role:plan", null, Map.of());
@@ -147,7 +152,7 @@ public class PlanStage implements Stage {
         List<Map<String, Object>> found;
         try {
             var hit = cache.computeIfAbsent(key, Map.class, () -> {
-                var result = models.complete(TextRequest.json(LlmRole.PLAN, PLANNER_SYSTEM, prompt));
+                var result = models.complete(TextRequest.json(LlmRole.PLAN, prompts.get("plan-system"), prompt));
                 return DerivationCache.Entry.of(parse(result.content()));
             });
             found = readList(hit.value());
@@ -225,31 +230,5 @@ public class PlanStage implements Stage {
     }
 
 
-    private static final String PLANNER_SYSTEM = """
-            You are a documentary credit examiner reading a credit to work out what it demands.
 
-            You are not examining anything yet. You are listing what would have to be true for
-            the presentation to comply, so a colleague can check each one.
-
-            Be literal. A credit says what it says; do not add market practice, and do not
-            merge two conditions into one because they are related.
-            """;
-
-    private static final String REQUIREMENTS_PROMPT = """
-            Field 46A — documents required:
-            %s
-
-            Field 47A — additional conditions:
-            %s
-
-            List every separate requirement these fields impose. For each, give:
-              requirement  what must be true, in one sentence an examiner would recognise
-              source       ":46A:" or ":47A:"
-              severity     CRITICAL if a failure alone makes the presentation non-complying,
-                           MAJOR if it is a discrepancy, MINOR if it is a formality
-              howToCheck   which document to look at and what to compare
-              notCovered   true if this needs human judgement no standing rule could apply
-
-            Return only JSON: {"requirements": [ ... ]}
-            """;
 }

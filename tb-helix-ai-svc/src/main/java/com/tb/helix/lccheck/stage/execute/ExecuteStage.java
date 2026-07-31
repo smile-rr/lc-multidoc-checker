@@ -8,6 +8,7 @@ import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
 import com.tb.helix.infra.pipeline.Step;
+import com.tb.helix.infra.prompt.Prompts;
 import com.tb.helix.infra.pipeline.StepResult;
 import com.tb.helix.infra.stream.HelixEvent;
 import com.tb.helix.lccheck.persistence.CaseRow;
@@ -47,17 +48,19 @@ public class ExecuteStage implements Stage {
     private final CaseStore cases;
     private final DocumentTypes docTypes;
     private final RuleEvaluator rules;
+    private final Prompts prompts;
     private final LlmGateway models;
     private final DerivationCache cache;
     private final ObjectMapper json;
 
     public ExecuteStage(CheckCatalog catalog, CaseStore cases, DocumentTypes docTypes,
                         RuleEvaluator rules, LlmGateway models, DerivationCache cache,
-                        ObjectMapper json) {
+                        Prompts prompts, ObjectMapper json) {
         this.catalog = catalog;
         this.cases = cases;
         this.docTypes = docTypes;
         this.rules = rules;
+        this.prompts = prompts;
         this.models = models;
         this.cache = cache;
         this.json = json;
@@ -241,18 +244,18 @@ public class ExecuteStage implements Stage {
 
     private Map<String, Object> judge(ReadRows.PlanCheck check, String factSheet, String factDigest) {
         String checkId = check.checkId();
-        String prompt = CHECK_PROMPT.formatted(
-                checkId,
-                check.name(),
-                nz(check.appliesBecause()),
-                nz(check.ruleRef()),
-                factSheet);
+        String prompt = prompts.fill("examine-check", Map.of(
+                "id", checkId,
+                "name", check.name(),
+                "because", nz(check.appliesBecause()),
+                "authority", nz(check.ruleRef()),
+                "facts", factSheet));
 
         var key = new DerivationKey(CacheOp.JUDGE_RULE, CacheOp.JUDGE_RULE_V, factDigest, checkId,
                 DerivationKey.sha256Hex(prompt), "role:judge", null, Map.of());
 
         var hit = cache.computeIfAbsent(key, Map.class, () -> {
-            var result = models.complete(TextRequest.json(LlmRole.JUDGE, EXAMINER_SYSTEM, prompt));
+            var result = models.complete(TextRequest.json(LlmRole.JUDGE, prompts.get("examine-system"), prompt));
             return DerivationCache.Entry.of(parse(result.content()));
         });
         @SuppressWarnings("unchecked")
@@ -367,45 +370,5 @@ public class ExecuteStage implements Stage {
     }
 
 
-    private static final String EXAMINER_SYSTEM = """
-            You are a documentary credit examiner working to UCP 600 and ISBP 821.
 
-            Principles you do not depart from:
-
-            1. Examine documents on their face, against the credit. Not against what the
-               underlying transaction probably was.
-            2. A discrepancy is a difference that matters under the credit or the rules. A
-               difference that matters to nobody is not a discrepancy.
-            3. Data need not be identical, but must not conflict — UCP 600 art. 14(d).
-            4. If a document does not say something, say it does not. Do not infer it from
-               another document.
-            5. When you cannot tell, say inconclusive. An examiner who guesses is worse than
-               one who asks, because the guess is indistinguishable from a finding.
-
-            Answer only in the JSON shape you are given. No prose outside it.
-            """;
-
-    private static final String CHECK_PROMPT = """
-            Check %s — %s
-
-            Why it is in the plan: %s
-            Authority: %s
-
-            %s
-
-            Decide whether the presentation satisfies this check, and answer:
-
-            {
-              "verdict":    "pass" | "discrepancy" | "possible" | "inconclusive",
-              "title":      short headline an officer would scan,
-              "statement":  the formal one-line wording for a refusal advice, UPPERCASE,
-                            or null when the verdict is pass,
-              "expected":   what the credit or the rules require,
-              "presented":  what the documents actually say,
-              "why":        why the difference matters, or why it does not,
-              "document":   the document code the evidence sits on,
-              "options":    ["what the officer could do"],
-              "confidence": "HIGH" | "MED" | "LOW"
-            }
-            """;
 }

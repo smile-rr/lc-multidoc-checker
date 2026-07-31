@@ -27,7 +27,9 @@ export default function CaseWorkbench() {
 }
 
 function WorkbenchBody() {
-  const { caseId, data, loading, error, run, visible, ui, actions } = useCase()
+  const { caseId, data, loading, error, run, runStages, visible, ui, actions } = useCase()
+  // The service's list once it has answered; the built-in order until then.
+  const bar = runStages ?? RUN_STAGES
   const { stage } = useParams()
   const navigate = useNavigate()
   const [selectedFindingId, setSelectedFindingId] = useState(null)
@@ -42,7 +44,7 @@ function WorkbenchBody() {
   useEffect(() => {
     if (!run.live || !run.following) return
     if (run.activeStage) {
-      const target = stageMeta(run.activeStage)?.stage
+      const target = stageMeta(run.activeStage, bar)?.stage
       if (target && target !== activeStage) navigate(`/lc-check/cases/${caseId}/${target}`, { replace: true })
     } else if (run.finished && run.mode === 'auto' && activeStage !== 'review') {
       // Auto ends at the report. Step waits to be asked.
@@ -93,7 +95,7 @@ function WorkbenchBody() {
   // nothing. It says what pressing it will run, so the cost of pressing it is
   // legible before it is pressed.
   const stepping = run.mode === 'step'
-  const nextStage = stageAfter(run.done)
+  const nextStage = stageAfter(run.done, bar)
   const action = (() => {
     // Intake is still reading. Named rather than absent, and disabled rather than
     // hidden: the officer should be able to see that the case is doing something
@@ -104,7 +106,7 @@ function WorkbenchBody() {
     if (run.activeStage) {
       // Named rather than hidden: a button that vanishes mid-run reads as a
       // finished run. Disabled, so it cannot be pressed twice.
-      return { label: stageMeta(run.activeStage)?.running ?? 'Running…', disabled: true }
+      return { label: stageMeta(run.activeStage, bar)?.running ?? 'Running…', disabled: true }
     }
     if (run.finished) {
       return stepping && activeStage !== 'review' ? { label: 'Open the report', run: () => goStage('review') } : null
@@ -130,9 +132,9 @@ function WorkbenchBody() {
     : run.finished
     ? { tone: 'error', label: `${plural(visible.attention.filter((f) => f.severity === 'discrepancy').length, 'discrepancy', 'discrepancies')} · reply due` }
     : run.activeStage
-      ? { tone: 'blue', label: stageMeta(run.activeStage)?.badge ?? 'Review Running' }
+      ? { tone: 'blue', label: stageMeta(run.activeStage, bar)?.badge ?? 'Review Running' }
       : run.started
-        ? { tone: 'blue', label: `Paused · ${run.done.length} of ${RUN_STAGES.length} Steps` }
+        ? { tone: 'blue', label: `Paused · ${run.done.length} of ${bar.length} Steps` }
         : { tone: 'neutral', label: 'Awaiting Check' }
 
   return (

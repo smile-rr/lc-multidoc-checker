@@ -10,6 +10,7 @@ import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
 import com.tb.helix.infra.pipeline.Step;
+import com.tb.helix.infra.prompt.Prompts;
 import com.tb.helix.infra.pipeline.StepResult;
 import com.tb.helix.infra.stream.HelixEvent;
 import com.tb.helix.lccheck.persistence.CaseStore;
@@ -55,11 +56,12 @@ public class InterpretStage implements Stage {
     private final CaseStore cases;
     private final DocumentTypes docTypes;
     private final ExtractionSpec spec;
+    private final Prompts prompts;
     private final ObjectMapper json;
 
     public InterpretStage(PageRenderer renderer, RenderProperties render, LlmGateway models,
                           DerivationCache cache, CaseStore cases, DocumentTypes docTypes,
-                          ExtractionSpec spec, ObjectMapper json) {
+                          ExtractionSpec spec, Prompts prompts, ObjectMapper json) {
         this.renderer = renderer;
         this.render = render;
         this.models = models;
@@ -67,6 +69,7 @@ public class InterpretStage implements Stage {
         this.cases = cases;
         this.docTypes = docTypes;
         this.spec = spec;
+        this.prompts = prompts;
         this.json = json;
     }
 
@@ -134,10 +137,10 @@ public class InterpretStage implements Stage {
         // change between two cases. Hashing the assembled prompt into the key is what makes
         // that safe — add a document type in the console and the next bundle is re-read
         // rather than answered from a cache that never heard of it.
-        String prompt = SEGMENT_PROMPT
-                .replace("{DOC_TYPES}", docTypes.vocabulary())
-                .replace("{UNKNOWN}", DocumentTypes.UNKNOWN)
-                .replace("{PAGES}", String.valueOf(pageCount));
+        String prompt = prompts.fill("segment-bundle", Map.of(
+                "docTypes", docTypes.vocabulary(),
+                "unknown", DocumentTypes.UNKNOWN,
+                "pages", pageCount));
 
         var key = new DerivationKey(CacheOp.SEGMENT_BUNDLE, CacheOp.SEGMENT_BUNDLE_V, pdfSha,
                 "1-" + pageCount, DerivationKey.sha256Hex(prompt), "role:segment", null,
@@ -322,23 +325,6 @@ public class InterpretStage implements Stage {
         }
     }
 
-    private static final String SEGMENT_PROMPT = """
-            You are sorting the pages of a trade-finance presentation.
-
-            There are {PAGES} page images, in order, starting at page 1. For each one, say
-            which kind of document it is. Judge from headings, layout and the parties named —
-            not from what you expect the order to be.
-
-            Document types:
-            {DOC_TYPES}
-            If a page does not clearly belong to any of these, use {UNKNOWN}. Guessing is
-            worse than saying so: a wrong type sends the wrong rules at the document.
-
-            A document may run over several pages. Give every page its own entry.
-
-            Return only JSON:
-            {"pages": [{"page": 1, "docType": "INV", "why": "short reason"}, ...]}
-            """;
 
     /**
      * Built from the dictionary, never written by hand.

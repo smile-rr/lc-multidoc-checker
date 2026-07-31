@@ -1,6 +1,6 @@
 import { createContext, useContext, useReducer, useEffect, useRef, useCallback, useMemo } from 'react'
 import * as api from '../api/lcCheckApi'
-import { STAGES, RUN_STAGES, stageAfter, needsAction } from './severity'
+import { STAGES, RUN_STAGES, runStagesFrom, stageAfter, needsAction } from './severity'
 
 // ===========================================================================
 // One case's working state.
@@ -23,6 +23,15 @@ const initial = {
   loading: true,
   error: null,
   data: null,
+
+  /**
+   * The stages the run bar drives, as the service declared them.
+   *
+   * Null until GET /pipeline answers, and every reader falls back to the built-in
+   * order meanwhile — so the first paint of a cold case shows the same buttons in
+   * the same places rather than an empty bar that fills in a moment later.
+   */
+  runStages: null,
 
   run: {
     /**
@@ -123,7 +132,7 @@ function reducer(state, action) {
           started: loaded?.started ?? false,
           finished,
           // An already-examined case has every step behind it; a fresh one has none.
-          done: finished ? RUN_STAGES.map((s) => s.id) : [],
+          done: finished ? (state.runStages ?? RUN_STAGES).map((s) => s.id) : [],
           // A refetch triggered by a progress event must not cancel the step it
           // was reporting on — the run owns activeStage, the load does not.
           activeStage: action.merge ? state.run.activeStage : null,
@@ -157,6 +166,10 @@ function reducer(state, action) {
         ...state,
         run: { ...state.run, started: true, finished: false, done: [], activeStage: null, segmented: 0, completedAreaIds: [], activeAreaId: null, live: true, following: true },
       }
+    case 'pipeline':
+      // What the service says it can run. Wording and tab placement stay here; the
+      // list and its order come from there.
+      return { ...state, runStages: runStagesFrom(action.pipeline) }
     case 'run_mode':
       return { ...state, run: { ...state.run, mode: action.mode } }
     case 'stage_started':
@@ -165,7 +178,7 @@ function reducer(state, action) {
       // The run is finished when it is out of stages — nothing separately decides
       // that, so the two can never disagree.
       const done = state.run.done.includes(action.stageId) ? state.run.done : [...state.run.done, action.stageId]
-      const complete = RUN_STAGES.every((s) => done.includes(s.id))
+      const complete = (state.runStages ?? RUN_STAGES).every((s) => done.includes(s.id))
       return {
         ...state,
         run: {
@@ -264,6 +277,19 @@ export function CaseProvider({ caseId, children }) {
     return () => { alive = false }
   }, [caseId])
 
+  // The pipeline itself — which stages an officer may start, and in what order.
+  // Fetched per workbench rather than held globally because it is small, cached by
+  // the browser, and a stale copy would put a button on screen the service no
+  // longer honours. A failure is silent: the built-in order is the fallback and it
+  // is right in every deployment shipped so far.
+  useEffect(() => {
+    let alive = true
+    api.getPipeline()
+      .then((pipeline) => { if (alive) dispatch({ type: 'pipeline', pipeline }) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [])
+
   // Watches work this browser did not start.
   //
   // Intake begins when the files land, so by the time the workbench mounts it is
@@ -352,7 +378,7 @@ export function CaseProvider({ caseId, children }) {
   /** The officer asking for the next step — the first press also starts the run. */
   const runNext = useCallback(() => {
     if (state.run.activeStage) return
-    const next = stageAfter(state.run.done)
+    const next = stageAfter(state.run.done, state.runStages ?? RUN_STAGES)
     if (!next) return
     if (!state.run.started) dispatch({ type: 'run_started' })
     startStep(next.id)
@@ -365,7 +391,7 @@ export function CaseProvider({ caseId, children }) {
   useEffect(() => {
     const { mode, live, started, finished, activeStage, done } = state.run
     if (mode !== 'auto' || !live || !started || finished || activeStage) return
-    const next = stageAfter(done)
+    const next = stageAfter(done, state.runStages ?? RUN_STAGES)
     if (next) startStep(next.id)
   }, [state.run, startStep])
 

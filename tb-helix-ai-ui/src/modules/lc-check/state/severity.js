@@ -33,64 +33,84 @@ export const STAGES = [
 ]
 
 // The stages above are places to look. These are the things that actually run.
-// The two lists are not the same length and should not be forced to be:
 //
-//   · Intake runs nothing — it is the presentation as it arrived, and the last
-//     point at which a wrong bundle costs nothing to catch.
-//   · Planning and executing share the Plan & Execute tab but are separate acts.
-//     A plan the officer cannot amend before it executes is not a plan, and
-//     "Add a check" has no meaning without a moment between the two.
-//   · Review runs nothing either. The findings are already there; opening the
-//     report is navigation, and the button that does it says so.
-export const RUN_STAGES = [
-  { id: 'interpret', stage: 'interpret', action: 'Interpret the documents', running: 'Interpreting the documents…', badge: 'Interpreting' },
-  { id: 'plan', stage: 'checks', action: 'Plan the checks', running: 'Planning the checks…', badge: 'Planning' },
-  { id: 'execute', stage: 'checks', action: 'Run the checks', running: 'Running the checks…', badge: 'Running Checks' },
-]
+// **The service says which stages exist and who may start each; this says how each
+// one is worded and which tab it lives on.** That split is the whole point: a stage
+// added to the pipeline used to be invisible here until somebody remembered to add
+// it, and the only thing that noticed was a console warning nobody was reading.
+//
+// The two lists are still not the same length, and should not be forced to be:
+//
+//   · Intake runs by itself — it is the presentation as it arrived, and it gets no
+//     button because there is nothing to press.
+//   · The gate runs with the plan, so it is one press.
+//   · Signoff is reached from the decision screen, not the run bar.
+//   · Planning and executing share the Plan & Execute tab but are separate acts. A
+//     plan the officer cannot amend before it executes is not a plan, and "Add a
+//     check" has no meaning without a moment between the two.
+const STAGE_COPY = {
+  interpret: { stage: 'interpret', action: 'Interpret the documents', running: 'Interpreting the documents…', badge: 'Interpreting' },
+  plan: { stage: 'checks', action: 'Plan the checks', running: 'Planning the checks…', badge: 'Planning' },
+  execute: { stage: 'checks', action: 'Run the checks', running: 'Running the checks…', badge: 'Running Checks' },
+}
 
-export const stageMeta = (id) => RUN_STAGES.find((s) => s.id === id) ?? null
+// Stages the run bar never drives, however the service describes them.
+const NOT_ON_THE_RUN_BAR = ['signoff']
+
+/** Wording for a stage the UI has never heard of — visible, rather than missing. */
+const improvise = (id) => ({
+  stage: 'checks',
+  action: `Run ${id}`,
+  running: `Running ${id}…`,
+  badge: id.charAt(0).toUpperCase() + id.slice(1),
+})
 
 /**
- * Checks the browser's idea of the run against the service's declaration.
+ * The run bar, derived from what the service says it can run.
  *
- * A pipeline is made of stages; a stage is made of steps. RUN_STAGES is the
- * subset of stages the run bar drives, and it is not a copy of the backend's
- * list — it deliberately differs: intake runs by itself so it gets no button, the
- * gate runs with plan, and signoff is reached from the decision screen. What it
- * must never do is disagree about *which stages an officer can start*, because
- * then a button either does nothing or is missing.
+ * Order comes from the service too, because the order stages run in is the
+ * service's business and duplicating it here is how the button that runs "plan"
+ * ends up before the one that runs "interpret".
  *
- * So the two are compared rather than merged, and a mismatch is shouted about in
- * the console. Four separate descriptions of this pipeline drifted before anyone
- * noticed; this is the cheapest thing that makes drift visible the moment it
- * happens, in both mock and api mode.
+ * @param {object[]} pipeline  GET /lc-check/pipeline — empty before it has loaded
+ */
+export function runStagesFrom(pipeline) {
+  if (!Array.isArray(pipeline) || pipeline.length === 0) return DEFAULT_RUN_STAGES
+  return pipeline
+    .filter((s) => s.officerStarts && !NOT_ON_THE_RUN_BAR.includes(s.stage))
+    .map((s) => ({ id: s.stage, ...(STAGE_COPY[s.stage] ?? improvise(s.stage)) }))
+}
+
+// What the bar shows before the pipeline has arrived — the first paint of a case
+// opened from a cold start. Same shape, same order, so nothing moves underneath the
+// officer when the real answer lands a moment later.
+const DEFAULT_RUN_STAGES = Object.entries(STAGE_COPY).map(([id, copy]) => ({ id, ...copy }))
+
+export const RUN_STAGES = DEFAULT_RUN_STAGES
+
+export const stageMeta = (id, stages = RUN_STAGES) => stages.find((s) => s.id === id) ?? null
+
+/**
+ * What the service can run that this UI has no wording for.
+ *
+ * Existence is no longer something the two can disagree about — the run bar is built
+ * from the service's answer. What can still go wrong is a stage arriving that nobody
+ * has written a button label for, and that is worth saying out loud: the officer gets
+ * "Run reconcile" rather than a considered sentence, which works but reads like a
+ * placeholder because it is one.
  *
  * @param {object[]} pipeline  GET /lc-check/pipeline
- * @returns {string[]} complaints, empty when they agree
+ * @returns {string[]} complaints, empty when every runnable stage has wording
  */
 export function pipelineDisagreements(pipeline) {
   if (!Array.isArray(pipeline) || pipeline.length === 0) return []
-  const backendRunnable = pipeline.filter((s) => s.officerStarts).map((s) => s.stage)
-  const ours = RUN_STAGES.map((s) => s.id)
-
-  const problems = []
-  for (const id of ours) {
-    if (!backendRunnable.includes(id)) {
-      problems.push(`the run bar offers "${id}", which the service does not let an officer start`)
-    }
-  }
-  // signoff is expected to be absent from ours — it is reached from the decision
-  // screen, not the run button — so it is not a complaint.
-  for (const id of backendRunnable) {
-    if (!ours.includes(id) && id !== 'signoff') {
-      problems.push(`the service can run "${id}" but the run bar never offers it`)
-    }
-  }
-  return problems
+  return pipeline
+    .filter((s) => s.officerStarts && !NOT_ON_THE_RUN_BAR.includes(s.stage) && !STAGE_COPY[s.stage])
+    .map((s) => `the service can run "${s.stage}" and the run bar has no wording for it`)
 }
 
 /** The next stage that has not run, or null when the run is out of stages. */
-export const stageAfter = (doneIds) => RUN_STAGES.find((s) => !doneIds.includes(s.id)) ?? null
+export const stageAfter = (doneIds, stages = RUN_STAGES) => stages.find((s) => !doneIds.includes(s.id)) ?? null
 
 // Who presses "next". Nothing else differs between the two — the same steps run
 // in the same order, and the stage tab follows the run either way.
