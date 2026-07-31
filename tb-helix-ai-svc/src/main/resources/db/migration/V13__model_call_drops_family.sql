@@ -1,0 +1,14 @@
+-- The call ledger stores the model it actually called, and nothing derived from it.
+--
+-- `family` was written at insert time by resolving the model id against the price book's
+-- match patterns. That made it a second truth about the same call: the patterns are edited
+-- (a new `qwen3.8-flash` is added, a family is split in two), and every row written before
+-- the edit keeps the old answer while the price — which resolves at read — quietly moves to
+-- the new one. Grouping by the stored column and pricing by the live one then describe the
+-- same money two different ways, and only one of them is right.
+--
+-- So: the id is the fact, the family is a lookup. `model_id` is what a call reports, and
+-- `ModelPrices.familyOf` answers the family whenever it is asked — which is also what makes
+-- the price book usable at model *level* rather than version level, since a vendor shipping
+-- a new version number only ever needs a pattern, never a backfill.
+ALTER TABLE helix_infra.model_call DROP COLUMN IF EXISTS family;

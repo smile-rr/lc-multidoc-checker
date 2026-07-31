@@ -34,13 +34,13 @@ public class PgModelCallLog implements ModelCallLog {
         try {
             jdbc.update("""
                     INSERT INTO helix_infra.model_call
-                        (case_id, stage, step, role, slot, model_id, family, provider, kind,
+                        (case_id, stage, step, role, slot, model_id, provider, kind,
                          status, attempt, prompt_tokens, completion_tokens, cached_prompt_tokens,
                          latency_ms, derivation_key, error)
-                    VALUES (?::uuid, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?::uuid, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     call.caseId(), call.stage(), call.step(), call.role(), call.slot(),
-                    call.modelId(), prices.familyOf(call.modelId()), call.provider(),
+                    call.modelId(), call.provider(),
                     call.kind().name(), call.status().name(), call.attempt(),
                     call.promptTokens(), call.completionTokens(), call.cachedPromptTokens(),
                     call.latencyMs(), call.derivationKey(), trim(call.error()));
@@ -58,7 +58,7 @@ public class PgModelCallLog implements ModelCallLog {
     @Override
     public List<Map<String, Object>> spendForCase(String caseId) {
         List<Map<String, Object>> rows = jdbc.query("""
-                SELECT stage, step, model_id, family, role, kind,
+                SELECT stage, step, model_id, role, kind,
                        COUNT(*)                                        AS calls,
                        COUNT(*) FILTER (WHERE status = 'CACHED')       AS cached,
                        COUNT(*) FILTER (WHERE status IN ('FAILED', 'TIMEOUT')) AS failed,
@@ -78,7 +78,7 @@ public class PgModelCallLog implements ModelCallLog {
                            FILTER (WHERE status = 'OK'), 0)            AS ms
                   FROM helix_infra.model_call
                  WHERE case_id = ?::uuid
-                 GROUP BY stage, step, model_id, family, role, kind
+                 GROUP BY stage, step, model_id, role, kind
                  ORDER BY stage, step, model_id
                 """, (rs, i) -> {
             Map<String, Object> r = new java.util.LinkedHashMap<>();
@@ -93,7 +93,11 @@ public class PgModelCallLog implements ModelCallLog {
             r.put("stage", rs.getString("stage"));
             r.put("step", rs.getString("step"));
             r.put("modelId", model);
-            r.put("family", rs.getString("family"));
+            // Resolved now, from the id we actually called. Grouping by a family written
+            // at insert time would freeze each row against the patterns as they stood that
+            // day, so a book edit would leave the grouping and the price disagreeing about
+            // the same call — and only the price would be right.
+            r.put("family", prices.familyOf(model));
             r.put("role", rs.getString("role"));
             r.put("kind", rs.getString("kind"));
             r.put("calls", rs.getLong("calls"));
@@ -133,6 +137,8 @@ public class PgModelCallLog implements ModelCallLog {
                            FILTER (WHERE status = 'OK'), 0)                   AS tokens_in,
                        COALESCE(SUM(completion_tokens)
                            FILTER (WHERE status = 'OK'), 0)                   AS tokens_out,
+                       COALESCE(SUM(cached_prompt_tokens)
+                           FILTER (WHERE status = 'OK'), 0)                   AS tokens_cached,
                        COALESCE(SUM(prompt_tokens)
                            FILTER (WHERE status = 'CACHED'), 0)               AS tokens_in_avoided,
                        COALESCE(SUM(completion_tokens)
@@ -148,9 +154,11 @@ public class PgModelCallLog implements ModelCallLog {
             String model = rs.getString("model_id");
             long tin = rs.getLong("tokens_in");
             long tout = rs.getLong("tokens_out");
+            long tcached = rs.getLong("tokens_cached");
             long tinAvoided = rs.getLong("tokens_in_avoided");
             long toutAvoided = rs.getLong("tokens_out_avoided");
             r.put("modelId", model);
+            r.put("family", prices.familyOf(model));
             r.put("label", prices.of(model).label());
             r.put("calls", rs.getLong("calls"));
             r.put("billed", rs.getLong("billed"));
@@ -159,10 +167,15 @@ public class PgModelCallLog implements ModelCallLog {
             r.put("cases", rs.getLong("cases"));
             r.put("tokensIn", tin);
             r.put("tokensOut", tout);
+            r.put("tokensCachedIn", tcached);
             r.put("tokensInAvoided", tinAvoided);
             r.put("tokensOutAvoided", toutAvoided);
             r.put("seconds", rs.getLong("ms") / 1000.0);
-            r.put("cost", prices.of(model).cost(tin, tout, 0));
+            // Prompt-cached input charged at the cache rate, exactly as spendForCase does.
+            // Passing 0 here priced it at the full rate, so the portfolio total and the sum
+            // of its own cases would drift apart the moment a provider started reporting a
+            // prompt cache — two numbers for one bill, with nothing to say which was right.
+            r.put("cost", prices.of(model).cost(tin, tout, tcached));
             r.put("costAvoided", prices.of(model).cost(tinAvoided, toutAvoided, 0));
             return r;
         }, java.sql.Timestamp.from(since));
@@ -182,7 +195,27 @@ public class PgModelCallLog implements ModelCallLog {
                 Long.class, java.sql.Timestamp.from(since));
         long n = cases == null ? 0 : cases;
 
+        // Time in models, per case, at the median.
+        //
+        // A median rather than a mean because one pathological case — a slot that timed out
+        // three times before answering — moves an average and tells you nothing about a
+        // typical presentation. And per case from the *ledger*, because that is the only
+        // place machine time is recorded: the case row knows when it was created and when it
+        // was signed off, which on an officer-paced pipeline is mostly how long somebody was
+        // at lunch.
+        //
+        // Cached calls are in it at their real latency (near zero), which is the honest
+        // answer: a run that was answered from cache genuinely took no time.
+        Double median = jdbc.queryForObject("""
+                SELECT COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY per_case), 0)
+                  FROM (SELECT case_id, SUM(latency_ms) AS per_case
+                          FROM helix_infra.model_call
+                         WHERE at >= ? AND case_id IS NOT NULL
+                         GROUP BY case_id) c
+                """, Double.class, java.sql.Timestamp.from(since));
+
         Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("medianCaseSeconds", median == null ? 0d : median / 1000.0);
         out.put("cost", total);
         out.put("costAvoided", avoided);
         out.put("cases", n);

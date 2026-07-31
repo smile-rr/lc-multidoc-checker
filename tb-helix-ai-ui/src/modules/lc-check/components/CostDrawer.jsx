@@ -63,13 +63,15 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
           <Section name="Totals">
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
               <Metric
-                label="Wall Clock"
-                value={seconds2(cost.wallClock)}
-                // The parallelism factor was a fixture-era estimate. The ledger
-                // records each call's own latency, so slots that ran at once already
-                // overlap in it — restating a multiplier on top would be counting the
-                // same saving twice, in a number nobody could check.
-                note={`${seconds2(cost.seconds)} of model time${cost.retries ? ` · ${cost.retries} failed` : ''}`}
+                // "Wall Clock" over the sum of every call's latency was wrong twice:
+                // slots that ran at the same time are counted once each, and the stage's
+                // own work — rendering, rules, the database — is in none of it. It is the
+                // time spent inside models, so it says that. Wall clock for the whole run
+                // is a different measurement, off the stage spans, and the portfolio panel
+                // is where it belongs.
+                label="Model Time"
+                value={seconds2(cost.seconds)}
+                note={`${plural(cost.calls, 'call')}${cost.retries ? ` · ${cost.retries} failed` : ''}`}
               />
               <Metric
                 label="Cost"

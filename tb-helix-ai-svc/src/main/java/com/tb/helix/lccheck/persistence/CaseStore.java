@@ -526,16 +526,49 @@ public class CaseStore {
         java.sql.Timestamp from = java.sql.Timestamp.from(since);
         Map<String, Object> out = new java.util.LinkedHashMap<>();
 
+        // Time to findings: the sum of each stage's own span, at the median across cases.
+        //
+        // It used to report AVG(completed_at − created_at),
+        // which is how long the *case* existed — and this pipeline is officer-paced, so a
+        // case that waited overnight between two stages counted the night. The panel showing
+        // it says "machine time only — it does not include anyone reading the result", which
+        // that number contradicted by roughly the length of a working day. Summing the
+        // stages instead counts the work and none of the waiting between them.
+        //
+        // Not `lc_step.duration_ms`: it is never written, and `started_at` defaults to the
+        // moment the row is inserted — which is after the step has finished. The event tape
+        // is the only place where a start and an end are each stamped when they happened.
+        //
+        // A median, because one timed-out slot moves a mean and says nothing about a typical
+        // presentation. A rerun stage folds into one span, which over-counts by the gap
+        // between the two runs; rare enough to accept, and worth knowing before quoting this
+        // to the nearest second.
+        Double median = jdbc.queryForObject("""
+                WITH stage_span AS (
+                    SELECT e.case_id, e.stage,
+                           MAX(e.created_at) FILTER (
+                               WHERE e.type IN ('stage_done', 'stage_failed', 'gate_halted'))
+                         - MIN(e.created_at) FILTER (WHERE e.type = 'stage_started') AS span
+                      FROM helix_check.lc_event e
+                      JOIN helix_check.lc_case c ON c.id = e.case_id
+                     WHERE c.created_at >= ? AND e.stage IS NOT NULL
+                     GROUP BY e.case_id, e.stage),
+                per_case AS (
+                    SELECT case_id, SUM(EXTRACT(EPOCH FROM span)) AS secs
+                      FROM stage_span WHERE span IS NOT NULL GROUP BY case_id)
+                SELECT COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY secs), 0) AS secs
+                  FROM per_case
+                """, Double.class, from);
+        out.put("medianWallClock", median == null ? 0d : median);
+
         jdbc.query("""
-                SELECT COUNT(*)                                        AS cases,
-                       COALESCE(SUM(page_count), 0)                    AS pages,
-                       COALESCE(AVG(EXTRACT(EPOCH FROM (COALESCE(completed_at, NOW()) - created_at))), 0) AS secs
+                SELECT COUNT(*)                     AS cases,
+                       COALESCE(SUM(page_count), 0) AS pages
                   FROM helix_check.lc_case
                  WHERE created_at >= ?
                 """, rs -> {
             out.put("casesExamined", rs.getLong("cases"));
             out.put("totalPages", rs.getLong("pages"));
-            out.put("medianWallClock", rs.getDouble("secs"));
         }, from);
 
         jdbc.query("""

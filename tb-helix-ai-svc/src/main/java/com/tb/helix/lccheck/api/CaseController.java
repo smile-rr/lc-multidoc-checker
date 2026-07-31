@@ -174,6 +174,10 @@ public class CaseController {
         Map<String, Object> out = new java.util.LinkedHashMap<>(calls.spendSince(since));
         // Two halves, joined here: what the models cost, and what the examinations did.
         // Neither side reaches into the other's tables to get it.
+        // Ordered so the examination half wins any key both sides answer: `medianWallClock`
+        // is time to findings, which the stage spans measure, and the ledger's
+        // `medianCaseSeconds` is the model time inside it — a smaller number, and a
+        // different question.
         out.putAll(cases.portfolio(since));
         return out;
     }
