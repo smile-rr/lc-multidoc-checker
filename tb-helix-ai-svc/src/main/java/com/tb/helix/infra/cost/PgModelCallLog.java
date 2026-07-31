@@ -59,6 +59,7 @@ public class PgModelCallLog implements ModelCallLog {
     public List<Map<String, Object>> spendForCase(String caseId) {
         List<Map<String, Object>> rows = jdbc.query("""
                 SELECT stage, step, model_id, role, kind,
+                       MAX(prompt_tokens)                              AS longest,
                        COUNT(*)                                        AS calls,
                        COUNT(*) FILTER (WHERE status = 'CACHED')       AS cached,
                        COUNT(*) FILTER (WHERE status IN ('FAILED', 'TIMEOUT')) AS failed,
@@ -75,12 +76,15 @@ public class PgModelCallLog implements ModelCallLog {
                        COALESCE(SUM(completion_tokens)
                            FILTER (WHERE status = 'CACHED'), 0)        AS tokens_out_avoided,
                        COALESCE(SUM(latency_ms)
-                           FILTER (WHERE status = 'OK'), 0)            AS ms
+                           FILTER (WHERE status = 'OK'), 0)            AS ms,
+                       -- Earliest attempt in the group — the cost drawer lists steps
+                       -- in the order they ran, not alphabetical stage/step.
+                       MIN(at)                                         AS first_at
                   FROM helix_infra.model_call
                  WHERE case_id = ?::uuid
                  GROUP BY stage, step, model_id, role, kind
-                 ORDER BY stage, step, model_id
-                """, (rs, i) -> {
+                 ORDER BY MIN(at), stage, step, model_id
+                """.formatted(lengthBucket()), (rs, i) -> {
             Map<String, Object> r = new java.util.LinkedHashMap<>();
             // Grouped by step as well as by model, because "what did this run spend"
             // and "which step spent it" are the same question asked at two depths, and
@@ -93,6 +97,8 @@ public class PgModelCallLog implements ModelCallLog {
             r.put("stage", rs.getString("stage"));
             r.put("step", rs.getString("step"));
             r.put("modelId", model);
+            var firstAt = rs.getTimestamp("first_at");
+            if (firstAt != null) r.put("firstAt", firstAt.toInstant().toString());
             // Resolved now, from the id we actually called. Grouping by a family written
             // at insert time would freeze each row against the patterns as they stood that
             // day, so a book edit would leave the grouping and the price disagreeing about
@@ -112,8 +118,12 @@ public class PgModelCallLog implements ModelCallLog {
             // Money for what was billed — never for a derivation-cache hit. Those rows
             // store the original call's tokens so the log can say what was avoided; pricing
             // them as spend made a fully-cached run look like a paid one.
-            r.put("cost", prices.of(model).cost(tin, tout, rs.getLong("tokens_cached")));
-            r.put("costAvoided", prices.of(model).cost(tinAvoided, toutAvoided, 0));
+            // Priced at the band the calls in this group were in — never at the band their
+            // *sum* falls in. Every call here shares one bucket, so the longest of them names
+            // the band for all of them.
+            long longest = rs.getLong("longest");
+            r.put("cost", prices.of(model).costInBandOf(longest, tin, tout, rs.getLong("tokens_cached")));
+            r.put("costAvoided", prices.of(model).costInBandOf(longest, tinAvoided, toutAvoided, 0));
             return r;
         }, caseId);
         return rows;
@@ -128,6 +138,7 @@ public class PgModelCallLog implements ModelCallLog {
         // cached period look as expensive as a cold one on the AI Spend panel.
         List<Map<String, Object>> byModel = jdbc.query("""
                 SELECT model_id,
+                       MAX(prompt_tokens)                                     AS longest,
                        COUNT(*)                                               AS calls,
                        COUNT(*) FILTER (WHERE status = 'OK')                  AS billed,
                        COUNT(*) FILTER (WHERE status = 'CACHED')              AS cached,
@@ -147,9 +158,9 @@ public class PgModelCallLog implements ModelCallLog {
                            FILTER (WHERE status = 'OK'), 0)                   AS ms
                   FROM helix_infra.model_call
                  WHERE at >= ?
-                 GROUP BY model_id
+                 GROUP BY model_id, %s
                  ORDER BY ms DESC
-                """, (rs, i) -> {
+                """.formatted(lengthBucket()), (rs, i) -> {
             Map<String, Object> r = new java.util.LinkedHashMap<>();
             String model = rs.getString("model_id");
             long tin = rs.getLong("tokens_in");
@@ -175,8 +186,9 @@ public class PgModelCallLog implements ModelCallLog {
             // Passing 0 here priced it at the full rate, so the portfolio total and the sum
             // of its own cases would drift apart the moment a provider started reporting a
             // prompt cache — two numbers for one bill, with nothing to say which was right.
-            r.put("cost", prices.of(model).cost(tin, tout, tcached));
-            r.put("costAvoided", prices.of(model).cost(tinAvoided, toutAvoided, 0));
+            long longest = rs.getLong("longest");
+            r.put("cost", prices.of(model).costInBandOf(longest, tin, tout, tcached));
+            r.put("costAvoided", prices.of(model).costInBandOf(longest, tinAvoided, toutAvoided, 0));
             return r;
         }, java.sql.Timestamp.from(since));
 
@@ -226,6 +238,25 @@ public class PgModelCallLog implements ModelCallLog {
         out.put("cachedPct", calls == 0 ? 0 : Math.round((cached * 100.0) / calls));
         out.put("byModel", byModel);
         return out;
+    }
+
+
+    /**
+     * A SQL expression that puts each call in the length bucket its band belongs to.
+     *
+     * <p>Built from the book's own boundaries rather than hard-coded, and inlined rather than
+     * bound: they are integers this service just read out of its own table, and a bound array
+     * cannot appear in a GROUP BY the way an expression can.
+     *
+     * <p>Empty book, or a book with no bands at all, collapses to a constant — one bucket,
+     * which is exactly right when nothing prices by length.
+     */
+    private String lengthBucket() {
+        List<Integer> edges = prices.bandEdges();
+        if (edges.isEmpty()) return "0";
+        String array = edges.stream().map(String::valueOf)
+                .collect(java.util.stream.Collectors.joining(", "));
+        return "width_bucket(prompt_tokens::numeric, ARRAY[" + array + "]::numeric[])";
     }
 
     /** An error message is a note, not an essay — a stack trace here helps nobody. */

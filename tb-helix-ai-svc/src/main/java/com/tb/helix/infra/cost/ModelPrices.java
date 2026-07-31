@@ -38,10 +38,47 @@ public class ModelPrices {
     /** A million, as the rates are quoted. */
     private static final BigDecimal PER = new BigDecimal("1000000");
 
+    /**
+     * One rate, and the input length up to which it applies.
+     *
+     * @param upToPromptTokens inclusive upper bound on the input that selects this band
+     */
+    public record Band(int upToPromptTokens, BigDecimal in, BigDecimal out, BigDecimal cachedIn) {
+    }
+
+    /**
+     * @param bands length bands, cheapest bound first. Empty for a vendor that charges one
+     *              rate however long the prompt — which is most of them.
+     */
     public record Price(
             String family, String label, String vendor, String tier,
             BigDecimal in, BigDecimal out, BigDecimal cachedIn,
-            List<String> patterns) {
+            List<Band> bands, List<String> patterns) {
+
+        /**
+         * The rate that applies to an input of this length.
+         *
+         * <p>Qwen's international tables step from one rate to roughly four times it at 256K
+         * tokens, so a family with bands and a flat rate would answer two different prices
+         * for the same call. The bands win where they exist; the flat pair is what a family
+         * without them charges, and what a reader that ignores bands sees.
+         *
+         * <p>Past the last band the last band is used rather than nothing. A vendor's table
+         * stops at its context limit, so an input beyond it is a request that could not have
+         * been made — and pricing it at zero would be the one answer certain to be wrong.
+         */
+        public Band bandFor(long promptTokens) {
+            Band fits = null;      // the tightest bound that still covers this input
+            Band widest = null;
+            for (Band b : bands) {
+                if (widest == null || b.upToPromptTokens() > widest.upToPromptTokens()) widest = b;
+                if (b.upToPromptTokens() >= promptTokens
+                        && (fits == null || b.upToPromptTokens() < fits.upToPromptTokens())) fits = b;
+            }
+            if (fits != null) return fits;
+            if (widest != null) return widest;
+            return new Band(Integer.MAX_VALUE, in, out, cachedIn);
+        }
 
         /**
          * What these tokens cost, in USD.
@@ -51,11 +88,27 @@ public class ModelPrices {
          * mistake that makes a heavily cached run look like it cost nothing.
          */
         public BigDecimal cost(long promptTokens, long completionTokens, long cachedPromptTokens) {
+            return costInBandOf(promptTokens, promptTokens, completionTokens, cachedPromptTokens);
+        }
+
+        /**
+         * The same, for tokens summed across several calls.
+         *
+         * <p>The band comes from one call's length, the money from the totals. Passing the
+         * sum to {@link #bandFor} instead prices a hundred short calls as one enormous one —
+         * 400K of 4K calls charged at the over-256K rate, which is exactly the over-report
+         * that made the portfolio disagree with the sum of its own cases.
+         *
+         * @param bandLength a prompt length from the group, all of which share one band
+         */
+        public BigDecimal costInBandOf(long bandLength, long promptTokens,
+                                       long completionTokens, long cachedPromptTokens) {
+            Band band = bandFor(bandLength);
             long fresh = Math.max(0, promptTokens - cachedPromptTokens);
-            BigDecimal cacheRate = cachedIn == null ? in : cachedIn;
-            return in.multiply(BigDecimal.valueOf(fresh))
+            BigDecimal cacheRate = band.cachedIn() == null ? band.in() : band.cachedIn();
+            return band.in().multiply(BigDecimal.valueOf(fresh))
                     .add(cacheRate.multiply(BigDecimal.valueOf(cachedPromptTokens)))
-                    .add(out.multiply(BigDecimal.valueOf(completionTokens)))
+                    .add(band.out().multiply(BigDecimal.valueOf(completionTokens)))
                     .divide(PER, 6, RoundingMode.HALF_UP);
         }
     }
@@ -63,7 +116,7 @@ public class ModelPrices {
     /** The family a model id resolves to when the book has never heard of it. */
     public static final Price UNKNOWN = new Price(
             null, "Unpriced", "unknown", "none",
-            BigDecimal.ZERO, BigDecimal.ZERO, null, List.of());
+            BigDecimal.ZERO, BigDecimal.ZERO, null, List.of(), List.of());
 
     private final JdbcTemplate jdbc;
     private final AtomicReference<List<Price>> book = new AtomicReference<>(List.of());
@@ -76,6 +129,21 @@ public class ModelPrices {
     /** Rereads the table. Cheap, and the only way a price change takes effect. */
     public final void refresh() {
         try {
+            // Bands first, so a family is built complete rather than patched afterwards.
+            java.util.Map<String, List<Band>> bands = new java.util.HashMap<>();
+            jdbc.query("""
+                    SELECT family, up_to_prompt_tokens,
+                           in_per_million, out_per_million, cached_in_per_million
+                      FROM helix_infra.model_price_band
+                     ORDER BY family, up_to_prompt_tokens
+                    """, rs -> {
+                bands.computeIfAbsent(rs.getString("family"), k -> new java.util.ArrayList<>())
+                        .add(new Band(rs.getInt("up_to_prompt_tokens"),
+                                rs.getBigDecimal("in_per_million"),
+                                rs.getBigDecimal("out_per_million"),
+                                rs.getBigDecimal("cached_in_per_million")));
+            });
+
             List<Price> rows = jdbc.query("""
                     SELECT family, label, vendor, tier,
                            in_per_million, out_per_million, cached_in_per_million, match_patterns
@@ -85,6 +153,7 @@ public class ModelPrices {
                     rs.getString("tier"),
                     rs.getBigDecimal("in_per_million"), rs.getBigDecimal("out_per_million"),
                     rs.getBigDecimal("cached_in_per_million"),
+                    bands.getOrDefault(rs.getString("family"), List.of()),
                     patterns(rs.getArray("match_patterns"))));
 
             // Sorted once, so resolution is a scan of an already-ordered list rather than a
@@ -96,6 +165,25 @@ public class ModelPrices {
         } catch (RuntimeException e) {
             log.warn("Model price book could not be read — calls will be recorded unpriced: {}", e.toString());
         }
+    }
+
+    /**
+     * Every length boundary any family prices at, ascending.
+     *
+     * <p>Aggregating spend has to group calls so that no group straddles one of these, or the
+     * sum is priced in a band none of its members were in — a hundred 4K calls summed to 400K
+     * and charged at the >256K rate, which is how the portfolio came to report three and a
+     * half times the sum of its own cases. The union across families is safe to use for every
+     * family: it is a superset of any one family's boundaries, so a group inside one global
+     * bucket is inside one band whichever family it turns out to be.
+     */
+    public List<Integer> bandEdges() {
+        return book.get().stream()
+                .flatMap(p -> p.bands().stream())
+                .map(Band::upToPromptTokens)
+                .distinct()
+                .sorted()
+                .toList();
     }
 
     /** Every family, most specific first. For a console that wants to show the book. */
@@ -122,6 +210,12 @@ public class ModelPrices {
     }
 
     /** The family key, or null when unpriced — what a call row stores. */
+    /** Convenience so a caller with a group of calls does not have to unwrap the price. */
+    public BigDecimal costInBandOf(String modelId, long bandLength, long promptTokens,
+                                   long completionTokens, long cachedPromptTokens) {
+        return of(modelId).costInBandOf(bandLength, promptTokens, completionTokens, cachedPromptTokens);
+    }
+
     public String familyOf(String modelId) {
         return Optional.ofNullable(of(modelId).family()).orElse(null);
     }
