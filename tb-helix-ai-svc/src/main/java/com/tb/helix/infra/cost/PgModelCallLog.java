@@ -62,34 +62,54 @@ public class PgModelCallLog implements ModelCallLog {
                        COUNT(*)                                        AS calls,
                        COUNT(*) FILTER (WHERE status = 'CACHED')       AS cached,
                        COUNT(*) FILTER (WHERE status IN ('FAILED', 'TIMEOUT')) AS failed,
-                       COALESCE(SUM(prompt_tokens), 0)                 AS tokens_in,
-                       COALESCE(SUM(completion_tokens), 0)             AS tokens_out,
-                       COALESCE(SUM(cached_prompt_tokens), 0)          AS tokens_cached,
-                       COALESCE(SUM(latency_ms), 0)                    AS ms
+                       -- Billed: only calls that actually reached a provider.
+                       COALESCE(SUM(prompt_tokens)
+                           FILTER (WHERE status = 'OK'), 0)            AS tokens_in,
+                       COALESCE(SUM(completion_tokens)
+                           FILTER (WHERE status = 'OK'), 0)            AS tokens_out,
+                       COALESCE(SUM(cached_prompt_tokens)
+                           FILTER (WHERE status = 'OK'), 0)            AS tokens_cached,
+                       -- Avoided: derivation-cache hits carry what the original call reported.
+                       COALESCE(SUM(prompt_tokens)
+                           FILTER (WHERE status = 'CACHED'), 0)        AS tokens_in_avoided,
+                       COALESCE(SUM(completion_tokens)
+                           FILTER (WHERE status = 'CACHED'), 0)        AS tokens_out_avoided,
+                       COALESCE(SUM(latency_ms)
+                           FILTER (WHERE status = 'OK'), 0)            AS ms
                   FROM helix_infra.model_call
                  WHERE case_id = ?::uuid
                  GROUP BY stage, step, model_id, family, role, kind
-                 ORDER BY ms DESC
+                 ORDER BY stage, step, model_id
                 """, (rs, i) -> {
             Map<String, Object> r = new java.util.LinkedHashMap<>();
             // Grouped by step as well as by model, because "what did this run spend"
             // and "which step spent it" are the same question asked at two depths, and
             // a total with no step attached cannot answer the second.
+            String model = rs.getString("model_id");
+            long tin = rs.getLong("tokens_in");
+            long tout = rs.getLong("tokens_out");
+            long tinAvoided = rs.getLong("tokens_in_avoided");
+            long toutAvoided = rs.getLong("tokens_out_avoided");
             r.put("stage", rs.getString("stage"));
             r.put("step", rs.getString("step"));
-            r.put("modelId", rs.getString("model_id"));
+            r.put("modelId", model);
             r.put("family", rs.getString("family"));
             r.put("role", rs.getString("role"));
             r.put("kind", rs.getString("kind"));
             r.put("calls", rs.getLong("calls"));
             r.put("cached", rs.getLong("cached"));
             r.put("failed", rs.getLong("failed"));
-            r.put("tokensIn", rs.getLong("tokens_in"));
-            r.put("tokensOut", rs.getLong("tokens_out"));
+            r.put("tokensIn", tin);
+            r.put("tokensOut", tout);
             r.put("tokensCached", rs.getLong("tokens_cached"));
+            r.put("tokensInAvoided", tinAvoided);
+            r.put("tokensOutAvoided", toutAvoided);
             r.put("ms", rs.getLong("ms"));
-            r.put("cost", prices.of(rs.getString("model_id"))
-                    .cost(rs.getLong("tokens_in"), rs.getLong("tokens_out"), rs.getLong("tokens_cached")));
+            // Money for what was billed — never for a derivation-cache hit. Those rows
+            // store the original call's tokens so the log can say what was avoided; pricing
+            // them as spend made a fully-cached run look like a paid one.
+            r.put("cost", prices.of(model).cost(tin, tout, rs.getLong("tokens_cached")));
+            r.put("costAvoided", prices.of(model).cost(tinAvoided, toutAvoided, 0));
             return r;
         }, caseId);
         return rows;
@@ -98,15 +118,27 @@ public class PgModelCallLog implements ModelCallLog {
 
     @Override
     public Map<String, Object> spendSince(java.time.Instant since) {
+        // Same rule as spendForCase: derivation-cache hits (status=CACHED) carry the
+        // tokens the original call would have used so we can price what was avoided.
+        // They must never enter the billed total — that was the bug that made a fully
+        // cached period look as expensive as a cold one on the AI Spend panel.
         List<Map<String, Object>> byModel = jdbc.query("""
                 SELECT model_id,
                        COUNT(*)                                               AS calls,
+                       COUNT(*) FILTER (WHERE status = 'OK')                  AS billed,
                        COUNT(*) FILTER (WHERE status = 'CACHED')              AS cached,
                        COUNT(*) FILTER (WHERE status IN ('FAILED','TIMEOUT')) AS failed,
                        COUNT(DISTINCT case_id)                                AS cases,
-                       COALESCE(SUM(prompt_tokens), 0)                        AS tokens_in,
-                       COALESCE(SUM(completion_tokens), 0)                    AS tokens_out,
-                       COALESCE(SUM(latency_ms), 0)                           AS ms
+                       COALESCE(SUM(prompt_tokens)
+                           FILTER (WHERE status = 'OK'), 0)                   AS tokens_in,
+                       COALESCE(SUM(completion_tokens)
+                           FILTER (WHERE status = 'OK'), 0)                   AS tokens_out,
+                       COALESCE(SUM(prompt_tokens)
+                           FILTER (WHERE status = 'CACHED'), 0)               AS tokens_in_avoided,
+                       COALESCE(SUM(completion_tokens)
+                           FILTER (WHERE status = 'CACHED'), 0)               AS tokens_out_avoided,
+                       COALESCE(SUM(latency_ms)
+                           FILTER (WHERE status = 'OK'), 0)                   AS ms
                   FROM helix_infra.model_call
                  WHERE at >= ?
                  GROUP BY model_id
@@ -114,44 +146,41 @@ public class PgModelCallLog implements ModelCallLog {
                 """, (rs, i) -> {
             Map<String, Object> r = new java.util.LinkedHashMap<>();
             String model = rs.getString("model_id");
+            long tin = rs.getLong("tokens_in");
+            long tout = rs.getLong("tokens_out");
+            long tinAvoided = rs.getLong("tokens_in_avoided");
+            long toutAvoided = rs.getLong("tokens_out_avoided");
             r.put("modelId", model);
             r.put("label", prices.of(model).label());
             r.put("calls", rs.getLong("calls"));
+            r.put("billed", rs.getLong("billed"));
             r.put("cached", rs.getLong("cached"));
             r.put("failed", rs.getLong("failed"));
             r.put("cases", rs.getLong("cases"));
-            r.put("tokensIn", rs.getLong("tokens_in"));
-            r.put("tokensOut", rs.getLong("tokens_out"));
+            r.put("tokensIn", tin);
+            r.put("tokensOut", tout);
+            r.put("tokensInAvoided", tinAvoided);
+            r.put("tokensOutAvoided", toutAvoided);
             r.put("seconds", rs.getLong("ms") / 1000.0);
-            r.put("cost", prices.of(model).cost(rs.getLong("tokens_in"), rs.getLong("tokens_out"), 0));
+            r.put("cost", prices.of(model).cost(tin, tout, 0));
+            r.put("costAvoided", prices.of(model).cost(tinAvoided, toutAvoided, 0));
             return r;
         }, java.sql.Timestamp.from(since));
 
         java.math.BigDecimal total = java.math.BigDecimal.ZERO;
-        long calls = 0, cached = 0;
+        java.math.BigDecimal avoided = java.math.BigDecimal.ZERO;
+        long calls = 0, cached = 0, billed = 0;
         for (Map<String, Object> m : byModel) {
             total = total.add((java.math.BigDecimal) m.get("cost"));
+            avoided = avoided.add((java.math.BigDecimal) m.get("costAvoided"));
             calls += (Long) m.get("calls");
             cached += (Long) m.get("cached");
+            billed += (Long) m.get("billed");
         }
         Long cases = jdbc.queryForObject(
                 "SELECT COUNT(DISTINCT case_id) FROM helix_infra.model_call WHERE at >= ? AND case_id IS NOT NULL",
                 Long.class, java.sql.Timestamp.from(since));
         long n = cases == null ? 0 : cases;
-
-        // What the cache saved: cached rows carry the tokens the original call reported,
-        // priced the same way. It is the one figure that says whether the cache is worth
-        // having, and it can only be stated because a hit records what it avoided.
-        java.math.BigDecimal avoided = jdbc.query("""
-                SELECT model_id, COALESCE(SUM(prompt_tokens),0) AS tin,
-                       COALESCE(SUM(completion_tokens),0) AS tout
-                  FROM helix_infra.model_call
-                 WHERE at >= ? AND status = 'CACHED'
-                 GROUP BY model_id
-                """, (rs, i) -> prices.of(rs.getString("model_id"))
-                        .cost(rs.getLong("tin"), rs.getLong("tout"), 0),
-                java.sql.Timestamp.from(since))
-                .stream().reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
 
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("cost", total);
@@ -160,6 +189,7 @@ public class PgModelCallLog implements ModelCallLog {
         out.put("costPerCase", n == 0 ? java.math.BigDecimal.ZERO
                 : total.divide(java.math.BigDecimal.valueOf(n), 6, java.math.RoundingMode.HALF_UP));
         out.put("calls", calls);
+        out.put("billed", billed);
         out.put("cachedPct", calls == 0 ? 0 : Math.round((cached * 100.0) / calls));
         out.put("byModel", byModel);
         return out;

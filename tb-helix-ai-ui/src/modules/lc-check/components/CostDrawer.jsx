@@ -18,7 +18,7 @@ import { tokens as tok } from '../state/runLog.js'
 //
 // A section renders only when it has data, and says so when it does not, rather
 // than showing a grid of em-dashes.
-export default function CostDrawer({ open, onClose, cost, stepCount, completedCount, pageCount }) {
+export default function CostDrawer({ open, onClose, cost, stepCount, completedCount, pageCount, onRefresh, live }) {
   const finished = completedCount >= stepCount
   const started = completedCount > 0
 
@@ -27,8 +27,23 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
       open={open}
       onClose={onClose}
       title="Run Cost"
-      subtitle={finished ? `Complete · ${stepCount} steps` : started ? `Running · ${completedCount} of ${stepCount} steps` : 'Not started'}
+      subtitle={finished
+        ? `Complete · ${stepCount} steps`
+        : started
+          ? `Running · ${completedCount} of ${stepCount} steps${live ? ' · updating' : ''}`
+          : 'Not started'}
       width={560}
+      headerExtra={onRefresh ? (
+        <button
+          type="button"
+          onClick={onRefresh}
+          title="Refresh costs from the ledger"
+          aria-label="Refresh costs"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--me-grey-70)', display: 'flex', padding: 2 }}
+        >
+          <Icon name="refresh-cw" size={16} />
+        </button>
+      ) : null}
     >
       {!started ? (
         <Section name="Not Started">

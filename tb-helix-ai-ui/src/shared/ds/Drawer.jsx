@@ -5,7 +5,7 @@ import Icon from './Icon'
 // Right-hand slide-over. Blocks the page behind a scrim; Esc and a click on the
 // scrim both close it. Used for contextual side panels (Ask, run cost) that are
 // too big for a popover but must not take the user off the screen they're on.
-export default function Drawer({ open, onClose, title, subtitle, width = 440, children }) {
+export default function Drawer({ open, onClose, title, subtitle, width = 440, headerExtra, children }) {
   useEffect(() => {
     if (!open) return
     const onKey = (e) => { if (e.key === 'Escape') onClose?.() }
@@ -23,9 +23,12 @@ export default function Drawer({ open, onClose, title, subtitle, width = 440, ch
             <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--me-ink)' }}>{title}</span>
             {subtitle ? <span style={{ fontSize: 12.5, color: 'var(--me-grey-70)' }}>{subtitle}</span> : null}
           </div>
-          <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--me-grey-70)', display: 'flex', padding: 0 }}>
-            <Icon name="x" size={19} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            {headerExtra}
+            <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--me-grey-70)', display: 'flex', padding: 0 }}>
+              <Icon name="x" size={19} />
+            </button>
+          </div>
         </div>
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>{children}</div>
       </div>

@@ -4,7 +4,7 @@ import Icon from '@shared/ds/Icon'
 import Badge from '@shared/ds/Badge'
 import { ellipsis } from '@shared/ds/text'
 import useRunLog from '../state/useRunLog'
-import { foldRunLog, isRunning, elapsed, clockTime, tokens, LOG_INK } from '../state/runLog'
+import { foldRunLog, isRunning, elapsed, clockTime, LOG_INK } from '../state/runLog'
 
 // Run log — what the examination did, while it does it.
 //
@@ -20,10 +20,16 @@ import { foldRunLog, isRunning, elapsed, clockTime, tokens, LOG_INK } from '../s
 // where the status line keeps saying which stage is running and for how long.
 // Drag the header to move it off whatever it is covering.
 //
-// **The three tiers are drawn as three tiers, not as one list with indentation.**
+// **Two tiers, not three.** The stage is the only container:
 //   stage   a banded header — the unit an officer starts and waits on
-//   step    a row with a rule down its left, inside the band
-//   event   small, monospaced, dimmer — the things a step reports as it goes
+//   rows    everything the stage reported, in the order it reported it
+//
+// A row is a step or an event and differs only in how it is drawn: a step names
+// what the examination did and carries a duration, an event is a moment inside
+// it — small, monospaced, dimmer. They share one rail, because the sequence
+// between them is the information. Nesting events under the step that happened to
+// be open put every event that belonged to no step at the foot of the stage, where
+// a finding raised at 18:32 rendered below a check that ran at 18:33.
 //
 // It reads top-down in time, oldest first, because the question is "what
 // happened" and not "what happened last". A run in flight pins its live elapsed
@@ -47,21 +53,7 @@ const STATUS = {
 const statusOf = (key) => STATUS[key] ?? STATUS.running
 
 export default function RunLogPanel({ open, onClose, caseId }) {
-  const { events, spend, state } = useRunLog(caseId, open)
-
-  // Ledger rows keyed the way a step is: an event and its cost are written by
-  // different parts of the system, and (stage, step) is the only thing both know.
-  const costs = new Map()
-  for (const row of spend) {
-    const k = `${row.stage}/${row.step}`
-    const at = costs.get(k) ?? { tokensIn: 0, tokensOut: 0, cost: 0, calls: 0, cached: 0, model: row.family || row.modelId }
-    at.tokensIn += row.tokensIn || 0
-    at.tokensOut += row.tokensOut || 0
-    at.cost += Number(row.cost) || 0
-    at.calls += row.calls || 0
-    at.cached += row.cached || 0
-    costs.set(k, at)
-  }
+  const { events, state } = useRunLog(caseId, open)
 
   // One clock for the whole panel, and only while something is actually running.
   // A per-row timer would be a dozen intervals redrawing a finished run forever.
@@ -112,7 +104,7 @@ export default function RunLogPanel({ open, onClose, caseId }) {
         </Note>
       ) : (
         <div style={{ padding: '4px 0 24px' }}>
-          {stages.map((stage) => <StageBand key={stage.key + stage.startedAt} stage={stage} costs={costs} />)}
+          {stages.map((stage) => <StageBand key={stage.key + stage.startedAt} stage={stage} />)}
         </div>
       )}
     </FloatingPanel>
@@ -123,7 +115,7 @@ export default function RunLogPanel({ open, onClose, caseId }) {
 //
 // A band with its own background, so the eye can find the boundary between two
 // stages without counting indentation.
-function StageBand({ stage, costs }) {
+function StageBand({ stage }) {
   const s = statusOf(stage.status)
   return (
     <section style={{ borderBottom: '1px solid var(--me-grey-15)' }}>
@@ -143,12 +135,19 @@ function StageBand({ stage, costs }) {
         <Clock at={stage.startedAt} ms={stage.ms} running={stage.status === 'running'} strong />
       </header>
 
+      {/* One list, in the order things happened. A step and an event are both rows
+          on the same rail and differ only in how they are drawn — a step names what
+          the examination did and holds a duration; an event is a moment inside it.
+          Sorting them into separate blocks made the second kind read as though it
+          all happened at the end. */}
       <div style={{ padding: '2px 0 8px' }}>
-        {stage.steps.map((step, i) => <StepRow key={`${step.key}-${i}`} step={step} cost={costs.get(`${stage.key}/${step.key}`)} />)}
-        {/* Stage-level events — the halt, the hand-back — sit under its steps
-            rather than inside one, because they are not any step's doing. */}
-        {stage.events.map((ev) => <EventRow key={ev.seq} event={ev} inset={20} />)}
-        {!stage.steps.length && !stage.events.length && (
+        {stage.entries.map((entry, i) => (
+          entry.kind === 'step'
+            ? <StepRow key={`s-${entry.key}-${i}`} step={entry} />
+            : <EventRow key={`e-${entry.seq}`} event={entry} />
+        ))}
+        {stage.outcome && <StageOutcome event={stage.outcome} />}
+        {!stage.entries.length && !stage.outcome && (
           <div style={{ padding: '8px 20px', fontSize: 12, color: 'var(--me-grey-70)' }}>No steps reported.</div>
         )}
       </div>
@@ -156,14 +155,50 @@ function StageBand({ stage, costs }) {
   )
 }
 
+// Stage hand-back / halt — same horizontal column as the stage header (20px),
+// not the step rail. Bare EventRows with inset looked "out of line" under steps.
+function StageOutcome({ event }) {
+  const waiting = event.type === 'awaiting_officer'
+  const halted = event.type === 'gate_halted' || event.type === 'stage_failed'
+  const tone = waiting ? LOG_INK.muted : halted ? LOG_INK.halted : LOG_INK.label
+  const label = waiting
+    ? (event.detail || 'Waiting for the officer')
+    : event.detail || event.type
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'baseline', gap: 8,
+      margin: '8px 20px 4px',
+      padding: '8px 12px',
+      borderRadius: 6,
+      background: 'var(--me-grey-08)',
+      borderLeft: `3px solid ${waiting ? 'var(--me-grey-40)' : tone}`,
+      fontSize: 12,
+    }}>
+      <Icon
+        name={waiting ? 'pause' : halted ? 'octagon-alert' : 'circle-alert'}
+        size={13}
+        color={tone}
+      />
+      <span style={{ color: LOG_INK.label, fontWeight: 600, minWidth: 0, ...ellipsis }}>
+        {label}
+      </span>
+      <span style={{ flex: 1 }} />
+      <Clock at={event.at} ms={null} />
+    </div>
+  )
+}
+
 // ---- Tier 2: the step ------------------------------------------------------
 //
 // A rule down the left says "inside the stage above" without an indent guessing
 // game, and gives the running state something to colour.
-function StepRow({ step, cost }) {
+//
+// No tokens here. Spend belongs on infra events ({@code llm_call} / {@code llm_cached});
+// a pipeline step is "what the examination did", not "what the model charged".
+function StepRow({ step }) {
   const s = statusOf(step.status)
   return (
-    <div style={{ margin: '0 20px', borderLeft: `2px solid ${step.status === 'running' ? s.color : 'var(--me-grey-15)'}`, paddingLeft: 12 }}>
+    <Rail color={step.status === 'running' ? s.color : 'var(--me-grey-15)'}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '6px 0 2px' }}>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: LOG_INK.key, fontWeight: 600, flexShrink: 0 }}>
           {step.key}
@@ -178,31 +213,23 @@ function StepRow({ step, cost }) {
           <Badge tone={s.tone}>{s.label}</Badge>
         )}
         <span style={{ flex: 1 }} />
-        {/* What the step spent, where the step is — a total in a drawer answers
-            "what did this run cost" and never "which step cost it". */}
-        {/* Words, not arrows. This read `1718↓ 664↑`, and ↓/↑ is ambiguous in the
-            worst possible direction — "down into the model" and "↑ sent, ↓ received"
-            are both natural readings and they are opposites. Output costs eight
-            times input on a flash model, so reading it backwards makes an expensive
-            step look cheap, which is the one mistake this number exists to prevent. */}
-        {/* Spent and avoided are not the same number and must not look alike. A step
-            answered entirely from cache shows what it would have cost, marked `saved`
-            and in the same green as the ⚡ — otherwise a cached run reads as an
-            expensive one, which inverts the thing the cache is there to prove. */}
-        {cost && (cost.tokensIn > 0 || cost.cost > 0) && (() => {
-          const free = cost.calls > 0 && cost.cached === cost.calls
-          return (
-            <span title={`${cost.model} · ${tokens(cost.tokensIn)} tokens in, ${tokens(cost.tokensOut)} out`}
-                  style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: free ? LOG_INK.ok : LOG_INK.detail, flexShrink: 0 }}>
-              <span style={{ color: LOG_INK.time }}>in</span> {tokens(cost.tokensIn)}
-              {' '}<span style={{ color: LOG_INK.time }}>out</span> {tokens(cost.tokensOut)}
-              {' '}{free ? 'saved ' : ''}{usdCents(cost.cost)}
-            </span>
-          )
-        })()}
         <Clock at={step.startedAt} ms={step.ms} running={step.status === 'running'} />
       </div>
-      {step.events.map((ev) => <EventRow key={ev.seq} event={ev} />)}
+    </Rail>
+  )
+}
+
+/**
+ * The column every row inside a stage sits in.
+ *
+ * Shared by steps and events so the two line up as one sequence. When each kind
+ * drew its own indent they read as two lists that happened to be adjacent, which
+ * is precisely the reading to avoid — the order between them is the point.
+ */
+function Rail({ color = 'var(--me-grey-15)', children }) {
+  return (
+    <div style={{ margin: '0 20px', borderLeft: `2px solid ${color}`, paddingLeft: 12 }}>
+      {children}
     </div>
   )
 }
@@ -211,37 +238,104 @@ function StepRow({ step, cost }) {
 //
 // Deliberately quiet. There are far more of these than of anything else, and
 // they are read by scanning rather than line by line.
-function EventRow({ event, inset = 0 }) {
+//
+// Model calls carry a nested `info` (dpi, long-edge, page bytes, …) from the
+// gateway. The one-liner stays short; a click opens the rest under the row so
+// the floating panel does not become a wall of context.
+function EventRow({ event }) {
+  const [open, setOpen] = useState(false)
+  const expandable = event.info && Object.keys(event.info).length > 0
   return (
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '2px 0 2px', paddingLeft: inset, fontSize: 11.5 }}>
-      <span style={{ fontFamily: 'var(--font-mono)', color: LOG_INK.type, flexShrink: 0 }}>
-        {event.type}
-      </span>
-      {event.detail && (
-        <span style={{ color: LOG_INK.detail, minWidth: 0, ...ellipsis }}>{event.detail}</span>
-      )}
-      {event.count > 1 && (
-        <span title={`${event.count} of these, in a row`}
-              style={{ fontFamily: 'var(--font-mono)', color: LOG_INK.time, flexShrink: 0 }}>
-          ×{event.count}
+    <Rail>
+      <div
+        role={expandable ? 'button' : undefined}
+        tabIndex={expandable ? 0 : undefined}
+        onClick={expandable ? () => setOpen((v) => !v) : undefined}
+        onKeyDown={expandable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen((v) => !v) } } : undefined}
+        title={expandable ? (open ? 'Hide details' : 'Show details') : undefined}
+        style={{
+          display: 'flex', alignItems: 'baseline', gap: 8, padding: '2px 0 2px', fontSize: 11.5,
+          cursor: expandable ? 'pointer' : undefined,
+          borderRadius: 4,
+          background: open ? 'var(--me-grey-08)' : undefined,
+        }}
+      >
+        {expandable ? (
+          <Icon name={open ? 'chevron-down' : 'chevron-right'} size={11} color={LOG_INK.time} />
+        ) : null}
+        <span style={{ fontFamily: 'var(--font-mono)', color: LOG_INK.type, flexShrink: 0 }}>
+          {event.type}
         </span>
-      )}
-      <span style={{ flex: 1 }} />
-      {/* Same trailing clock as a step, in the same column. A row that put the time
-          first sat directly under rows that put it last, so the eye had to re-anchor
-          on every line — and the one column you scan a log by was the one that moved. */}
-      <Clock at={event.at} ms={null} />
+        {event.detail && (
+          <span style={{ color: LOG_INK.detail, minWidth: 0, ...ellipsis }}>{event.detail}</span>
+        )}
+        {event.count > 1 && (
+          <span title={`${event.count} of these, in a row`}
+                style={{ fontFamily: 'var(--font-mono)', color: LOG_INK.time, flexShrink: 0 }}>
+            ×{event.count}
+          </span>
+        )}
+        <span style={{ flex: 1 }} />
+        <Clock at={event.at} ms={null} />
+      </div>
+      {open && expandable ? <EventDetail info={event.info} /> : null}
+    </Rail>
+  )
+}
+
+/** Preferred order for vision / slot knobs — anything else follows alphabetically. */
+const DETAIL_ORDER = [
+  'dpi', 'maxLongEdgePx', 'maxPages', 'pages', 'pageLabels', 'imageBytes',
+  'renderProfile', 'temperature', 'maxTokens', 'baseUrl', 'scope', 'modelId',
+]
+
+function EventDetail({ info }) {
+  const keys = Object.keys(info).sort((a, b) => {
+    const ia = DETAIL_ORDER.indexOf(a)
+    const ib = DETAIL_ORDER.indexOf(b)
+    if (ia >= 0 || ib >= 0) return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib)
+    return a.localeCompare(b)
+  })
+  return (
+    <div style={{
+      margin: '2px 0 6px 16px',
+      padding: '6px 10px',
+      borderRadius: 6,
+      background: 'var(--me-grey-08)',
+      borderLeft: '2px solid var(--me-grey-15)',
+      display: 'grid',
+      gridTemplateColumns: 'auto 1fr',
+      columnGap: 12,
+      rowGap: 3,
+      fontFamily: 'var(--font-mono)',
+      fontSize: 11,
+    }}>
+      {keys.map((k) => (
+        <FragmentPair key={k} k={k} v={info[k]} />
+      ))}
     </div>
   )
 }
 
-/**
- * When it started and how long it took.
- *
- * Both, because they answer different questions — the clock time is what you
- * line up against a log or another system, and the elapsed is what tells you
- * where the run went.
- */
+function FragmentPair({ k, v }) {
+  const shown = Array.isArray(v) ? v.join(', ')
+    : k === 'imageBytes' && typeof v === 'number' ? formatBytes(v)
+    : String(v)
+  return (
+    <>
+      <span style={{ color: LOG_INK.time }}>{k}</span>
+      <span style={{ color: LOG_INK.detail, minWidth: 0, wordBreak: 'break-all' }}>{shown}</span>
+    </>
+  )
+}
+
+function formatBytes(n) {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`
+}
+
+/** Reserved width clock; events rarely have a duration. */
 function Clock({ at, ms, running, strong }) {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 8, flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: 11 }}>
@@ -257,12 +351,6 @@ function Clock({ at, ms, running, strong }) {
       </span>
     </span>
   )
-}
-
-/** Sub-cent costs are the normal case, so two decimals would read as zero. */
-function usdCents(n) {
-  if (!n) return '$0'
-  return n < 0.01 ? `$${n.toFixed(5)}` : `$${n.toFixed(2)}`
 }
 
 const Note = ({ children }) => (

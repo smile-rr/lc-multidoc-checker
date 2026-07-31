@@ -112,6 +112,28 @@ export function pipelineDisagreements(pipeline) {
 /** The next stage that has not run, or null when the run is out of stages. */
 export const stageAfter = (doneIds, stages = RUN_STAGES) => stages.find((s) => !doneIds.includes(s.id)) ?? null
 
+// Full pipeline order, including stages the run bar never shows (intake, gate, signoff).
+// `runState.stage` is the last stage that finished — not the one waiting to be asked for.
+const PIPELINE_ORDER = ['intake', 'interpret', 'gate', 'plan', 'execute', 'signoff']
+
+/**
+ * Which run-bar steps are already behind the case, given where the service says it sits.
+ *
+ * Needed on every load/refetch: a merge that wiped `done` to [] made Step report
+ * "Paused · 0 of 3" after Interpret and Auto try the same stage again.
+ */
+export function doneThroughStage(stageKey, stages = RUN_STAGES) {
+  if (!stageKey) return []
+  const at = PIPELINE_ORDER.indexOf(stageKey)
+  if (at < 0) return []
+  return stages
+    .filter((s) => {
+      const i = PIPELINE_ORDER.indexOf(s.id)
+      return i >= 0 && i <= at
+    })
+    .map((s) => s.id)
+}
+
 // Who presses "next". Nothing else differs between the two — the same steps run
 // in the same order, and the stage tab follows the run either way.
 //

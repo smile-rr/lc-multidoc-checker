@@ -179,6 +179,13 @@ public class LayeredCache implements DerivationCache {
             e.put("status", "CACHED");
             e.put("tokensIn", s == null ? 0 : s.promptTokens());
             e.put("tokensOut", s == null ? 0 : s.completionTokens());
+            // Same nested shape as llm_call — dpi / long-edge live under detail so the
+            // one-liner stays short and a click opens them.
+            java.util.Map<String, Object> detail = new java.util.LinkedHashMap<>(key.params());
+            if (key.inputScope() != null) detail.put("scope", key.inputScope());
+            if (key.providerUrl() != null) detail.put("baseUrl", key.providerUrl());
+            if (key.modelId() != null) detail.put("modelId", key.modelId());
+            if (!detail.isEmpty()) e.put("detail", detail);
             e.values().removeIf(java.util.Objects::isNull);
             events.publish(HelixEvent.of(scope.caseId(), HelixEvent.LLM_CACHED, e));
         }

@@ -38,7 +38,14 @@ function WorkbenchBody() {
   // Always on, not only while the log panel is open: the cost pill in the header
   // reads the same numbers, and a pill that was blank until you opened a drawer
   // would be reporting the drawer's state rather than the case's.
-  const { spend } = useRunLog(caseId, true)
+  //
+  // Cost drawer open → pull ledger immediately; while a stage is live, also poll
+  // every 4s so a late ledger write after llm_call does not leave a stale total.
+  const runLive = !!(run.busy || run.activeStage)
+  const { spend, refreshSpend } = useRunLog(caseId, true, {
+    spendFocus: ui.costOpen,
+    pollSpendMs: ui.costOpen && runLive ? 4000 : 0,
+  })
 
   const activeStage = STAGES.some((s) => s.id === stage) ? stage : 'intake'
   const goStage = (id) => navigate(`/lc-check/cases/${caseId}/${id}`)
@@ -118,7 +125,9 @@ function WorkbenchBody() {
       return { label: stageMeta(run.activeStage, bar)?.running ?? 'Running…', disabled: true }
     }
     if (run.finished) {
-      return stepping && activeStage !== 'review' ? { label: 'Open the report', run: () => goStage('review') } : null
+      // Both modes: the run is over and the report is the next place to go.
+      // Auto used to hide the button here, which read as a dead workbench.
+      return activeStage !== 'review' ? { label: 'Open the report', run: () => goStage('review') } : null
     }
     if (!run.started) {
       return {
@@ -129,9 +138,19 @@ function WorkbenchBody() {
         },
       }
     }
-    // Started and idle only happens in Step; Auto is already reaching for the
-    // next step.
-    return stepping && nextStage ? { label: nextStage.action, run: actions.runNext } : null
+    // Step: idle between stages — the button names the next press.
+    // Auto: chains itself when live; if not (reload / recovered after a stop),
+    // offer Continue rather than a vanished or forever-disabled control.
+    if (stepping && nextStage) {
+      return { label: nextStage.action, run: actions.runNext }
+    }
+    if (!stepping && nextStage) {
+      if (!run.live) {
+        return { label: 'Continue the review', run: actions.runNext }
+      }
+      return { label: stageMeta(nextStage.id, bar)?.running ?? 'Running…', disabled: true }
+    }
+    return null
   })()
 
   const status = run.failure
@@ -201,6 +220,8 @@ function WorkbenchBody() {
         stepCount={cost.rows.length}
         completedCount={cost.rows.filter((r) => r.state === 'done').length}
         pageCount={data.bundlePages.length}
+        onRefresh={refreshSpend}
+        live={runLive}
       />
 
       <RunLogPanel

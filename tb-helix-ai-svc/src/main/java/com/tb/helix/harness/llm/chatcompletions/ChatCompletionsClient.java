@@ -62,6 +62,14 @@ class ChatCompletionsClient {
         return slot.baseUrl();
     }
 
+    double temperature() {
+        return slot.temperature();
+    }
+
+    int maxTokens() {
+        return slot.maxTokens();
+    }
+
     /** A raw completion. Messages are already assembled; this only sends them. */
     Response complete(List<Map<String, Object>> messages, Integer maxTokens,
                       boolean jsonOutput, List<Map<String, Object>> tools,

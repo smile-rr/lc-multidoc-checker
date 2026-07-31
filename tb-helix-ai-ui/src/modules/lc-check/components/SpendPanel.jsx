@@ -44,7 +44,6 @@ export default function SpendPanel({ spend }) {
   const b = spend.benchmark
   const windowHours = b.examinationWindowDays * 24
   const headroom = (1 - b.slowestHoursToDecision / windowHours) * 100
-  const reusePct = b.documentsRead ? (b.documentsReused / b.documentsRead) * 100 : 0
 
   const q = b.quality.current
   const p = b.quality.previous
@@ -112,7 +111,7 @@ export default function SpendPanel({ spend }) {
           {/* ---- 2. What it costs --------------------------------------- */}
           <Cell>
             <Eyebrow size="sm">Spend</Eyebrow>
-            <Big title="Spend" tip="Total model spend for every case examined this period, priced per model at its own input and output rates.">
+            <Big title="Spend" tip="What was actually billed this period — provider calls with status OK, priced from the family rate book. Derivation-cache hits are not included here; they appear under Kept off the Bill.">
               {usd(spend.totalCost)}
             </Big>
             <Note>total for the period · {plural(spend.casesExamined, 'case')} checked · {spend.totalPages} pages</Note>
@@ -155,8 +154,8 @@ export default function SpendPanel({ spend }) {
               label="Kept off the Bill"
               value={usd(spend.costAvoided)}
               tone="var(--status-success)"
-              tip="Money not spent because work was reused: documents already read are served from the extract cache without re-rendering or re-calling the model, and repeated prompt context is billed at a fraction of full rate. Derived from the same usage as the spend above, so the two reconcile."
-              note={`${b.documentsReused} of ${b.documentsRead} documents served from cache, ${percent(spend.cachedInputPct)} of input tokens reused — ${percent(reusePct)} of the reading not repeated.`}
+              tip="What derivation-cache hits would have cost if the model had been called again. Not provider prompt-cache discounts — those are already netted inside billed rows."
+              note={`${percent(spend.cachedInputPct)} of attempts served from cache${b.documentsRead ? ` · ${b.documentsReused} of ${b.documentsRead} documents reused` : ''} — ${usd(spend.costAvoided)} not spent.`}
             />
           </Cell>
 
@@ -264,20 +263,26 @@ function SpendOnly({ spend }) {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 1, background: 'var(--me-grey-15)' }}>
-        <Cell><Unit label="total" value={usdFine(spend.totalCost)} tip="Every model call in the period, priced from the family rate book." /></Cell>
-        <Cell><Unit label="per case" value={usdFine(spend.avgCostPerCase)} tip="Total divided by cases opened in the period." /></Cell>
-        <Cell><Unit label="per page" value={usdFine(spend.avgCostPerPage)} tip="Total divided by presentation pages — the fairest way to compare bundles of different sizes." /></Cell>
-        <Cell><Unit label="avoided" value={usdFine(spend.costAvoided)} tip="What the cache saved: cached calls priced at what the original call cost." /></Cell>
+        <Cell><Unit label="total" value={usdFine(spend.totalCost)} tip="Billed provider calls only (status OK). Cache hits are under avoided." /></Cell>
+        <Cell><Unit label="per case" value={usdFine(spend.avgCostPerCase)} tip="Billed total divided by cases that made at least one model attempt." /></Cell>
+        <Cell><Unit label="per page" value={usdFine(spend.avgCostPerPage)} tip="Billed total divided by presentation pages." /></Cell>
+        <Cell><Unit label="avoided" value={usdFine(spend.costAvoided)} tip="What derivation-cache hits would have cost if re-run cold." /></Cell>
         <Cell><Unit label="cards run" value={String(spend.checksRun)} tip="Rules executed. Excludes rules whose trigger the credit did not meet — those are recorded as not applicable, never as passes." /></Cell>
         <Cell><Unit label="settled free" value={`${spend.freeCardsPerCase} / ${spend.cardsPerCase}`} tip="Cards per case settled by comparison rather than by asking a model — deterministic, and identical on every run." /></Cell>
         <Cell><Unit label="findings" value={String(spend.findingsRaised)} tip="Conclusions returned, of every severity." /></Cell>
-        <Cell><Unit label="cached" value={percent(spend.cachedInputPct)} tip="Share of model calls answered without reaching a provider." /></Cell>
+        <Cell><Unit label="cached" value={percent(spend.cachedInputPct)} tip="Share of model attempts answered from the derivation cache (no provider call)." /></Cell>
       </div>
 
       {spend.byModel?.length ? (
         <div style={{ padding: '10px 16px', borderTop: '1px solid var(--me-grey-15)' }}>
           <Note>
-            {spend.byModel.map((m) => `${m.label} · ${plural(m.calls, 'call')} · ${usdFine(m.cost)}`).join('   ')}
+            {spend.byModel.map((m) => {
+              const billed = m.billed ?? Math.max(0, (m.calls || 0) - (m.cached || 0))
+              const bit = m.cost > 0
+                ? `${usdFine(m.cost)}`
+                : (m.cached ? `$0 · ${m.cached} cached` : '$0')
+              return `${m.label} · ${plural(billed || m.calls || 0, 'call')} · ${bit}`
+            }).join('   ')}
           </Note>
         </div>
       ) : null}

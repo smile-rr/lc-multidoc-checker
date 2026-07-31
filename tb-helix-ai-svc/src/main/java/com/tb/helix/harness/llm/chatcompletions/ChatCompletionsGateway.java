@@ -1,5 +1,7 @@
 package com.tb.helix.harness.llm.chatcompletions;
 
+import com.tb.helix.harness.doc.RenderProperties;
+import com.tb.helix.harness.doc.RenderSpec;
 import com.tb.helix.harness.llm.LlmGateway;
 import com.tb.helix.harness.llm.LlmProperties;
 import com.tb.helix.harness.llm.LlmRole;
@@ -45,15 +47,17 @@ public class ChatCompletionsGateway implements LlmGateway {
     private static final Logger log = LoggerFactory.getLogger(ChatCompletionsGateway.class);
 
     private final LlmProperties props;
+    private final RenderProperties render;
     private final ObjectMapper json;
     private final ModelCallLog calls;
     private final EventBus events;
     private final Map<String, ChatCompletionsClient> clients = new LinkedHashMap<>();
     private final ExecutorService slotPool = Executors.newVirtualThreadPerTaskExecutor();
 
-    public ChatCompletionsGateway(LlmProperties props, ObjectMapper json, ModelCallLog calls,
-                                  EventBus events) {
+    public ChatCompletionsGateway(LlmProperties props, RenderProperties render, ObjectMapper json,
+                                  ModelCallLog calls, EventBus events) {
         this.props = props;
+        this.render = render;
         this.json = json;
         this.calls = calls;
         this.events = events;
@@ -85,7 +89,7 @@ public class ChatCompletionsGateway implements LlmGateway {
                     null, request.overrides());
 
             record(client, request.role(), ModelCallLog.Kind.TEXT, ModelCallLog.Status.OK,
-                    response.promptTokens(), response.completionTokens(), response.latencyMs(), null);
+                    response.promptTokens(), response.completionTokens(), response.latencyMs(), null, null);
 
             return new TextResult(response.content(), response.raw(), client.model(),
                     new TokenUsage(response.promptTokens(), response.completionTokens(),
@@ -95,7 +99,7 @@ public class ChatCompletionsGateway implements LlmGateway {
             // A failure costs latency and no tokens, so it leaves no trace in a token
             // ledger — and it is the row somebody looking into a slow run wants first.
             record(client, request.role(), ModelCallLog.Kind.TEXT, statusOf(e),
-                    0, 0, (int) (System.currentTimeMillis() - began), e.getMessage());
+                    0, 0, (int) (System.currentTimeMillis() - began), e.getMessage(), null);
             throw e;
         }
     }
@@ -146,7 +150,7 @@ public class ChatCompletionsGateway implements LlmGateway {
 
             Map<String, Object> fields = parseFields(response.content());
             record(client, request.role(), ModelCallLog.Kind.VISION, ModelCallLog.Status.OK,
-                    response.promptTokens(), response.completionTokens(), response.latencyMs(), null);
+                    response.promptTokens(), response.completionTokens(), response.latencyMs(), null, request);
 
             return new VisionResult.SlotResult(client.name(), client.model(), fields, response.raw(),
                     false, null,
@@ -158,7 +162,7 @@ public class ChatCompletionsGateway implements LlmGateway {
             // Per slot, not per read. Three slots where one always times out is a fact about
             // that slot, and a read recorded as a single success would hide it completely.
             record(client, request.role(), ModelCallLog.Kind.VISION, statusOf(e),
-                    0, 0, (int) (System.currentTimeMillis() - began), e.getMessage());
+                    0, 0, (int) (System.currentTimeMillis() - began), e.getMessage(), request);
             return new VisionResult.SlotResult(client.name(), client.model(), Map.of(), null,
                     true, e.getMessage(), new TokenUsage(0, 0, 0, false));
         }
@@ -170,9 +174,16 @@ public class ChatCompletionsGateway implements LlmGateway {
      * <p>Here rather than at the call sites because every path through this class ends in a
      * provider round trip, and a ledger with a hole in it is worse than no ledger — it reads
      * as a run that was cheaper than it was.
+     *
+     * <p>The top-level event fields stay short (model, tokens, ms) so the run log one-liner
+     * stays readable. Everything an officer clicks for — dpi, long-edge, page bytes,
+     * temperature — sits under {@code detail}.
+     *
+     * @param vision the request when this was a vision call; null for text
      */
     private void record(ChatCompletionsClient client, LlmRole role, ModelCallLog.Kind kind,
-                        ModelCallLog.Status status, Integer in, Integer out, Integer ms, String error) {
+                        ModelCallLog.Status status, Integer in, Integer out, Integer ms, String error,
+                        VisionRequest vision) {
         var scope = CallScope.current();
 
         // On the tape as well as in the ledger. The ledger answers "what did this run
@@ -190,6 +201,8 @@ public class ChatCompletionsGateway implements LlmGateway {
             e.put("tokensIn", in == null ? 0 : in);
             e.put("tokensOut", out == null ? 0 : out);
             e.put("ms", ms == null ? 0 : ms);
+            Map<String, Object> detail = callDetail(client, kind, vision);
+            if (!detail.isEmpty()) e.put("detail", detail);
             e.values().removeIf(java.util.Objects::isNull);
             events.publish(HelixEvent.of(scope.caseId(), HelixEvent.LLM_CALL, e));
         }
@@ -201,6 +214,39 @@ public class ChatCompletionsGateway implements LlmGateway {
                 kind, status, 1,
                 in == null ? 0 : in, out == null ? 0 : out, 0,
                 ms, null, error));
+    }
+
+    /**
+     * What the run-log expansion shows — slot knobs always, render knobs on vision.
+     *
+     * <p>DPI and long-edge come from {@link RenderProperties} for the role, which is the
+     * same profile Interpret used to rasterise. Measuring the PNG bytes on the request
+     * says what actually went on the wire, including after the long-edge cap.
+     */
+    private Map<String, Object> callDetail(ChatCompletionsClient client, ModelCallLog.Kind kind,
+                                           VisionRequest vision) {
+        Map<String, Object> d = new LinkedHashMap<>();
+        d.put("temperature", client.temperature());
+        d.put("maxTokens", client.maxTokens());
+        d.put("baseUrl", client.baseUrl());
+        if (kind == ModelCallLog.Kind.VISION && vision != null) {
+            d.put("pages", vision.pages().size());
+            long bytes = 0;
+            for (byte[] page : vision.pages()) bytes += page == null ? 0 : page.length;
+            d.put("imageBytes", bytes);
+            if (!vision.pageLabels().isEmpty()) d.put("pageLabels", vision.pageLabels());
+            String profile = vision.role().name().toLowerCase().replace('_', '-');
+            // segment / extract share helix.render.profiles.*; others fall back mid.
+            if (vision.role() == LlmRole.SEGMENT || vision.role() == LlmRole.EXTRACT) {
+                RenderSpec spec = render.specFor(vision.role().name().toLowerCase());
+                d.put("dpi", spec.dpi());
+                d.put("maxLongEdgePx", spec.maxLongEdgePx());
+                d.put("maxPages", spec.maxPages());
+                d.put("renderProfile", profile);
+            }
+        }
+        d.values().removeIf(java.util.Objects::isNull);
+        return d;
     }
 
     /** A timeout is worth telling apart from a refusal: one is capacity, the other is us. */

@@ -79,12 +79,16 @@ public record HelixEvent(String caseId, String type, Map<String, Object> payload
 
     /**
      * A model was asked something. {@code {stage, step, model, slot, role, kind, status,
-     * tokensIn, tokensOut, ms, attempt}}
+     * tokensIn, tokensOut, ms, detail?}}
      *
      * <p>One per attempt on a provider, which is finer than a step: a step can fan out
      * across slots, loop with tools, or retry, and its own timing shows only the sum. Which
      * of three slots was slow, or that a step took ninety seconds because two calls timed
      * out before the third worked, is visible here and nowhere else.
+     *
+     * <p>{@code detail} is optional and nested — dpi, long-edge, page bytes, temperature —
+     * assembled by the LLM gateway so the run-log one-liner stays short and a click opens
+     * the rest. Stages do not invent this map.
      *
      * <p><b>No cost.</b> Tokens are what the provider returned and never change; cost is
      * tokens times a rate that lives in a price book somebody edits. The tape is
@@ -98,7 +102,8 @@ public record HelixEvent(String caseId, String type, Map<String, Object> payload
     /**
      * A model was <em>not</em> asked, because the answer was already known.
      *
-     * <p>Same shape as {@link #LLM_CALL} with {@code status: CACHED}. Reported through the
+     * <p>Same shape as {@link #LLM_CALL} with {@code status: CACHED} (and the same optional
+     * nested {@code detail} from the cache key — dpi, scope). Reported through the
      * same channel so a reader counting calls sees the ones that did not happen too — a run
      * that made no calls at all and a run whose every call was avoided look identical
      * otherwise, and only one of them is worth being pleased about.

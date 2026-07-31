@@ -161,10 +161,21 @@ public final class StageContext implements StepJournal {
      *
      * <p>A step-finished carries two facts — that it ended, and that the case now holds
      * something new. When the stage closed the step itself the first is already on the
-     * stream, and repeating it draws the step twice. The second still has to be said.
+     * stream, and repeating it draws the step twice. So this emits a quiet ending: same
+     * type (the browser reloads on {@code refresh}), tagged so the run log updates the
+     * existing row's label instead of opening a ghost 0&nbsp;ms step.
      */
     private void landedOnly(String step, String note) {
-        if (note != null) finished(step, note, "OK", 0, true);
+        if (note == null) return;
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("stage", stage.key());
+        payload.put("step", step);
+        payload.put("label", note);
+        payload.put("status", "OK");
+        payload.put("ms", 0);
+        payload.put("refresh", true);
+        payload.put("alreadyClosed", true);
+        emit(HelixEvent.STEP_FINISHED, payload);
     }
 
     /**

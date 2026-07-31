@@ -102,7 +102,8 @@ public class InterpretStage implements Stage {
                     + render.maxBundlePages() + ". Split it or raise helix.render.max-bundle-pages.");
         }
 
-        ctx.announce("segment", "Sorting " + pages + " pages into documents");
+        // The engine already announced this step. A second announce here opened a second
+        // "segment" row on the run log; do not re-announce.
         Map<Integer, String> byPage = segment(ctx, pdfSha, pages);
         writeDocuments(ctx, byPage, pages);
         // The document rail can be drawn now, before a single field has been read.
@@ -153,18 +154,19 @@ public class InterpretStage implements Stage {
             return new DerivationCache.Entry<>(result.fields(), null, null, ModelSpend.of(result.usage(), result.model()));
         });
 
+        Map<Integer, String> byPage = readPageMap(hit.value(), pageCount);
+        // Progress while the step is still open, so the UI attaches these to "segment"
+        // rather than dumping them under the stage after extract has already finished.
+        for (int p = 1; p <= pageCount; p++) {
+            ctx.emit(HelixEvent.SEGMENT, Map.of("done", p, "total", pageCount));
+        }
+
         if (hit.tier() != com.tb.helix.infra.cache.CacheTier.Level.NONE) {
             ctx.recordCachedStep("segment", Map.of("pages", pageCount), null);
         } else {
             ctx.recordStep("segment", Map.of("pages", pageCount));
         }
 
-        Map<Integer, String> byPage = readPageMap(hit.value(), pageCount);
-        // Progress arrives per page rather than at the end: the UI counts documents
-        // carved out of the bundle, and a single jump from 0 to 6 reads as a stall.
-        for (int p = 1; p <= pageCount; p++) {
-            ctx.emit(HelixEvent.SEGMENT, Map.of("done", p, "total", pageCount));
-        }
         return byPage;
     }
 

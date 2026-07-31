@@ -9,20 +9,39 @@
 // Only subscribes while the panel is open. A progress stream held open by a
 // panel nobody is looking at is a connection per tab per case, and the whole
 // point of the seq merge is that closing and reopening costs nothing.
+//
+// Spend (the ledger) is separate from the tape: events say what happened, the
+// ledger says what it cost. The stream triggers a coalesced refetch on model
+// events; when the cost drawer is open during a live run we also poll lightly,
+// because the ledger can land a beat after the event and a 600 ms refetch alone
+// would still show yesterday's total.
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import * as api from '../api/lcCheckApi'
 
 const bySeq = (a, b) => (a.seq ?? 0) - (b.seq ?? 0)
 
-export default function useRunLog(caseId, active) {
+/**
+ * @param {string} caseId
+ * @param {boolean} active           subscribe to the event stream
+ * @param {{ spendFocus?: boolean, pollSpendMs?: number }} [opts]
+ *   spendFocus — cost drawer is open: refetch ledger now
+ *   pollSpendMs — while > 0, refetch ledger on this interval (live run safety net)
+ */
+export default function useRunLog(caseId, active, opts = {}) {
+  const { spendFocus = false, pollSpendMs = 0 } = opts
   const [events, setEvents] = useState([])
-  // What each step spent. Fetched beside the tape rather than folded into it:
-  // an event says what happened, a ledger row says what it cost, and the two are
-  // written by different parts of the system at different moments.
   const [spend, setSpend] = useState([])
   const [state, setState] = useState('idle')   // idle | loading | ready | failed
   const seen = useRef(new Set())
+  const liveRef = useRef(false)
+
+  const pullSpend = useCallback(() => {
+    if (!caseId) return Promise.resolve()
+    return api.getSpend(caseId).then((rows) => {
+      if (liveRef.current) setSpend(rows ?? [])
+    }).catch(() => {})
+  }, [caseId])
 
   // Merges, ignoring anything already held. The stream replays on reconnect, so
   // duplicates are the normal case rather than the exceptional one.
@@ -37,12 +56,14 @@ export default function useRunLog(caseId, active) {
     if (!caseId) return
     seen.current = new Set()
     setEvents([])
+    setSpend([])
     setState('idle')
   }, [caseId])
 
   useEffect(() => {
-    if (!active || !caseId) return
+    if (!active || !caseId) return undefined
     let live = true
+    liveRef.current = true
 
     setState((s) => (s === 'ready' ? s : 'loading'))
     api.getEvents(caseId)
@@ -51,7 +72,7 @@ export default function useRunLog(caseId, active) {
 
     // Best effort. A run log without costs is still a run log; a run log that
     // refused to render because the ledger was unreachable would not be.
-    api.getSpend(caseId).then((rows) => { if (live) setSpend(rows ?? []) }).catch(() => {})
+    pullSpend()
 
     // The stream carries the same rows. An event that arrives before the fetch
     // returns is kept, not raced away — `seen` is the only arbiter of what is new.
@@ -67,17 +88,33 @@ export default function useRunLog(caseId, active) {
     const stop = api.watchCase(caseId, (event) => {
       if (!live) return
       absorb([event])
-      if (event.type === 'llm_call' || event.type === 'llm_cached') {
+      if (event.type === 'llm_call' || event.type === 'llm_cached' || event.type === 'stage_done') {
         clearTimeout(due)
-        due = setTimeout(() => {
-          api.getSpend(caseId).then((rows) => { if (live) setSpend(rows ?? []) }).catch(() => {})
-        }, 600)
+        due = setTimeout(() => { if (live) pullSpend() }, 600)
       }
     })
 
-    return () => { live = false; clearTimeout(due); stop?.() }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [caseId, active])
+    return () => {
+      live = false
+      liveRef.current = false
+      clearTimeout(due)
+      stop?.()
+    }
+  }, [caseId, active, pullSpend])
 
-  return { events, spend, state }
+  // Cost drawer just opened — pull now so the first paint is not a stale total
+  // from when the workbench mounted before any calls landed.
+  useEffect(() => {
+    if (!spendFocus || !caseId) return
+    pullSpend()
+  }, [spendFocus, caseId, pullSpend])
+
+  // Live run + drawer open: poll as a safety net for ledger lag after events.
+  useEffect(() => {
+    if (!pollSpendMs || !caseId) return undefined
+    const id = setInterval(() => { pullSpend() }, pollSpendMs)
+    return () => clearInterval(id)
+  }, [pollSpendMs, caseId, pullSpend])
+
+  return { events, spend, state, refreshSpend: pullSpend }
 }

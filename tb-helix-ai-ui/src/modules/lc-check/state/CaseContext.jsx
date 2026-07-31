@@ -1,6 +1,6 @@
 import { createContext, useContext, useReducer, useEffect, useRef, useCallback, useMemo } from 'react'
 import * as api from '../api/lcCheckApi'
-import { STAGES, RUN_STAGES, runStagesFrom, stageAfter, needsAction } from './severity'
+import { STAGES, RUN_STAGES, runStagesFrom, stageAfter, doneThroughStage, needsAction } from './severity'
 
 // ===========================================================================
 // One case's working state.
@@ -122,6 +122,16 @@ function reducer(state, action) {
       // service's word for that rather than assuming an idle case, which is what
       // lets a second tab, or a refresh, pick up a run already in progress.
       const busy = loaded?.busy ?? false
+      const bar = state.runStages ?? RUN_STAGES
+      // From the service's last-finished stage — never wipe to [] on a merge.
+      // That reset made Step show "Paused · 0 of 3" after Interpret and left
+      // Auto asking for the same stage again until the service rejected it.
+      const fromService = finished
+        ? bar.map((s) => s.id)
+        : doneThroughStage(loaded?.stage, bar)
+      // Keep anything this tab already recorded if the service answer is behind
+      // (e.g. stage_done landed before the refetch sees the new park).
+      const done = [...new Set([...fromService, ...(action.merge ? state.run.done : [])])]
       return {
         ...state,
         loading: false,
@@ -130,10 +140,9 @@ function reducer(state, action) {
         run: {
           ...state.run,
           segmentTotal: action.data.totalPages ?? state.run.segmentTotal,
-          started: loaded?.started ?? false,
+          started: Boolean(loaded?.started || state.run.started),
           finished,
-          // An already-examined case has every step behind it; a fresh one has none.
-          done: finished ? (state.runStages ?? RUN_STAGES).map((s) => s.id) : [],
+          done,
           // The run owns activeStage. The load does not — not on a merge, and not
           // on a plain load either, which is what this used to say.
           //
@@ -184,7 +193,13 @@ function reducer(state, action) {
     case 'run_started':
       return {
         ...state,
-        run: { ...state.run, started: true, finished: false, done: [], activeStage: null, segmented: 0, completedAreaIds: [], activeAreaId: null, live: true, following: true },
+        run: { ...state.run, started: true, finished: false, done: [], activeStage: null, segmented: 0, completedAreaIds: [], activeAreaId: null, live: true, following: true, failure: null },
+      }
+    case 'resume_run':
+      // Pick up a parked case without wiping `done` — run_started is only for a cold start.
+      return {
+        ...state,
+        run: { ...state.run, started: true, live: true, following: true, failure: null },
       }
     case 'pipeline':
       // What the service says it can run. Wording and tab placement stay here; the
@@ -403,8 +418,9 @@ export function CaseProvider({ caseId, children }) {
     const next = stageAfter(state.run.done, state.runStages ?? RUN_STAGES)
     if (!next) return
     if (!state.run.started) dispatch({ type: 'run_started' })
+    else if (!state.run.live) dispatch({ type: 'resume_run' })
     startStep(next.id)
-  }, [state.run.activeStage, state.run.done, state.run.started, startStep])
+  }, [state.run.activeStage, state.run.done, state.run.started, state.run.live, state.runStages, startStep])
 
   // Auto: whenever a run is live and nothing is executing, take the next step.
   // Expressed as a consequence of the state rather than as a chain of callbacks,

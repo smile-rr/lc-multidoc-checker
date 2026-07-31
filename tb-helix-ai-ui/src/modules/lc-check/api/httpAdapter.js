@@ -108,11 +108,32 @@ export async function getSpendSummary({ period = '30d' } = {}) {
   const cases = raw.casesExamined || 0
   const ran = raw.checksRun || 0
   const free = raw.checksFree || 0
+  const totalCost = Number(raw.cost) || 0
+  const byModel = (raw.byModel ?? []).map((m) => {
+    const cost = Number(m.cost) || 0
+    return {
+      modelId: m.modelId,
+      model: m.modelId,
+      label: m.label,
+      calls: m.calls || 0,
+      billed: m.billed || 0,
+      cached: m.cached || 0,
+      cases: m.cases,
+      tokens: (m.tokensIn || 0) + (m.tokensOut || 0),
+      seconds: m.seconds,
+      cost,
+      costAvoided: Number(m.costAvoided) || 0,
+      costShare: 0,
+    }
+  })
+  for (const m of byModel) {
+    m.costShare = totalCost ? m.cost / totalCost : 0
+  }
   return {
-    totalCost: Number(raw.cost) || 0,
+    totalCost,
     casesExamined: cases,
     avgCostPerCase: Number(raw.costPerCase) || 0,
-    avgCostPerPage: pages ? (Number(raw.cost) || 0) / pages : 0,
+    avgCostPerPage: pages ? totalCost / pages : 0,
     totalPages: pages,
     checksRun: ran,
     findingsRaised: raw.findingsRaised || 0,
@@ -124,16 +145,10 @@ export async function getSpendSummary({ period = '30d' } = {}) {
     freeCardPct: ran ? Math.round((free / ran) * 100) : 0,
     costAvoided: Number(raw.costAvoided) || 0,
     calls: raw.calls || 0,
+    billed: raw.billed || 0,
+    // Share of attempts answered from the derivation cache — not provider prompt-cache %.
     cachedInputPct: raw.cachedPct || 0,
-    byModel: (raw.byModel ?? []).map((m) => ({
-      model: m.modelId,
-      label: m.label,
-      calls: m.calls,
-      cases: m.cases,
-      tokens: (m.tokensIn || 0) + (m.tokensOut || 0),
-      seconds: m.seconds,
-      cost: Number(m.cost) || 0,
-    })),
+    byModel,
   }
 }
 

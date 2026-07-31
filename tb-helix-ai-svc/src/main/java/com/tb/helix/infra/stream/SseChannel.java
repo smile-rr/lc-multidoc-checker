@@ -72,9 +72,10 @@ public class SseChannel implements EventBus, EventStream {
         /**
          * The event as the browser sees it: envelope and payload, flat.
          *
-         * <p>Flat rather than {@code {seq, at, event:{...}}} because the live path delivers
-         * the payload as the SSE data and the type as the event name, so anything nested
-         * would arrive shaped differently from the same event replayed out of the tape.
+         * <p>Flat rather than {@code {seq, at, event:{...}}}, and self-describing: the type
+         * is a field of the body, not the SSE event name. Live and replayed events are then
+         * byte-for-byte the same shape, which is what lets the run log fold one list without
+         * caring which half of it came from where.
          */
         Map<String, Object> wire() {
             Map<String, Object> out = new java.util.LinkedHashMap<>();
@@ -156,12 +157,18 @@ public class SseChannel implements EventBus, EventStream {
     }
 
     private void send(SseEmitter emitter, Sequenced s) throws IOException {
-        // The id and the name are the SSE protocol's own — the id is what a reconnecting
-        // browser sends back as Last-Event-ID, and the name is what it listens on. They are
-        // also in the body, because the body is the whole event once it is in a panel.
+        // The id is the SSE protocol's own — it is what a reconnecting browser sends back
+        // as Last-Event-ID.
+        //
+        // Deliberately *unnamed*. Naming each event by its type reads well and cost us
+        // `llm_call`: `EventSource` dispatches a named event only to a listener registered
+        // for that exact name and offers no wildcard, so the browser has to enumerate every
+        // type it wants — and an event missing from that list is delivered to nobody, with
+        // no error anywhere. It still reached the tape, so the run log showed it on reload
+        // and never live. Unnamed, every event arrives on one handler and the type is read
+        // from the body, where {@link Sequenced#wire()} has always put it.
         emitter.send(SseEmitter.event()
                 .id(String.valueOf(s.seq()))
-                .name(s.event().type())
                 .data(s.wire()));
     }
 

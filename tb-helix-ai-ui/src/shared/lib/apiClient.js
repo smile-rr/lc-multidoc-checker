@@ -86,25 +86,26 @@ export const api = {
   stream(path, onEvent, { onError } = {}) {
     const source = new EventSource(`${API_BASE}${path}`)
 
-    // Named events rather than one message handler: the service names each event
-    // by type, and matching that here keeps the type out of the payload.
-    const forward = (type) => (e) => {
-      let payload = {}
+    // One handler, and the type read off the body.
+    //
+    // This was a list of twelve `addEventListener(type, …)` calls, which is the
+    // only shape `EventSource` offers for *named* events — and it has no wildcard,
+    // so an event whose name is not on the list is delivered to nobody. That is a
+    // silent failure with the worst possible signature: `llm_call` and `llm_cached`
+    // reached the tape, so the run log showed them on reload and never live, and
+    // the panel looked like the events were missing rather than unsubscribed.
+    //
+    // So the service stopped naming them and the body carries `type` (it always
+    // did — the wire is flat `{seq, type, at, …payload}`). A new event type is now
+    // a constant on one side and nothing at all on this one.
+    source.onmessage = (e) => {
+      let event
       try {
-        payload = e.data ? JSON.parse(e.data) : {}
+        event = e.data ? JSON.parse(e.data) : null
       } catch {
-        payload = {}
+        return
       }
-      onEvent({ type, ...payload })
-    }
-
-    // A pipeline is made of stages; a stage is made of steps. Both levels report,
-    // and the prefix says which you are looking at.
-    for (const type of ['stage_started', 'stage_done', 'stage_failed',
-                        'step_started', 'step_finished',
-                        'segment', 'area_started', 'area_done',
-                        'gate_halted', 'cache_hit', 'finding', 'awaiting_officer']) {
-      source.addEventListener(type, forward(type))
+      if (event && event.type) onEvent(event)
     }
     source.onerror = (e) => {
       // EventSource reconnects on its own; only a closed stream is terminal.

@@ -6,12 +6,22 @@
 // ask which stage is running, which step it is on, and why interpret took ninety
 // seconds.
 //
-// So the flat tape folds into three tiers, and the tiers are what the panel
-// draws:
+// So the flat tape folds into **two** tiers, not three:
 //
-//   stage   intake · interpret · gate · plan · execute · signoff
-//   step      the units inside one stage — segment, extract, gate, checks
-//   event       everything else, attached to whatever was open when it arrived
+//   stage     intake · interpret · gate · plan · execute · signoff
+//   entry       one time-ordered list per stage — steps and events together
+//
+// An entry is a step or an event and differs only in `kind`. Nesting events under
+// the step that was open when they arrived was the earlier design, and it was
+// wrong twice over: an event that arrived between two steps had nowhere to go and
+// was appended to the stage instead, so it rendered *after* every step regardless
+// of when it happened — a run's findings piled up at the bottom out of order,
+// minutes adrift from the checks that raised them. And a step's own events sat
+// under a row the reader had to already be looking at. A log is read as a
+// sequence; the arrival order is the information.
+//
+// A step is still a span with a duration, and an event is still a point in time.
+// That difference is real and the panel draws it. Where they sit is not.
 //
 // **Spans are derived, not stored.** A `stage_started` opens one and the matching
 // `stage_done` / `stage_failed` / `gate_halted` closes it; likewise
@@ -33,9 +43,6 @@ const STAGE_ENDS = {
   stage_failed: 'failed',
   gate_halted: 'halted',
 }
-
-/** Events that belong to a stage as a whole rather than to a step inside it. */
-const STAGE_LEVEL = new Set(['stage_started', ...Object.keys(STAGE_ENDS), 'awaiting_officer'])
 
 const ms = (a, b) => (a == null || b == null ? null : Math.max(0, b - a))
 const at = (event) => (event.at ? Date.parse(event.at) : null)
@@ -75,7 +82,12 @@ export function foldRunLog(events = [], now = Date.now()) {
         // still going. A stage proper starts at `running` and gets there by having
         // announced itself.
         status: id === UNPLACED ? 'unplaced' : 'running',
-        steps: [], events: [],
+        // The one list the panel draws, in arrival order. `steps` holds the same
+        // step objects by reference — a view for the code that asks "what is
+        // running", never a second place a row can live.
+        entries: [], steps: [],
+        // Hand-back / halt — stage footer, not a leaf under the step rail.
+        outcome: null,
       }
       byKey.set(id, stage)
       stages.push(stage)
@@ -91,7 +103,7 @@ export function foldRunLog(events = [], now = Date.now()) {
       // A rerun starts the same stage again. It is the same row — reopened, with
       // the previous run's steps cleared — rather than a second row with the same
       // name, which would read as two stages having run.
-      Object.assign(stage, { startedAt: t, endedAt: null, ms: null, status: 'running', steps: [], events: [] })
+      Object.assign(stage, { startedAt: t, endedAt: null, ms: null, status: 'running', entries: [], steps: [], outcome: null })
       openStage = stage
       openStep = null
       continue
@@ -103,22 +115,38 @@ export function foldRunLog(events = [], now = Date.now()) {
       // open, closes anything. Tapes written before `gate_halted` carried its stage
       // still exist, and a halt nobody can attribute must not go and mark the bucket
       // it landed in as halted.
-      if (!event.stage && stage.startedAt == null) { stage.events.push(row(event, t)); continue }
+      if (!event.stage && stage.startedAt == null) { stage.entries.push(row(event, t)); continue }
+      // A second stage_done for the same run is noise on the wire (launcher + journal).
+      // Keep the first ending; do not append another identical row.
+      if (stage.status === STAGE_ENDS[event.type] && stage.endedAt != null) continue
       stage.status = STAGE_ENDS[event.type]
       stage.endedAt = t
       stage.ms = event.ms ?? ms(stage.startedAt, t)
       // A stage that ended cannot still have a step in flight. Anything left open
       // ended with it, however it ended.
       stage.steps.forEach((s) => { if (s.status === 'running') { s.status = stage.status; s.endedAt = t; s.ms = ms(s.startedAt, t) } })
-      stage.events.push(row(event, t))
+      // stage_done itself is the header's Done badge — not a leaf under the steps.
+      // Halt/fail still leave a row so the reason stays visible.
+      if (event.type !== 'stage_done') {
+        stage.outcome = row(event, t)
+      }
       if (openStage === stage) { openStage = null; openStep = null }
       continue
     }
 
     if (event.type === 'step_started') {
       const stage = stageFor(event.stage)
-      const step = { key: event.step, label: event.label || event.step, startedAt: t, endedAt: null, ms: null, status: 'running', cacheHit: false, events: [] }
+      // Same key announced twice (engine + body) must not open two running rows.
+      const existing = [...stage.steps].reverse().find((s) => s.key === event.step && s.status === 'running')
+      if (existing) {
+        if (event.label) existing.label = event.label
+        openStage = stage
+        openStep = existing
+        continue
+      }
+      const step = newStep(event, t, null)
       stage.steps.push(step)
+      stage.entries.push(step)
       openStage = stage
       openStep = step
       continue
@@ -128,10 +156,20 @@ export function foldRunLog(events = [], now = Date.now()) {
       const stage = stageFor(event.stage)
       let step = [...stage.steps].reverse().find((s) => s.key === event.step && s.status === 'running')
       if (!step) {
+        // Stage already closed this key and the engine is only asking for a refetch
+        // (alreadyClosed), or a late ending landed after the row finished. Update the
+        // existing row — never invent a ghost 0 ms step for work that already ended.
+        const prior = [...stage.steps].reverse().find((s) => s.key === event.step)
+        if (prior || event.alreadyClosed) {
+          if (prior && event.label) prior.label = event.label
+          if (openStep && openStep.key === event.step) openStep = null
+          continue
+        }
         // Finished without starting — skipped before it announced itself. Real,
         // and worth a row: "we considered this and it did not apply" is an answer.
-        step = { key: event.step, label: event.label || event.step, startedAt: t, endedAt: t, ms: 0, status: 'running', cacheHit: false, events: [] }
+        step = newStep(event, t, t)
         stage.steps.push(step)
+        stage.entries.push(step)
       }
       step.status = (event.status || 'OK').toLowerCase()
       step.endedAt = t
@@ -160,10 +198,19 @@ export function foldRunLog(events = [], now = Date.now()) {
       if (step) step.cacheHit = true
     }
 
-    // Everything else is a leaf: it happened inside whatever was open. Kept even
-    // when nothing was — an event with nowhere to go is usually the interesting one.
-    const target = STAGE_LEVEL.has(event.type) || !openStep ? stageFor(event.stage) : openStep
-    push(target.events, row(event, t))
+    // Everything else lands where it happened: at the end of the stage's list, in
+    // arrival order, whether or not a step was open at the time. Which step was
+    // running is visible from the row above it — it does not need to be expressed
+    // by containment, and expressing it that way is what put the events that
+    // belonged to no open step at the bottom of the stage, minutes out of order.
+    const stage = stageFor(event.stage)
+    if (event.type === 'awaiting_officer') {
+      // The one exception, and it is not a leaf: the hand-back is how the stage
+      // ended, so it renders as the stage's footer rather than as another row.
+      stage.outcome = row(event, t)
+      continue
+    }
+    push(stage.entries, row(event, t))
   }
 
   // Elapsed for whatever is still going, measured now.
@@ -191,9 +238,12 @@ export function foldRunLog(events = [], now = Date.now()) {
  */
 function push(rows, next) {
   const last = rows[rows.length - 1]
-  if (last && last.type === next.type) {
+  // Only an event folds into an event. A step between two of them is the thing
+  // that makes them two different runs of progress, and it now shares this list.
+  if (last && last.kind === 'event' && last.type === next.type) {
     // The newest detail wins: progress supersedes, it does not accumulate.
     last.detail = next.detail ?? last.detail
+    last.info = next.info ?? last.info
     last.at = next.at
     last.seq = next.seq
     last.count = (last.count ?? 1) + 1
@@ -202,10 +252,33 @@ function push(rows, next) {
   rows.push(next)
 }
 
+/**
+ * A step entry: a span, opened here and closed when its ending arrives.
+ *
+ * `endedAt` is passed rather than defaulted because a step can finish without ever
+ * having started — skipped before it announced itself — and that row is a point in
+ * time wearing a step's clothes, not a span of zero length that ran.
+ */
+function newStep(event, startedAt, endedAt) {
+  return {
+    kind: 'step',
+    key: event.step,
+    label: event.label || event.step,
+    startedAt,
+    endedAt,
+    ms: endedAt == null ? null : 0,
+    status: 'running',
+    cacheHit: false,
+  }
+}
+
 /** One leaf row: what happened, when, and the detail worth showing beside it. */
 function row(event, t) {
-  const { seq, type, at: _at, stage, step, ...rest } = event
-  return { seq, type, at: t, detail: describe(type, rest) }
+  const { seq, type, at: _at, stage, step, detail: nested, ...rest } = event
+  // Nested `detail` from the gateway (dpi, long-edge, …) is for click-to-expand,
+  // not the one-liner. Older tapes without it simply have nothing to open.
+  const info = nested && typeof nested === 'object' && !Array.isArray(nested) ? nested : null
+  return { kind: 'event', seq, type, at: t, detail: describe(type, rest), info }
 }
 
 /**
@@ -226,12 +299,14 @@ function describe(type, p) {
     case 'awaiting_officer': return `waiting for the officer to start ${p.next}`
     case 'stage_done': return null
     case 'cache_hit': return 'answered from cache'
-    // Tokens, never money. The rate can change; the tape cannot.
+    // Tokens live only on infra model events — not on pipeline steps.
     case 'llm_call':
       return `${p.model}${p.slot ? ` (${p.slot})` : ''} · in ${tokens(p.tokensIn)} out ${tokens(p.tokensOut)}`
         + `${p.ms ? ` · ${elapsed(p.ms)}` : ''}${p.status && p.status !== 'OK' ? ` · ${p.status}` : ''}`
     case 'llm_cached':
-      return `${p.model} · not called · would have been in ${tokens(p.tokensIn)} out ${tokens(p.tokensOut)}`
+      // Avoided call: still show the sizes so a reader can see what was skipped,
+      // but money is zero — "would have cost" on a free hit reads as a bill.
+      return `${p.model} · cached · in ${tokens(p.tokensIn)} out ${tokens(p.tokensOut)} · $0`
     default: {
       const parts = Object.entries(p).filter(([, v]) => v != null && v !== '')
       return parts.length ? parts.map(([k, v]) => `${k} ${v}`).join(' · ') : null
