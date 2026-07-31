@@ -75,8 +75,8 @@ public interface StageContext extends StepJournal {
      * to whoever is debugging it.
      */
     default void announce(String step, String label) {
-        emit(HelixEvent.PROGRESS, Map.of(
-                "stage", stage().key(), "step", step, "label", label, "refresh", false));
+        emit(HelixEvent.STEP_STARTED, Map.of(
+                "stage", stage().key(), "step", step, "label", label));
     }
 
     /**
@@ -91,7 +91,7 @@ public interface StageContext extends StepJournal {
      * worth a round trip. Reading the credit is; counting pages is not, on its own.
      */
     default void landed(String step, String label) {
-        emit(HelixEvent.PROGRESS, Map.of(
+        emit(HelixEvent.STEP_FINISHED, Map.of(
                 "stage", stage().key(), "step", step, "label", label, "refresh", true));
     }
 

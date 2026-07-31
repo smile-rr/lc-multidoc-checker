@@ -13,8 +13,8 @@
 import { CASE_LIST, caseDetailFor, ASK_SUGGESTIONS, AI_PERFORMANCE, RUN_STEPS } from '../data/fixtures.js'
 import { summariseSpend } from '../state/runCost.js'
 
-/** The pipeline as tb-helix-ai-svc declares it. Mirrors GET /lc-check/flow. */
-const FLOW = [
+/** The pipeline as tb-helix-ai-svc declares it. Mirrors GET /lc-check/pipeline. */
+const PIPELINE = [
   { stage: 'intake', auto: true, officerStarts: false, steps: [
     { key: 'credit', label: 'Reading the credit' },
     { key: 'bundle', label: 'Converting the scan to PDF' },
@@ -61,17 +61,17 @@ export async function listCases({ scope = 'all' } = {}) {
  * @returns {Promise<import('../data/contracts.js').CaseDetail>}
  */
 /**
- * The flow, as the service declares it.
+ * The pipeline, as the service declares it.
  *
- * Kept in step with `Stage.steps()` on the backend — `assertFlowMatches` in
+ * Kept in step with `Stage.steps()` on the backend — `pipelineDisagreements` in
  * severity.js shouts if the two drift, which is the whole reason this exists
  * rather than the UI simply believing its own constant.
  *
  * @returns {Promise<object[]>}
  */
-export async function getFlow() {
+export async function getPipeline() {
   await wait(LATENCY.mutate)
-  return clone(FLOW)
+  return clone(PIPELINE)
 }
 
 export async function getCase(caseId) {
@@ -223,9 +223,9 @@ export async function ask(caseId, question) {
  * how much of the pipeline ran, which is not the transport's business.
  *
  * Events:
- *   interpret  { type: 'segment', done, total } ×n, then { type: 'step_done' }
- *   plan       { type: 'step_done' }
- *   execute    { type: 'area_started'|'area_done', areaId } ×n, then { type: 'step_done' }
+ *   interpret  { type: 'segment', done, total } ×n, then { type: 'stage_done' }
+ *   plan       { type: 'stage_done' }
+ *   execute    { type: 'area_started'|'area_done', areaId } ×n, then { type: 'stage_done' }
  *
  * @param {string} caseId
  * @param {'interpret'|'plan'|'execute'} stepId
@@ -237,7 +237,7 @@ export function runPipelineStep(caseId, stepId, { areas = [], segmentTotal = 6 }
   void caseId
   const timers = []
   const at = (ms, fn) => timers.push(setTimeout(fn, ms))
-  const done = (ms) => at(ms, () => onEvent({ type: 'step_done', stepId }))
+  const done = (ms) => at(ms, () => onEvent({ type: 'stage_done', stage: stepId }))
 
   // Paced so a run reads as work happening without making a demo wait.
   const SEGMENT_EVERY = 130

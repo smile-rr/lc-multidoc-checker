@@ -12,7 +12,7 @@ import ReviewScreen from './ReviewScreen'
 import DecisionScreen from './DecisionScreen'
 import { CaseProvider, useCase } from '../state/CaseContext'
 import { summariseRun } from '../state/runCost'
-import { STAGES, PIPELINE_STEPS, stepMeta, stepAfter } from '../state/severity'
+import { STAGES, RUN_STAGES, stageMeta, stageAfter } from '../state/severity'
 
 // The case workbench. The stage lives in the URL (`/lc-check/cases/:id/:stage`)
 // so a stage is linkable and the back button steps through the review the way
@@ -41,14 +41,14 @@ function WorkbenchBody() {
   // under someone reading is worse than one that sits still.
   useEffect(() => {
     if (!run.live || !run.following) return
-    if (run.activeStep) {
-      const target = stepMeta(run.activeStep)?.stage
+    if (run.activeStage) {
+      const target = stageMeta(run.activeStage)?.stage
       if (target && target !== activeStage) navigate(`/lc-check/cases/${caseId}/${target}`, { replace: true })
     } else if (run.finished && run.mode === 'auto' && activeStage !== 'review') {
       // Auto ends at the report. Step waits to be asked.
       navigate(`/lc-check/cases/${caseId}/review`, { replace: true })
     }
-  }, [run.live, run.following, run.activeStep, run.finished, run.mode, activeStage, caseId, navigate])
+  }, [run.live, run.following, run.activeStage, run.finished, run.mode, activeStage, caseId, navigate])
 
   // The cost pill and the drawer read the same summary, so they cannot disagree.
   // The fixture's run steps are one for reading, one for planning, one for the
@@ -56,7 +56,7 @@ function WorkbenchBody() {
   // now report, so this is a mapping rather than an estimate.
   const cost = useMemo(() => {
     if (!data) return null
-    const executing = run.activeStep === 'execute' || run.done.includes('execute')
+    const executing = run.activeStage === 'execute' || run.done.includes('execute')
     const completedSteps = run.finished
       ? data.runSteps.length
       : Math.min(
@@ -67,7 +67,7 @@ function WorkbenchBody() {
           data.runSteps.length,
         )
     return summariseRun(data.runSteps, completedSteps, data.bundlePages.length)
-  }, [data, run.finished, run.done, run.activeStep, run.completedAreaIds.length])
+  }, [data, run.finished, run.done, run.activeStage, run.completedAreaIds.length])
 
   if (loading) {
     return <WorkbenchSkeleton caseId={caseId} />
@@ -93,25 +93,25 @@ function WorkbenchBody() {
   // nothing. It says what pressing it will run, so the cost of pressing it is
   // legible before it is pressed.
   const stepping = run.mode === 'step'
-  const nextStep = stepAfter(run.done)
+  const nextStage = stageAfter(run.done)
   const action = (() => {
     // Intake is still reading. Named rather than absent, and disabled rather than
     // hidden: the officer should be able to see that the case is doing something
     // and that starting a review is not yet one of the things they can do.
-    if (run.busy && !run.activeStep) {
+    if (run.busy && !run.activeStage) {
       return { label: run.activity ?? 'Reading…', disabled: true }
     }
-    if (run.activeStep) {
+    if (run.activeStage) {
       // Named rather than hidden: a button that vanishes mid-run reads as a
       // finished run. Disabled, so it cannot be pressed twice.
-      return { label: stepMeta(run.activeStep)?.running ?? 'Running…', disabled: true }
+      return { label: stageMeta(run.activeStage)?.running ?? 'Running…', disabled: true }
     }
     if (run.finished) {
       return stepping && activeStage !== 'review' ? { label: 'Open the report', run: () => goStage('review') } : null
     }
     if (!run.started) {
       return {
-        label: stepping ? nextStep?.action ?? 'Start the review' : 'Start the review',
+        label: stepping ? nextStage?.action ?? 'Start the review' : 'Start the review',
         run: () => {
           actions.runNext()
           if (!stepping) actions.flash('Started — it runs to the report without stopping.')
@@ -120,19 +120,19 @@ function WorkbenchBody() {
     }
     // Started and idle only happens in Step; Auto is already reaching for the
     // next step.
-    return stepping && nextStep ? { label: nextStep.action, run: actions.runNext } : null
+    return stepping && nextStage ? { label: nextStage.action, run: actions.runNext } : null
   })()
 
   const status = run.failure
     ? { tone: 'error', label: 'Stopped' }
-    : run.busy && !run.activeStep
+    : run.busy && !run.activeStage
     ? { tone: 'blue', label: run.activity ?? 'Reading' }
     : run.finished
     ? { tone: 'error', label: `${plural(visible.attention.filter((f) => f.severity === 'discrepancy').length, 'discrepancy', 'discrepancies')} · reply due` }
-    : run.activeStep
-      ? { tone: 'blue', label: stepMeta(run.activeStep)?.badge ?? 'Review Running' }
+    : run.activeStage
+      ? { tone: 'blue', label: stageMeta(run.activeStage)?.badge ?? 'Review Running' }
       : run.started
-        ? { tone: 'blue', label: `Paused · ${run.done.length} of ${PIPELINE_STEPS.length} Steps` }
+        ? { tone: 'blue', label: `Paused · ${run.done.length} of ${RUN_STAGES.length} Steps` }
         : { tone: 'neutral', label: 'Awaiting Check' }
 
   return (

@@ -47,14 +47,13 @@ public class CaseController {
     }
 
     /**
-     * The examination itself: every stage, its steps, and who starts each one.
+     * The pipeline: every stage, its steps, and who starts each one.
      *
      * <p>Not per-case — this is the shape of the process, not the state of one run. The
-     * browser reads it once and stops hard-coding a copy of the pipeline it can only get
-     * wrong.
+     * browser reads it once and stops hard-coding a copy it can only get wrong.
      */
-    @GetMapping("/flow")
-    public List<Map<String, Object>> flow() {
+    @GetMapping("/pipeline")
+    public List<Map<String, Object>> pipeline() {
         return pipeline.pipeline().describe();
     }
 

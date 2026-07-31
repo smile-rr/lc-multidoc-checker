@@ -1,6 +1,6 @@
 import { createContext, useContext, useReducer, useEffect, useRef, useCallback, useMemo } from 'react'
 import * as api from '../api/lcCheckApi'
-import { STAGES, PIPELINE_STEPS, stepAfter, needsAction } from './severity'
+import { STAGES, RUN_STAGES, stageAfter, needsAction } from './severity'
 
 // ===========================================================================
 // One case's working state.
@@ -30,10 +30,10 @@ const initial = {
      * either way; the mode decides nothing except whether the run asks.
      */
     mode: 'auto',
-    /** Pipeline steps that have completed, in order. */
+    /** Stages of the run that have completed, in order. */
     done: [],
-    /** The step executing right now, if any. */
-    activeStep: null,
+    /** The stage executing right now, if any. */
+    activeStage: null,
 
     /** How many documents the read step has carved out of the bundle so far. */
     segmented: 0,
@@ -123,10 +123,10 @@ function reducer(state, action) {
           started: loaded?.started ?? false,
           finished,
           // An already-examined case has every step behind it; a fresh one has none.
-          done: finished ? PIPELINE_STEPS.map((s) => s.id) : [],
+          done: finished ? RUN_STAGES.map((s) => s.id) : [],
           // A refetch triggered by a progress event must not cancel the step it
-          // was reporting on — the run owns activeStep, the load does not.
-          activeStep: action.merge ? state.run.activeStep : null,
+          // was reporting on — the run owns activeStage, the load does not.
+          activeStage: action.merge ? state.run.activeStage : null,
           segmented: loaded?.segmented ?? 0,
           completedAreaIds: loaded?.completedAreaIds ?? [],
           activeAreaId: action.merge ? state.run.activeAreaId : null,
@@ -148,30 +148,30 @@ function reducer(state, action) {
     case 'activity_ended':
       return { ...state, run: { ...state.run, activity: null } }
     case 'stage_failed':
-      return { ...state, run: { ...state.run, busy: false, activity: null, activeStep: null, failure: action.message } }
+      return { ...state, run: { ...state.run, busy: false, activity: null, activeStage: null, failure: action.message } }
     case 'load_failed':
       return { ...state, loading: false, error: action.error }
 
     case 'run_started':
       return {
         ...state,
-        run: { ...state.run, started: true, finished: false, done: [], activeStep: null, segmented: 0, completedAreaIds: [], activeAreaId: null, live: true, following: true },
+        run: { ...state.run, started: true, finished: false, done: [], activeStage: null, segmented: 0, completedAreaIds: [], activeAreaId: null, live: true, following: true },
       }
     case 'run_mode':
       return { ...state, run: { ...state.run, mode: action.mode } }
-    case 'step_started':
-      return { ...state, run: { ...state.run, activeStep: action.stepId } }
-    case 'step_done': {
-      // The run is finished when it is out of steps — nothing separately decides
+    case 'stage_started':
+      return { ...state, run: { ...state.run, activeStage: action.stageId } }
+    case 'stage_done': {
+      // The run is finished when it is out of stages — nothing separately decides
       // that, so the two can never disagree.
-      const done = state.run.done.includes(action.stepId) ? state.run.done : [...state.run.done, action.stepId]
-      const complete = PIPELINE_STEPS.every((s) => done.includes(s.id))
+      const done = state.run.done.includes(action.stageId) ? state.run.done : [...state.run.done, action.stageId]
+      const complete = RUN_STAGES.every((s) => done.includes(s.id))
       return {
         ...state,
         run: {
           ...state.run,
           done,
-          activeStep: null,
+          activeStage: null,
           activeAreaId: null,
           finished: complete,
           completedAreaIds: complete ? action.areaIds ?? state.run.completedAreaIds : state.run.completedAreaIds,
@@ -277,7 +277,7 @@ export function CaseProvider({ caseId, children }) {
   useEffect(() => {
     if (!busy) return undefined
     return api.watchCase(caseId, (event) => {
-      if (event.type === 'progress') {
+      if (event.type === 'step_started' || event.type === 'step_finished') {
         dispatch({ type: 'activity', label: event.label })
         // The event says something landed; the case endpoint says what. One
         // description of a case, so the two cannot drift.
@@ -318,12 +318,12 @@ export function CaseProvider({ caseId, children }) {
       const areas = state.data?.areas ?? []
       if (!areas.length) return
       unsubscribe.current?.()
-      dispatch({ type: 'step_started', stepId })
+      dispatch({ type: 'stage_started', stageId: stepId })
       const segmentTotal = state.data?.totalPages ?? 6
       unsubscribe.current = api.runPipelineStep(caseId, stepId, { areas, segmentTotal }, (event) => {
-        if (event.type === 'progress') {
+        if (event.type === 'step_started' || event.type === 'step_finished') {
           // What the stage is doing right now, in its own words. The area bars say
-          // how far along; this says what it is actually on.
+          // how far along; this says which step it is actually on.
           dispatch({ type: 'activity', label: event.label })
           if (event.refresh) reload(true)
         } else if (event.type === 'stage_failed') {
@@ -331,15 +331,15 @@ export function CaseProvider({ caseId, children }) {
         } else if (event.type === 'segment') dispatch({ type: 'segmented', done: event.done, total: event.total })
         else if (event.type === 'area_started') dispatch({ type: 'area_started', areaId: event.areaId })
         else if (event.type === 'area_done') dispatch({ type: 'area_done', areaId: event.areaId })
-        else if (event.type === 'step_done') {
+        else if (event.type === 'stage_done') {
           dispatch({ type: 'activity_ended' })
-          dispatch({ type: 'step_done', stepId: event.stepId, areaIds: areas.map((a) => a.id) })
+          dispatch({ type: 'stage_done', stageId: event.stage, areaIds: areas.map((a) => a.id) })
           // A step produced rows — documents, facts, checks, findings — and the event
           // said so without carrying them. Refetch, then report on what came back:
           // counting findings from the copy loaded before the step ran would report
           // the previous run's number.
           reload(true).then(() => {
-            if (event.stepId !== 'execute') return
+            if (event.stage !== 'execute') return
             const bad = (stateRef.current.data?.findings ?? []).filter((f) => f.severity === 'discrepancy').length
             flash(bad ? `Report ready — ${bad} discrepanc${bad === 1 ? 'y' : 'ies'} to look at.` : 'Report ready — nothing to raise.')
           })
@@ -351,21 +351,21 @@ export function CaseProvider({ caseId, children }) {
 
   /** The officer asking for the next step — the first press also starts the run. */
   const runNext = useCallback(() => {
-    if (state.run.activeStep) return
-    const next = stepAfter(state.run.done)
+    if (state.run.activeStage) return
+    const next = stageAfter(state.run.done)
     if (!next) return
     if (!state.run.started) dispatch({ type: 'run_started' })
     startStep(next.id)
-  }, [state.run.activeStep, state.run.done, state.run.started, startStep])
+  }, [state.run.activeStage, state.run.done, state.run.started, startStep])
 
   // Auto: whenever a run is live and nothing is executing, take the next step.
   // Expressed as a consequence of the state rather than as a chain of callbacks,
   // so switching to Auto halfway through a stepped run picks it up from where it
   // stopped instead of stranding it with no button.
   useEffect(() => {
-    const { mode, live, started, finished, activeStep, done } = state.run
-    if (mode !== 'auto' || !live || !started || finished || activeStep) return
-    const next = stepAfter(done)
+    const { mode, live, started, finished, activeStage, done } = state.run
+    if (mode !== 'auto' || !live || !started || finished || activeStage) return
+    const next = stageAfter(done)
     if (next) startStep(next.id)
   }, [state.run, startStep])
 

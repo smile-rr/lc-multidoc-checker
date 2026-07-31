@@ -1,5 +1,11 @@
 package com.tb.helix.lccheck.pipeline;
 
+import com.tb.helix.lccheck.stage.execute.ExecuteStage;
+import com.tb.helix.lccheck.stage.gate.GateStage;
+import com.tb.helix.lccheck.stage.intake.IntakeStage;
+import com.tb.helix.lccheck.stage.interpret.InterpretStage;
+import com.tb.helix.lccheck.stage.plan.PlanStage;
+import com.tb.helix.lccheck.stage.signoff.SignoffStage;
 import com.tb.helix.lccheck.types.pipeline.StageId;
 
 import org.springframework.stereotype.Component;
@@ -12,62 +18,51 @@ import java.util.Optional;
 /**
  * The examination: which stages, in what order, and who may start each one.
  *
- * <p>This file is the flow. {@link #FLOW} below is the whole of it, and everything else here
- * is a question asked of that list. If you want to know what a document check does, read the
- * next twenty lines; if you want to know how a stage does it, open the stage.
+ * <p>A <b>pipeline</b> is made of <b>stages</b>; a stage is made of <b>steps</b>. Those three
+ * words are used for those three things everywhere — in the packages, on the wire, in the
+ * database and in the browser. There is no fourth word for any of them.
  *
- * <p>The order used to live on {@link StageId}, which meant the enum of stage <em>names</em>
- * also owned what runs after what — so the class called "pipeline" could be read end to end
- * without learning the pipeline. Names are the enum's; sequence is this class's.
+ * <p>The constructor is the pipeline. Six stages, named by their implementing class, in the
+ * order they run — so the reader gets from "what does a document check do" to the code that
+ * does it in one jump, with no registry to consult and no key to resolve. This is what the
+ * predecessor's {@code LcV2Pipeline} did, and what a Spring Batch job configuration does, and
+ * it is better than the version this replaces: that one listed {@code StageId} constants and
+ * matched them against injected beans, which meant the class named "pipeline" told you the
+ * order but not what ran.
  */
 @Component
 public class DocCheckPipeline {
 
-    /**
-     * The document examination, in order.
-     *
-     * <p>Only the first runs by itself. Every later stage waits until a person asks for it —
-     * this is a regulated examination, and a pipeline that ran to completion on upload would
-     * be presenting conclusions nobody chose to reach.
-     */
-    private static final List<StageId> FLOW = List.of(
-            StageId.INTAKE,      // automatic, on upload: store the files, read the credit
-            StageId.INTERPRET,   // officer: sort the pages, read each document
-            StageId.GATE,        // no button — rides with PLAN, so a halt costs nothing
-            StageId.PLAN,        // officer: select the rules, read the credit's own demands
-            StageId.EXECUTE,     // officer: run the checks
-            StageId.SIGNOFF);    // officer: assemble the advice
+    private final List<Stage> stages;
+
+    public DocCheckPipeline(
+            IntakeStage intake,          // automatic, on upload: store the files, read the credit
+            InterpretStage interpret,    // officer: sort the pages, read each document
+            GateStage gate,              // no button — runs with PLAN, so a halt costs nothing
+            PlanStage plan,              // officer: select the rules, read the credit's demands
+            ExecuteStage execute,        // officer: run the checks
+            SignoffStage signoff) {      // officer: assemble the advice
+        this.stages = List.of(intake, interpret, gate, plan, execute, signoff);
+    }
 
     /**
      * The stages an officer can ask for by name.
      *
-     * <p>{@link StageId#INTAKE} is absent because it runs on upload. {@link StageId#GATE} is
-     * absent because "check whether the credit has expired, but do not plan anything" is not
-     * something anyone wants — it runs with the plan, before the expensive half.
+     * <p>Intake is absent because it runs on upload. The gate is absent because "check
+     * whether the credit has expired, but do not plan anything" is not something anyone
+     * wants — it runs with the plan, before the expensive half.
      */
     private static final List<StageId> OFFICER_STARTS = List.of(
             StageId.INTERPRET, StageId.PLAN, StageId.EXECUTE, StageId.SIGNOFF);
 
-    private final Map<StageId, Stage> stages = new LinkedHashMap<>();
+    // --- Asking about the pipeline ------------------------------------------
 
-    public DocCheckPipeline(List<Stage> implementations) {
-        // Indexed in FLOW order, not the order Spring handed the beans over — which is
-        // arbitrary and can change when an unrelated class is renamed.
-        for (StageId id : FLOW) {
-            implementations.stream().filter(s -> s.id() == id).findFirst()
-                    .ifPresent(s -> stages.put(id, s));
-        }
-    }
-
-    // --- Asking about the flow ----------------------------------------------
-
-    /** The stages that have an implementation, in flow order. */
     public List<StageId> order() {
-        return List.copyOf(stages.keySet());
+        return stages.stream().map(Stage::id).toList();
     }
 
     public Optional<Stage> stage(StageId id) {
-        return Optional.ofNullable(stages.get(id));
+        return stages.stream().filter(s -> s.id() == id).findFirst();
     }
 
     public boolean officerStarts(StageId id) {
@@ -77,23 +72,22 @@ public class DocCheckPipeline {
     /**
      * The next stage an officer can ask for.
      *
-     * <p>Not simply the next in {@link #FLOW}: parking a case at "waiting for gate" would
-     * leave it waiting for something that cannot be pressed.
+     * <p>Not simply the next one: parking a case at "waiting for gate" would leave it
+     * waiting for a button that does not exist.
      */
     public Optional<StageId> nextOfficerStageAfter(StageId id) {
-        int i = FLOW.indexOf(id);
-        if (i < 0) return Optional.empty();
-        return FLOW.subList(i + 1, FLOW.size()).stream().filter(OFFICER_STARTS::contains).findFirst();
+        return after(id).stream().filter(OFFICER_STARTS::contains).findFirst();
     }
 
     /** Everything after this stage — what a rerun invalidates. */
     public List<StageId> after(StageId id) {
-        int i = FLOW.indexOf(id);
-        return i < 0 ? List.of() : FLOW.subList(i + 1, FLOW.size());
+        List<StageId> ids = order();
+        int i = ids.indexOf(id);
+        return i < 0 ? List.of() : ids.subList(i + 1, ids.size());
     }
 
     /**
-     * The whole flow, from the stages' own declarations.
+     * The whole pipeline, from the stages' own declarations.
      *
      * <p>Not a description of what runs — it <em>is</em> what runs, read off the same
      * {@code steps()} the engine walks. Each step ships its key and its label: a browser
@@ -101,14 +95,13 @@ public class DocCheckPipeline {
      * label as it stands.
      */
     public List<Map<String, Object>> describe() {
-        return stages.entrySet().stream().map(e -> {
-            StageId id = e.getKey();
+        return stages.stream().map(s -> {
             Map<String, Object> stage = new LinkedHashMap<>();
-            stage.put("stage", id.key());
-            stage.put("auto", id.automatic());
-            stage.put("officerStarts", officerStarts(id));
-            stage.put("steps", e.getValue().steps().stream()
-                    .map(s -> Map.<String, Object>of("key", s.key(), "label", s.label()))
+            stage.put("stage", s.id().key());
+            stage.put("auto", s.id().automatic());
+            stage.put("officerStarts", officerStarts(s.id()));
+            stage.put("steps", s.steps().stream()
+                    .map(step -> Map.<String, Object>of("key", step.key(), "label", step.label()))
                     .toList());
             return stage;
         }).toList();

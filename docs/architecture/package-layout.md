@@ -54,7 +54,7 @@ lccheck/
 ├── api/            CaseController — routes and status codes, nothing else
 │   └── dto/        request bodies. The API's shape, not the examination's.
 ├── service/        CaseService, CaseAssembler — the only place rows become types
-├── pipeline/       DocCheckPipeline  — WHAT the examination is. Read it and you know the flow.
+├── pipeline/       DocCheckPipeline  — WHAT the examination is. The constructor IS the pipeline.
 │                   Stage             — a phase of it; one method of its own, which stage
 │                   StageContext      — what a step may do
 │                   DbStageContext    — the only impl: Postgres + SSE. The seam to the engine.
@@ -235,6 +235,25 @@ nothing. Keys that nobody looks up stay inline.
 **A fan-out whose width the code does not know** — one call per document, one per planned check —
 stays a single declared step whose body re-announces with the item it is on. Declaring a step per
 document would make `steps()` depend on the case, which is the one thing a declaration must not do.
+
+### One vocabulary: pipeline → stage → step
+
+Three words for three things, everywhere — packages, wire, database, browser. There is no
+fourth word for any of them, and "flow" is gone.
+
+| Level | Java | SSE | UI |
+|---|---|---|---|
+| pipeline | `DocCheckPipeline`, `GET /pipeline` | — | `getPipeline()` |
+| stage | `Stage`, `StageId` | `stage_started` · `stage_done` · `stage_failed` | `RUN_STAGES`, `run.activeStage` |
+| step | `Step`, `StepResult` | `step_started` · `step_finished` | `run.activity` |
+
+This found a real defect. `STEP_DONE` was published carrying `stepId = stage.key()` — an event
+named "step" that meant "stage". It survived because both words sound plausible in a log line.
+Stage completion is `stage_done` now, which already existed and was honest.
+
+Chose *pipeline* over *workflow* because `infra/pipeline` genuinely is a pipeline — ordered steps,
+no waits, no signals. "Workflow" would promise Temporal semantics the engine does not have; the
+human pacing is lc-check's addition, not the engine's.
 
 ### The pipeline, split across two layers
 

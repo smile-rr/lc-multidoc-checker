@@ -22,6 +22,12 @@ import java.util.Map;
 public record HelixEvent(String caseId, String type, Map<String, Object> payload) {
 
     // --- Stage lifecycle ----------------------------------------------------
+    //
+    // A pipeline is made of stages; a stage is made of steps. Both levels report, and the
+    // prefix says which level you are looking at. There used to be a STEP_DONE that carried
+    // a *stage* key, which is the kind of thing that survives for months because both words
+    // sound plausible in a log line.
+
     public static final String STAGE_STARTED = "stage_started";
     public static final String STAGE_DONE    = "stage_done";
     public static final String STAGE_FAILED  = "stage_failed";
@@ -29,22 +35,26 @@ public record HelixEvent(String caseId, String type, Map<String, Object> payload
     /** A stage finished and the pipeline is waiting for the officer to start the next. */
     public static final String AWAITING_OFFICER = "awaiting_officer";
 
-    // --- Progress within a stage --------------------------------------------
+    // --- Step lifecycle ------------------------------------------------------
     /**
-     * A named unit of work inside a stage. {@code {stage, step, label, refresh}}
+     * A step began. {@code {stage, step, label}}
      *
-     * <p>Finer-grained than {@link #STEP_DONE}, which reports a whole stage. Intake is the
-     * case that forced it: storing the files, reading the credit and preparing the bundle
-     * are seconds apart and each one puts something new on screen, so a stage that reported
-     * only its own completion would leave the officer looking at an empty workbench for the
-     * whole of it.
-     *
-     * <p>{@code refresh} says the case has changed and the browser should refetch it. The
-     * event carries the fact that something landed, not the thing itself — a progress
-     * channel that shipped domain objects would be a second, weaker copy of the case
-     * endpoint, and the two would drift.
+     * <p>Finer than {@link #STAGE_STARTED}, and intake is the case that forced it: storing
+     * the files, reading the credit and preparing the bundle are seconds apart and each one
+     * puts something new on screen, so a stage reporting only its own start and finish would
+     * leave the officer looking at an empty workbench for the whole of it.
      */
-    public static final String PROGRESS = "progress";
+    public static final String STEP_STARTED = "step_started";
+
+    /**
+     * A step finished. {@code {stage, step, label, refresh}}
+     *
+     * <p>{@code refresh} says the case has changed and the browser should refetch. The event
+     * says <em>that</em> something landed, never <em>what</em> — one description of a case,
+     * the case endpoint, and a progress channel shipping domain objects would be a second
+     * weaker copy of it that could drift.
+     */
+    public static final String STEP_FINISHED = "step_finished";
 
     /** One more page of the bundle has been identified. {@code {done, total}} */
     public static final String SEGMENT = "segment";
@@ -53,8 +63,6 @@ public record HelixEvent(String caseId, String type, Map<String, Object> payload
     public static final String AREA_STARTED = "area_started";
     public static final String AREA_DONE    = "area_done";
 
-    /** One run step completed — what the UI's three-step progress bar advances on. */
-    public static final String STEP_DONE = "step_done";
 
     /**
      * Work that would have been expensive was answered from cache.

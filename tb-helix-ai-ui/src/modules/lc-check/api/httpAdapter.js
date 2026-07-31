@@ -26,13 +26,13 @@ export async function listCases({ scope = 'all' } = {}) {
 }
 
 /**
- * The examination's shape: every stage, its steps, and who starts each one.
+ * The pipeline: every stage, its steps, and who starts each one.
  *
  * Not per-case — this is the process, not one run of it. The service builds it
  * from the stage declarations themselves, so it cannot disagree with what runs.
  */
-export async function getFlow() {
-  return api.get(`${base}/flow`)
+export async function getPipeline() {
+  return api.get(`${base}/pipeline`)
 }
 
 export async function getCase(caseId) {
@@ -111,7 +111,7 @@ export async function ask(caseId, question) {
  *
  * The stream is opened *before* the POST. A run that finishes quickly — every
  * step a cache hit, which is the common case on a re-presented bundle — would
- * otherwise emit `step_done` into a stream nobody had subscribed to yet, and the
+ * otherwise emit `stage_done` into a stream nobody had subscribed to yet, and the
  * UI would sit on a spinner for work that was already finished.
  */
 export function runPipelineStep(caseId, stepId, _plan, onEvent) {

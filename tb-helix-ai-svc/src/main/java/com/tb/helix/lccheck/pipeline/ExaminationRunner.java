@@ -141,11 +141,8 @@ public class ExaminationRunner {
             long ms = System.currentTimeMillis() - started;
 
             switch (outcome.status()) {
-                case OK -> {
-                    events.publish(HelixEvent.of(caseId, HelixEvent.STEP_DONE,
-                            Map.of("stepId", id.key(), "ms", ms)));
-                    events.publish(HelixEvent.of(caseId, HelixEvent.STAGE_DONE, Map.of("stage", id.key())));
-                }
+                case OK -> events.publish(HelixEvent.of(caseId, HelixEvent.STAGE_DONE,
+                        Map.of("stage", id.key(), "ms", ms)));
                 case HALTED -> {
                     // Not a failure. The system did exactly what it was asked to, and the
                     // answer is that this presentation cannot be accepted.

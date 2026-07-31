@@ -98,8 +98,11 @@ export const api = {
       onEvent({ type, ...payload })
     }
 
-    for (const type of ['progress', 'segment', 'area_started', 'area_done', 'step_done',
-                        'stage_started', 'stage_done', 'stage_failed',
+    // A pipeline is made of stages; a stage is made of steps. Both levels report,
+    // and the prefix says which you are looking at.
+    for (const type of ['stage_started', 'stage_done', 'stage_failed',
+                        'step_started', 'step_finished',
+                        'segment', 'area_started', 'area_done',
                         'gate_halted', 'cache_hit', 'finding', 'awaiting_officer']) {
       source.addEventListener(type, forward(type))
     }

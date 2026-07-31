@@ -20,7 +20,7 @@ import * as mock from './mockAdapter.js'
 import * as http from './httpAdapter.js'
 
 export const listCases = pick(mock.listCases, http.listCases)
-export const getFlow = pick(mock.getFlow, http.getFlow)
+export const getPipeline = pick(mock.getPipeline, http.getPipeline)
 export const getCase = pick(mock.getCase, http.getCase)
 export const createCase = pick(mock.createCase, http.createCase)
 export const peekCredit = pick(mock.peekCredit, http.peekCredit)

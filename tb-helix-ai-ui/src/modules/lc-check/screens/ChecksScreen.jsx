@@ -110,7 +110,7 @@ export default function ChecksScreen({ onOpenFinding }) {
   const [selectedId, setSelectedId] = useState(null)
   const [showSkipped, setShowSkipped] = useState(false)
 
-  const executing = run.activeStep === 'execute' || run.done.includes('execute')
+  const executing = run.activeStage === 'execute' || run.done.includes('execute')
   const planned = run.done.includes('plan')
 
   const statusOf = (check) => {

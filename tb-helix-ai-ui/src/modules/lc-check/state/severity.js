@@ -42,35 +42,36 @@ export const STAGES = [
 //     "Add a check" has no meaning without a moment between the two.
 //   · Review runs nothing either. The findings are already there; opening the
 //     report is navigation, and the button that does it says so.
-export const PIPELINE_STEPS = [
+export const RUN_STAGES = [
   { id: 'interpret', stage: 'interpret', action: 'Interpret the documents', running: 'Interpreting the documents…', badge: 'Interpreting' },
   { id: 'plan', stage: 'checks', action: 'Plan the checks', running: 'Planning the checks…', badge: 'Planning' },
   { id: 'execute', stage: 'checks', action: 'Run the checks', running: 'Running the checks…', badge: 'Running Checks' },
 ]
 
-export const stepMeta = (id) => PIPELINE_STEPS.find((s) => s.id === id) ?? null
+export const stageMeta = (id) => RUN_STAGES.find((s) => s.id === id) ?? null
 
 /**
  * Checks the browser's idea of the run against the service's declaration.
  *
- * PIPELINE_STEPS is not a copy of the backend flow — it is a UX grouping, and it
- * deliberately differs: intake runs by itself so it gets no button, the gate rides
- * with plan, and signoff is reached from the decision screen rather than the run
- * button. What it must never do is disagree about *which stages an officer can
- * start*, because then a button either does nothing or is missing.
+ * A pipeline is made of stages; a stage is made of steps. RUN_STAGES is the
+ * subset of stages the run bar drives, and it is not a copy of the backend's
+ * list — it deliberately differs: intake runs by itself so it gets no button, the
+ * gate runs with plan, and signoff is reached from the decision screen. What it
+ * must never do is disagree about *which stages an officer can start*, because
+ * then a button either does nothing or is missing.
  *
  * So the two are compared rather than merged, and a mismatch is shouted about in
  * the console. Four separate descriptions of this pipeline drifted before anyone
  * noticed; this is the cheapest thing that makes drift visible the moment it
  * happens, in both mock and api mode.
  *
- * @param {object[]} flow  GET /lc-check/flow
+ * @param {object[]} pipeline  GET /lc-check/pipeline
  * @returns {string[]} complaints, empty when they agree
  */
-export function flowDisagreements(flow) {
-  if (!Array.isArray(flow) || flow.length === 0) return []
-  const backendRunnable = flow.filter((s) => s.officerStarts).map((s) => s.stage)
-  const ours = PIPELINE_STEPS.map((s) => s.id)
+export function pipelineDisagreements(pipeline) {
+  if (!Array.isArray(pipeline) || pipeline.length === 0) return []
+  const backendRunnable = pipeline.filter((s) => s.officerStarts).map((s) => s.stage)
+  const ours = RUN_STAGES.map((s) => s.id)
 
   const problems = []
   for (const id of ours) {
@@ -88,8 +89,8 @@ export function flowDisagreements(flow) {
   return problems
 }
 
-/** The next step that has not run, or null when the run is out of steps. */
-export const stepAfter = (doneIds) => PIPELINE_STEPS.find((s) => !doneIds.includes(s.id)) ?? null
+/** The next stage that has not run, or null when the run is out of stages. */
+export const stageAfter = (doneIds) => RUN_STAGES.find((s) => !doneIds.includes(s.id)) ?? null
 
 // Who presses "next". Nothing else differs between the two — the same steps run
 // in the same order, and the stage tab follows the run either way.

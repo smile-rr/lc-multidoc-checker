@@ -6,7 +6,7 @@ import Badge from '@shared/ds/Badge'
 import Button from '@shared/ds/Button'
 import { money, dueLabel, plural } from '@shared/lib/format'
 import * as api from '../api/lcCheckApi'
-import { flowDisagreements } from '../state/severity'
+import { pipelineDisagreements } from '../state/severity'
 import NewCheckModal from '../components/NewCheckModal'
 import SpendPanel from '../components/SpendPanel'
 
@@ -39,9 +39,9 @@ export default function CasesScreen() {
   // drift warning is worth nothing if it only fires on a screen nobody opens.
   useEffect(() => {
     let alive = true
-    api.getFlow().then((flow) => {
+    api.getPipeline().then((pipeline) => {
       if (!alive) return
-      const problems = flowDisagreements(flow)
+      const problems = pipelineDisagreements(pipeline)
       if (problems.length) {
         console.warn('[helix] the run bar and the service disagree about the pipeline:\n  - ' +
           problems.join('\n  - '))
