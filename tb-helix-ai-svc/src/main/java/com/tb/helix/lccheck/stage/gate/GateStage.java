@@ -10,6 +10,7 @@ import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.pipeline.*;
 import com.tb.helix.lccheck.pipeline.StageContext;
+import com.tb.helix.lccheck.types.examination.Origin;
 import com.tb.helix.lccheck.types.pipeline.StageId;
 
 import org.slf4j.Logger;
@@ -99,7 +100,7 @@ public class GateStage implements Stage {
 
         for (CheckCatalog.CheckCard gate : gates) {
             cases.upsertPlanCheck(ctx.caseId(), Rows.of(
-                    "id", gate.id(), "origin", "DICTIONARY", "tier", "EXACT",
+                    "id", gate.id(), "origin", Origin.DICTIONARY.name(), "tier", "EXACT",
                     "checkType", gate.checkType(), "gate", true, "citedAs", "practice",
                     "areaId", "gate", "name", gate.title(),
                     "appliesBecause", "A hard check — it runs before anything is read",

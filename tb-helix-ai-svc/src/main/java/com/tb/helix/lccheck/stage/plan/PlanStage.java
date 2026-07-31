@@ -14,6 +14,7 @@ import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.pipeline.*;
 import com.tb.helix.lccheck.pipeline.StageContext;
+import com.tb.helix.lccheck.types.examination.Origin;
 import com.tb.helix.lccheck.stage.intake.IntakeStage;
 import com.tb.helix.lccheck.types.examination.Areas;
 import com.tb.helix.lccheck.types.pipeline.StageId;
@@ -98,7 +99,7 @@ public class PlanStage implements Stage {
                     : "Not run — the credit does not call for " + String.join(" or ", card.docTypes());
 
             cases.upsertPlanCheck(ctx.caseId(), Rows.of(
-                    "id", card.id(), "origin", "DICTIONARY", "tier", card.tier(),
+                    "id", card.id(), "origin", Origin.DICTIONARY.name(), "tier", card.tier(),
                     "checkType", card.checkType(), "gate", false,
                     "citedAs", card.citedAs() == null ? "practice" : card.citedAs(),
                     "areaId", applies ? area(card) : null,
@@ -157,7 +158,7 @@ public class PlanStage implements Stage {
         for (Map<String, Object> r : found) {
             String id = "REQ-" + String.format("%02d", n + 1);
             cases.upsertPlanCheck(ctx.caseId(), Rows.of(
-                    "id", id, "origin", "CREDIT", "tier", "JUDGED", "checkType", "AGENT",
+                    "id", id, "origin", Origin.CREDIT.name(), "tier", "JUDGED", "checkType", "AGENT",
                     "gate", false, "citedAs", "credit", "areaId", "credit",
                     "name", String.valueOf(r.getOrDefault("requirement", "Condition")),
                     "appliesBecause", "Read from " + r.getOrDefault("source", ":47A:") + " of this credit",

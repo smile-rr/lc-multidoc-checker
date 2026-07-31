@@ -64,7 +64,7 @@ lccheck/
 └── types/          pure data, mirroring the behaviour side by name
     ├── document/     FactView, LcDocument
     ├── examination/  PlanCheckView, FindingView, CheckArea, Areas, Origin
-    └── pipeline/     StageOutcome
+    └── pipeline/     StageId — the stage names, and which one an officer may ask for next
 
 governance/
 ├── api/            five controllers, split by what they author

@@ -1,6 +1,7 @@
 package com.tb.helix.lccheck.persistence;
 
 import com.tb.helix.lccheck.types.pipeline.StageId;
+import com.tb.helix.lccheck.types.examination.Origin;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -338,7 +339,7 @@ public class CaseStore {
                     area_id = EXCLUDED.area_id, status = EXCLUDED.status,
                     rule_def = EXCLUDED.rule_def, execution_plan = EXCLUDED.execution_plan
                 """,
-                caseId, c.get("id"), c.getOrDefault("origin", "DICTIONARY"),
+                caseId, c.get("id"), c.getOrDefault("origin", Origin.DICTIONARY.name()),
                 c.getOrDefault("tier", "JUDGED"), c.get("checkType"),
                 c.getOrDefault("gate", false), c.getOrDefault("citedAs", "practice"), c.get("areaId"),
                 c.get("name"), c.get("appliesBecause"), c.get("ruleRef"),

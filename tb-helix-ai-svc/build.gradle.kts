@@ -64,9 +64,10 @@ dependencies {
     implementation("org.apache.pdfbox:pdfbox:3.0.7")
     implementation("com.twelvemonkeys.imageio:imageio-tiff:3.12.0")
 
-    // --- MT700 ---------------------------------------------------------------
-    implementation("com.prowidesoftware:pw-swift-core:SRU2025-10.3.12")
-    implementation("org.apache.commons:commons-lang3:3.18.0")
+    // No SWIFT library. A message is split on `:NN[A]:` by SwiftReader — twenty lines of
+    // regex — and what the fields *mean* is read by a model, so a parser that models the
+    // whole SRU field catalogue would be carried for nothing. pw-swift-core was declared
+    // here and never imported.
 
     // --- Exact rules (SpEL over extracted facts) -----------------------------
     implementation("org.springframework:spring-expression")

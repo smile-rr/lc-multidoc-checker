@@ -169,7 +169,7 @@ public class CaseService {
 
         Map<String, Object> check = new LinkedHashMap<>();
         check.put("id", checkId);
-        check.put("origin", "OFFICER");
+        check.put("origin", Origin.OFFICER.name());
         check.put("tier", "JUDGED");
         check.put("name", name);
         check.put("appliesBecause", "You added it to this case");

@@ -94,7 +94,7 @@ public class CaseAssembler {
                 false,
                 c.notCovered(),
                 lower(c.tier()),
-                "CREDIT".equals(c.origin()) ? "credit" : "dictionary",
+                Origin.of(c.origin()).wire(),
                 c.isGate(),
                 nz(c.citedAs()), c.checkType(), c.executionPlan(),
                 Map.of("severity", nz(c.severity()), "rule", nz(c.name())));
@@ -112,7 +112,7 @@ public class CaseAssembler {
                 // Read through the plan check, never stored twice — a finding that carried
                 // its own copy would drift from the check that produced it.
                 f.tier() == null ? null : lower(f.tier()),
-                "CREDIT".equals(f.origin()) ? "credit" : "dictionary",
+                Origin.of(f.origin()).wire(),
                 f.checkType(), f.citedAs(),
                 jsonObject(f.analysis()),
                 List.of());
