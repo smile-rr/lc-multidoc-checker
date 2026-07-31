@@ -278,7 +278,33 @@ public class IntakeStage implements Stage {
                 "converted", !pdfSha.equals(row.sourceBundleSha()), "pages", pages));
     }
 
+    /**
+     * Finishes intake, and records when the presentation arrived.
+     *
+     * <p>The date the documents reached us, written as a fact on the covering schedule so a
+     * rule can read it. The presenting bank's own stated date governs and replaces this the
+     * moment the schedule is read — same document, same field, so the reading wins.
+     *
+     * <p>It was a fallback inside the gate: "read the schedule when the bank stated one,
+     * otherwise use the date we received the file". That is a sound rule and it was
+     * invisible, living in Java where no author could see it and no rule could express it.
+     * As a fact it is on screen with its source beside it, and an officer can see the
+     * examination is standing on our clock rather than the bank's.
+     */
     private StepResult markReady(StageContext ctx) {
+        CaseRow row = row(ctx);
+        String schedule = docTypes.scheduleCode();
+        if (row.presentedDate() != null && !DocumentTypes.UNKNOWN.equals(schedule)) {
+            cases.upsertFact(ctx.caseId(), Rows.of(
+                    "docId", schedule,
+                    "label", "Presentation date",
+                    "fieldKey", "presentation_date",
+                    "value", row.presentedDate().toString(),
+                    "valueNorm", row.presentedDate().toString(),
+                    "source", "the date this presentation was received",
+                    "flag", "Taken from our records — the covering schedule has not stated one",
+                    "confidence", "MED"));
+        }
         return StepResult.done("Ready to examine");
     }
 

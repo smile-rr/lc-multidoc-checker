@@ -8,6 +8,7 @@ import com.tb.helix.lccheck.persistence.CaseRow;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.Rows;
+import com.tb.helix.lccheck.rule.RuleEvaluator;
 import com.tb.helix.lccheck.service.DocumentTypes;
 import com.tb.helix.lccheck.pipeline.*;
 import com.tb.helix.lccheck.pipeline.StageContext;
@@ -44,10 +45,16 @@ public class GateStage implements Stage {
 
     private final DocumentTypes docTypes;
 
-    public GateStage(CheckCatalog catalog, CaseStore cases, DocumentTypes docTypes) {
+    private final RuleEvaluator rules;
+    private final com.fasterxml.jackson.databind.ObjectMapper json;
+
+    public GateStage(CheckCatalog catalog, CaseStore cases, DocumentTypes docTypes,
+                     RuleEvaluator rules, com.fasterxml.jackson.databind.ObjectMapper json) {
         this.catalog = catalog;
         this.cases = cases;
         this.docTypes = docTypes;
+        this.rules = rules;
+        this.json = json;
     }
 
     @Override
@@ -110,30 +117,86 @@ public class GateStage implements Stage {
                     "appliesBecause", "A hard check — it runs before anything is read",
                     "ruleRef", String.join(", ", gate.refs()),
                     "severity", gate.severity(), "refs", gate.refs(),
+                    // The rule goes on the plan row like any other check's. It was left off,
+                    // so the one check that ran first was the one the workbench could not
+                    // show the working for.
+                    "ruleDef", gate.rule(),
                     "status", "DONE", "ordinal", 0));
 
-            // Expiry is the gate the catalogue actually ships. Evaluated here rather than
-            // through the general SpEL path because a gate must not depend on anything the
-            // presentation has to be read for — including the rule engine's own inputs.
-            if (expiry != null && presented != null && presented.isAfter(expiry)) {
-                String statement = "PRESENTATION MADE ON " + presented + " AFTER CREDIT EXPIRY " + expiry + ".";
+            // Evaluated by the same engine as every other exact rule. This was written out
+            // longhand — an isAfter between two columns — with a comment saying it bypassed
+            // "the general SpEL path" because a gate must not depend on the presentation
+            // having been read. That constraint is real and it is upheld elsewhere: a gate
+            // qualifies only when every operand reads a document marked available before
+            // reading. It never needed a second implementation of comparison.
+            RuleEvaluator.Result result = rules.evaluate(parseRule(gate.rule()), readings(ctx));
+
+            if (result.failed()) {
+                String statement = statement(result, expiry, presented);
                 cases.upsertFinding(ctx.caseId(), Rows.of(
                         "id", "gate-" + gate.id(), "checkId", gate.id(),
                         "severity", "discrepancy", "area", "Time & availability", "areaId", "gate",
                         "docId", docTypes.scheduleCode(), "title", gate.title(),
                         "statement", statement, "statementSource", "derived",
+                        "detail", result.why(),
                         "expected", "Presented on or before " + expiry,
                         "quote", "Presented " + presented,
-                        "reason", "UCP 600 art. 6(e) — presentation must be made on or before expiry.",
+                        "reason", String.join(", ", gate.refs()),
+                        "failedRow", result.failedRowIndex(),
+                        "comparison", result.rows().stream().map(r -> Rows.of(
+                                "id", r.id(), "op", r.op(), "label", r.label(), "outcome", r.outcome().name(),
+                                "left", r.left(), "right", r.right(), "why", r.why())).toList(),
                         "creditAnchorId", "tag-31D",
                         "confidence", "HIGH"));
-                log.info("Case {} halted: presented {} after expiry {}", ctx.caseId(), presented, expiry);
+                log.info("Case {} halted at {}: {}", ctx.caseId(), gate.id(), result.why());
                 return StepResult.halted(gate.id(), statement);
             }
-            ctx.recordStep(gate.id(), Map.of("verdict", "PASS",
+
+            // A gate that could not be settled does not halt. It is a hard check with a
+            // missing operand — the covering schedule was not presented, most often — and
+            // stopping an examination on something nobody could read would be worse than
+            // letting it run and reporting what is missing.
+            if (result.outcome() == RuleEvaluator.Outcome.INCONCLUSIVE) {
+                log.info("Gate {} could not be settled on case {}: {}",
+                        gate.id(), ctx.caseId(), result.why());
+            }
+            ctx.recordStep(gate.id(), Map.of("verdict", result.outcome().name(),
                     "expiry", String.valueOf(expiry), "presented", String.valueOf(presented)));
         }
         return StepResult.ok(Map.of("gates", gates.size(), "verdict", "PASS"));
+    }
+
+    /**
+     * The refusal wording, which has to name dates rather than fields.
+     *
+     * <p>The evaluator's reason is written for the workbench — "Presentation date on the
+     * covering schedule 2026-08-02 is after Expiry date on the letter of credit 2026-07-30".
+     * A notice under UCP 600 art. 16 says the same thing in the register a bank sends, and
+     * the two are not the same sentence.
+     */
+    private String statement(RuleEvaluator.Result result, LocalDate expiry, LocalDate presented) {
+        if (expiry != null && presented != null) {
+            return "PRESENTATION MADE ON " + presented + " AFTER CREDIT EXPIRY " + expiry + ".";
+        }
+        return String.valueOf(result.why()).toUpperCase();
+    }
+
+    /** The case's facts, in the shape the evaluator asks for. Mapping happens here, at the
+     *  edge of the stage, so the engine never sees a persistence row. */
+    private List<RuleEvaluator.Fact> readings(StageContext ctx) {
+        return cases.facts(ctx.caseId()).stream()
+                .map(f -> new RuleEvaluator.Fact(f.fieldKey(), f.docCode(), f.label(), f.value()))
+                .toList();
+    }
+
+    private Object parseRule(Object rule) {
+        if (rule == null) return null;
+        try {
+            return rule instanceof String s ? json.readValue(s, Object.class) : rule;
+        } catch (Exception e) {
+            log.warn("Could not read the gate rule: {}", e.toString());
+            return null;
+        }
     }
 
     /**

@@ -14,6 +14,7 @@ import com.tb.helix.lccheck.persistence.CaseRow;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.Rows;
+import com.tb.helix.lccheck.rule.RuleEvaluator;
 import com.tb.helix.lccheck.service.DocumentTypes;
 import com.tb.helix.lccheck.pipeline.*;
 import com.tb.helix.lccheck.pipeline.StageContext;
@@ -45,15 +46,18 @@ public class ExecuteStage implements Stage {
     private final CheckCatalog catalog;
     private final CaseStore cases;
     private final DocumentTypes docTypes;
+    private final RuleEvaluator rules;
     private final LlmGateway models;
     private final DerivationCache cache;
     private final ObjectMapper json;
 
     public ExecuteStage(CheckCatalog catalog, CaseStore cases, DocumentTypes docTypes,
-                        LlmGateway models, DerivationCache cache, ObjectMapper json) {
+                        RuleEvaluator rules, LlmGateway models, DerivationCache cache,
+                        ObjectMapper json) {
         this.catalog = catalog;
         this.cases = cases;
         this.docTypes = docTypes;
+        this.rules = rules;
         this.models = models;
         this.cache = cache;
         this.json = json;
@@ -117,8 +121,12 @@ public class ExecuteStage implements Stage {
                 // indistinguishable from a stall.
                 ctx.announce("checks", check.name());
                 try {
-                    Map<String, Object> verdict = judge(check, factSheet, factDigest);
-                    raised += record(ctx, check, verdict) ? 1 : 0;
+                    // An exact check is settled by comparing what was read, not by asking a
+                    // model to compare it. That is the whole difference between the two
+                    // tiers, and until now it was a label on a card: every check went to the
+                    // same prompt, including "invoice value is at most credit amount".
+                    boolean attention = settle(ctx, check, factSheet, factDigest);
+                    raised += attention ? 1 : 0;
                     cases.setCheckStatus(ctx.caseId(), checkId, "DONE");
                 } catch (RuntimeException e) {
                     // One check that could not run must not lose the other eighteen — but it
@@ -133,6 +141,102 @@ public class ExecuteStage implements Stage {
 
         return StepResult.done(raised + (raised == 1 ? " finding" : " findings"),
                 Map.of("checks", plan.size(), "findings", raised));
+    }
+
+    /**
+     * Settles one check, by the cheapest means that can answer it.
+     *
+     * <p>An exact check is evaluated against the facts. Where the author asked something a
+     * comparison cannot answer — "does not conflict with" is UCP 600 art. 14(d) and is a
+     * reading, not a test — the check falls through to the judged path with the rule as its
+     * framing. Falling through is not a failure: the author expressed a judgement, so a
+     * judge makes it. What must not happen is a judgement being implemented as a string
+     * comparison and reported as deterministic.
+     *
+     * @return whether this produced something needing attention
+     */
+    private boolean settle(StageContext ctx, ReadRows.PlanCheck check,
+                           String factSheet, String factDigest) {
+        if (!"EXACT".equals(check.tier()) || check.ruleDef() == null) {
+            return record(ctx, check, judge(check, factSheet, factDigest));
+        }
+
+        RuleEvaluator.Result result = rules.evaluate(parseRule(check.ruleDef()), readings(ctx));
+        if (result.needsJudgement()) {
+            log.info("Check {} asks for a reading rather than a comparison — judging", check.checkId());
+            return record(ctx, check, judge(check, factSheet, factDigest));
+        }
+        return recordExact(ctx, check, result);
+    }
+
+    /**
+     * Writes what the comparison found.
+     *
+     * <p>The rows go on the finding whatever the outcome, because the officer is shown the
+     * comparison and not only its verdict — the point of an exact check is that the working
+     * is visible. {@code statementSource} is {@code derived}: nobody drafted this wording,
+     * it fell out of the values.
+     */
+    private boolean recordExact(StageContext ctx, ReadRows.PlanCheck check, RuleEvaluator.Result result) {
+        String checkId = check.checkId();
+        String severity = switch (result.outcome()) {
+            case FAIL -> "discrepancy";
+            case PASS -> "clean";
+            // Not "clean". A check that could not be run has not passed, and reporting it as
+            // clean is how an examination comes to claim it looked at something it did not.
+            case INCONCLUSIVE -> "manual";
+        };
+
+        var failure = result.firstFailure().orElse(null);
+        cases.upsertFinding(ctx.caseId(), Rows.of(
+                "id", "f-" + checkId.toLowerCase(),
+                "checkId", checkId,
+                "severity", severity,
+                "area", check.name(),
+                "areaId", check.areaId(),
+                "docId", failure == null ? null : docOf(failure),
+                "title", check.name(),
+                "statement", result.failed() ? result.why() : null,
+                "statementSource", "derived",
+                "detail", result.why(),
+                "expected", failure == null ? null : failure.label(),
+                "quote", failure == null ? null : failure.left(),
+                "reason", check.ruleRef(),
+                "failedRow", result.failedRowIndex(),
+                // Every row, so the officer sees the whole comparison rather than the one
+                // line that broke. This is what an exact check has that a judged one cannot.
+                "comparison", result.rows().stream().map(r -> Rows.of(
+                        "id", r.id(), "op", r.op(), "label", r.label(), "outcome", r.outcome().name(),
+                        "left", r.left(), "right", r.right(), "why", r.why())).toList(),
+                "confidence", result.outcome() == RuleEvaluator.Outcome.INCONCLUSIVE ? "LOW" : "HIGH"));
+
+        ctx.recordStep(checkId, Map.of("verdict", result.outcome().name().toLowerCase(), "exact", true));
+        ctx.emit(HelixEvent.FINDING, Map.of("findingId", "f-" + checkId.toLowerCase(), "severity", severity));
+        return !"clean".equals(severity);
+    }
+
+    /** Which document a failed comparison points at, for the viewer to open. */
+    private String docOf(RuleEvaluator.RowResult row) {
+        String label = row.label();
+        int at = label.indexOf(" on ");
+        return at < 0 ? null : label.substring(at + 4).split(" ")[0];
+    }
+
+    /** The case's facts, in the shape the evaluator asks for. Mapping happens here, at the
+     *  edge of the stage, so the engine never sees a persistence row. */
+    private List<RuleEvaluator.Fact> readings(StageContext ctx) {
+        return cases.facts(ctx.caseId()).stream()
+                .map(f -> new RuleEvaluator.Fact(f.fieldKey(), f.docCode(), f.label(), f.value()))
+                .toList();
+    }
+
+    private Object parseRule(String ruleDef) {
+        try {
+            return json.readValue(ruleDef, Object.class);
+        } catch (Exception e) {
+            log.warn("Could not read the rule definition: {}", e.toString());
+            return null;
+        }
     }
 
     private Map<String, Object> judge(ReadRows.PlanCheck check, String factSheet, String factDigest) {
