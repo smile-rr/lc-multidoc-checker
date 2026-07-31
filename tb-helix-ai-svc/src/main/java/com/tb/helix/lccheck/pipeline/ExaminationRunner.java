@@ -178,8 +178,4 @@ public class ExaminationRunner {
         cancelled.put(caseId, true);
     }
 
-    /** What the pipeline is, for anything that needs to show it rather than run it. */
-    public DocCheckPipeline pipeline() {
-        return pipeline;
-    }
 }

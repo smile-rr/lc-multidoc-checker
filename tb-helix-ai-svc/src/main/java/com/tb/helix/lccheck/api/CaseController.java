@@ -4,6 +4,7 @@ import com.tb.helix.infra.stream.EventStream;
 import com.tb.helix.lccheck.api.dto.DecisionRequest;
 import com.tb.helix.lccheck.api.dto.NewCheckRequest;
 import com.tb.helix.lccheck.api.dto.SignoffRequest;
+import com.tb.helix.lccheck.pipeline.DocCheckPipeline;
 import com.tb.helix.lccheck.pipeline.ExaminationRunner;
 import com.tb.helix.lccheck.service.CaseService;
 import com.tb.helix.lccheck.types.CaseDetail;
@@ -37,12 +38,19 @@ import java.util.Map;
 public class CaseController {
 
     private final CaseService cases;
-    private final ExaminationRunner pipeline;
+    private final DocCheckPipeline pipeline;
+    private final ExaminationRunner runner;
     private final EventStream stream;
 
-    public CaseController(CaseService cases, ExaminationRunner pipeline, EventStream stream) {
+    // Two collaborators, because they answer two questions. The pipeline is what an
+    // examination *is* — asked once, the same answer for every case. The runner is one case
+    // being examined. This used to reach the first through the second, which made them read
+    // like one thing with a spare accessor.
+    public CaseController(CaseService cases, DocCheckPipeline pipeline,
+                          ExaminationRunner runner, EventStream stream) {
         this.cases = cases;
         this.pipeline = pipeline;
+        this.runner = runner;
         this.stream = stream;
     }
 
@@ -54,7 +62,7 @@ public class CaseController {
      */
     @GetMapping("/pipeline")
     public List<Map<String, Object>> pipeline() {
-        return pipeline.pipeline().describe();
+        return pipeline.describe();
     }
 
     // --- Cases --------------------------------------------------------------
@@ -106,14 +114,14 @@ public class CaseController {
     @PostMapping("/cases/{ref}/stages/{stage}/run")
     public Map<String, Object> run(@PathVariable String ref, @PathVariable String stage,
                                    @RequestParam(defaultValue = "officer") String officerId) {
-        pipeline.runStage(cases.resolve(ref), cases.stage(stage), officerId);
+        runner.runStage(cases.resolve(ref), cases.stage(stage), officerId);
         return Map.of("started", stage);
     }
 
     @PostMapping("/cases/{ref}/stages/{stage}/rerun")
     public Map<String, Object> rerun(@PathVariable String ref, @PathVariable String stage,
                                      @RequestParam(defaultValue = "officer") String officerId) {
-        pipeline.rerunStage(cases.resolve(ref), cases.stage(stage), officerId);
+        runner.rerunStage(cases.resolve(ref), cases.stage(stage), officerId);
         return Map.of("rerunning", stage);
     }
 
@@ -150,7 +158,7 @@ public class CaseController {
     public Map<String, Object> signoff(@PathVariable String ref, @RequestBody SignoffRequest body,
                                        @RequestParam(defaultValue = "officer") String officerId) {
         String caseId = cases.signoff(ref, body.verdict(), body.note(), officerId);
-        pipeline.runStage(caseId, StageId.SIGNOFF, officerId);
+        runner.runStage(caseId, StageId.SIGNOFF, officerId);
         return Map.of("routedTo", cases.routedTo(caseId));
     }
 
