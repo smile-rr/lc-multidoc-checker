@@ -88,6 +88,11 @@ export async function getEvents(caseId, { after = 0 } = {}) {
   return api.get(`${base}/cases/${encodeURIComponent(caseId)}/events?after=${after}`)
 }
 
+/** What this case spent, per step and model. Priced by the service. */
+export async function getSpend(caseId) {
+  return api.get(`${base}/cases/${encodeURIComponent(caseId)}/spend`)
+}
+
 export async function getSpendSummary({ period = '30d' } = {}) {
   return api.get(`${base}/metrics/spend?period=${encodeURIComponent(period)}`)
 }

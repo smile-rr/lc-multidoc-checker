@@ -30,6 +30,7 @@ export const submitCase = pick(mock.submitCase, http.submitCase)
 export const runPipelineStep = pick(mock.runPipelineStep, http.runPipelineStep)
 export const watchCase = pick(mock.watchCase, http.watchCase)
 export const getEvents = pick(mock.getEvents, http.getEvents)
+export const getSpend = pick(mock.getSpend, http.getSpend)
 
 // Mock in both modes, and deliberately — the service has no endpoint behind
 // either yet, and routing them to a 404 would put a toast on the cases list every

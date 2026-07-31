@@ -17,6 +17,10 @@ const bySeq = (a, b) => (a.seq ?? 0) - (b.seq ?? 0)
 
 export default function useRunLog(caseId, active) {
   const [events, setEvents] = useState([])
+  // What each step spent. Fetched beside the tape rather than folded into it:
+  // an event says what happened, a ledger row says what it cost, and the two are
+  // written by different parts of the system at different moments.
+  const [spend, setSpend] = useState([])
   const [state, setState] = useState('idle')   // idle | loading | ready | failed
   const seen = useRef(new Set())
 
@@ -45,6 +49,10 @@ export default function useRunLog(caseId, active) {
       .then((rows) => { if (live) { absorb(rows ?? []); setState('ready') } })
       .catch(() => { if (live) setState('failed') })
 
+    // Best effort. A run log without costs is still a run log; a run log that
+    // refused to render because the ledger was unreachable would not be.
+    api.getSpend(caseId).then((rows) => { if (live) setSpend(rows ?? []) }).catch(() => {})
+
     // The stream carries the same rows. An event that arrives before the fetch
     // returns is kept, not raced away — `seen` is the only arbiter of what is new.
     const stop = api.watchCase(caseId, (event) => { if (live) absorb([event]) })
@@ -53,5 +61,5 @@ export default function useRunLog(caseId, active) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseId, active])
 
-  return { events, state }
+  return { events, spend, state }
 }

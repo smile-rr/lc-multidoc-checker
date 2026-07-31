@@ -110,6 +110,14 @@ helix:
       ttl: 24h
     l3:
       enabled: true
+      # Where durable derivation answers live.
+      #   DISK — JSON (+ optional .md) under disk-root (local default)
+      #   DB   — helix_infra.derivation (system / shared testing)
+      #   S3   — not yet
+      storage: ${HELIX_CACHE_L3_STORAGE:DISK}
+      disk-root: ${HELIX_CACHE_L3_DISK_ROOT:${user.home}/ws/tmp/var/derivation}
+      # When storage=DISK, also write <cache_key>.md with the raw model text.
+      write-md: ${HELIX_CACHE_L3_WRITE_MD:true}
       # Per-op TTL. Deterministic ops never expire — the answer cannot go stale
       # if nothing about it can change.
       #

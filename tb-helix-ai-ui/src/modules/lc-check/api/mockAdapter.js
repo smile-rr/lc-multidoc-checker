@@ -183,6 +183,17 @@ export async function peekCredit() {
  *
  * @returns {Promise<object>}
  */
+/** The fixture's ledger — one real call, the rest answered from cache. */
+export async function getSpend() {
+  await wait(LATENCY.read)
+  return [
+    { stage: 'intake', step: 'credit', modelId: 'qwen3.7-flash', family: 'qwen-flash', role: 'read_text',
+      kind: 'TEXT', calls: 1, cached: 0, failed: 0, tokensIn: 1718, tokensOut: 664, tokensCached: 0, ms: 4956, cost: 0.000351 },
+    { stage: 'interpret', step: 'segment', modelId: 'qwen3.7-flash', family: 'qwen-flash', role: 'segment',
+      kind: 'VISION', calls: 1, cached: 1, failed: 0, tokensIn: 0, tokensOut: 0, tokensCached: 0, ms: 0, cost: 0 },
+  ]
+}
+
 export async function getSpendSummary() {
   await wait(LATENCY.list)
   const cases = CASE_LIST.map((c) => ({

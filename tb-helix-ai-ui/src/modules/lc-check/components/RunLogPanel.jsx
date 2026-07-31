@@ -47,7 +47,19 @@ const STATUS = {
 const statusOf = (key) => STATUS[key] ?? STATUS.running
 
 export default function RunLogPanel({ open, onClose, caseId }) {
-  const { events, state } = useRunLog(caseId, open)
+  const { events, spend, state } = useRunLog(caseId, open)
+
+  // Ledger rows keyed the way a step is: an event and its cost are written by
+  // different parts of the system, and (stage, step) is the only thing both know.
+  const costs = new Map()
+  for (const row of spend) {
+    const k = `${row.stage}/${row.step}`
+    const at = costs.get(k) ?? { tokensIn: 0, tokensOut: 0, cost: 0, model: row.family || row.modelId }
+    at.tokensIn += row.tokensIn || 0
+    at.tokensOut += row.tokensOut || 0
+    at.cost += Number(row.cost) || 0
+    costs.set(k, at)
+  }
 
   // One clock for the whole panel, and only while something is actually running.
   // A per-row timer would be a dozen intervals redrawing a finished run forever.
@@ -98,7 +110,7 @@ export default function RunLogPanel({ open, onClose, caseId }) {
         </Note>
       ) : (
         <div style={{ padding: '4px 0 24px' }}>
-          {stages.map((stage) => <StageBand key={stage.key + stage.startedAt} stage={stage} />)}
+          {stages.map((stage) => <StageBand key={stage.key + stage.startedAt} stage={stage} costs={costs} />)}
         </div>
       )}
     </FloatingPanel>
@@ -109,7 +121,7 @@ export default function RunLogPanel({ open, onClose, caseId }) {
 //
 // A band with its own background, so the eye can find the boundary between two
 // stages without counting indentation.
-function StageBand({ stage }) {
+function StageBand({ stage, costs }) {
   const s = statusOf(stage.status)
   return (
     <section style={{ borderBottom: '1px solid var(--me-grey-15)' }}>
@@ -130,7 +142,7 @@ function StageBand({ stage }) {
       </header>
 
       <div style={{ padding: '2px 0 8px' }}>
-        {stage.steps.map((step, i) => <StepRow key={`${step.key}-${i}`} step={step} />)}
+        {stage.steps.map((step, i) => <StepRow key={`${step.key}-${i}`} step={step} cost={costs.get(`${stage.key}/${step.key}`)} />)}
         {/* Stage-level events — the halt, the hand-back — sit under its steps
             rather than inside one, because they are not any step's doing. */}
         {stage.events.map((ev) => <EventRow key={ev.seq} event={ev} inset={20} />)}
@@ -146,7 +158,7 @@ function StageBand({ stage }) {
 //
 // A rule down the left says "inside the stage above" without an indent guessing
 // game, and gives the running state something to colour.
-function StepRow({ step }) {
+function StepRow({ step, cost }) {
   const s = statusOf(step.status)
   return (
     <div style={{ margin: '0 20px', borderLeft: `2px solid ${step.status === 'running' ? s.color : 'var(--me-grey-15)'}`, paddingLeft: 12 }}>
@@ -164,6 +176,14 @@ function StepRow({ step }) {
           <Badge tone={s.tone}>{s.label}</Badge>
         )}
         <span style={{ flex: 1 }} />
+        {/* What the step spent, where the step is — a total in a drawer answers
+            "what did this run cost" and never "which step cost it". */}
+        {cost && (cost.tokensIn > 0 || cost.cost > 0) && (
+          <span title={`${cost.model} · ${cost.tokensIn} in, ${cost.tokensOut} out`}
+                style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: LOG_INK.detail, flexShrink: 0 }}>
+            {cost.tokensIn}↓ {cost.tokensOut}↑ {usdCents(cost.cost)}
+          </span>
+        )}
         <Clock at={step.startedAt} ms={step.ms} running={step.status === 'running'} />
       </div>
       {step.events.map((ev) => <EventRow key={ev.seq} event={ev} />)}
@@ -217,6 +237,12 @@ function Clock({ at, ms, running, strong }) {
       </span>
     </span>
   )
+}
+
+/** Sub-cent costs are the normal case, so two decimals would read as zero. */
+function usdCents(n) {
+  if (!n) return '$0'
+  return n < 0.01 ? `$${n.toFixed(5)}` : `$${n.toFixed(2)}`
 }
 
 const Note = ({ children }) => (

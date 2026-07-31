@@ -4,7 +4,9 @@ import com.tb.helix.infra.cache.CacheOp;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -21,7 +23,7 @@ public record CacheProperties(L1 l1, L2 l2, L3 l3) {
     public CacheProperties {
         l1 = l1 == null ? new L1(true, 512, Duration.ofMinutes(10)) : l1;
         l2 = l2 == null ? new L2(false, "localhost", 6379, "", Duration.ofHours(24)) : l2;
-        l3 = l3 == null ? new L3(true, Map.of(), "0 30 3 * * *") : l3;
+        l3 = l3 == null ? L3.defaults() : l3;
     }
 
     /**
@@ -38,22 +40,52 @@ public record CacheProperties(L1 l1, L2 l2, L3 l3) {
     }
 
     /**
-     * Durable — Postgres for structured answers, the blob store for byte-valued ones.
+     * Durable L3 — Postgres or a browsable disk tree.
      *
-     * @param ttl per-op overrides keyed by {@link CacheOp} name. A value of zero means
-     *            never expire, which is right for anything deterministic: the answer to
-     *            "what is the PDF of this TIFF" cannot go stale, because nothing about
-     *            the question can change.
+     * @param storage   {@code DB} (system testing) or {@code DISK} (local). S3 later.
+     * @param diskRoot  when {@code DISK}: where JSON (/optional MD) files live
+     * @param writeMd   when {@code DISK}: also write {@code .md} with the raw model text
+     * @param ttl       per-op overrides keyed by {@link CacheOp} name. Zero means never
+     *                  expire — right for deterministic ops.
      */
-    public record L3(boolean enabled, Map<String, Duration> ttl, String purgeCron) {
+    public record L3(
+            boolean enabled,
+            String storage,
+            String diskRoot,
+            boolean writeMd,
+            Map<String, Duration> ttl,
+            String purgeCron) {
 
         private static final Duration FALLBACK = Duration.ofDays(90);
+
+        static L3 defaults() {
+            return new L3(true, "DISK", defaultDiskRoot(), true, Map.of(), "0 30 3 * * *");
+        }
+
+        public L3 {
+            storage = storage == null || storage.isBlank() ? "DISK" : storage.trim().toUpperCase(Locale.ROOT);
+            diskRoot = diskRoot == null || diskRoot.isBlank() ? defaultDiskRoot() : diskRoot;
+            purgeCron = purgeCron == null || purgeCron.isBlank() ? "0 30 3 * * *" : purgeCron;
+            ttl = ttl == null ? Map.of() : ttl;
+        }
+
+        public boolean disk() {
+            return "DISK".equals(storage);
+        }
+
+        public boolean db() {
+            return !disk();
+        }
 
         /** The TTL for an op: its own, else the configured default, else 90 days. */
         public Duration ttlFor(String op) {
             Duration d = ttl.get(op);
             if (d == null) d = ttl.get("default");
             return d == null ? FALLBACK : d;
+        }
+
+        private static String defaultDiskRoot() {
+            return Path.of(System.getProperty("user.home"), "ws", "tmp", "var", "derivation").toString();
         }
     }
 }

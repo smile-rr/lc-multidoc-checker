@@ -58,7 +58,7 @@ public class PgModelCallLog implements ModelCallLog {
     @Override
     public List<Map<String, Object>> spendForCase(String caseId) {
         List<Map<String, Object>> rows = jdbc.query("""
-                SELECT model_id, family, role, kind,
+                SELECT stage, step, model_id, family, role, kind,
                        COUNT(*)                                        AS calls,
                        COUNT(*) FILTER (WHERE status = 'CACHED')       AS cached,
                        COUNT(*) FILTER (WHERE status IN ('FAILED', 'TIMEOUT')) AS failed,
@@ -68,10 +68,15 @@ public class PgModelCallLog implements ModelCallLog {
                        COALESCE(SUM(latency_ms), 0)                    AS ms
                   FROM helix_infra.model_call
                  WHERE case_id = ?::uuid
-                 GROUP BY model_id, family, role, kind
+                 GROUP BY stage, step, model_id, family, role, kind
                  ORDER BY ms DESC
                 """, (rs, i) -> {
             Map<String, Object> r = new java.util.LinkedHashMap<>();
+            // Grouped by step as well as by model, because "what did this run spend"
+            // and "which step spent it" are the same question asked at two depths, and
+            // a total with no step attached cannot answer the second.
+            r.put("stage", rs.getString("stage"));
+            r.put("step", rs.getString("step"));
             r.put("modelId", rs.getString("model_id"));
             r.put("family", rs.getString("family"));
             r.put("role", rs.getString("role"));

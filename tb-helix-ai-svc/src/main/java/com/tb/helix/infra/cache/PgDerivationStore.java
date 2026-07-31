@@ -5,6 +5,7 @@ import com.tb.helix.infra.config.CacheProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -17,8 +18,6 @@ import java.util.Optional;
  * <p>Postgres rather than the filesystem for structured results, because everything this
  * needs is already there: TTL as a column and a sweep, hit counting, indexed lookup by
  * {@code (op, input_sha)}, and transactional consistency with the case rows that cite it.
- * On disk each of those is something to hand-build, and the GC would be the third one
- * written in this codebase.
  *
  * <p>Byte-valued answers — a converted PDF, a page render — go the other way: their bytes
  * live in the blob store and {@code result_blob_sha} points at them. A megabyte in a row
@@ -28,7 +27,8 @@ import java.util.Optional;
  * and must never be able to fail an examination.
  */
 @Component
-public class PgDerivationStore {
+@ConditionalOnProperty(name = "helix.cache.l3.storage", havingValue = "DB")
+public class PgDerivationStore implements DerivationStore {
 
     private static final Logger log = LoggerFactory.getLogger(PgDerivationStore.class);
 
@@ -40,23 +40,15 @@ public class PgDerivationStore {
         this.jdbc = jdbc;
         this.json = json;
         this.cfg = props.l3();
+        log.info("L3 derivation store: Postgres (helix_infra.derivation)");
     }
 
+    @Override
     public boolean enabled() {
         return cfg.enabled();
     }
 
-    /** One stored answer, before it is decoded to the caller's type. */
-    public record Row(String resultJson, String blobSha, int hitCount) {
-    }
-
-    /**
-     * Looks up an answer and counts the hit.
-     *
-     * <p>The hit count is bumped in the same statement that reads, so concurrent readers
-     * cannot lose an increment — and it is what tells you, later, which cached answers are
-     * actually earning their storage.
-     */
+    @Override
     public Optional<Row> lookup(String cacheKey) {
         if (!cfg.enabled()) return Optional.empty();
         try {
@@ -75,7 +67,7 @@ public class PgDerivationStore {
         }
     }
 
-    /** Stores an answer. Overwrites any existing entry for the same key. */
+    @Override
     public void store(DerivationKey key, Object value, String blobSha,
                       String rawResponse, DerivationCache.Usage usage) {
         if (!cfg.enabled()) return;
@@ -116,6 +108,7 @@ public class PgDerivationStore {
         }
     }
 
+    @Override
     public <T> Optional<T> decode(String resultJson, Class<T> type) {
         if (resultJson == null) return Optional.empty();
         try {
@@ -130,6 +123,7 @@ public class PgDerivationStore {
         }
     }
 
+    @Override
     public int purgeExpired() {
         try {
             return jdbc.update("DELETE FROM helix_infra.derivation WHERE expires_at IS NOT NULL AND expires_at <= NOW()");

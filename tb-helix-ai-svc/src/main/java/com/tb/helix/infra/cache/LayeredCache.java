@@ -34,11 +34,11 @@ public class LayeredCache implements DerivationCache {
     private static final Logger log = LoggerFactory.getLogger(LayeredCache.class);
 
     private final List<CacheTier> tiers;
-    private final PgDerivationStore l3;
+    private final DerivationStore l3;
     private final ObjectMapper json;
     private final ModelCallLog calls;
 
-    public LayeredCache(List<CacheTier> tiers, PgDerivationStore l3, ObjectMapper json, ModelCallLog calls) {
+    public LayeredCache(List<CacheTier> tiers, DerivationStore l3, ObjectMapper json, ModelCallLog calls) {
         // Ordered by level so the walk is cheapest-first regardless of bean discovery order.
         this.tiers = tiers.stream()
                 .filter(CacheTier::enabled)
@@ -47,7 +47,8 @@ public class LayeredCache implements DerivationCache {
         this.l3 = l3;
         this.json = json;
         this.calls = calls;
-        log.info("Cache tiers active: {}", this.tiers.stream().map(t -> t.level().name()).toList());
+        log.info("Cache tiers active: {}; L3={}", this.tiers.stream().map(t -> t.level().name()).toList(),
+                l3.getClass().getSimpleName());
     }
 
     @Override
@@ -69,7 +70,7 @@ public class LayeredCache implements DerivationCache {
             }
         }
 
-        Optional<PgDerivationStore.Row> row = l3.lookup(k);
+        Optional<DerivationStore.Row> row = l3.lookup(k);
         if (row.isEmpty()) return Optional.empty();
 
         Optional<T> value = l3.decode(row.get().resultJson(), type);
