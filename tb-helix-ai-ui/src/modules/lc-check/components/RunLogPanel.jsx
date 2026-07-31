@@ -82,7 +82,11 @@ export default function RunLogPanel({ open, onClose, caseId }) {
       onClose={onClose}
       title="Run log"
       status={status}
-      width={620}
+      width={640}
+      // A history is a list, and a list wants length. Six documents read is nine
+      // rows before the stage above it is even on screen — so it opens tall, and
+      // the corner resizes it from there.
+      height={620}
     >
       {state === 'failed' ? (
         <Note>The event log could not be loaded. The examination is unaffected — this panel reads a record of it.</Note>
