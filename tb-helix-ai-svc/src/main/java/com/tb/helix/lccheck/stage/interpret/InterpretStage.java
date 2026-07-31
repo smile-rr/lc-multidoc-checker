@@ -191,9 +191,15 @@ public class InterpretStage implements Stage {
                 }
             }
         }
-        // A page the model did not mention is not silently dropped — it becomes UNKNOWN,
-        // which the officer can see and reclassify. A missing page is invisible.
-        for (int p = 1; p <= pageCount; p++) out.putIfAbsent(p, DocumentTypes.UNKNOWN);
+        // A page the model skipped is not dropped. Prefer the previous page's type —
+        // the usual miss is a continuation sheet — over inventing UNKNOWN, which the
+        // officer then has to reclassify by hand. Only the first page, or a gap after
+        // an already-unknown page, stays UNKNOWN.
+        for (int p = 1; p <= pageCount; p++) {
+            if (out.containsKey(p)) continue;
+            String prev = p > 1 ? out.get(p - 1) : null;
+            out.put(p, prev != null && !DocumentTypes.UNKNOWN.equals(prev) ? prev : DocumentTypes.UNKNOWN);
+        }
         return out;
     }
 
@@ -201,8 +207,18 @@ public class InterpretStage implements Stage {
         Map<String, List<Integer>> grouped = new LinkedHashMap<>();
         byPage.forEach((page, code) -> grouped.computeIfAbsent(code, k -> new ArrayList<>()).add(page));
 
+        // Identified documents keep first-seen order; Unidentified always last so the
+        // rail reads as the presentation, then the leftovers.
+        List<Map.Entry<String, List<Integer>>> ordered = new ArrayList<>(grouped.entrySet());
+        ordered.sort((a, b) -> {
+            boolean ua = DocumentTypes.UNKNOWN.equals(a.getKey());
+            boolean ub = DocumentTypes.UNKNOWN.equals(b.getKey());
+            if (ua == ub) return 0;
+            return ua ? 1 : -1;
+        });
+
         int ordinal = 1;
-        for (var entry : grouped.entrySet()) {
+        for (var entry : ordered) {
             String code = entry.getKey();
             List<Integer> pages = entry.getValue().stream().sorted().toList();
             cases.upsertDocument(ctx.caseId(), code, Rows.of(

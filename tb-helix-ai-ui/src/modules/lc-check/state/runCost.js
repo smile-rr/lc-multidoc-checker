@@ -207,6 +207,8 @@ export function summariseLedger(spend = [], pageCount = 0) {
       ms: 0,
       cost: 0,
       costAvoided: 0,
+      // Earliest attempt across every fan-out / model that rolled into this step.
+      firstAt: null,
     }
     at.calls += r.calls || 0
     at.cached += r.cached || 0
@@ -219,6 +221,7 @@ export function summariseLedger(spend = [], pageCount = 0) {
     at.ms += r.ms || 0
     at.cost += Number(r.cost) || 0
     at.costAvoided += Number(r.costAvoided) || 0
+    if (r.firstAt && (!at.firstAt || r.firstAt < at.firstAt)) at.firstAt = r.firstAt
     if (!at.modelId && r.modelId) {
       at.modelId = r.modelId
       at.family = r.family
@@ -226,12 +229,21 @@ export function summariseLedger(spend = [], pageCount = 0) {
     rolled.set(id, at)
   }
 
+  // Time order when the ledger carried it; otherwise pipeline stage order, then
+  // declared step order within a stage (not A–Z — extract would beat segment).
   const STAGE_ORDER = ['intake', 'interpret', 'gate', 'plan', 'execute', 'signoff']
+  const STEP_ORDER = ['store', 'credit', 'segment', 'extract', 'gate', 'requirements', 'facts', 'judge']
   const rows = [...rolled.values()]
     .sort((a, b) => {
+      if (a.firstAt && b.firstAt && a.firstAt !== b.firstAt) {
+        return a.firstAt < b.firstAt ? -1 : 1
+      }
       const sa = STAGE_ORDER.indexOf(a.stage)
       const sb = STAGE_ORDER.indexOf(b.stage)
       if (sa !== sb) return (sa < 0 ? 99 : sa) - (sb < 0 ? 99 : sb)
+      const ta = STEP_ORDER.indexOf(a.step)
+      const tb = STEP_ORDER.indexOf(b.step)
+      if (ta !== tb) return (ta < 0 ? 99 : ta) - (tb < 0 ? 99 : tb)
       return String(a.step).localeCompare(String(b.step))
     })
     .map((r) => {

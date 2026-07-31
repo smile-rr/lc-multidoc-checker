@@ -75,7 +75,7 @@ public class CaseAssembler {
                 pages, nz(d.extractionMode()),
                 d.lowConfidence(), d.scanNote(),
                 nz(d.docTypeLabel()),
-                pages.isEmpty() ? "" : "bundle pages " + pages.get(0) + "–" + pages.get(pages.size() - 1),
+                pages.isEmpty() ? "" : "bundle pages " + String.join(", ", pages.stream().map(String::valueOf).toList()),
                 isCredit ? creditLines : List.of(),
                 List.of(),
                 d.layoutMd());
@@ -99,7 +99,13 @@ public class CaseAssembler {
                 Origin.of(c.origin()).wire(),
                 c.isGate(),
                 nz(c.citedAs()), c.checkType(), c.executionPlan(),
-                Map.of("severity", nz(c.severity()), "rule", nz(c.name())));
+                // The citations were being dropped here. `lc_plan_check.refs` holds them —
+                // UCP600 Art.6, Art.14, Art.29 for the expiry gate — and the card that shows
+                // a check's authority was rendering "no article recorded" for every check in
+                // the system, because this map never carried them.
+                Map.of("severity", nz(c.severity()),
+                        "rule", nz(c.name()),
+                        "refs", c.refs() == null ? List.of() : c.refs()));
     }
 
     public FindingView finding(ReadRows.Finding f) {

@@ -188,9 +188,11 @@ export async function getSpend() {
   await wait(LATENCY.read)
   return [
     { stage: 'intake', step: 'credit', modelId: 'qwen3.7-flash', family: 'qwen-flash', role: 'read_text',
-      kind: 'TEXT', calls: 1, cached: 0, failed: 0, tokensIn: 1718, tokensOut: 664, tokensCached: 0, ms: 4956, cost: 0.000351 },
+      kind: 'TEXT', calls: 1, cached: 0, failed: 0, tokensIn: 1718, tokensOut: 664, tokensCached: 0, ms: 4956, cost: 0.000351,
+      firstAt: '2025-01-28T10:00:01.000Z' },
     { stage: 'interpret', step: 'segment', modelId: 'qwen3.7-flash', family: 'qwen-flash', role: 'segment',
-      kind: 'VISION', calls: 1, cached: 1, failed: 0, tokensIn: 0, tokensOut: 0, tokensCached: 0, ms: 0, cost: 0 },
+      kind: 'VISION', calls: 1, cached: 1, failed: 0, tokensIn: 0, tokensOut: 0, tokensCached: 0, ms: 0, cost: 0,
+      firstAt: '2025-01-28T10:00:10.000Z' },
   ]
 }
 

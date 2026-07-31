@@ -40,7 +40,13 @@ const STATUS_TONE = { done: 'green', running: 'blue', skipped: 'neutral', planne
  */
 export default function CheckSpecCard({ check, status, finding, onOpenFinding }) {
   const [tab, setTab] = useState('rule')
-  const spec = check.spec
+  // Normalised once, because `spec` is a map the service assembles and not every
+  // check has every key — a gate carries a severity and a rule and nothing else.
+  // Reading `spec.refs.length` off one of those threw, and a thrown render is a
+  // white screen: the officer clicked a hard check and the workbench vanished.
+  // Absent detail must render as absent detail.
+  const spec = check.spec ?? {}
+  const refs = spec.refs ?? []
   const sevTone = toneOf(SEVERITY_TONE[spec.severity] ?? 'neutral')
   // A rule carries its rows and its resolved operands; a requirement carries a
   // compiled prompt. Which one this is decides what the card can honestly show.
@@ -71,11 +77,11 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
         </h3>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 12, color: 'var(--me-grey-70)' }}>
-          <span>{spec.agent} agent</span>
-          {spec.refs.length ? (
+          {spec.agent ? <span>{spec.agent} agent</span> : null}
+          {refs.length ? (
             <>
-              <span>·</span>
-              {spec.refs.map((r) => (
+              {spec.agent ? <span>·</span> : null}
+              {refs.map((r) => (
                 <span key={r} style={{ fontFamily: 'var(--font-mono)', fontSize: 11, padding: '1px 6px', borderRadius: 4, background: 'var(--me-grey-08)', color: 'var(--me-blue-deep)' }}>
                   {r}
                 </span>
@@ -129,7 +135,7 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 13, color: 'var(--me-ink)' }}>
                 <Icon name={src.icon} size={14} color={src.color} />
                 {src.label}
-                <span style={{ color: 'var(--me-grey-70)' }}>· {spec.refs.join(', ') || 'no article recorded'}</span>
+                <span style={{ color: 'var(--me-grey-70)' }}>· {refs.join(', ') || 'no article recorded'}</span>
               </span>
             </Field>
             <Field label="Trigger">
@@ -213,12 +219,23 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
             <span style={{ fontSize: 12.5, lineHeight: 1.6, color: 'var(--me-grey-70)' }}>
               The request that executes this check, verbatim — not a description of it.
             </span>
-            <MarkdownDoc
-              text={check.executionPlan}
-              label="Model Request"
-              meta={`markdown · ${check.executionPlan.split('\n').length} lines`}
-              maxHeight={520}
-            />
+            {/* A check with no compiled prompt is not a broken card. A gate is
+                evaluated in code and never asks a model anything, so there is no
+                request to show — and `null.split` here was the second way this
+                tab took the screen down. */}
+            {check.executionPlan ? (
+              <MarkdownDoc
+                text={check.executionPlan}
+                label="Model Request"
+                meta={`markdown · ${check.executionPlan.split('\n').length} lines`}
+                maxHeight={520}
+              />
+            ) : (
+              <span style={{ fontSize: 12.5, lineHeight: 1.6, color: 'var(--me-grey-70)' }}>
+                Nothing is sent. This check is settled in code, on the credit and the
+                presentation record alone.
+              </span>
+            )}
           </div>
         ) : null}
 

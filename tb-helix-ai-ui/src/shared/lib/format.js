@@ -82,3 +82,29 @@ export const pageRange = (range) => {
   const [from, to] = range
   return from === to ? `p.${from}` : `p.${from}–${to}`
 }
+
+/**
+ * Exact pages as a list: 'p.4' or 'p.2, 3, 8'.
+ *
+ * Always page numbers — never a min–max span. A non-contiguous segment like
+ * [2, 3, 8] must not read as 'p.2–8'. When the list is long, the visible label
+ * truncates and `title` holds every page for a native tooltip.
+ *
+ * @param {number[]|null|undefined} pages
+ * @param {number[]|null|undefined} [rangeFallback] used only when `pages` is empty
+ * @param {{ max?: number }} [opts]
+ * @returns {{ text: string, title?: string }}
+ */
+export const pageList = (pages, rangeFallback, { max = 6 } = {}) => {
+  const list = Array.isArray(pages) && pages.length
+    ? [...pages].filter((n) => Number.isFinite(n)).sort((a, b) => a - b)
+    : null
+  if (!list?.length) {
+    const text = pageRange(rangeFallback)
+    return text ? { text } : { text: '' }
+  }
+  const full = `p.${list.join(', ')}`
+  if (list.length <= max) return { text: full }
+  const shown = list.slice(0, max - 1)
+  return { text: `p.${shown.join(', ')}, …`, title: full }
+}

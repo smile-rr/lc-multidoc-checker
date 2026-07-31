@@ -4,7 +4,7 @@ import PageStrip from '@shared/ds/PageStrip'
 import ResizeHandle from '@shared/ds/ResizeHandle'
 import DocumentSurface, { usePageBar } from '@shared/ds/DocumentSurface'
 import Icon from '@shared/ds/Icon'
-import { pageRange } from '@shared/lib/format'
+import { pageList } from '@shared/lib/format'
 import DocRail from '../components/DocRail'
 import BundleViewer from '../components/BundleViewer'
 import Mt700TextViewer from '../components/Mt700TextViewer'
@@ -48,6 +48,7 @@ export default function InterpretScreen() {
   const shownDoc = isCredit ? selected : data.documents.find((d) => d.id === pageDoc) ?? selected
 
   const facts = data.facts.filter((f) => f.docId === shownDoc.id)
+  const shownPages = pageList(shownDoc.pages, shownDoc.pageRange)
 
   const selectDoc = (id) => {
     setSelectedId(id)
@@ -83,8 +84,11 @@ export default function InterpretScreen() {
                 <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)', ...ellipsis }}>
                   {shownDoc.docType}
                 </span>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)', whiteSpace: 'nowrap' }}>
-                  {isCredit ? shownDoc.fileName : `${shownDoc.fileName} · ${pageRange(shownDoc.pageRange)}`}
+                <span
+                  title={!isCredit ? shownPages.title : undefined}
+                  style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)', whiteSpace: 'nowrap' }}
+                >
+                  {isCredit ? shownDoc.fileName : `${shownDoc.fileName} · ${shownPages.text}`}
                 </span>
                 {shownDoc.lowConfidence ? (
                   <span title="Part of this document was hard to read" style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: '#946400', whiteSpace: 'nowrap' }}>
@@ -125,7 +129,8 @@ export default function InterpretScreen() {
         <div style={{ width: panelWidth, flex: `0 0 ${panelWidth}px`, minHeight: 0 }}>
           <FactsPanel
             title={isCredit ? 'letter of credit' : shownDoc.docType}
-            meta={isCredit ? 'parsed by SWIFT tag' : `read from ${pageRange(shownDoc.pageRange)}`}
+            meta={isCredit ? 'parsed by SWIFT tag' : `read from ${shownPages.text}`}
+            metaTitle={isCredit ? undefined : shownPages.title}
             facts={facts}
             layoutMd={isCredit ? null : shownDoc.layoutMd}
             hoverAnchor={hoverAnchor}

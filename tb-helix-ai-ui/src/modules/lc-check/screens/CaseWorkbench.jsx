@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Toast from '@shared/ds/Toast'
+import ErrorBoundary from '@shared/ds/ErrorBoundary'
 import { plural } from '@shared/lib/format'
 import CaseHeader from '../components/CaseHeader'
 import AskDrawer from '../components/AskDrawer'
@@ -211,15 +212,23 @@ function WorkbenchBody() {
       />
 
       {/* The stage area. Each screen is a flex column that fills this and owns its
-          own scrolling — see `components/paneHeight`. */}
+          own scrolling — see `components/paneHeight`.
+
+          Bounded by an error boundary, because everything below this line renders
+          service-shaped data and a field that turns out to be absent used to throw,
+          unmount the whole tree and leave a white screen — the officer's case gone,
+          with nothing on it to report. Keyed on the stage so moving away and back
+          clears a failure instead of latching it. */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        {activeStage === 'intake' ? <IntakeScreen /> : null}
-        {activeStage === 'interpret' ? <InterpretScreen /> : null}
-        {activeStage === 'checks' ? <ChecksScreen onOpenFinding={openFinding} /> : null}
-        {activeStage === 'review' ? (
-          <ReviewScreen selectedId={selectedFindingId} onSelect={setSelectedFindingId} onJumpToInterpret={jumpToInterpret} />
-        ) : null}
-        {activeStage === 'decide' ? <DecisionScreen onOpenFinding={openFinding} /> : null}
+        <ErrorBoundary label={`The ${activeStage} stage`} resetKey={`${caseId}:${activeStage}`}>
+          {activeStage === 'intake' ? <IntakeScreen /> : null}
+          {activeStage === 'interpret' ? <InterpretScreen /> : null}
+          {activeStage === 'checks' ? <ChecksScreen onOpenFinding={openFinding} /> : null}
+          {activeStage === 'review' ? (
+            <ReviewScreen selectedId={selectedFindingId} onSelect={setSelectedFindingId} onJumpToInterpret={jumpToInterpret} />
+          ) : null}
+          {activeStage === 'decide' ? <DecisionScreen onOpenFinding={openFinding} /> : null}
+        </ErrorBoundary>
       </div>
 
       <AskDrawer

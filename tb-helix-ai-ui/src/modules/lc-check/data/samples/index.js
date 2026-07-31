@@ -32,8 +32,18 @@ const SEGMENTS = [
   { code: 'WC', pages: [6] },
 ]
 
+/** Case 02: image-only deal with blank trailing pages on INV / PKL / BC. */
+const SEGMENTS_02 = [
+  { code: 'INV', pages: [1, 2] },
+  { code: 'BOL', pages: [3] },
+  { code: 'PKL', pages: [4, 5] },
+  { code: 'BOE', pages: [6] },
+  { code: 'BC', pages: [7, 8] },
+  { code: 'WC', pages: [9] },
+]
+
 export const SAMPLES = {
   '01': { id: '01', lcText: lc01, pdfUrl: '/samples/deal-01.pdf', totalPages: 6, segments: SEGMENTS },
-  '02': { id: '02', lcText: lc02, pdfUrl: '/samples/deal-02.pdf', totalPages: 6, segments: SEGMENTS },
+  '02': { id: '02', lcText: lc02, pdfUrl: '/samples/deal-02.pdf', totalPages: 9, segments: SEGMENTS_02 },
   '03': { id: '03', lcText: lc03, pdfUrl: '/samples/deal-03.pdf', totalPages: 6, segments: SEGMENTS },
 }

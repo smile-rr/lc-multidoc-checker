@@ -1,6 +1,6 @@
 import { cardSurface } from '@shared/ds/Card'
 import Eyebrow from '@shared/ds/Eyebrow'
-import { pageRange } from '@shared/lib/format'
+import { pageList } from '@shared/lib/format'
 
 // The document rail: the credit at the top, then whatever intake carved out of
 // the bundle. Rows appear as segmentation finds them, with skeletons standing in
@@ -13,7 +13,12 @@ import { pageRange } from '@shared/lib/format'
 // the type disappeared into its own metadata.
 export default function DocRail({ documents, selectedId, onSelect, segmented, segmentTotal, segmentNote }) {
   const credit = documents.filter((d) => d.role === 'credit')
-  const presented = documents.filter((d) => d.role === 'presented')
+  // Unidentified last — leftovers after the documents the officer can work.
+  // Backend ordinal usually already does this; sorting here covers older cases.
+  const presented = documents
+    .filter((d) => d.role === 'presented')
+    .slice()
+    .sort((a, b) => Number(a.id === 'UNKNOWN') - Number(b.id === 'UNKNOWN'))
   const found = presented.slice(0, segmented)
   const pending = Math.max(0, segmentTotal - segmented)
 
@@ -26,15 +31,20 @@ export default function DocRail({ documents, selectedId, onSelect, segmented, se
       </Group>
 
       <Group label="Presented Documents" count={`${segmented} of ${segmentTotal}`}>
-        {found.map((d) => (
-          <Row
-            key={d.id}
-            doc={d}
-            sub={`${pageRange(d.pageRange)} · ${d.reference}`}
-            on={d.id === selectedId}
-            onClick={() => onSelect(d.id)}
-          />
-        ))}
+        {found.map((d) => {
+          const pages = pageList(d.pages, d.pageRange)
+          const sub = d.reference ? `${pages.text} · ${d.reference}` : pages.text
+          return (
+            <Row
+              key={d.id}
+              doc={d}
+              sub={sub}
+              subTitle={pages.title}
+              on={d.id === selectedId}
+              onClick={() => onSelect(d.id)}
+            />
+          )
+        })}
       </Group>
 
       {pending > 0 ? (
@@ -64,7 +74,7 @@ function Group({ label, count, children }) {
   )
 }
 
-function Row({ doc, sub, on, onClick }) {
+function Row({ doc, sub, subTitle, on, onClick }) {
   return (
     <button
       onClick={onClick}
@@ -118,8 +128,9 @@ function Row({ doc, sub, on, onClick }) {
         >
           {doc.docType}
         </span>
-        {/* Supporting detail: mono, smaller, grey. */}
+        {/* Supporting detail: mono, smaller, grey. title = full page list when truncated. */}
         <span
+          title={subTitle || undefined}
           style={{
             fontFamily: 'var(--font-mono)',
             fontSize: 10.5,

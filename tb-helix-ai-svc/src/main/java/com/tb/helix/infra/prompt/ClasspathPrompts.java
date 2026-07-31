@@ -6,21 +6,21 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
  * Prompts read from {@code resources/prompts/<name>.md}.
  *
- * <p>Loaded once and held. They are on the hot path of every case, and a prompt that changed
- * between two runs of the same stage would break the cache key's promise that identical
- * inputs give identical answers — so a change takes a restart, deliberately.
+ * <p>Read on every {@link #get}, not held for the life of the process. The filled text is
+ * hashed into the derivation-cache key ({@code promptSha}): serving a stale template after
+ * an edit keeps the old hash, hits the old answer, and looks exactly like "the cache key
+ * ignores the prompt". A .md file is a few kilobytes; re-reading it is free next to the
+ * model call it gates.
  */
 @Component
 public class ClasspathPrompts implements Prompts {
 
     private final ResourceLoader resources;
-    private final Map<String, String> cache = new LinkedHashMap<>();
 
     public ClasspathPrompts(ResourceLoader resources) {
         this.resources = resources;
@@ -35,18 +35,16 @@ public class ClasspathPrompts implements Prompts {
      *                               deployment.
      */
     @Override
-    public synchronized String get(String name) {
-        return cache.computeIfAbsent(name, n -> {
-            Resource resource = resources.getResource("classpath:prompts/" + n + ".md");
-            if (!resource.exists()) {
-                throw new IllegalStateException("No prompt at prompts/" + n + ".md");
-            }
-            try (var in = resource.getInputStream()) {
-                return new String(in.readAllBytes(), StandardCharsets.UTF_8).strip();
-            } catch (IOException e) {
-                throw new IllegalStateException("Could not read prompts/" + n + ".md", e);
-            }
-        });
+    public String get(String name) {
+        Resource resource = resources.getResource("classpath:prompts/" + name + ".md");
+        if (!resource.exists()) {
+            throw new IllegalStateException("No prompt at prompts/" + name + ".md");
+        }
+        try (var in = resource.getInputStream()) {
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8).strip();
+        } catch (IOException e) {
+            throw new IllegalStateException("Could not read prompts/" + name + ".md", e);
+        }
     }
 
     /**

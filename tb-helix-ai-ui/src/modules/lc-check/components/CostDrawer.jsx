@@ -126,9 +126,9 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
             </Section>
           ) : null}
 
-          {/* Folded by default. It is the audit trail for this run — worth having,
-              and not worth nine rows of the drawer before anyone has asked. */}
-          <Section name="By Step" note="Every step of the run, in order." collapsible count={`${completedCount} of ${stepCount}`}>
+          {/* Open by default — the audit trail in run order is what most people
+              open the drawer for after the totals. Still foldable once read. */}
+          <Section name="By Step" note="Every step of the run, in the order it ran." collapsible defaultOpen count={`${completedCount} of ${stepCount}`}>
             <StepList cost={cost} completedCount={completedCount} />
           </Section>
 
@@ -163,11 +163,11 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
 /**
  * A titled band. Sections are separated by a rule, not by a card each.
  *
- * `collapsible` is for reference detail: present, findable, and not occupying the
- * drawer until someone asks for it.
+ * `collapsible` folds a section behind its heading. Pass `defaultOpen` when the
+ * body should start expanded (By Step) rather than waiting to be asked for.
  */
-function Section({ name, note, last, collapsible, count, children }) {
-  const [open, setOpen] = useState(!collapsible)
+function Section({ name, note, last, collapsible, defaultOpen, count, children }) {
+  const [open, setOpen] = useState(collapsible ? !!defaultOpen : true)
   return (
     <section style={{ padding: '16px 22px 18px', borderBottom: last ? 'none' : '1px solid var(--me-grey-15)' }}>
       {collapsible ? (

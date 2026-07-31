@@ -16,6 +16,7 @@ import { useState } from 'react'
 export default function FactsPanel({
   title,
   meta,
+  metaTitle,
   facts,
   layoutMd,
   hoverAnchor,
@@ -41,7 +42,7 @@ export default function FactsPanel({
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 4 }}>
-          <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>{title} · {meta}</span>
+          <span title={metaTitle || undefined} style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>{title} · {meta}</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
             {hasLayout ? (
               <span style={{ display: 'inline-flex', gap: 2, padding: 2, borderRadius: 6, background: 'var(--me-grey-08)' }}>
