@@ -32,7 +32,7 @@ public class DictionaryController {
 
     @DeleteMapping("/fields/{key}")
     public Map<String, Object> deleteField(@PathVariable String key) {
-        store.delete("dict_field", "key", key);
+        store.delete(GovernanceStore.FIELD, key);
         return Map.of("deleted", key);
     }
 
@@ -45,7 +45,7 @@ public class DictionaryController {
 
     @DeleteMapping("/doc-types/{code}")
     public Map<String, Object> deleteDocType(@PathVariable String code) {
-        store.delete("doc_type", "code", code);
+        store.delete(GovernanceStore.DOC_TYPE, code);
         return Map.of("deleted", code);
     }
 }

@@ -60,7 +60,7 @@ public class GovernanceCatalog implements CheckCatalog {
     public List<DocTypeDef> docTypes() {
         return jdbc.query("""
                 SELECT body, role, before_reading
-                  FROM helix_gov.doc_type
+                  FROM helix_gov.v_doc_type
                  WHERE active
                  ORDER BY ordinal, code
                 """, (rs, i) -> {

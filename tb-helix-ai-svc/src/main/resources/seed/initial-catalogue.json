@@ -1107,7 +1107,6 @@
         "beneficiary_name",
         "applicant_name"
       ],
-      "status": "DRAFT",
       "citedAs": "practice",
       "severity": "CRITICAL",
       "checkType": "AGENT",
@@ -1130,7 +1129,6 @@
         "available_with",
         "beneficiary_name"
       ],
-      "status": "DRAFT",
       "agentId": "expiry",
       "citedAs": "practice",
       "groupId": "AVAILABILITY_RISK",

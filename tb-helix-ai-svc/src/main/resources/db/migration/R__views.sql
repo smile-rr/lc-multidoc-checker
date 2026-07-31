@@ -112,15 +112,83 @@ LEFT JOIN LATERAL (
 
 
 -- ----------------------------------------------------------------------------
--- Governance: the checks list, with the operands its rule reads and whether it can
--- therefore be a hard check.
+-- Governance: one collection, five kinds, and the readable surface over it.
 --
--- `operand_docs` used to be a column derived on save — one more thing to recompute and
--- forget. It is read out of the rule here, so it cannot disagree with the rule it came
--- from.
+-- The base table is (kind, id, body). These views are what everything else reads, so
+-- a caller writes `WHERE status <> 'RETIRED'` and never a jsonb operator. That is the
+-- job generated columns were doing, done in the one place that does not have to be
+-- maintained per attribute.
+-- ----------------------------------------------------------------------------
+
+DROP VIEW IF EXISTS helix_gov.v_doc_type CASCADE;
+CREATE VIEW helix_gov.v_doc_type AS
+SELECT d.id                                                      AS code,
+       d.body,
+       d.body ->> 'name'                                         AS name,
+       d.body ->> 'description'                                  AS description,
+       d.body ->> 'role'                                         AS role,
+       COALESCE((d.body ->> 'beforeReading')::boolean, FALSE)     AS before_reading,
+       COALESCE((d.body ->> 'ordinal')::int, 0)                   AS ordinal,
+       COALESCE((d.body ->> 'active')::boolean, TRUE)             AS active,
+       d.updated_at
+  FROM helix_gov.document d WHERE d.kind = 'doc_type';
+
+DROP VIEW IF EXISTS helix_gov.v_field CASCADE;
+CREATE VIEW helix_gov.v_field AS
+SELECT f.id                                                      AS key,
+       f.body,
+       f.body ->> 'name'                                         AS name,
+       f.body ->> 'valueType'                                    AS value_type,
+       f.updated_at
+  FROM helix_gov.document f WHERE f.kind = 'field';
+
+DROP VIEW IF EXISTS helix_gov.v_agent CASCADE;
+CREATE VIEW helix_gov.v_agent AS
+SELECT a.id, a.body, COALESCE((a.body ->> 'ordinal')::int, 0) AS ordinal, a.updated_at
+  FROM helix_gov.document a WHERE a.kind = 'agent';
+
+DROP VIEW IF EXISTS helix_gov.v_book CASCADE;
+CREATE VIEW helix_gov.v_book AS
+SELECT b.id, b.body, COALESCE((b.body ->> 'ordinal')::int, 0) AS ordinal, b.updated_at
+  FROM helix_gov.document b WHERE b.kind = 'book';
+
+-- Every article, addressable by the code a check cites. `{{ref.X.text}}` resolves here.
+DROP VIEW IF EXISTS helix_gov.v_article CASCADE;
+CREATE VIEW helix_gov.v_article AS
+SELECT b.id                     AS book_id,
+       b.body ->> 'title'       AS book_title,
+       a ->> 'code'             AS code,
+       a ->> 'title'            AS title,
+       a ->> 'section'          AS section,
+       a ->> 'summary'          AS summary,
+       a ->> 'read'             AS body
+  FROM helix_gov.v_book b, jsonb_array_elements(COALESCE(b.body -> 'articles', '[]'::jsonb)) a;
+
+-- ----------------------------------------------------------------------------
+-- Every (field, document) binding, flattened out of the field documents. This is the
+-- extraction spec: what to read off a document, and how to read it there.
+-- ----------------------------------------------------------------------------
+DROP VIEW IF EXISTS helix_gov.v_field_binding CASCADE;
+CREATE VIEW helix_gov.v_field_binding AS
+SELECT f.key                                        AS field_key,
+       f.name                                       AS field_name,
+       f.value_type,
+       b ->> 'doc'                                  AS doc_code,
+       b ->> 'note'                                 AS note,
+       COALESCE(
+           ARRAY(SELECT jsonb_array_elements_text(b -> 'aliases')), '{}') AS aliases,
+       COALESCE((b ->> 'ordinal')::int, 0)          AS ordinal
+  FROM helix_gov.v_field f,
+       jsonb_array_elements(COALESCE(f.body -> 'bindings', '[]'::jsonb)) b;
+
+-- ----------------------------------------------------------------------------
+-- The checks list, with the operands its rule reads and whether it can therefore be a
+-- hard check.
 --
--- gate_eligible is all three conditions in one place, and eligibility is derived, never
--- asserted:
+-- `operand_docs` is read out of the rule rather than stored beside it, so it cannot
+-- disagree with the rule it came from.
+--
+-- gate_eligible is all three conditions in one place, derived and never asserted:
 --   exact           an agent cannot read documents before they have been read
 --   has conditions  there is nothing to run
 --   operands ⊆ pre  a rule that reads the bill of lading cannot precede it
@@ -128,14 +196,20 @@ LEFT JOIN LATERAL (
 DROP VIEW IF EXISTS helix_gov.v_check_list CASCADE;
 CREATE VIEW helix_gov.v_check_list AS
 WITH pre AS (
-    SELECT COALESCE(array_agg(code), '{}') AS codes
-      FROM helix_gov.doc_type WHERE before_reading
+    SELECT COALESCE(array_agg(code), '{}') AS codes FROM helix_gov.v_doc_type WHERE before_reading
+),
+checks AS (
+    SELECT c.id, c.body, c.updated_at,
+           COALESCE(c.body ->> 'status', 'ACTIVE')       AS status,
+           COALESCE(c.body ->> 'checkType', 'AGENT')      AS check_type,
+           COALESCE((c.body ->> 'gate')::boolean, FALSE)  AS is_gate
+      FROM helix_gov.document c WHERE c.kind = 'check'
 ),
 operands AS (
     SELECT c.id,
            COALESCE(array_agg(DISTINCT d) FILTER (WHERE d IS NOT NULL), '{}') AS docs,
            COUNT(*) FILTER (WHERE d IS NOT NULL)                              AS row_count
-      FROM helix_gov.check_def c
+      FROM checks c
       LEFT JOIN LATERAL (
           SELECT jsonb_path_query(c.body, '$.rule.groups[*].rows[*].l.doc') #>> '{}' AS d
           UNION ALL
@@ -152,56 +226,36 @@ SELECT c.id,
        (o.row_count > 0)                                          AS has_conditions,
        (c.check_type = 'PROGRAMMATIC' AND o.row_count > 0
         AND o.docs <@ pre.codes)                                  AS gate_eligible,
-       -- Stored intent narrowed by possibility. A rule that stops qualifying stops being
-       -- a gate rather than continuing to claim it runs first.
+       -- Stored intent narrowed by possibility. A rule that stops qualifying stops
+       -- being a gate rather than continuing to claim it runs first.
        (c.is_gate AND c.check_type = 'PROGRAMMATIC' AND o.row_count > 0
         AND o.docs <@ pre.codes)                                  AS gate_on,
        (SELECT COUNT(*) FROM helix_gov.comment m
          WHERE m.target_kind = 'CHECK' AND m.target_id = c.id)    AS comment_count,
        c.updated_at
-  FROM helix_gov.check_def c
+  FROM checks c
   CROSS JOIN pre
   JOIN operands o ON o.id = c.id;
-
-
--- ----------------------------------------------------------------------------
--- Every (field, document) binding, flattened out of the field documents. This is the
--- extraction spec: what to read off a document, and how to read it there.
--- ----------------------------------------------------------------------------
-DROP VIEW IF EXISTS helix_gov.v_field_binding CASCADE;
-CREATE VIEW helix_gov.v_field_binding AS
-SELECT f.key                                        AS field_key,
-       f.body ->> 'name'                            AS field_name,
-       f.value_type,
-       b ->> 'doc'                                  AS doc_code,
-       b ->> 'note'                                 AS note,
-       COALESCE(
-           ARRAY(SELECT jsonb_array_elements_text(b -> 'aliases')), '{}') AS aliases,
-       COALESCE((b ->> 'ordinal')::int, 0)          AS ordinal
-  FROM helix_gov.dict_field f,
-       jsonb_array_elements(COALESCE(f.body -> 'bindings', '[]'::jsonb)) b;
-
 
 -- ----------------------------------------------------------------------------
 -- A binding naming a document type that does not exist.
 --
--- The database used to refuse this with a foreign key, which stopped the mistake and told
--- the author nothing they could act on. The console maintains the reference now; this is
--- how anyone sees where it did not.
+-- The database used to refuse this with a foreign key, which stopped the mistake and
+-- told the author nothing they could act on. The console maintains the reference now;
+-- this is how anyone sees where it did not.
 -- ----------------------------------------------------------------------------
 DROP VIEW IF EXISTS helix_gov.v_dangling_reference CASCADE;
 CREATE VIEW helix_gov.v_dangling_reference AS
 SELECT 'field_binding'  AS whose, b.field_key AS id, b.doc_code AS missing_doc_code
   FROM helix_gov.v_field_binding b
- WHERE NOT EXISTS (SELECT 1 FROM helix_gov.doc_type d WHERE d.code = b.doc_code)
+ WHERE NOT EXISTS (SELECT 1 FROM helix_gov.v_doc_type d WHERE d.code = b.doc_code)
 UNION ALL
 SELECT 'check_operand', c.id, d
   FROM helix_gov.v_check_list c, unnest(c.operand_docs) d
- WHERE NOT EXISTS (SELECT 1 FROM helix_gov.doc_type t WHERE t.code = d);
-
+ WHERE NOT EXISTS (SELECT 1 FROM helix_gov.v_doc_type t WHERE t.code = d);
 
 -- ----------------------------------------------------------------------------
--- Dictionary and document usage, for the console's "in use by" counts.
+-- Usage counts, for the console's "in use by" chips.
 -- ----------------------------------------------------------------------------
 DROP VIEW IF EXISTS helix_gov.v_dict_field_usage CASCADE;
 CREATE VIEW helix_gov.v_dict_field_usage AS
@@ -210,10 +264,10 @@ SELECT f.key,
        f.value_type,
        COALESCE(ARRAY(SELECT b.doc_code FROM helix_gov.v_field_binding b
                        WHERE b.field_key = f.key ORDER BY b.ordinal), '{}') AS doc_codes,
-       (SELECT COUNT(*) FROM helix_gov.check_def c
-         WHERE c.body -> 'fields' @> to_jsonb(f.key))                       AS used_by_checks,
+       (SELECT COUNT(*) FROM helix_gov.document c
+         WHERE c.kind = 'check' AND c.body -> 'fields' @> to_jsonb(f.key))  AS used_by_checks,
        f.updated_at
-  FROM helix_gov.dict_field f;
+  FROM helix_gov.v_field f;
 
 DROP VIEW IF EXISTS helix_gov.v_doc_type_usage CASCADE;
 CREATE VIEW helix_gov.v_doc_type_usage AS
@@ -224,7 +278,7 @@ SELECT d.code,
        d.ordinal,
        d.active,
        (SELECT COUNT(*) FROM helix_gov.v_field_binding b WHERE b.doc_code = d.code) AS bound_fields,
-       (SELECT COUNT(*) FROM helix_gov.check_def c
-         WHERE c.body -> 'docs' @> to_jsonb(d.code))                                AS used_by_checks,
+       (SELECT COUNT(*) FROM helix_gov.document c
+         WHERE c.kind = 'check' AND c.body -> 'docs' @> to_jsonb(d.code))           AS used_by_checks,
        d.updated_at
-  FROM helix_gov.doc_type d;
+  FROM helix_gov.v_doc_type d;

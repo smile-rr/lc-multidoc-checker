@@ -38,7 +38,7 @@ public class LibraryController {
 
     @DeleteMapping("/articles/{id}")
     public Map<String, Object> deleteArticle(@PathVariable String id) {
-        store.delete("article", "id", id);
+        store.deleteArticle(id);
         return Map.of("deleted", id);
     }
 }

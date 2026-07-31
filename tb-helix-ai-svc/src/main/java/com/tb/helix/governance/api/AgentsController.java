@@ -32,7 +32,7 @@ public class AgentsController {
 
     @DeleteMapping("/{id}")
     public Map<String, Object> delete(@PathVariable String id) {
-        store.delete("agent", "id", id);
+        store.delete(GovernanceStore.AGENT, id);
         return Map.of("deleted", id);
     }
 

@@ -49,7 +49,6 @@ export function hydrateSeed(seed, data) {
     // Derived by the service, because the dictionary is there: whether this could
     // run before the presentation is read, and whether it currently does.
     ...(c.gateOn ? { gate: true } : {}),
-    ...(c.status === 'DRAFT' ? { draft: true } : {}),
     gateEligible: c.gateEligible ?? false,
   })))
 

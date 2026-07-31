@@ -56,8 +56,8 @@ public class GovernanceStore {
         out.put("docTypes", docTypes());
         out.put("fields", fields());
         out.put("checks", checks());
-        out.put("agents", documents("SELECT body FROM helix_gov.agent ORDER BY ordinal, id"));
-        out.put("books", documents("SELECT body FROM helix_gov.book ORDER BY ordinal, id"));
+        out.put("agents", documents("SELECT body FROM helix_gov.v_agent ORDER BY ordinal, id"));
+        out.put("books", documents("SELECT body FROM helix_gov.v_book ORDER BY ordinal, id"));
         out.put("comments", jdbc.queryForList(
                 "SELECT * FROM helix_gov.comment ORDER BY created_at"));
         // Reported, not enforced. The console owns referential integrity now; this is how
@@ -119,26 +119,55 @@ public class GovernanceStore {
 
     // --- Writing -------------------------------------------------------------
     //
-    // One method per kind, one statement each, no column lists.
+    // One statement for everything. The kinds are the five constants below and nothing
+    // a request can influence; the document is a bound parameter.
+
+    /** The kinds of thing the catalogue holds. A sixth is a constant, not a migration. */
+    public static final String DOC_TYPE = "doc_type";
+    public static final String FIELD    = "field";
+    public static final String CHECK    = "check";
+    public static final String AGENT    = "agent";
+    public static final String BOOK     = "book";
 
     public void saveDocType(Map<String, Object> body) {
-        upsert("doc_type", "code", key(body, "key", "code"), body);
+        save(DOC_TYPE, key(body, "key", "code"), body);
     }
 
     public void saveField(Map<String, Object> body) {
-        upsert("dict_field", "key", key(body, "key", "id"), body);
+        save(FIELD, key(body, "key", "id"), body);
     }
 
     public void saveCheck(Map<String, Object> body) {
-        upsert("check_def", "id", key(body, "id"), body);
+        save(CHECK, key(body, "id"), body);
     }
 
     public void saveAgent(Map<String, Object> body) {
-        upsert("agent", "id", key(body, "id"), body);
+        save(AGENT, key(body, "id"), body);
     }
 
     public void saveBook(Map<String, Object> body) {
-        upsert("book", "id", key(body, "id"), body);
+        save(BOOK, key(body, "id"), body);
+    }
+
+    /**
+     * Writes a document under its kind and key.
+     *
+     * <p>The key goes into the document as well as the column. A body that does not know
+     * its own key survives a round trip through the browser and comes back
+     * unidentifiable.
+     */
+    public void save(String kind, String id, Map<String, Object> body) {
+        Map<String, Object> stored = new LinkedHashMap<>(body);
+        stored.put(DOC_TYPE.equals(kind) || FIELD.equals(kind) ? "key" : "id", id);
+
+        jdbc.update("""
+                INSERT INTO helix_gov.document (kind, id, body) VALUES (?, ?, ?::jsonb)
+                ON CONFLICT (kind, id) DO UPDATE SET body = EXCLUDED.body, updated_at = NOW()
+                """, kind, id, toJson(stored));
+    }
+
+    public void delete(String kind, String id) {
+        jdbc.update("DELETE FROM helix_gov.document WHERE kind = ? AND id = ?", kind, id);
     }
 
     /**
@@ -149,21 +178,21 @@ public class GovernanceStore {
      * flip one boolean invites the browser's copy to overwrite something edited elsewhere.
      * Read, merge, write, in one statement.
      */
-    private void merge(String table, String column, String id, Map<String, Object> patch) {
+    private void merge(String kind, String id, Map<String, Object> patch) {
         jdbc.update("""
-                UPDATE helix_gov.%s SET body = body || ?::jsonb, updated_at = NOW()
-                 WHERE %s = ?
-                """.formatted(table, column), toJson(patch), id);
+                UPDATE helix_gov.document SET body = body || ?::jsonb, updated_at = NOW()
+                 WHERE kind = ? AND id = ?
+                """, toJson(patch), kind, id);
     }
 
     /** The conditions of an exact check, saved into the check that owns them. */
     public void saveRule(String checkId, Map<String, Object> rule) {
-        merge("check_def", "id", checkId, Map.of("rule", rule));
+        merge(CHECK, checkId, Map.of("rule", rule));
     }
 
     /** Whether this check is a hard check. Intent; eligibility is derived separately. */
     public void setGate(String checkId, boolean on) {
-        merge("check_def", "id", checkId, Map.of("gate", on));
+        merge(CHECK, checkId, Map.of("gate", on));
     }
 
     /**
@@ -200,7 +229,7 @@ public class GovernanceStore {
     }
 
     public void deleteCheck(String id) {
-        delete("check_def", "id", id);
+        delete(CHECK, id);
     }
 
     /**
@@ -217,7 +246,7 @@ public class GovernanceStore {
         String gid = String.valueOf(group.get("gid"));
 
         List<Map<String, Object>> agents = jdbc.query(
-                "SELECT body FROM helix_gov.agent WHERE id = ?",
+                "SELECT body FROM helix_gov.document WHERE kind = 'agent' AND id = ?",
                 (rs, i) -> document(rs.getString("body")), agentId);
         if (agents.isEmpty()) return;
 
@@ -239,7 +268,7 @@ public class GovernanceStore {
         String aid = String.valueOf(article.getOrDefault("aid", article.get("code")));
 
         List<Map<String, Object>> books = jdbc.query(
-                "SELECT body FROM helix_gov.book WHERE id = ?",
+                "SELECT body FROM helix_gov.document WHERE kind = 'book' AND id = ?",
                 (rs, i) -> document(rs.getString("body")), bookId);
         if (books.isEmpty()) return;
 
@@ -257,13 +286,14 @@ public class GovernanceStore {
     /** Removes an article from whichever book holds it. */
     public void deleteArticle(String aid) {
         jdbc.update("""
-                UPDATE helix_gov.book
+                UPDATE helix_gov.document
                    SET body = jsonb_set(body, '{articles}', COALESCE((
                            SELECT jsonb_agg(a) FROM jsonb_array_elements(body -> 'articles') a
                             WHERE COALESCE(a ->> 'aid', a ->> 'code') <> ?), '[]'::jsonb)),
                        updated_at = NOW()
-                 WHERE body -> 'articles' @> jsonb_build_array(jsonb_build_object('aid', ?::text))
-                    OR body -> 'articles' @> jsonb_build_array(jsonb_build_object('code', ?::text))
+                 WHERE kind = 'book'
+                   AND (body -> 'articles' @> jsonb_build_array(jsonb_build_object('aid', ?::text))
+                     OR body -> 'articles' @> jsonb_build_array(jsonb_build_object('code', ?::text)))
                 """, aid, aid, aid);
     }
 
@@ -281,7 +311,7 @@ public class GovernanceStore {
 
     /** Whether anything has been authored yet — the seeder's only question. */
     public boolean isEmpty() {
-        Integer n = jdbc.queryForObject("SELECT COUNT(*) FROM helix_gov.doc_type", Integer.class);
+        Integer n = jdbc.queryForObject("SELECT COUNT(*) FROM helix_gov.document", Integer.class);
         return n == null || n == 0;
     }
 

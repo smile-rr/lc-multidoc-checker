@@ -68,7 +68,6 @@ export default function Check({ check }) {
           placeholder="Check title"
           style={{ flex: 1, minWidth: 0, fontSize: 15.5, fontWeight: 600, padding: '4px 6px' }}
         />
-        {check.draft && <Chip size="sm" style={statePill}>Draft</Chip>}
         {check.inactive && <Chip size="sm" tone="warning" style={statePill}>Inactive</Chip>}
         {check.showComment && (
           <button onClick={check.onComment} title="Comment & review" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid var(--me-grey-15)', background: 'none', borderRadius: 8, padding: '6px 9px', cursor: 'pointer', color: 'var(--me-grey-70)', fontSize: 11.5 }}>

@@ -30,22 +30,43 @@ export function loadCatalog(data) {
 // blocking the edit slot on a round trip would make saving feel like submitting a
 // form. A failure surfaces as a toast through apiClient's `api-error` event —
 // which is the same path every other failure in the app takes.
+// What the service works out for itself, and must not be told.
+//
+// Every one of these is derived from the document or from the rest of the
+// catalogue — a check's tier from its type, its gate eligibility from its own
+// operands against the dictionary, its comment count from the comments. Storing a
+// copy would freeze an answer that goes stale the moment anything else moves.
+const DERIVED = new Set([
+  'tier', 'gateEligible', 'gateOn', 'hasConditions', 'operandDocs', 'commentCount',
+  'usedByChecks', 'boundFields',
+])
+
+/**
+ * The document, as it is stored.
+ *
+ * A deny-list, and the direction matters. An allow-list — the hand-written payload
+ * this replaces — has to be edited every time the console learns a new property, and
+ * the edit that gets forgotten silently drops it: that list named thirteen fields and
+ * quietly discarded `suggestion`, which the seed had been carrying all along. A
+ * deny-list is edited only when the service starts deriving something new, which is
+ * rare and which the person doing it is already thinking about.
+ *
+ * So: send what the console holds, minus what the service computes. Adding a property
+ * to a check is now an edit in one place.
+ */
+const stored = (doc) =>
+  Object.fromEntries(Object.entries(doc).filter(([k, v]) => !DERIVED.has(k) && v !== undefined))
+
 function persistCheck(check, rule) {
   const payload = {
-    id: check.id,
-    title: check.title,
-    body: check.body,
-    domain: check.domain,
-    severity: check.severity,
-    checkType: check.checkType,
-    citedAs: check.citedAs ?? 'practice',
-    agentId: check.agentId ?? null,
-    groupId: check.groupId ?? null,
-    refs: check.refs ?? [],
-    fields: check.fields ?? [],
-    docs: check.docs ?? [],
-    status: check.draft ? 'DRAFT' : 'ACTIVE',
+    ...stored(check),
+    // Retired is the only lifecycle there is. There is no draft and no version in
+    // this design — pressing Save is the whole ceremony — so a check either runs or
+    // has been stood down, and nothing else is stored.
+    status: check.inactive ? 'RETIRED' : 'ACTIVE',
   }
+  delete payload.inactive
+
   // The rule travels with the check. They were two calls against two tables, which
   // meant a check could be saved without the conditions that make it mean anything
   // and look complete. Sent even when unchanged, because saving it is what
@@ -57,33 +78,28 @@ function persistCheck(check, rule) {
 }
 
 /**
- * The dictionary rows, on their way to the service.
+ * A dictionary field, with the documents it is read from.
  *
- * A field carries its bindings — which documents it is read from and the note saying
- * how to read it there — because the service saves them together and a binding
- * without its field has nowhere to hang.
+ * The bindings travel with it — which documents carry this field, the note saying how
+ * to read it there, and any aliases that document uses instead of the dictionary's
+ * name. They were dropped on the floor for a while by a store that named six columns
+ * and forgot the seventh.
  */
 function persistField(f) {
   gov.saveField({
-    key: f.key,
+    ...stored(f),
     name: (f.name || '').trim(),
     description: (f.description || '').trim(),
-    valueType: f.valueType ?? null,
-    bindings: (f.bindings || []).map((b) => ({
-      doc: b.doc,
-      note: (b.note || '').trim(),
-      ...(b.aliases && b.aliases.length ? { aliases: b.aliases } : {}),
-    })),
+    bindings: (f.bindings || []).map((b) => ({ ...b, note: (b.note || '').trim() })),
   }).catch(() => {})
 }
 
 function persistDocType(d) {
   gov.saveDocType({
+    ...stored(d),
     key: (d.key || '').trim(),
     name: (d.name || '').trim(),
     description: (d.description || '').trim(),
-    role: d.role ?? '',
-    beforeReading: !!d.beforeReading,
   }).catch(() => {})
 }
 
@@ -589,7 +605,16 @@ export function deriveVals(state, setState) {
     return { agentGroups: s.agentGroups.filter((g) => g.gid !== gid), placements }
   })
   // Check lifecycle: inactivate (excluded from runs) and delete (with confirm).
-  const toggleInactive = (id) => setState((s) => ({ inactiveIds: { ...s.inactiveIds, [id]: !s.inactiveIds[id] } }))
+  // Retiring stops a check running. It was held in `inactiveIds` and written
+  // nowhere, so it survived exactly as long as the tab did — the same complaint as
+  // the Draft chip, one screen over. The service filters RETIRED out of the
+  // catalogue, so this is what makes the button mean anything.
+  const toggleInactive = (id) => setState((s) => {
+    const now = !s.inactiveIds[id]
+    const c = allChecks().find((x) => x.id === id)
+    if (c) persistCheck({ ...c, ...(S.overrides[id] || {}), inactive: now }, ruleOf(id))
+    return { inactiveIds: { ...s.inactiveIds, [id]: now } }
+  })
   const deleteAgent = (id) => (gov.deleteAgent(id).catch(() => {}), setState((s) => {
     const placements = { ...s.placements }
     allChecks().forEach((c) => { const cur = s.placements[c.id] || { agentId: c.agentId || null, groupId: c.groupId || null }; if (cur.agentId === id) placements[c.id] = { agentId: null, groupId: null } })
@@ -619,16 +644,20 @@ export function deriveVals(state, setState) {
     setState((s) => ({ comments: { ...s.comments, [t]: [...(s.comments[t] || []), entry] } }))
   }
 
-  // A new card is born as a draft in the GEN concern (general examiner
-  // judgement); an officer moves it to its proper id when it settles. The kind
-  // is chosen up front because it decides what the card is made of — a rule
-  // opens on an empty condition block, a judged one on an empty dash line.
+  // A new card lands in the GEN concern (general examiner judgement); whoever
+  // wrote it moves it to its proper id when it settles. The kind is chosen up
+  // front because it decides what the card is made of — a rule opens on an empty
+  // condition block, a judged one on an empty dash line.
+  //
+  // It is not a draft. It exists in the console until it is saved and it runs
+  // after that; there is no third state, and there was no way out of the one the
+  // card used to be stuck in — saving it left the Draft chip exactly where it was.
   const newCheck = (kind) =>
     setState((s) => {
       const id = 'GEN-' + String(s.newSeq + 90).padStart(2, '0')
       const isExact = kind === 'exact'
       const nc = {
-        id, checkType: isExact ? 'PROGRAMMATIC' : 'AGENT', domain: 'Uncategorised', cases: 0, draft: true,
+        id, checkType: isExact ? 'PROGRAMMATIC' : 'AGENT', domain: 'Uncategorised', cases: 0,
         agentId: null, groupId: null,
         title: isExact ? 'New exact rule' : 'New judged rule',
         severity: 'MAJOR', refs: [],
@@ -667,7 +696,9 @@ export function deriveVals(state, setState) {
     const docs = valueOf(c, 'docs') || dflt.docs || []
     const editing = S.editingId === c.id
     const active = S.cpActive[c.id] === undefined ? true : S.cpActive[c.id]
-    const inactive = !!S.inactiveIds[c.id]
+    // What the service says, unless this session has changed it. `inactiveIds` used to
+    // be the only source, so retiring a check survived exactly as long as the tab did.
+    const inactive = S.inactiveIds[c.id] ?? (c.status === 'RETIRED')
     // Which kind of card this is decides what the middle of it holds, and it is
     // read before the snapshot below so Cancel can put the rule back too.
     // `hasConditions` wins over the declared tier — see the guard above.
@@ -678,9 +709,10 @@ export function deriveVals(state, setState) {
     const isGateOn = !!valueOf(c, 'gate') && gate.ok
     // A check that has examined a case is referenced by the findings it produced
     // and by any refusal advice quoting them. Deleting it orphans that record, so
-    // only a draft that never ran can be deleted; everything else is retired.
+    // Only a check that has never run can be deleted; one that has is retired, so
+    // the findings quoting its id stay readable.
     const timesUsed = c.cases || 0
-    const deletable = !!c.draft && timesUsed === 0
+    const deletable = timesUsed === 0
     const cc = S.comments[c.id] || []
     const inAgent = ctx === 'agent'
     // What Cancel puts back. The rule travels with it — without that, undoing an
@@ -838,7 +870,6 @@ export function deriveVals(state, setState) {
       helpOpen: S.helpOpenId === c.id,
       onToggleHelp: (e) => { if (e && e.stopPropagation) e.stopPropagation(); setState((s) => ({ helpOpenId: s.helpOpenId === c.id ? null : c.id })) },
       casesLabel: c.cases + (c.cases === 1 ? ' linked case' : ' linked cases'),
-      draft: !!c.draft,
       commentCount: cc.length, hasComments: cc.length > 0,
       editing, showBody: showBody && !isExact, expanded, showPreview: compactMode && !expanded && !editing, preview: isExact ? rule.message || rule.scope || '' : preview,
       showExpand: compactMode, expandIcon: expanded ? 'chevron-up' : 'chevron-down',
@@ -851,14 +882,14 @@ export function deriveVals(state, setState) {
       deletable,
       timesUsed,
       deleteTip: deletable
-        ? 'Delete this draft'
+        ? 'Delete this check — it has never run'
         : `${c.id} has run on ${timesUsed} case${timesUsed === 1 ? '' : 's'} — retire it instead so the findings that cite it stay readable`,
       onDelete: () =>
         deletable
           ? requestConfirm({
-              title: 'Delete draft check?',
+              title: 'Delete check?',
               message: `${c.id} “${title}” has never run. It will be permanently removed.`,
-              confirmLabel: 'Delete draft',
+              confirmLabel: 'Delete check',
               onConfirm: () => { deleteCheck(c.id); gov.deleteCheck(c.id).catch(() => {}) },
             })
           : requestConfirm({
