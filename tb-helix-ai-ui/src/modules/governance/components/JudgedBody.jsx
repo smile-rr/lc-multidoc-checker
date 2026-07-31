@@ -27,7 +27,23 @@ export default function JudgedBody({ check }) {
           <Help onClose={check.onToggleHelp} />
         </Menu>
       </span>
-      <RuleEditor value={check.body} onChange={check.onChangeBody} onFocus={check.onFocus} fields={check.dictFields} />
+      {/* The editor is a CodeMirror surface, so it cannot take the required styling
+          the plain fields use. The rail and the line under it say the same thing in
+          the same colour — an empty body here is not a blank description, it is a
+          judged check with no instruction in it. */}
+      <div style={{
+        borderRadius: 8,
+        ...(check.bodyMissing
+          ? { boxShadow: '0 0 0 1px var(--status-warning)', background: 'var(--status-warning-bg, #fff8ee)' }
+          : null),
+      }}>
+        <RuleEditor value={check.body} onChange={check.onChangeBody} onFocus={check.onFocus} fields={check.dictFields} />
+      </div>
+      {check.bodyMissing ? (
+        <span style={{ fontSize: 11, color: 'var(--status-warning)', paddingLeft: 2 }}>
+          This is the instruction the examiner is given — a judged check with nothing here asks nothing.
+        </span>
+      ) : null}
     </div>
   )
 }

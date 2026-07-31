@@ -7,6 +7,7 @@ import Chip from '@shared/ds/Chip'
 import IconButton from '@shared/ds/IconButton'
 import { Menu, MenuItem, MenuHeader, MenuEmpty } from '@shared/ds/Menu'
 import { useNewItemFocus } from '@shared/lib/useNewItemFocus'
+import TextField from '@shared/ds/TextField'
 import ExactBody from './ExactBody'
 import JudgedBody from './JudgedBody'
 
@@ -56,14 +57,16 @@ export default function Check({ check }) {
         </span>
         <TypeBadge check={check} />
         <GateBadge check={check} />
-        <input
+        <TextField
           ref={titleRef}
-          className="inline-edit"
           value={check.title}
           onChange={check.onChangeTitle}
           onFocus={check.onFocus}
+          required
+          invalid={check.titleMissing}
+          hint="How this check is read in a finding."
           placeholder="Check title"
-          style={{ flex: 1, minWidth: 0, fontSize: 15.5, fontWeight: 600, color: 'var(--me-ink)', padding: '4px 6px' }}
+          style={{ flex: 1, minWidth: 0, fontSize: 15.5, fontWeight: 600, padding: '4px 6px' }}
         />
         {check.draft && <Chip size="sm" style={statePill}>Draft</Chip>}
         {check.inactive && <Chip size="sm" tone="warning" style={statePill}>Inactive</Chip>}

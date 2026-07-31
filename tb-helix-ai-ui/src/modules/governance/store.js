@@ -197,12 +197,21 @@ const tidyRule = (ru) => {
 const checkIssues = (check, rule, isExact) => {
   const out = []
   if (isBlank(check.title)) out.push('Give it a title — it is how this check is read in a finding.')
-  if (isBlank(check.body)) {
-    out.push(isExact
-      ? 'Say in plain language what this check is for.'
-      : 'Write the check — for a judged check this text is the instruction the examiner is given.')
+
+  // Only a judged check needs a body, and the reason is not taste: an exact check
+  // does not show one. The editor renders the body for judged cards alone, so
+  // requiring it on both tiers disabled Save on an exact card and pointed at a
+  // field that was not on screen — which is the worst thing a form can do.
+  //
+  // It is also right on the merits. A judged check's body IS the instruction the
+  // examiner is given. An exact check says what it means in its conditions, and
+  // what it raises in its message, and both are required below.
+  if (!isExact) {
+    if (isBlank(check.body)) {
+      out.push('Write the check — for a judged check this text is the instruction the examiner is given.')
+    }
+    return out
   }
-  if (!isExact) return out
 
   const rows = rule.groups.flatMap((g) => g.rows)
   if (!rows.length) out.push('Add a condition.')
@@ -876,7 +885,14 @@ export function deriveVals(state, setState) {
       onChangeBody: (val) => write('body', val), // RuleEditor (CodeMirror) passes the value string directly
       // Save is held back while the card is still missing something it cannot
       // run without; `issues` says what, right beside the button.
-      issues, canSave: !issues.length,
+      issues,
+      canSave: !issues.length,
+      // Which field each complaint belongs to. The list beside the button says what
+      // is wrong; these put the mark on the thing that is wrong, because a reader
+      // should not have to work out which box "Give it a title" refers to.
+      titleMissing: editing && isBlank(title),
+      bodyMissing: editing && !isExact && isBlank(body),
+      messageMissing: editing && isExact && isBlank(rule.message),
       onSave: () => {
         if (issues.length) return
         // Write through to the service before the edit slot closes. Under mock this

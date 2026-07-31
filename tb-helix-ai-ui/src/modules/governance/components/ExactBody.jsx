@@ -146,6 +146,9 @@ export default function ExactBody({ check }) {
             value={check.ruleMessage}
             onChange={check.onChangeMessage}
             onFocus={check.onFocus}
+            required
+            invalid={check.messageMissing}
+            hint="This is the wording an officer reads on the finding."
             placeholder="Wording of the discrepancy when this fails…"
             maxLines={3}
             maxLength={300}
