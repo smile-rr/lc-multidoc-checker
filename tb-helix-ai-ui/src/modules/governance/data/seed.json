@@ -327,55 +327,79 @@
       "agentId": "expiry",
       "gid": "AVAILABILITY_RISK",
       "name": "Availability risk",
-      "desc": "Where and how the credit can be used."
+      "desc": "Where and how the credit can be used.",
+      "checks": [
+        "REQ-41A",
+        "REQ-38"
+      ]
     },
     {
       "agentId": "expiry",
       "gid": "TIME_WINDOW",
       "name": "Time window",
-      "desc": "The dates that decide whether a presentation is in time."
+      "desc": "The dates that decide whether a presentation is in time.",
+      "checks": [
+        "DATE-31D"
+      ]
     },
     {
       "agentId": "expiry",
       "gid": "DRAFTS_TENOR",
       "name": "Drafts & tenor",
-      "desc": "The bill of exchange itself."
+      "desc": "The bill of exchange itself.",
+      "checks": [
+        "DOCSET-42C"
+      ]
     },
     {
       "agentId": "transport",
       "gid": "TRANS_ONBOARD",
       "name": "On-board & dating",
-      "desc": "Loading evidence and shipment dates."
+      "desc": "Loading evidence and shipment dates.",
+      "checks": [
+        "TRANS-20"
+      ]
     },
     {
       "agentId": "transport",
       "gid": "TRANS_PORTS",
       "name": "Ports & routing",
-      "desc": "Ports of loading and discharge."
+      "desc": "Ports of loading and discharge.",
+      "checks": []
     },
     {
       "agentId": "invoice",
       "gid": "INV_GOODS",
       "name": "Goods description",
-      "desc": "Correspondence with the credit."
+      "desc": "Correspondence with the credit.",
+      "checks": [
+        "XD-14"
+      ]
     },
     {
       "agentId": "invoice",
       "gid": "INV_AMOUNTS",
       "name": "Amounts & pricing",
-      "desc": "Values, tolerances and unit prices."
+      "desc": "Values, tolerances and unit prices.",
+      "checks": [
+        "AMT-18"
+      ]
     },
     {
       "agentId": "insurance",
       "gid": "INS_COVERAGE",
       "name": "Coverage & risks",
-      "desc": "Amount, currency and cover dates."
+      "desc": "Amount, currency and cover dates.",
+      "checks": [
+        "CERT-28"
+      ]
     },
     {
       "agentId": "beneficiary",
       "gid": "BEN_IDENTITY",
       "name": "Party identity",
-      "desc": "Names and addresses across documents."
+      "desc": "Names and addresses across documents.",
+      "checks": []
     }
   ],
   "checks": [
@@ -383,8 +407,6 @@
       "id": "REQ-41A",
       "domain": "Time & availability",
       "cases": 4,
-      "agentId": "expiry",
-      "groupId": "AVAILABILITY_RISK",
       "severity": "CRITICAL",
       "refs": [
         "UCP600 Art.6"
@@ -413,8 +435,6 @@
       "domain": "Time & availability",
       "cases": 1,
       "draft": true,
-      "agentId": "expiry",
-      "groupId": "AVAILABILITY_RISK",
       "severity": "MAJOR",
       "refs": [
         "UCP600 Art.38"
@@ -436,8 +456,6 @@
       "id": "DATE-31D",
       "domain": "Time & availability",
       "cases": 8,
-      "agentId": "expiry",
-      "groupId": "TIME_WINDOW",
       "severity": "CRITICAL",
       "refs": [
         "UCP600 Art.6",
@@ -474,8 +492,6 @@
       "id": "DOCSET-42C",
       "domain": "Time & availability",
       "cases": 3,
-      "agentId": "expiry",
-      "groupId": "DRAFTS_TENOR",
       "severity": "MAJOR",
       "refs": [
         "UCP600 Art.6"
@@ -503,8 +519,6 @@
       "id": "TRANS-20",
       "domain": "Transport",
       "cases": 12,
-      "agentId": "transport",
-      "groupId": "TRANS_ONBOARD",
       "severity": "CRITICAL",
       "refs": [
         "UCP600 Art.20"
@@ -532,8 +546,6 @@
       "id": "CERT-28",
       "domain": "Insurance",
       "cases": 3,
-      "agentId": "insurance",
-      "groupId": "INS_COVERAGE",
       "severity": "MAJOR",
       "refs": [
         "UCP600 Art.28"
@@ -556,8 +568,6 @@
       "domain": "Compliance",
       "cases": 0,
       "draft": true,
-      "agentId": null,
-      "groupId": null,
       "severity": "CRITICAL",
       "refs": [],
       "suggestion": "Link this check to the party fields so screening runs on every named party automatically.",
@@ -577,8 +587,6 @@
       "id": "XD-14",
       "domain": "Goods & pricing",
       "cases": 9,
-      "agentId": "invoice",
-      "groupId": "INV_GOODS",
       "severity": "CRITICAL",
       "refs": [
         "UCP600 Art.14",
@@ -607,8 +615,6 @@
       "id": "AMT-18",
       "domain": "Goods & pricing",
       "cases": 6,
-      "agentId": "invoice",
-      "groupId": "INV_AMOUNTS",
       "severity": "MAJOR",
       "refs": [
         "UCP600 Art.18"
@@ -636,8 +642,6 @@
       "id": "DOCSET-46A",
       "domain": "Documents required",
       "cases": 11,
-      "agentId": null,
-      "groupId": null,
       "severity": "CRITICAL",
       "refs": [
         "UCP600 Art.14"
@@ -665,8 +669,6 @@
       "id": "COND-47A",
       "domain": "Additional conditions",
       "cases": 7,
-      "agentId": null,
-      "groupId": null,
       "severity": "MAJOR",
       "refs": [
         "ISBP821 A"

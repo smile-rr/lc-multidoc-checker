@@ -313,7 +313,7 @@ export const initialState = {
   checkSort: { key: 'kind', dir: 'asc' }, dictSort: { key: 'name', dir: 'asc' },
   // Cards are browsed rather than compared, so they group instead.
   checkGroupBy: 'none',
-  density: 'list', expandedIds: {}, placements: {}, activeCheckId: null,
+  density: 'list', expandedIds: {}, activeCheckId: null,
   dragId: null, dragOverGid: null, dragGroupGid: null, activeAgentId: 'expiry', checkFrom: null,
   agentChecksView: 'list', agentArrange: false, reviewAnchorY: null, reviewAnchorX: null, confirm: null, bookQuery: '',
   inactiveIds: {}, deletedCheckIds: {}, deletedAgentIds: {}, agentEdits: {}, agentIconPickerOpen: false, extraAgents: [],
@@ -381,7 +381,9 @@ export function deriveVals(state, setState) {
   const withEdits = (a) => (a ? { ...a, ...(S.agentEdits[a.id] || {}) } : a)
   const setAgentField = (id, field, val) => setState((s) => ({ agentEdits: { ...s.agentEdits, [id]: { ...(s.agentEdits[id] || {}), [field]: val } } }))
   const detailAgent = withEdits(allAgents().find((a) => a.id === detailAgentId) || allAgents()[0])
-  const firstGroupOf = (agentId) => { const g = GROUPS.find((x) => x.agentId === agentId); return g ? g.gid : null }
+  // The current groups, not the seeded ones — an agent given a group in this
+  // session is an agent a check can be filed into.
+  const firstGroupOf = (agentId) => { const g = S.agentGroups.find((x) => x.agentId === agentId); return g ? g.gid : null }
   // Anchor the review drawer to its opener: vertical from the clicked icon, and
   // horizontal from the icon's card (its right edge) so the drawer sits beside
   // the card with a real gutter. Re-clicking the same opener toggles it closed.
@@ -511,9 +513,15 @@ export function deriveVals(state, setState) {
     const b = REF_BOOK.find((x) => x.code === code)
     return b ? b.desc : ''
   }
+  // Where a check has been filed. The group names its checks; a check does not
+  // name its agent. That link used to sit on the check, which put an
+  // examination's input in the business of declaring a console grouping — and
+  // meant the placement was in two places at once, the check document and a
+  // `placements` overlay that was never saved. One list, on the group, written
+  // when it changes.
   const placementOf = (c) => {
-    const p = S.placements[c.id]
-    return p || { agentId: c.agentId || null, groupId: c.groupId || null }
+    const g = S.agentGroups.find((x) => (x.checks || []).includes(c.id))
+    return g ? { agentId: g.agentId, groupId: g.gid } : { agentId: null, groupId: null }
   }
   const agentName = (id) => {
     const a = AGENTS.find((x) => x.id === id)
@@ -590,10 +598,21 @@ export function deriveVals(state, setState) {
   const ruleFieldsOf = (id) =>
     ruleOf(id).groups.flatMap((g) => g.rows.flatMap((r) => [r.l && r.l.field, r.r && r.r.field])).filter(Boolean)
 
+  // Filing a check is at most two group writes: out of the one that held it,
+  // into the one that takes it. Both are saved — a placement that lives only in
+  // this tab is a placement somebody will make a second time.
+  const placeCheck = (id, gid, extra) => setState((s) => {
+    const groups = s.agentGroups.map((g) => {
+      const held = (g.checks || []).includes(id)
+      if (g.gid === gid) return held ? g : { ...g, checks: [...(g.checks || []), id] }
+      return held ? { ...g, checks: g.checks.filter((x) => x !== id) } : g
+    })
+    groups.forEach((g, i) => { if (g !== s.agentGroups[i]) gov.saveGroup(g).catch(() => {}) })
+    return { agentGroups: groups, ...extra }
+  })
   const assignCheck = (id, agentId) =>
-    setState((s) => ({ placements: { ...s.placements, [id]: { agentId, groupId: agentId ? firstGroupOf(agentId) : null } }, assignOpenId: null }))
-  const assignToGroup = (id, gid, agentId) =>
-    setState((s) => ({ placements: { ...s.placements, [id]: { agentId, groupId: gid } }, addMenuGid: null }))
+    placeCheck(id, agentId ? firstGroupOf(agentId) : null, { assignOpenId: null })
+  const assignToGroup = (id, gid) => placeCheck(id, gid, { addMenuGid: null })
   const renameGroup = (gid, name) => setState((s) => ({ agentGroups: s.agentGroups.map((x) => (x.gid === gid ? { ...x, name } : x)) }))
   const addGroupFor = (agentId) => setState((s) => { const n = s.agentGroups.filter((x) => x.agentId === agentId).length + 1; return { agentGroups: [...s.agentGroups, { agentId, gid: uid('G'), name: 'Group ' + n }] } })
   // Reorder groups within an agent (positional — the sequence number follows order).
@@ -621,11 +640,9 @@ export function deriveVals(state, setState) {
     groups.splice(to < 0 ? groups.length : to, 0, moved)
     return { agentGroups: groups, dragGroupGid: null, dragOverGid: null }
   })
-  const deleteGroup = (gid) => setState((s) => {
-    const placements = { ...s.placements }
-    allChecks().forEach((c) => { const cur = s.placements[c.id] || { agentId: c.agentId || null, groupId: c.groupId || null }; if (cur.groupId === gid) placements[c.id] = { agentId: null, groupId: null } })
-    return { agentGroups: s.agentGroups.filter((g) => g.gid !== gid), placements }
-  })
+  // Dropping the group drops the arrangement with it — the checks it held are
+  // unfiled by the group ceasing to name them, and none of them is touched.
+  const deleteGroup = (gid) => setState((s) => ({ agentGroups: s.agentGroups.filter((g) => g.gid !== gid) }))
   // Check lifecycle: inactivate (excluded from runs) and delete (with confirm).
   // Retiring stops a check running. It was held in `inactiveIds` and written
   // nowhere, so it survived exactly as long as the tab did — the same complaint as
@@ -641,15 +658,20 @@ export function deriveVals(state, setState) {
     if (c) persistCheck({ ...c, ...(s.overrides[id] || {}), inactive: now }, ruleOf(id))
     return { inactiveIds: { ...s.inactiveIds, [id]: now } }
   })
-  const deleteAgent = (id) => (gov.deleteAgent(id).catch(() => {}), setState((s) => {
-    const placements = { ...s.placements }
-    allChecks().forEach((c) => { const cur = s.placements[c.id] || { agentId: c.agentId || null, groupId: c.groupId || null }; if (cur.agentId === id) placements[c.id] = { agentId: null, groupId: null } })
-    return { deletedAgentIds: { ...s.deletedAgentIds, [id]: true }, agentGroups: s.agentGroups.filter((g) => g.agentId !== id), placements, activeAgentId: s.activeAgentId === id ? null : s.activeAgentId, view: s.activeAgentId === id ? 'list' : s.view }
-  }))
+  const deleteAgent = (id) => (gov.deleteAgent(id).catch(() => {}), setState((s) => ({
+    deletedAgentIds: { ...s.deletedAgentIds, [id]: true },
+    agentGroups: s.agentGroups.filter((g) => g.agentId !== id),
+    activeAgentId: s.activeAgentId === id ? null : s.activeAgentId,
+    view: s.activeAgentId === id ? 'list' : s.view,
+  })))
+  // A deleted check leaves whatever group had filed it, so no group goes on
+  // naming an id that resolves to nothing.
   const deleteCheck = (id) => setState((s) => {
-    const placements = { ...s.placements }; delete placements[id]
     const overrides = { ...s.overrides }; delete overrides[id]
-    return { extraChecks: s.extraChecks.filter((c) => c.id !== id), deletedCheckIds: { ...s.deletedCheckIds, [id]: true }, placements, overrides, activeCheckId: s.activeCheckId === id ? null : s.activeCheckId, panel: s.commentTarget === id ? null : s.panel }
+    const agentGroups = s.agentGroups.map((g) =>
+      (g.checks || []).includes(id) ? { ...g, checks: g.checks.filter((x) => x !== id) } : g)
+    agentGroups.forEach((g, i) => { if (g !== s.agentGroups[i]) gov.saveGroup(g).catch(() => {}) })
+    return { extraChecks: s.extraChecks.filter((c) => c.id !== id), deletedCheckIds: { ...s.deletedCheckIds, [id]: true }, agentGroups, overrides, activeCheckId: s.activeCheckId === id ? null : s.activeCheckId, panel: s.commentTarget === id ? null : s.panel }
   })
   const acceptSuggestion = (id) => {
     const c = allChecks().find((x) => x.id === id)
@@ -684,7 +706,6 @@ export function deriveVals(state, setState) {
       const isExact = kind === 'exact'
       const nc = {
         id, checkType: isExact ? 'PROGRAMMATIC' : 'AGENT', domain: 'Uncategorised', cases: 0,
-        agentId: null, groupId: null,
         title: isExact ? 'New exact rule' : 'New judged rule',
         severity: 'MAJOR', refs: [],
         suggestion: isExact
@@ -1021,7 +1042,7 @@ export function deriveVals(state, setState) {
 
   const moveCheck = (id, toGid) => {
     if (!id) { setState({ dragOverGid: null }); return }
-    setState((s) => ({ placements: { ...s.placements, [id]: { agentId: detailAgentId, groupId: toGid } }, dragId: null, dragOverGid: null }))
+    placeCheck(id, toGid, { dragId: null, dragOverGid: null })
   }
 
   // -------- derivation (renderVals) ----------
@@ -1048,7 +1069,7 @@ export function deriveVals(state, setState) {
   const groups = S.agentGroups.filter((g) => g.agentId === detailAgentId).map((g, gi) => {
     const addable = allChecks()
       .filter((c) => { const p = placementOf(c); return !(p.agentId === detailAgentId && p.groupId === g.gid) })
-      .map((c) => { const p = placementOf(c); return { title: valueOf(c, 'title'), kindIcon: CARD_TYPES[typeOf(c)].icon, domain: p.agentId === detailAgentId ? 'move here' : p.agentId ? 'from ' + agentName(p.agentId) : 'unassigned', sevColor: (SEV_META[(valueOf(c, 'severity') || 'MAJOR').toUpperCase()] || SEV_META.MAJOR).color, onAdd: () => assignToGroup(c.id, g.gid, detailAgentId) } })
+      .map((c) => { const p = placementOf(c); return { title: valueOf(c, 'title'), kindIcon: CARD_TYPES[typeOf(c)].icon, domain: p.agentId === detailAgentId ? 'move here' : p.agentId ? 'from ' + agentName(p.agentId) : 'unassigned', sevColor: (SEV_META[(valueOf(c, 'severity') || 'MAJOR').toUpperCase()] || SEV_META.MAJOR).color, onAdd: () => assignToGroup(c.id, g.gid) } })
     const gc = S.comments[g.gid] || []
     const cks = allChecks().filter((c) => { const p = placementOf(c); return p.agentId === detailAgentId && p.groupId === g.gid }).map((c) => buildCheck(c, 'agent'))
     return {

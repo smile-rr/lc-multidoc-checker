@@ -527,19 +527,29 @@
           "gid": "AVAILABILITY_RISK",
           "desc": "Where and how the credit can be used.",
           "name": "Availability risk",
-          "ordinal": 0
+          "ordinal": 0,
+          "checks": [
+            "REQ-38",
+            "REQ-41A"
+          ]
         },
         {
           "gid": "TIME_WINDOW",
           "desc": "The dates that decide whether a presentation is in time.",
           "name": "Time window",
-          "ordinal": 1
+          "ordinal": 1,
+          "checks": [
+            "DATE-31D"
+          ]
         },
         {
           "gid": "DRAFTS_TENOR",
           "desc": "The bill of exchange itself.",
           "name": "Drafts & tenor",
-          "ordinal": 2
+          "ordinal": 2,
+          "checks": [
+            "DOCSET-42C"
+          ]
         }
       ],
       "eyebrow": "LC terms · Time & availability",
@@ -606,13 +616,17 @@
           "gid": "TRANS_ONBOARD",
           "desc": "Loading evidence and shipment dates.",
           "name": "On-board & dating",
-          "ordinal": 3
+          "ordinal": 3,
+          "checks": [
+            "TRANS-20"
+          ]
         },
         {
           "gid": "TRANS_PORTS",
           "desc": "Ports of loading and discharge.",
           "name": "Ports & routing",
-          "ordinal": 4
+          "ordinal": 4,
+          "checks": []
         }
       ],
       "eyebrow": "Transport · Documents",
@@ -676,13 +690,19 @@
           "gid": "INV_GOODS",
           "desc": "Correspondence with the credit.",
           "name": "Goods description",
-          "ordinal": 5
+          "ordinal": 5,
+          "checks": [
+            "XD-14"
+          ]
         },
         {
           "gid": "INV_AMOUNTS",
           "desc": "Values, tolerances and unit prices.",
           "name": "Amounts & pricing",
-          "ordinal": 6
+          "ordinal": 6,
+          "checks": [
+            "AMT-18"
+          ]
         }
       ],
       "eyebrow": "Goods · Pricing",
@@ -739,7 +759,10 @@
           "gid": "INS_COVERAGE",
           "desc": "Amount, currency and cover dates.",
           "name": "Coverage & risks",
-          "ordinal": 7
+          "ordinal": 7,
+          "checks": [
+            "CERT-28"
+          ]
         }
       ],
       "eyebrow": "Insurance · Cover",
@@ -804,7 +827,8 @@
           "gid": "BEN_IDENTITY",
           "desc": "Names and addresses across documents.",
           "name": "Party identity",
-          "ordinal": 8
+          "ordinal": 8,
+          "checks": []
         }
       ],
       "eyebrow": "Parties · Identity",
@@ -862,9 +886,7 @@
       },
       "title": "Invoice value within the credit amount",
       "domain": "Goods & pricing",
-      "agentId": "invoice",
       "citedAs": "practice",
-      "groupId": "INV_AMOUNTS",
       "severity": "MAJOR",
       "checkType": "PROGRAMMATIC",
       "suggestion": "Add a row for unit price against the credit once pricing is extracted."
@@ -927,9 +949,7 @@
       },
       "title": "Insurance coverage amount",
       "domain": "Insurance",
-      "agentId": "insurance",
       "citedAs": "practice",
-      "groupId": "INS_COVERAGE",
       "severity": "MAJOR",
       "checkType": "PROGRAMMATIC",
       "suggestion": "Add a condition confirming the insurance is assignable or endorsed in blank."
@@ -1013,9 +1033,7 @@
         "beneficiary_name",
         "presentation_period"
       ],
-      "agentId": "expiry",
       "citedAs": "practice",
-      "groupId": "TIME_WINDOW",
       "severity": "CRITICAL",
       "checkType": "PROGRAMMATIC",
       "suggestion": "Runs before anything is read. If it fails, nothing in the documents can cure it."
@@ -1066,9 +1084,7 @@
       },
       "title": "Draft tenor and drawee",
       "domain": "Time & availability",
-      "agentId": "expiry",
       "citedAs": "practice",
-      "groupId": "DRAFTS_TENOR",
       "severity": "MAJOR",
       "checkType": "PROGRAMMATIC",
       "suggestion": "Consider a condition for drafts drawn on a reimbursing bank rather than the issuing bank."
@@ -1129,9 +1145,7 @@
         "available_with",
         "beneficiary_name"
       ],
-      "agentId": "expiry",
       "citedAs": "practice",
-      "groupId": "AVAILABILITY_RISK",
       "severity": "MAJOR",
       "checkType": "AGENT",
       "suggestion": "No condition yet for transferring the insurance benefit to the second beneficiary — consider adding one."
@@ -1154,9 +1168,7 @@
         "available_with",
         "draft_tenor"
       ],
-      "agentId": "expiry",
       "citedAs": "practice",
-      "groupId": "AVAILABILITY_RISK",
       "severity": "CRITICAL",
       "checkType": "AGENT",
       "suggestion": "Add a condition for credits available by mixed payment (part sight, part deferred) — confirm each portion matches its own draft."
@@ -1233,9 +1245,7 @@
       },
       "title": "Bill of lading on-board notation",
       "domain": "Transport",
-      "agentId": "transport",
       "citedAs": "practice",
-      "groupId": "TRANS_ONBOARD",
       "severity": "CRITICAL",
       "checkType": "PROGRAMMATIC",
       "suggestion": "Add a condition for charter-party bills of lading, which are examined differently."
@@ -1313,9 +1323,7 @@
       },
       "title": "Documents do not conflict with each other",
       "domain": "Goods & pricing",
-      "agentId": "invoice",
       "citedAs": "practice",
-      "groupId": "INV_GOODS",
       "severity": "CRITICAL",
       "checkType": "PROGRAMMATIC",
       "suggestion": "Add a row for marks and numbers once packing lists are extracted."

@@ -255,8 +255,17 @@ public class GovernanceStore {
                 ? new java.util.ArrayList<>((List<Map<String, Object>>) l)
                 : new java.util.ArrayList<>();
 
-        groups.removeIf(g -> gid.equals(String.valueOf(g.get("gid"))));
-        groups.add(new LinkedHashMap<>(group));
+        // In place, not remove-then-append. The order of an agent's groups is the
+        // order they run in, and it is the array's order — so appending a group
+        // that already existed would move it to last as a side effect of editing
+        // it. That was survivable while a group was only ever saved when someone
+        // renamed it; now a group is saved whenever a check is filed into it.
+        int at = -1;
+        for (int i = 0; i < groups.size(); i++) {
+            if (gid.equals(String.valueOf(groups.get(i).get("gid")))) { at = i; break; }
+        }
+        if (at >= 0) groups.set(at, new LinkedHashMap<>(group));
+        else groups.add(new LinkedHashMap<>(group));
         agent.put("groups", groups);
         saveAgent(agent);
     }

@@ -89,8 +89,14 @@ export function hydrateSeed(seed, data) {
     statusTone: 'success',
   })))
 
+  // A group names the checks it holds. That link used to sit the other way round,
+  // on the check — which meant an examination's input declared which console
+  // grouping it belonged to. Arranging checks is what an agent is for, so the
+  // arrangement lives here and a check document is only the rule.
   refill(seed.groups, (data.agents ?? []).flatMap((a) =>
-    (a.groups ?? []).map((g) => ({ agentId: a.id, gid: g.gid, name: g.name, desc: g.desc ?? '' })),
+    (a.groups ?? []).map((g) => ({
+      agentId: a.id, gid: g.gid, name: g.name, desc: g.desc ?? '', checks: g.checks ?? [],
+    })),
   ))
 
   // --- Library -----------------------------------------------------------
