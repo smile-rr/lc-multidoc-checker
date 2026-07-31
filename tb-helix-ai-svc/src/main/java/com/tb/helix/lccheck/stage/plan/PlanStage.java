@@ -15,6 +15,7 @@ import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.pipeline.*;
 import com.tb.helix.lccheck.pipeline.StageContext;
+import com.tb.helix.lccheck.service.ModelSpend;
 import com.tb.helix.lccheck.types.examination.Origin;
 import com.tb.helix.lccheck.service.DocumentTypes;
 import com.tb.helix.lccheck.stage.intake.IntakeStage;
@@ -153,7 +154,8 @@ public class PlanStage implements Stage {
         try {
             var hit = cache.computeIfAbsent(key, Map.class, () -> {
                 var result = models.complete(TextRequest.json(LlmRole.PLAN, prompts.get("plan-system"), prompt));
-                return DerivationCache.Entry.of(parse(result.content()));
+                return new DerivationCache.Entry<>(parse(result.content()), null,
+                        result.rawResponse(), ModelSpend.of(result.usage()));
             });
             found = readList(hit.value());
         } catch (RuntimeException e) {

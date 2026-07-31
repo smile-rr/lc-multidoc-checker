@@ -19,6 +19,7 @@ import com.tb.helix.lccheck.rule.RuleEvaluator;
 import com.tb.helix.lccheck.service.DocumentTypes;
 import com.tb.helix.lccheck.pipeline.*;
 import com.tb.helix.lccheck.pipeline.StageContext;
+import com.tb.helix.lccheck.service.ModelSpend;
 import com.tb.helix.lccheck.types.pipeline.StageId;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -256,7 +257,8 @@ public class ExecuteStage implements Stage {
 
         var hit = cache.computeIfAbsent(key, Map.class, () -> {
             var result = models.complete(TextRequest.json(LlmRole.JUDGE, prompts.get("examine-system"), prompt));
-            return DerivationCache.Entry.of(parse(result.content()));
+            return new DerivationCache.Entry<>(parse(result.content()), null,
+                    result.rawResponse(), ModelSpend.of(result.usage()));
         });
         @SuppressWarnings("unchecked")
         Map<String, Object> out = (Map<String, Object>) hit.value();

@@ -16,6 +16,7 @@ import com.tb.helix.infra.stream.HelixEvent;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.service.DocumentTypes;
+import com.tb.helix.lccheck.service.ModelSpend;
 import com.tb.helix.lccheck.service.ExtractionSpec;
 import com.tb.helix.lccheck.pipeline.*;
 import com.tb.helix.lccheck.pipeline.StageContext;
@@ -149,7 +150,7 @@ public class InterpretStage implements Stage {
         var hit = cache.computeIfAbsent(key, Map.class, () -> {
             List<byte[]> images = renderer.render(pdfSha, all, spec);
             VisionResult result = models.read(VisionRequest.of(LlmRole.SEGMENT, images, prompt, all));
-            return DerivationCache.Entry.of(result.fields());
+            return new DerivationCache.Entry<>(result.fields(), null, null, ModelSpend.of(result.usage()));
         });
 
         if (hit.tier() != com.tb.helix.infra.cache.CacheTier.Level.NONE) {
@@ -236,7 +237,7 @@ public class InterpretStage implements Stage {
                     List<byte[]> images = renderer.render(pdfSha, pages, spec);
                     VisionResult result = models.read(
                             VisionRequest.of(LlmRole.EXTRACT, images, prompt, pages));
-                    return DerivationCache.Entry.of(result.fields());
+                    return new DerivationCache.Entry<>(result.fields(), null, null, ModelSpend.of(result.usage()));
                 });
 
                 int offSchema = writeFacts(ctx, code, pages.get(0), hit.value());

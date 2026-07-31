@@ -58,6 +58,15 @@ public interface DerivationCache {
 
     /** Tokens and latency for one call, recorded alongside its answer. */
     record Usage(Integer promptTokens, Integer completionTokens, Integer totalTokens, Integer latencyMs) {
+
+        /**
+         * Nothing was spent — the answer came from somewhere that costs nothing.
+         *
+         * <p>Distinct from {@code null}, which means nobody recorded it. A run with no
+         * usage row and a run that genuinely cost nothing look identical on a bill, and
+         * only one of them is a reporting bug.
+         */
+        public static final Usage FREE = new Usage(0, 0, 0, 0);
     }
 
     /** Looks up an answer without computing one. */

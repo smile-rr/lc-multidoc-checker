@@ -8,6 +8,7 @@ import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
 import com.tb.helix.infra.prompt.Prompts;
 import com.tb.helix.lccheck.service.DocumentTypes;
+import com.tb.helix.lccheck.service.ModelSpend;
 import com.tb.helix.lccheck.service.ExtractionSpec;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -86,7 +87,8 @@ public class CreditReader {
         try {
             var hit = cache.computeIfAbsent(key, Map.class, () -> {
                 var result = models.complete(TextRequest.json(LlmRole.READ_TEXT, prompts.get("credit-system"), prompt));
-                return DerivationCache.Entry.of(parse(result.content()));
+                return new DerivationCache.Entry<>(parse(result.content()), null,
+                        result.rawResponse(), ModelSpend.of(result.usage()));
             });
             @SuppressWarnings("unchecked")
             Map<String, Object> fields = (Map<String, Object>) hit.value();
