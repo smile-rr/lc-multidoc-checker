@@ -81,7 +81,7 @@ public class ExaminationRunner {
     /** Reruns a stage, clearing what it invalidates downstream. */
     public void rerunStage(String caseId, StageId stage, String officerId) {
         cases.find(caseId).orElseThrow(() -> new NotFoundException("case", caseId));
-        cases.clearFrom(caseId, stage);
+        cases.clearFrom(caseId, stage, pipeline.after(stage));
         cases.patchCase(caseId, Map.of("gate_halted", false));
         cases.recordAction(caseId, "rerun_stage", stage.key(), Map.of(), officerId, null);
         cancelled.remove(caseId);
@@ -120,7 +120,7 @@ public class ExaminationRunner {
         // The next stage the officer can ask for, not simply the next in the pipeline:
         // GATE sits between interpret and plan but has no button, and parking a case at
         // "waiting for gate" leaves it waiting for something that cannot be pressed.
-        StageId next = last.nextOfficerStage().orElse(null);
+        StageId next = pipeline.nextOfficerStageAfter(last).orElse(null);
 
         cases.setStage(caseId, last, next, next != null);
         if (next != null) {

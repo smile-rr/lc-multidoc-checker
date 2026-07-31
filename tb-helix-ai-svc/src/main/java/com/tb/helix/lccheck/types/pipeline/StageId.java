@@ -11,6 +11,11 @@ import java.util.Optional;
  * is a regulated examination, and a pipeline that ran to completion on upload would be
  * presenting conclusions nobody chose to reach.
  *
+ * <p><b>Names, not sequence.</b> Which stage follows which, and which an officer may ask
+ * for, live in {@link com.tb.helix.lccheck.pipeline.DocCheckPipeline} — the class called
+ * "pipeline" should be the one that tells you the pipeline. This enum used to own both, so
+ * the flow could only be learned from an enum of names.
+ *
  * <p>A type rather than part of the pipeline's contract: a stage name is a noun that appears
  * in a URL, in a database column and in a clear-downstream call, so half the codebase names
  * it. {@code Stage} and {@code StageContext} are the contract and stay in {@code pipeline}
@@ -62,44 +67,7 @@ public enum StageId {
         return automatic;
     }
 
-    public static final List<StageId> ORDER = List.of(INTAKE, INTERPRET, GATE, PLAN, EXECUTE, SIGNOFF);
-
-    /**
-     * The stages an officer can trigger by name.
-     *
-     * <p>{@link #GATE} is absent: it is run by asking for {@link #PLAN}. Exposing it
-     * would offer the officer a button that means "check whether the credit has expired,
-     * but do not plan anything", which is not a thing anyone wants.
-     */
-    public static final List<StageId> OFFICER_TRIGGERED = List.of(INTERPRET, PLAN, EXECUTE, SIGNOFF);
-
     public static Optional<StageId> fromKey(String key) {
-        return ORDER.stream().filter(s -> s.key.equals(key)).findFirst();
-    }
-
-    /** The next stage, or empty at the end of the pipeline. */
-    public Optional<StageId> next() {
-        int i = ORDER.indexOf(this);
-        return i < 0 || i + 1 >= ORDER.size() ? Optional.empty() : Optional.of(ORDER.get(i + 1));
-    }
-
-    /**
-     * The next stage the officer can actually ask for.
-     *
-     * <p>Distinct from {@link #next()} because {@link #GATE} is in the pipeline but not on
-     * the workbench — it runs when the officer asks for {@link #PLAN}. Parking a case at
-     * "waiting for gate" would leave it waiting for a button that does not exist.
-     */
-    public Optional<StageId> nextOfficerStage() {
-        int i = ORDER.indexOf(this);
-        for (int j = i + 1; j >= 0 && j < ORDER.size(); j++) {
-            if (OFFICER_TRIGGERED.contains(ORDER.get(j))) return Optional.of(ORDER.get(j));
-        }
-        return Optional.empty();
-    }
-
-    /** Stages after this one — what a rerun has to clear. */
-    public List<StageId> downstream() {
-        return ORDER.subList(Math.min(ORDER.indexOf(this) + 1, ORDER.size()), ORDER.size());
+        return java.util.Arrays.stream(values()).filter(s -> s.key.equals(key)).findFirst();
     }
 }

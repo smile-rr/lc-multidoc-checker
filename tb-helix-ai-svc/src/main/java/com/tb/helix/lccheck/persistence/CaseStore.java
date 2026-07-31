@@ -280,8 +280,8 @@ public class CaseStore {
     }
 
     /** Clears everything a rerun invalidates. Downstream only — the stage being rerun writes its own. */
-    public void clearFrom(String caseId, StageId stage) {
-        List<String> keys = stage.downstream().stream().map(StageId::key).toList();
+    public void clearFrom(String caseId, StageId stage, List<StageId> downstream) {
+        List<String> keys = downstream.stream().map(StageId::key).toList();
         if (keys.isEmpty()) return;
         Object[] args = new Object[] { caseId, keys.toArray(String[]::new) };
         jdbc.update("DELETE FROM helix_check.lc_step WHERE case_id = ?::uuid AND stage = ANY(?)", args);

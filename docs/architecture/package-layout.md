@@ -54,10 +54,11 @@ lccheck/
 ├── api/            CaseController — routes and status codes, nothing else
 │   └── dto/        request bodies. The API's shape, not the examination's.
 ├── service/        CaseService, CaseAssembler — the only place rows become types
-├── pipeline/       Stage, StageContext   — what a phase is, and what a step may do
-│                   DocCheckPipeline     — WHAT this examination is: six stages, describe()
-│                   ExaminationRunner    — HOW it runs here: officer pacing, halts, async
-│                   DbStageContext       — the seam: journals to the tape and the browser
+├── pipeline/       DocCheckPipeline  — WHAT the examination is. Read it and you know the flow.
+│                   Stage             — a phase of it; one method of its own, which stage
+│                   StageContext      — what a step may do
+│                   DbStageContext    — the only impl: Postgres + SSE. The seam to the engine.
+│                   ExaminationRunner — HOW it runs here: officer pacing, halts, async
 ├── stage/          one package per stage: intake, interpret, gate, plan, execute, signoff
 ├── persistence/    CaseStore, Rows — SQL and column names live here and stop here
 └── types/          pure data, mirroring the behaviour side by name
@@ -289,6 +290,9 @@ right answer, and these declarations map onto activities nearly one to one.
   orchestrator's, which is what makes a stage one file rather than five edits.
 - **A new step inside a stage** → one entry in that stage's `steps()` list and a private method.
   The tape, the SSE label, `/flow` and the browser's progress all follow from it.
+- **A rule that is not orchestration** — coercing a value, assembling a message, deriving a column
+  → its own class beside the stage, like `CreditColumns`. A stage says what happens; a class beside
+  it says what a value means. Stages are read top down: `id()`, `steps()`, the step bodies, helpers.
 - **A new type** → `types/`, or `types/<subdomain>/` if it belongs to one. No annotations.
 - **A new endpoint** → a method on a controller, one or two lines, delegating to a service.
 - **A new provider** (model, cache tier, blob store) → an adapter in `infra` or `harness` behind the

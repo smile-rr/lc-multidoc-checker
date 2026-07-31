@@ -84,6 +84,19 @@ public class IntakeStage implements Stage {
         return StageId.INTAKE;
     }
 
+    @Override
+    public List<Step<StageContext>> steps() {
+        return List.of(
+                Step.<StageContext>of(CREDIT, "Reading the credit",
+                        ctx -> row(ctx).creditTextSha() != null, this::readCredit),
+                Step.<StageContext>of(BUNDLE, "Converting the scan to PDF",
+                        ctx -> row(ctx).sourceBundleSha() != null && row(ctx).bundlePdfSha() == null,
+                        this::convertBundle),
+                Step.<StageContext>of(MANIFEST, "Counting the pages",
+                        ctx -> row(ctx).sourceBundleSha() != null, this::countPages),
+                Step.<StageContext>of(READY, "Finishing intake", this::markReady));
+    }
+
     /**
      * Takes custody of the uploads. Nothing is read, nothing is converted, nothing is
      * spent — this is only the point past which the evidence cannot be lost.
@@ -149,18 +162,6 @@ public class IntakeStage implements Stage {
      * <p>A rerun re-reads from the stored blobs rather than from an upload, which is what
      * makes intake repeatable at all: the bytes are the input, and they are still there.
      */
-    @Override
-    public List<Step<StageContext>> steps() {
-        return List.of(
-                Step.<StageContext>of(CREDIT, "Reading the credit",
-                        ctx -> row(ctx).creditTextSha() != null, this::readCredit),
-                Step.<StageContext>of(BUNDLE, "Converting the scan to PDF",
-                        ctx -> row(ctx).sourceBundleSha() != null && row(ctx).bundlePdfSha() == null,
-                        this::convertBundle),
-                Step.<StageContext>of(MANIFEST, "Counting the pages",
-                        ctx -> row(ctx).sourceBundleSha() != null, this::countPages),
-                Step.<StageContext>of(READY, "Finishing intake", this::markReady));
-    }
 
     /**
      * Reads the credit through a model and writes its terms.
@@ -180,7 +181,7 @@ public class IntakeStage implements Stage {
         // An amendment changes terms rather than establishing them, so only what it
         // actually states is written — CreditReader has already dropped the rest, and a
         // field absent from a 707 means "unchanged", never "cleared".
-        cases.patchCase(caseId, creditColumns(credit));
+        cases.patchCase(caseId, CreditColumns.of(credit));
 
         // No fileName: the upsert leaves file_name alone on conflict, so the name recorded
         // at receive survives this and every rerun after it. The upload is the only thing
@@ -247,100 +248,5 @@ public class IntakeStage implements Stage {
         return cases.documents(caseId).stream()
                 .filter(d -> docCode.equals(d.docCode()))
                 .findFirst().map(ReadRows.Document::fileName).orElse(null);
-    }
-
-    private Map<String, Object> creditColumns(Map<String, Object> c) {
-        Map<String, Object> out = new LinkedHashMap<>();
-        put(out, "credit_ref", c.get("creditRef"));
-        put(out, "issued_date", date(c.get("issuedDate")));
-        put(out, "applicant", c.get("applicant"));
-        put(out, "beneficiary", c.get("beneficiary"));
-        put(out, "currency", trim(c.get("currency"), 3));
-        put(out, "amount", decimal(c.get("amount")));
-        put(out, "tolerance_pct", decimal(c.get("tolerancePct")));
-        put(out, "latest_shipment", date(c.get("latestShipment")));
-        put(out, "expiry", date(c.get("expiry")));
-        put(out, "expiry_place", c.get("expiryPlace"));
-        put(out, "presentation_days", integer(c.get("presentationDays")));
-        put(out, "tenor", c.get("tenor"));
-        put(out, "goods", c.get("goods"));
-        return out;
-    }
-
-    /**
-     * ISO text to a real date.
-     *
-     * <p>A DATE column will not take a String parameter — the driver binds it as varchar
-     * and Postgres refuses the comparison. Converting here rather than casting in SQL keeps
-     * the store's patch generic, and the parser is where the value is known to be a date.
-     */
-    private java.sql.Date date(Object iso) {
-        if (iso == null) return null;
-        try {
-            return java.sql.Date.valueOf(LocalDate.parse(String.valueOf(iso).substring(0, 10)));
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /**
-     * A number, however it was written.
-     *
-     * <p>SWIFT uses the comma as the decimal separator: {@code :32B:GBP100,00} is one
-     * hundred pounds, not ten thousand. Stripping the comma — which is what a naive
-     * "keep digits and dots" clean does — multiplies the credit by a hundred, and the
-     * examination then measures every invoice against the wrong amount without anything
-     * looking broken.
-     *
-     * <p>So the separators are read rather than removed: whichever of {@code .} or
-     * {@code ,} appears last is the decimal point, and everything before it is grouping.
-     */
-    private java.math.BigDecimal decimal(Object value) {
-        if (value == null) return null;
-        if (value instanceof Number n) return new java.math.BigDecimal(n.toString());
-
-        String s = String.valueOf(value).strip().replaceAll("[^0-9.,\\-]", "");
-        if (s.isBlank()) return null;
-
-        int lastDot = s.lastIndexOf('.');
-        int lastComma = s.lastIndexOf(',');
-        int decimalAt = Math.max(lastDot, lastComma);
-
-        String normalised;
-        if (decimalAt < 0) {
-            normalised = s;
-        } else {
-            // A trailing group of three digits after the only separator is ambiguous —
-            // 1,000 is a thousand in one convention and one in the other. SWIFT amounts
-            // always carry their decimals, so treat it as grouping only when it is the
-            // sole separator and leaves exactly three digits.
-            String tail = s.substring(decimalAt + 1);
-            boolean grouping = tail.length() == 3 && lastDot < 0 != lastComma < 0;
-            normalised = grouping
-                    ? s.replaceAll("[.,]", "")
-                    : s.substring(0, decimalAt).replaceAll("[.,]", "") + "." + tail;
-        }
-        try {
-            return new java.math.BigDecimal(normalised);
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-
-    private Integer integer(Object value) {
-        java.math.BigDecimal d = decimal(value);
-        return d == null ? null : d.intValue();
-    }
-
-    /** A fixed-width column will not take an over-long value; CHAR(3) means CHAR(3). */
-    private String trim(Object value, int max) {
-        if (value == null) return null;
-        String s = String.valueOf(value).strip();
-        return s.isEmpty() ? null : s.substring(0, Math.min(s.length(), max));
-    }
-
-    // A null must stay out of the patch entirely, or it overwrites a value parsed earlier.
-    private void put(Map<String, Object> map, String key, Object value) {
-        if (value != null) map.put(key, value instanceof String s && s.isBlank() ? null : value);
     }
 }
