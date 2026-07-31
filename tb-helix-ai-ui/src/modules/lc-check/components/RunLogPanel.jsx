@@ -178,10 +178,17 @@ function StepRow({ step, cost }) {
         <span style={{ flex: 1 }} />
         {/* What the step spent, where the step is — a total in a drawer answers
             "what did this run cost" and never "which step cost it". */}
+        {/* Words, not arrows. This read `1718↓ 664↑`, and ↓/↑ is ambiguous in the
+            worst possible direction — "down into the model" and "↑ sent, ↓ received"
+            are both natural readings and they are opposites. Output costs eight
+            times input on a flash model, so reading it backwards makes an expensive
+            step look cheap, which is the one mistake this number exists to prevent. */}
         {cost && (cost.tokensIn > 0 || cost.cost > 0) && (
-          <span title={`${cost.model} · ${cost.tokensIn} in, ${cost.tokensOut} out`}
+          <span title={`${cost.model} · ${cost.tokensIn} tokens in, ${cost.tokensOut} out`}
                 style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: LOG_INK.detail, flexShrink: 0 }}>
-            {cost.tokensIn}↓ {cost.tokensOut}↑ {usdCents(cost.cost)}
+            <span style={{ color: LOG_INK.time }}>in</span> {cost.tokensIn}
+            {' '}<span style={{ color: LOG_INK.time }}>out</span> {cost.tokensOut}
+            {' '}{usdCents(cost.cost)}
           </span>
         )}
         <Clock at={step.startedAt} ms={step.ms} running={step.status === 'running'} />
