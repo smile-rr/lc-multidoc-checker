@@ -56,9 +56,9 @@ lccheck/
 ├── service/        CaseService, CaseAssembler — the only place rows become types
 ├── pipeline/       DocCheckPipeline  — WHAT the examination is. The constructor IS the pipeline.
 │                   Stage             — a phase of it; one method of its own, which stage
-│                   StageContext      — what a step may do
-│                   DbStageContext    — the only impl: Postgres + SSE. The seam to the engine.
-│                   ExaminationRunner — HOW it runs here: officer pacing, halts, async
+│                   StageContext      — what a step may do, against Postgres + SSE.
+│                                       The seam to the engine.
+│                   StageLauncher     — HOW it runs here: officer pacing, halts, async
 ├── stage/          one package per stage: intake, interpret, gate, plan, execute, signoff
 ├── persistence/    CaseStore, Rows — SQL and column names live here and stop here
 └── types/          pure data, mirroring the behaviour side by name
@@ -119,7 +119,7 @@ change to two modules at once. It stays small or it stops being a kernel.
 | Projection for one screen or query | `…View` | `PlanCheckView`, `FindingView` |
 | Wire format | `…Request` / `…Response` | `SignoffRequest` — `api/dto` only |
 | Behaviour contract | plain noun, no `I`, no `Interface` | `Stage`, `BlobStore` |
-| Implementation | named for its technology or its verb | `DbStageContext`, `ChatCompletionsGateway` |
+| Implementation | named for its technology or its verb | `PgDerivationCache`, `ChatCompletionsGateway` |
 | Published cross-module contract | plain noun in `spi/` | `CheckCatalog` |
 | Exception | `…Exception` | `NotFoundException` |
 
@@ -260,9 +260,9 @@ human pacing is lc-check's addition, not the engine's.
 | | Where | Knows |
 |---|---|---|
 | `Step`, `StepResult`, `StepPhase`, `StepJournal`, `Trigger`, `Pipeline`, `PipelineEngine` | `infra/pipeline` | how phases are ordered, what runs when one is requested, and how to walk their steps reporting each. **Nothing else.** |
-| `Stage`, `StageContext`, `DbStageContext` | `lccheck/pipeline` | that a phase belongs to a stage of an examination |
+| `Stage`, `StageContext` | `lccheck/pipeline` | that a phase belongs to a stage of an examination |
 | `DocCheckPipeline` | `lccheck/pipeline` | **what** this examination is — six stages, in order. Its constructor is the whole definition; the sequencing is inherited. |
-| `ExaminationRunner` | `lccheck/pipeline` | **how** it runs here — officer pacing, the gate riding with the plan, halts, async |
+| `StageLauncher` | `lccheck/pipeline` | **how** it runs here — officer pacing, the gate riding with the plan, halts, async |
 | `StageId` | `lccheck/types/pipeline` | the stage names, and which one an officer may ask for next |
 
 Named for what each does, not distinguished by a `Service` suffix. "The pipeline" had been three

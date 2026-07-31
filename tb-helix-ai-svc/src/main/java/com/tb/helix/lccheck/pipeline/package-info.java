@@ -1,13 +1,13 @@
 /**
- * How a document examination is paced. Five files, five jobs.
+ * How a document examination is paced. Four files, four jobs.
  *
  * <pre>
  *   DocCheckPipeline   WHAT the examination is — the six stages, in order, and who may
  *                      start each. Read this file and you know the flow.
  *   Stage              a phase of that examination. One method of its own: which stage.
- *   StageContext       what a step is allowed to do — record, read back, emit, cancel.
- *   DbStageContext     the only implementation: does all of that against Postgres and SSE.
- *   StageLauncher  HOW it runs here — the officer's turn, the gate riding with the
+ *   StageContext       what a step is allowed to do — record, read back, emit, cancel —
+ *                      done against Postgres and SSE.
+ *   StageLauncher      HOW it runs here — the officer's turn, the gate riding with the
  *                      plan, halts, the async boundary.
  * </pre>
  *
@@ -31,7 +31,7 @@
  * every stage after intake waits for a person. Those are UCP 600's rules and the bank's, and
  * they are most of the value.
  *
- * <p>{@link com.tb.helix.lccheck.pipeline.DbStageContext} is the seam between the two: it
+ * <p>{@link com.tb.helix.lccheck.pipeline.StageContext} is the seam between the two: it
  * implements the engine's journal by writing the step tape and publishing to the browser,
  * which is the one place those two accounts of a step are guaranteed to agree.
  *

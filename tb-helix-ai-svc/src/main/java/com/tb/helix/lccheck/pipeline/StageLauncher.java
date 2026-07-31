@@ -131,7 +131,7 @@ public class StageLauncher {
         PipelineEngine.Outcome outcome;
         try {
             outcome = PipelineEngine.run(toRun,
-                    phase -> new DbStageContext(caseId, ((Stage) phase).id(), officerId, cases, events, cancelled));
+                    phase -> new StageContext(caseId, ((Stage) phase).id(), officerId, cases, events, cancelled));
         } catch (RuntimeException e) {
             // A step threw rather than returning a failure. Either way the case must not be
             // left looking busy forever — this runs on a pool thread, so an escaping

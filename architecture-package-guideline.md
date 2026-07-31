@@ -6,9 +6,10 @@
 > [`docs/architecture/package-layout.md`](docs/architecture/package-layout.md). **That document is the
 > authority for this codebase**; this one is the generic reasoning behind it.
 >
-> Three things were corrected while applying it. They are marked **[corrected]** below: the
-> port/adapter direction in §5 contradicted §4, `spi` was used opposite to its Java meaning, and §6's
-> exception needed to be stated as a rule rather than a footnote.
+> Four things were corrected while applying it. They are marked **[corrected]** below: the
+> port/adapter direction in §5 contradicted §4, `spi` was used opposite to its Java meaning, §6's
+> exception needed to be stated as a rule rather than a footnote, and §3's contract/impl pairing
+> produced an interface with a single implementation that hid nothing.
 
 ---
 
@@ -65,10 +66,9 @@ This test is the single source of truth used to resolve every "is this a domain 
 │   ├── XxxService.java
 │   └── XxxAssembler.java        # the ONLY place allowed to convert types <-> dto
 ├── <core-engine-package>/       # e.g. pipeline/ — contracts + their default impl together
-│   ├── Stage.java                (interface)
-│   ├── StageContext.java         (interface)
-│   ├── PipelineService.java
-│   └── DbStageContext.java       (impl)
+│   ├── Stage.java                (interface — several implementations)
+│   ├── StageContext.java         (final class — see the note below)
+│   └── PipelineEngine.java
 ├── <subdomain-a>/ <subdomain-b>/ ...   # e.g. stage/intake, stage/plan, stage/execute
 │   └── XxxStage.java, XxxReader.java   # behavior, interface + impl co-located
 ├── persistence/
@@ -89,6 +89,22 @@ For a module that *supplies* a port to another module, add:
     └── XxxPortAdapter.java       # implements the consumer's spi.XxxPort, translates its own types
 ```
 
+
+### Pair a contract with an implementation only when something varies **[corrected]**
+
+The sketch above once read `StageContext.java (interface)` + `DbStageContext.java (impl)`, and that
+is what was built. It was justified as narrowing what a stage may reach — the interface exposes
+`recordStep`, the record also holds the store and the event bus. Then every stage turned out to be
+constructed with the store anyway, so the narrowing was fictional: two files, one implementation, no
+seam anyone could stand in.
+
+A contract earns its own file when a **second** implementation exists, is imminent, or is the point
+(`BlobStore`: disk today, S3 tomorrow). Otherwise a final class with private fields says the same
+thing — its public methods are the surface — in one file. `Stage` stays an interface because six
+classes implement it.
+
+Splitting is cheap later and mechanical; guessing wrong costs a file and a jump on every read.
+
 ---
 
 ## 4. Naming Conventions
@@ -100,7 +116,7 @@ For a module that *supplies* a port to another module, add:
 | Cross-boundary transport object | `...Request` / `...Response` | lives only in `api/dto` |
 | Persistence mapping | `...Row` / `...Entity` | lives only in `persistence`, never imported by `service`/`stage` directly |
 | Behavior contract | plain domain verb/noun, no `I` prefix, no `Interface` suffix | `Stage`, `ChatCompletionsClient` |
-| Behavior implementation | prefixed by technology or verb | `DbStageContext`, `ChatCompletionsGateway` |
+| Behavior implementation | prefixed by technology or verb | `PgDerivationCache`, `ChatCompletionsGateway` |
 | Cross-module contract owned by the consumer | `...Port` | `CheckCatalogPort` |
 | Cross-module contract fulfilled by the supplier | `...Adapter` | `LccheckCatalogAdapter` |
 | Exception | `...Exception` | own `error/` package, not `types` |
