@@ -27,6 +27,26 @@ const clamp = (n, lo, hi) => Math.max(lo, Math.min(n, hi))
 
 const MIN_W = 360
 const MIN_H = 160
+/** Hit-strip thickness for edge/corner resize. Wide enough to grab, thin enough
+ *  not to steal clicks from the body or the header buttons. */
+const EDGE = 6
+const CORNER = 14
+
+/**
+ * Resize directions. Each flag says which side moves; the opposite side stays
+ * put. Left/top therefore also shift `pos`, so the panel grows toward the
+ * cursor rather than sliding away under it.
+ */
+const DIRS = {
+  n:  { cursor: 'ns-resize',   n: true },
+  s:  { cursor: 'ns-resize',   s: true },
+  e:  { cursor: 'ew-resize',   e: true },
+  w:  { cursor: 'ew-resize',   w: true },
+  ne: { cursor: 'nesw-resize', n: true, e: true },
+  nw: { cursor: 'nwse-resize', n: true, w: true },
+  se: { cursor: 'nwse-resize', s: true, e: true },
+  sw: { cursor: 'nesw-resize', s: true, w: true },
+}
 
 export default function FloatingPanel({
   id = 'panel',
@@ -35,7 +55,7 @@ export default function FloatingPanel({
   title,
   status,
   width = 620,
-  /** Body height in px — the header sits above it. Resizable from the corner. */
+  /** Body height in px — the header sits above it. Resizable from any edge or corner. */
   height = 520,
   children,
 }) {
@@ -77,20 +97,45 @@ export default function FloatingPanel({
     e.preventDefault()
   }, [at.left, at.top, size.width])
 
-  // Resize from the bottom-right corner, both dimensions at once.
-  //
-  // Bottom-right rather than an edge because the panel is anchored by its
-  // top-left: growing from the corner leaves the header exactly where it was, so
-  // resizing never also moves the thing you are reading.
-  const startResize = useCallback((e) => {
+  // Resize from any edge or corner. The direction decides which sides move;
+  // the opposite sides stay fixed so the content you are reading does not jump.
+  const startResize = useCallback((dirKey) => (e) => {
+    const dir = DIRS[dirKey]
+    if (!dir) return
     const box = frame.current?.getBoundingClientRect()
-    const from = { x: e.clientX, y: e.clientY, w: size.width, h: size.height }
-    const top = box?.top ?? at.top
+    const left0 = box?.left ?? at.left
+    const top0 = box?.top ?? at.top
+    const from = { x: e.clientX, y: e.clientY, w: size.width, h: size.height, left: left0, top: top0 }
 
-    const move = (ev) => setSize({
-      width: clamp(from.w + (ev.clientX - from.x), MIN_W, window.innerWidth - (box?.left ?? 8) - 8),
-      height: clamp(from.h + (ev.clientY - from.y), MIN_H, window.innerHeight - top - 64),
-    })
+    const move = (ev) => {
+      const dx = ev.clientX - from.x
+      const dy = ev.clientY - from.y
+      let nextW = from.w
+      let nextH = from.h
+      let nextL = from.left
+      let nextT = from.top
+
+      if (dir.e) {
+        nextW = clamp(from.w + dx, MIN_W, window.innerWidth - from.left - 8)
+      } else if (dir.w) {
+        // Grow leftward: shrink width as the pointer moves right, and keep the
+        // right edge where it was by shifting `left` by the same delta.
+        const maxW = from.left + from.w - 8
+        nextW = clamp(from.w - dx, MIN_W, maxW)
+        nextL = from.left + (from.w - nextW)
+      }
+
+      if (dir.s) {
+        nextH = clamp(from.h + dy, MIN_H, window.innerHeight - from.top - 64)
+      } else if (dir.n) {
+        const maxH = from.top + from.h - 8
+        nextH = clamp(from.h - dy, MIN_H, maxH)
+        nextT = from.top + (from.h - nextH)
+      }
+
+      setSize({ width: nextW, height: nextH })
+      if (dir.w || dir.n) setPos({ left: nextL, top: nextT })
+    }
     const up = () => {
       window.removeEventListener('mousemove', move)
       window.removeEventListener('mouseup', up)
@@ -99,11 +144,11 @@ export default function FloatingPanel({
     }
     window.addEventListener('mousemove', move)
     window.addEventListener('mouseup', up)
-    document.body.style.cursor = 'nwse-resize'
+    document.body.style.cursor = dir.cursor
     document.body.style.userSelect = 'none'
     e.preventDefault()
     e.stopPropagation()
-  }, [at.top, size.width, size.height])
+  }, [at.left, at.top, size.width, size.height])
 
   // A window that got smaller must not leave the panel off the edge, where it
   // cannot be dragged back — or taller than the window it is in.
@@ -185,26 +230,58 @@ export default function FloatingPanel({
       </div>
 
       {!minimised && (
-        <div
-          onMouseDown={startResize}
-          role="separator"
-          aria-label="Resize"
-          title="Drag to resize"
-          style={{
-            position: 'absolute', right: 0, bottom: 0, width: 18, height: 18,
-            cursor: 'nwse-resize',
-            display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end',
-            padding: 3, color: 'var(--me-grey-50)',
-          }}
-        >
-          {/* Two strokes in the corner — the convention, and the only thing at this
-              size that reads as a grip rather than as an artefact. */}
-          <svg width={11} height={11} viewBox="0 0 11 11" aria-hidden="true">
-            <path d="M10 4 L4 10 M10 8 L8 10" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round" />
-          </svg>
-        </div>
+        <>
+          {/* Invisible edge/corner hit strips — same idea as a desktop window.
+              Edges are the everyday path; corners keep the diagonal habit. The
+              visible SE grip below stays so resize is still discoverable. */}
+          <ResizeStrip dir="n"  onMouseDown={startResize('n')}  style={{ top: 0, left: CORNER, right: CORNER, height: EDGE }} />
+          <ResizeStrip dir="s"  onMouseDown={startResize('s')}  style={{ bottom: 0, left: CORNER, right: CORNER, height: EDGE }} />
+          <ResizeStrip dir="e"  onMouseDown={startResize('e')}  style={{ right: 0, top: CORNER, bottom: CORNER, width: EDGE }} />
+          <ResizeStrip dir="w"  onMouseDown={startResize('w')}  style={{ left: 0, top: CORNER, bottom: CORNER, width: EDGE }} />
+          <ResizeStrip dir="ne" onMouseDown={startResize('ne')} style={{ top: 0, right: 0, width: CORNER, height: CORNER }} />
+          <ResizeStrip dir="nw" onMouseDown={startResize('nw')} style={{ top: 0, left: 0, width: CORNER, height: CORNER }} />
+          <ResizeStrip dir="sw" onMouseDown={startResize('sw')} style={{ bottom: 0, left: 0, width: CORNER, height: CORNER }} />
+          <ResizeStrip dir="se" onMouseDown={startResize('se')} style={{ bottom: 0, right: 0, width: CORNER, height: CORNER }} />
+          <div
+            data-no-drag
+            onMouseDown={startResize('se')}
+            role="separator"
+            aria-label="Resize"
+            title="Drag to resize"
+            style={{
+              position: 'absolute', right: 0, bottom: 0, width: 18, height: 18,
+              cursor: 'nwse-resize', zIndex: 2,
+              display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end',
+              padding: 3, color: 'var(--me-grey-50)',
+            }}
+          >
+            {/* Two strokes in the corner — the convention, and the only thing at this
+                size that reads as a grip rather than as an artefact. */}
+            <svg width={11} height={11} viewBox="0 0 11 11" aria-hidden="true">
+              <path d="M10 4 L4 10 M10 8 L8 10" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round" />
+            </svg>
+          </div>
+        </>
       )}
     </div>
+  )
+}
+
+/** Invisible hit target for one resize direction. */
+function ResizeStrip({ dir, onMouseDown, style }) {
+  return (
+    <div
+      data-no-drag
+      onMouseDown={onMouseDown}
+      role="separator"
+      aria-label={`Resize ${dir}`}
+      style={{
+        position: 'absolute',
+        cursor: DIRS[dir].cursor,
+        zIndex: 2,
+        ...style,
+      }}
+    />
   )
 }
 

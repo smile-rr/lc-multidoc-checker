@@ -47,8 +47,16 @@ select,
 button {
   font-family: inherit;
 }
+/* Kill native push-button chrome. Without this, macOS Safari/Chrome keeps a
+   dark bevel (reads as a black bottom edge) under our blue fill. */
 button {
+  appearance: none;
+  -webkit-appearance: none;
   font-family: var(--font-sans);
+  background: transparent;
+  border: none;
+  margin: 0;
+  padding: 0;
 }
 
 /* Inline-editable text: looks like plain text, reveals it's editable on hover,

@@ -45,6 +45,8 @@ export default function Button({
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
+        appearance: 'none',
+        WebkitAppearance: 'none',
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
