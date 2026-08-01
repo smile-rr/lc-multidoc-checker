@@ -150,7 +150,7 @@ public class SseChannel implements EventBus, EventStream {
             try {
                 send(emitter, s);
             } catch (IOException | IllegalStateException e) {
-                // The client went away. Normal, and not worth a stack trace.
+                // The client went away (incl. AsyncRequestNotUsableException). Normal.
                 remove(caseId, emitter);
             }
         }

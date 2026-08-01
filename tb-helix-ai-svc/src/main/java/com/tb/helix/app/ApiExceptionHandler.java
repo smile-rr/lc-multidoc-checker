@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -39,6 +40,18 @@ public class ApiExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> badRequest(IllegalArgumentException e) {
         return ResponseEntity.badRequest().body(body("bad_request", e.getMessage()));
+    }
+
+    /**
+     * Browser closed the SSE (or any async) connection. Expected — refresh, navigate away,
+     * HMR. No body: the response is already {@code text/event-stream} and unusable.
+     */
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public ResponseEntity<Void> clientGone(AsyncRequestNotUsableException e) {
+        Throwable cause = e.getCause();
+        String detail = cause != null && cause.getMessage() != null ? cause.getMessage() : e.getMessage();
+        log.warn("Client disconnected: {}", detail);
+        return ResponseEntity.noContent().build();
     }
 
     @ExceptionHandler(Exception.class)
