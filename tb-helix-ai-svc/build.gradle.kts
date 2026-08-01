@@ -105,4 +105,8 @@ tasks.withType<Test> {
 
 tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
     jvmArgs("-Djava.net.preferIPv4Stack=true")
+    // Serve prompts (and the rest of resources) from src/, not a stale copy under
+    // build/resources. Without this, editing segment-bundle.st leaves the classpath
+    // on the old text, promptSha stays put, and the derivation cache keeps hitting.
+    sourceResources(sourceSets["main"])
 }

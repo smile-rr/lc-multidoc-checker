@@ -9,12 +9,12 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 /**
- * Prompts read from {@code resources/prompts/<name>.md}.
+ * Prompts read from {@code resources/prompts/<name>.st}.
  *
  * <p>Read on every {@link #get}, not held for the life of the process. The filled text is
  * hashed into the derivation-cache key ({@code promptSha}): serving a stale template after
  * an edit keeps the old hash, hits the old answer, and looks exactly like "the cache key
- * ignores the prompt". A .md file is a few kilobytes; re-reading it is free next to the
+ * ignores the prompt". A .st file is a few kilobytes; re-reading it is free next to the
  * model call it gates.
  */
 @Component
@@ -27,7 +27,7 @@ public class ClasspathPrompts implements Prompts {
     }
 
     /**
-     * The prompt at {@code resources/prompts/<name>.md}.
+     * The prompt at {@code resources/prompts/<name>.st}.
      *
      * @throws IllegalStateException when it is missing. A prompt that silently resolves to
      *                               nothing produces a model call with no instruction and an
@@ -36,14 +36,14 @@ public class ClasspathPrompts implements Prompts {
      */
     @Override
     public String get(String name) {
-        Resource resource = resources.getResource("classpath:prompts/" + name + ".md");
+        Resource resource = resources.getResource("classpath:prompts/" + name + ".st");
         if (!resource.exists()) {
-            throw new IllegalStateException("No prompt at prompts/" + name + ".md");
+            throw new IllegalStateException("No prompt at prompts/" + name + ".st");
         }
         try (var in = resource.getInputStream()) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8).strip();
         } catch (IOException e) {
-            throw new IllegalStateException("Could not read prompts/" + name + ".md", e);
+            throw new IllegalStateException("Could not read prompts/" + name + ".st", e);
         }
     }
 
