@@ -281,12 +281,12 @@ helix:
       # only works if the first has returned. Firing them together would be faster
       # and cost about three times as much.
       #
-      # Four, because of what breaks first, and it is not the model:
+      # Five, because of what breaks first, and it is not the model:
       #   heap      — a render loads the whole bundle; N at once is N copies
       #   provider  — one key, and a 429 costs more than it saves
       #   db pool   — maximum-pool-size is 10, shared with everything else
       # Raise it only with all three in view.
-      concurrency: 4
+      concurrency: 5
     execute:
       # How many examiners are asked at once.
       #
