@@ -10,7 +10,16 @@ const SEV_LABEL = { CRITICAL: 'Critical', MAJOR: 'Major', MINOR: 'Minor' }
 // Shared column template for the Checks list (header + rows must match).
 // Id first: it is the stable handle. A title is reworded; an id is quoted in a
 // refusal advice and an audit file, and must never change.
-export const CHECKS_COLS = { display: 'grid', gridTemplateColumns: '18px 104px 108px minmax(0,1fr) 96px minmax(0,1.1fr) 24px', gap: 12, alignItems: 'center' }
+//
+// **Kind holds two badges, not one**, and the track was sized for one: "Comparison"
+// alone fits 108px, and a hard check adds "HARD" beside it to about 157. Both badges
+// are `flexShrink: 0` — correctly, since a half-rendered label is worse than none —
+// so the overflow had nowhere to go and the gate badge was clipped off the row
+// entirely. Which meant the one property that says *this check runs before anything
+// is read, and a failure ends the examination* was invisible in the only list where
+// you can compare checks against each other. Sized for both, with the slack coming
+// off the two proportional columns either side.
+export const CHECKS_COLS = { display: 'grid', gridTemplateColumns: '18px 104px 172px minmax(0,1fr) 96px minmax(0,0.95fr) 24px', gap: 12, alignItems: 'center' }
 
 // One-line dense row for the Checks list view. Click navigates into the
 // Check detail page (check.onOpen).
