@@ -10,13 +10,16 @@
  * <p>So the one adapter reaches every provider that speaks this shape, and switching between
  * them is a base URL and a key.
  *
- * <p><b>A provider that speaks a different shape gets its own package beside this one.</b>
- * Anthropic's Messages API is genuinely different — {@code /v1/messages}, content blocks,
- * {@code stop_reason} — so it would be {@code harness/llm/messages}, implementing the same
- * {@link com.tb.helix.harness.llm.LlmGateway}. Domain code would not change, because domain
- * code has never seen either: it asks for a role and gets an answer.
+ * <p><b>Something that speaks a different shape — or no wire at all — gets its own package
+ * beside this one</b> and implements {@link com.tb.helix.harness.llm.backend.ModelBackend}.
+ * Anthropic's Messages API is genuinely different ({@code /v1/messages}, content blocks,
+ * {@code stop_reason}); an agent framework or an in-process model is different again, and does
+ * not speak HTTP at all. None of them changes anything above the backend port: the spend
+ * ledger, the vision consensus, the tool budget and the JSON salvage live in
+ * {@link com.tb.helix.harness.llm.StandardLlmGateway} and are inherited rather than
+ * reimplemented.
  *
- * <p>That is where the vendor-neutrality lives — in the port, not in this package's name.
+ * <p>That is where the vendor-neutrality lives — in the ports, not in this package's name.
  * A package called {@code openai} suggested otherwise, which is why it is gone.
  */
 package com.tb.helix.harness.llm.chatcompletions;

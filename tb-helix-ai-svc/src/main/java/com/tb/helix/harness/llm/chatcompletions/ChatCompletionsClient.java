@@ -1,19 +1,24 @@
 package com.tb.helix.harness.llm.chatcompletions;
 
 import com.tb.helix.harness.llm.LlmProperties;
+import com.tb.helix.harness.llm.LlmText;
+import com.tb.helix.harness.llm.backend.ToolCall;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalLong;
 
 /**
  * One provider endpoint, over the {@code /chat/completions} wire format.
@@ -28,6 +33,22 @@ import java.util.Map;
 class ChatCompletionsClient {
 
     private static final Logger log = LoggerFactory.getLogger(ChatCompletionsClient.class);
+
+    /**
+     * How many times a 429 is waited out, and the longest single wait.
+     *
+     * <p>Constants rather than slot configuration, because this is not the same question the
+     * slot's {@code max-retries} answers. That budget is "how many times is it worth asking
+     * again when something went wrong"; this is "the provider told us to wait, so wait". A
+     * slot set to one retry — which the vision slots are, deliberately, because a failed
+     * vision call is expensive — would otherwise give a rate limit a single 500 ms pause and
+     * then drop the document.
+     *
+     * <p>Three waits of 1s, 2s and 4s against a 240 s read timeout. The cap is what stops a
+     * provider's {@code Retry-After} of a quarter of an hour from parking a stage on it.
+     */
+    private static final int THROTTLE_RETRIES = 3;
+    private static final long THROTTLE_WAIT_CAP_MS = 20_000;
 
     private final String name;
     private final LlmProperties.Slot slot;
@@ -90,8 +111,10 @@ class ChatCompletionsClient {
 
         long started = System.currentTimeMillis();
         RuntimeException last = null;
+        int failed = 0;     // the slot's ordinary retry budget
+        int throttled = 0;  // 429s, budgeted separately — see THROTTLE_RETRIES
 
-        for (int attempt = 0; attempt <= slot.maxRetries(); attempt++) {
+        while (true) {
             try {
                 String raw = http.post().uri("/chat/completions")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -100,26 +123,71 @@ class ChatCompletionsClient {
                         .body(String.class);
                 return parse(raw, (int) (System.currentTimeMillis() - started));
 
-            } catch (org.springframework.web.client.HttpClientErrorException e) {
+            } catch (HttpClientErrorException e) {
                 // 4xx means the request is wrong and will be wrong again. Retrying a
                 // malformed request just spends the timeout budget before failing anyway.
-                throw e;
+                //
+                // 429 is the exception, and it is not a statement about the request at all:
+                // it says the provider is busy, which is what a backoff is for. This barely
+                // mattered while a stage read one document at a time — a serial run never
+                // pushed hard enough to be told to wait. A stage that reads six at once does,
+                // and rethrowing here lost a whole document, unread, to a pause of a second.
+                if (e.getStatusCode().value() != HttpStatus.TOO_MANY_REQUESTS.value()) throw e;
+                last = e;
+                if (++throttled > THROTTLE_RETRIES) break;
+                final int nth = throttled;
+                long wait = retryAfterMs(e).orElseGet(() -> 1000L << (nth - 1));
+                log.warn("{} was throttled ({}/{}), waiting {}ms",
+                        name, throttled, THROTTLE_RETRIES, wait);
+                if (!sleep(wait)) throw e;
+
             } catch (RuntimeException e) {
                 last = e;
-                if (attempt < slot.maxRetries()) {
-                    long backoff = 500L << attempt;
-                    log.warn("{} attempt {}/{} failed ({}), retrying in {}ms",
-                            name, attempt + 1, slot.maxRetries() + 1, e.getMessage(), backoff);
-                    try {
-                        Thread.sleep(backoff);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        throw e;
-                    }
-                }
+                if (++failed > slot.maxRetries()) break;
+                long backoff = 500L << (failed - 1);
+                log.warn("{} attempt {}/{} failed ({}), retrying in {}ms",
+                        name, failed, slot.maxRetries() + 1, e.getMessage(), backoff);
+                if (!sleep(backoff)) throw e;
             }
         }
         throw last;
+    }
+
+    /**
+     * How long the provider asked us to wait, when it said.
+     *
+     * <p>Preferred over our own backoff because the provider knows when its window resets and
+     * we are guessing. The header also has an HTTP-date form; nothing seen here uses it, and
+     * failing to parse simply falls back to the exponential wait rather than to no wait.
+     */
+    private static OptionalLong retryAfterMs(HttpClientErrorException e) {
+        String header = e.getResponseHeaders() == null
+                ? null : e.getResponseHeaders().getFirst("Retry-After");
+        if (header == null || header.isBlank()) return OptionalLong.empty();
+        try {
+            long seconds = Long.parseLong(header.strip());
+            if (seconds < 0) return OptionalLong.empty();
+            return OptionalLong.of(Math.min(seconds * 1000L, THROTTLE_WAIT_CAP_MS));
+        } catch (NumberFormatException nfe) {
+            return OptionalLong.empty();
+        }
+    }
+
+    /**
+     * Waits, and says whether it got to.
+     *
+     * <p>False means the thread was interrupted, which is a request to stop rather than a
+     * reason to try again — the caller rethrows what it was holding instead of looping into
+     * another wait that will be interrupted too.
+     */
+    private static boolean sleep(long ms) {
+        try {
+            Thread.sleep(ms);
+            return true;
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
     }
 
     /**
@@ -135,13 +203,6 @@ class ChatCompletionsClient {
     record Response(String content, List<ToolCall> toolCalls, String raw,
                     Integer promptTokens, Integer completionTokens, Integer cachedPromptTokens,
                     int latencyMs) {
-
-        boolean wantsTools() {
-            return toolCalls != null && !toolCalls.isEmpty();
-        }
-    }
-
-    record ToolCall(String id, String name, String argumentsJson) {
     }
 
     private Response parse(String raw, int latencyMs) {

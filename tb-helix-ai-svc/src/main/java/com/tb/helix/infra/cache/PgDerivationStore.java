@@ -115,14 +115,51 @@ public class PgDerivationStore implements DerivationStore {
                     json.writeValueAsString(key.params()),
                     value == null ? null : json.writeValueAsString(value),
                     blobSha,
-                    rawResponse,
+                    jsonbSafe(rawResponse),
                     usage == null ? null : usage.promptTokens(),
                     usage == null ? null : usage.completionTokens(),
                     usage == null ? null : usage.totalTokens(),
                     usage == null ? null : usage.latencyMs(),
                     ttlSeconds, ttlSeconds);
         } catch (Exception e) {
-            log.warn("L3 write failed for {} ({}), continuing: {}", key.op(), key.hash(), e.toString());
+            // The specific cause, not the statement. This printed the whole INSERT with the
+            // real reason buried past the end of the line, so a write that failed on every
+            // single call for weeks read as noise — see `jsonbSafe`.
+            Throwable cause = e;
+            while (cause.getCause() != null && cause.getCause() != cause) cause = cause.getCause();
+            log.warn("L3 write failed for {} ({}), continuing: {}", key.op(), key.hash(), cause.toString());
+        }
+    }
+
+    /**
+     * A verbatim provider payload, as something the {@code jsonb} column will accept.
+     *
+     * <p>{@code raw_response} is jsonb because for most ops the payload <em>is</em> a JSON
+     * document and being able to query into it is worth having. For some it is prose:
+     * the layout-markdown pass hands back a page of markdown on purpose, so the disk store
+     * can write it as a {@code .md} sidecar an officer can read.
+     *
+     * <p>Postgres rejected that outright — {@code Token "#" is invalid} — which failed the
+     * whole INSERT, which this method's caller swallows because a cache must never break a
+     * request. So {@code extract.doc.md} wrote no row, ever, and re-called the vision model
+     * on every run of every case while the ops beside it cached normally. It was invisible
+     * twice over: silent by design, and logged with the reason past the end of the line.
+     *
+     * <p>A JSON string is valid jsonb, so prose is quoted and anything that already parses
+     * is stored as the document it is. Nothing reads this column back — it exists for the
+     * question "what did the model actually say" — so quoting costs nothing.
+     */
+    private String jsonbSafe(String rawResponse) {
+        if (rawResponse == null || rawResponse.isBlank()) return null;
+        try {
+            json.readTree(rawResponse);
+            return rawResponse;
+        } catch (Exception notJson) {
+            try {
+                return json.writeValueAsString(rawResponse);
+            } catch (Exception e) {
+                return null;
+            }
         }
     }
 

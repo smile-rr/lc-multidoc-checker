@@ -81,7 +81,20 @@ public final class CacheOp {
 
     /** The credit's 46A/47A to requirement cards. */
     public static final String PLAN_REQUIREMENTS = "plan.requirements";
-    public static final int    PLAN_REQUIREMENTS_V = 1;
+    /** Requirements may now carry a compiled condition tree, not only prose. */
+    public static final int    PLAN_REQUIREMENTS_V = 2;
+
+    /**
+     * The whole plan, weighed: gate verdicts, candidate rules and the credit's own terms to
+     * a decision about what should run.
+     *
+     * <p>Its own op rather than a second version of {@link #PLAN_REQUIREMENTS}, because the
+     * two answer different questions and are tuned separately — and because this one runs
+     * with the model's reasoning turned on, so an entry of one shape must never be served
+     * for the other.
+     */
+    public static final String PLAN_GOVERN = "plan.govern";
+    public static final int    PLAN_GOVERN_V = 1;
 
     /**
      * One judged rule against one set of facts.

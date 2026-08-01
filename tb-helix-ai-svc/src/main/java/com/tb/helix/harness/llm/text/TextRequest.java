@@ -40,4 +40,19 @@ public record TextRequest(
     public static TextRequest json(LlmRole role, String system, String user) {
         return new TextRequest(role, system, user, true, null, Map.of());
     }
+
+    /**
+     * JSON, with the model's reasoning turned on for this one call.
+     *
+     * <p>Every slot ships {@code enable_thinking: false} because a Qwen3-family model that
+     * thinks aloud leaks the reasoning into the structured output. The override merges after
+     * the slot's own {@code extraBody}, so this wins — and {@code LlmText.extractJson} is
+     * what makes it safe, lifting the JSON back out of whatever the model wrapped it in.
+     *
+     * <p>For the call that has to weigh one thing against another rather than transcribe.
+     * It is slower and it costs more, so it is asked for by name rather than configured on.
+     */
+    public static TextRequest thinking(LlmRole role, String system, String user) {
+        return new TextRequest(role, system, user, true, null, Map.of("enable_thinking", true));
+    }
 }

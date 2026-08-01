@@ -1,4 +1,4 @@
-package com.tb.helix.harness.llm.chatcompletions;
+package com.tb.helix.harness.llm;
 
 /**
  * Cleaning up after a model.
@@ -10,13 +10,18 @@ package com.tb.helix.harness.llm.chatcompletions;
  * <p>Deliberately conservative: it removes wrappers whose only purpose is presentation and
  * never reaches inside the content. A cleaner that tries to repair malformed JSON turns a
  * loud failure into a quiet wrong answer, and in an examination that is the worse outcome.
+ *
+ * <p>Here rather than beside the {@code /chat/completions} adapter, where it started, because
+ * none of it is about a wire format. A model wrapping its answer in a fence, or leaking a
+ * reasoning block past {@code enable_thinking:false}, is a fact about models — the next
+ * backend will meet it too, and would otherwise write a second, subtly different version.
  */
-final class LlmText {
+public final class LlmText {
 
     private LlmText() {
     }
 
-    static String clean(String content) {
+    public static String clean(String content) {
         if (content == null) return null;
         String s = content.strip();
 
@@ -42,7 +47,7 @@ final class LlmText {
      * there is nothing balanced to find — the caller then fails, which is correct: a
      * response that is not the shape we asked for is not a response.
      */
-    static String extractJson(String content) {
+    public static String extractJson(String content) {
         if (content == null) return null;
         String s = clean(content);
         int start = -1;
