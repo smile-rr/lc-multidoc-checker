@@ -53,12 +53,11 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
-    # The schemas this service owns. The first is the history table's home, and it
-    # stays helix_core for exactly that reason: V12 moved every table out of it
-    # into helix_infra, but Flyway resolves its own table from this list at
-    # connection time, so moving that one too would leave a migration unable to
-    # record that it succeeded. helix_core now holds the history and nothing else.
-    schemas: helix_core,helix_infra,helix_check,helix_gov
+    # The schemas this service owns. The first is where flyway_schema_history
+    # lives. Application tables left helix_core in V12; the history table itself
+    # moves to helix_infra before migrate() (see FlywayConfig) so a migration
+    # never has to relocate the row that records its own success.
+    schemas: helix_infra,helix_check,helix_gov
     create-schemas: true
     baseline-on-migrate: true
 
@@ -114,7 +113,7 @@ helix:
       #   DISK — JSON (+ optional .md) under disk-root (local default)
       #   DB   — helix_infra.derivation (system / shared testing)
       #   S3   — not yet
-      storage: ${HELIX_CACHE_L3_STORAGE:DISK}
+      storage: ${HELIX_CACHE_L3_STORAGE:DB}
       disk-root: ${HELIX_CACHE_L3_DISK_ROOT:${user.home}/ws/tmp/var/derivation}
       # When storage=DISK, also write <cache_key>.md with the raw model text.
       write-md: ${HELIX_CACHE_L3_WRITE_MD:true}
@@ -150,9 +149,10 @@ helix:
     persist-pages: false
 
     # Refuse rather than silently truncate. A 400-page bundle is a mis-scan or a
-    # different kind of deal, and quietly examining the first 300 pages would look
-    # exactly like examining all of them.
-    max-bundle-pages: 300
+    # different kind of deal, and quietly examining the first N pages would look
+    # exactly like examining all of them. Segment batches internally up to
+    # profiles.segment.max-pages per vision call; this is the hard ceiling.
+    max-bundle-pages: 150
 
     # The money knob, per role. Segmentation only asks "what kind of page is this?"
     # and does that fine at 800 px; extraction has to read a unit price. Running a
@@ -165,6 +165,9 @@ helix:
     #     1600          ~580           ~58k
     #     2048          ~945           ~95k
     profiles:
+      # max-pages = one vision call. Bundles larger than this are segmented in
+      # successive batches with the previous batch's last docType as context so a
+      # document that straddles the boundary stays one document.
       segment: { max-long-edge-px: 800,  max-pages: 40 }
       extract: { max-long-edge-px: 1600, max-pages: 12 }
       # Only when a human disputes what the model read.
