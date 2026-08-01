@@ -20,7 +20,19 @@ import { useCase } from '../state/CaseContext'
 // Nothing else — no extracted fields, no requirement cards, no doubt lists. Those
 // belong on Interpret and Findings; here they distract from reading.
 
-const DEFAULT_RIGHT = 480
+// **The credit holds the width; the scan takes the rest.**
+//
+// It was the other way round — the page viewer pinned at 480px and the credit
+// flexing — which reads sensibly and is backwards for what the two panes hold. An
+// MT700 is narrow, wrapped, fixed-width text: past about 480px it stops gaining
+// anything and just runs short lines across a wide column. A scanned page is a
+// portrait image whose legibility *is* its width, and it was the one being capped,
+// so every pixel a wide window added went to the pane that could not use it.
+//
+// 460 leaves the longest :45A: line unwrapped and gives the page everything else,
+// which on any ordinary window puts the scan slightly ahead of the credit and well
+// ahead of it on a large one. Drag still overrides, and double-click comes back here.
+const DEFAULT_LEFT = 460
 
 export default function ExaminePane({ onOpenFinding }) {
   const { data, actions } = useCase()
@@ -32,7 +44,7 @@ export default function ExaminePane({ onOpenFinding }) {
 
   const [docId, setDocId] = useState(presented[0]?.id ?? null)
   const [page, setPage] = useState(() => presented[0]?.pageRange?.[0] ?? 1)
-  const [rightWidth, setRightWidth] = useState(DEFAULT_RIGHT)
+  const [leftWidth, setLeftWidth] = useState(DEFAULT_LEFT)
   const [draft, setDraft] = useState(() => emptyDraft(presented[0], presented[0]?.pageRange?.[0] ?? 1))
   const { pageBarVisible, togglePageBar } = usePageBar()
 
@@ -105,7 +117,7 @@ export default function ExaminePane({ onOpenFinding }) {
         <DocPane
           title="Letter of Credit"
           meta={credit.reference ?? credit.fileName}
-          style={{ flex: 1, minWidth: 240 }}
+          style={{ flex: `0 0 ${leftWidth}px`, width: leftWidth, minWidth: 260 }}
         >
           <div style={{ padding: '14px 16px', fontFamily: 'var(--font-mono)', fontSize: 11.5, lineHeight: 1.85, color: 'var(--me-ink)' }}>
             {credit.lines?.map((l) => (
@@ -114,12 +126,12 @@ export default function ExaminePane({ onOpenFinding }) {
           </div>
         </DocPane>
 
-        <ResizeHandle width={rightWidth} onResize={setRightWidth} min={280} max={720} />
+        <ResizeHandle width={leftWidth} onResize={setLeftWidth} side="left" min={300} max={760} reset={DEFAULT_LEFT} />
 
         <DocPane
           title={doc.docType}
           meta={doc.reference ?? doc.fileName}
-          style={{ flex: `0 0 ${rightWidth}px`, width: rightWidth, minWidth: 240 }}
+          style={{ flex: 1, minWidth: 320 }}
           toolbar={(
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <IconButton icon="chevron-left" size="sm" title="Previous page" onClick={() => goPage(page - 1)} disabled={page <= 1} />
