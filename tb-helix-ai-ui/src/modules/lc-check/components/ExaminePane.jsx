@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { cardSurface } from '@shared/ds/Card'
 import Button from '@shared/ds/Button'
 import Chip from '@shared/ds/Chip'
@@ -20,19 +20,21 @@ import { useCase } from '../state/CaseContext'
 // Nothing else — no extracted fields, no requirement cards, no doubt lists. Those
 // belong on Interpret and Findings; here they distract from reading.
 
-// **The credit holds the width; the scan takes the rest.**
+// **Down the middle, and it stays down the middle.**
 //
-// It was the other way round — the page viewer pinned at 480px and the credit
-// flexing — which reads sensibly and is backwards for what the two panes hold. An
-// MT700 is narrow, wrapped, fixed-width text: past about 480px it stops gaining
-// anything and just runs short lines across a wide column. A scanned page is a
-// portrait image whose legibility *is* its width, and it was the one being capped,
-// so every pixel a wide window added went to the pane that could not use it.
+// The split is a *share* of the pane rather than a pixel width on one side. Both
+// earlier versions pinned one pane and let the other flex — the scan at 480, then the
+// credit at 460 — and either way the halves were only equal at one window size: every
+// pixel a wider window added went to whichever side was flexing. A ratio is the only
+// thing that reads as "half and half" on a laptop and on a 32-inch screen both.
 //
-// 460 leaves the longest :45A: line unwrapped and gives the page everything else,
-// which on any ordinary window puts the scan slightly ahead of the credit and well
-// ahead of it on a large one. Drag still overrides, and double-click comes back here.
-const DEFAULT_LEFT = 460
+// Dragging moves the ratio, not a width, so a split set on one screen survives being
+// opened on another. Double-clicking the divider comes back to the middle.
+const DEFAULT_SPLIT = 0.5
+
+// Below this the two panes stop being a comparison and become two slivers; the ratio
+// is clamped rather than the panes allowed to collapse.
+const MIN_SHARE = 0.25
 
 export default function ExaminePane({ onOpenFinding }) {
   const { data, actions } = useCase()
@@ -44,9 +46,21 @@ export default function ExaminePane({ onOpenFinding }) {
 
   const [docId, setDocId] = useState(presented[0]?.id ?? null)
   const [page, setPage] = useState(() => presented[0]?.pageRange?.[0] ?? 1)
-  const [leftWidth, setLeftWidth] = useState(DEFAULT_LEFT)
+  // The credit's share of the row. The scan gets the remainder.
+  const [split, setSplit] = useState(DEFAULT_SPLIT)
+  // Measured, because the handle drags in pixels and the layout is a ratio — this is
+  // the one place the two have to meet.
+  const splitRef = useRef(null)
+  const [rowWidth, setRowWidth] = useState(0)
   const [draft, setDraft] = useState(() => emptyDraft(presented[0], presented[0]?.pageRange?.[0] ?? 1))
   const { pageBarVisible, togglePageBar } = usePageBar()
+
+  useLayoutEffect(() => {
+    const measure = () => setRowWidth(splitRef.current?.offsetWidth ?? 0)
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [])
 
   const picked = presented.find((d) => d.id === docId) ?? presented[0]
   // Segmentation is a guess — paging runs the whole bundle, and the tab follows
@@ -113,11 +127,11 @@ export default function ExaminePane({ onOpenFinding }) {
         })}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'stretch', gap: 0, ...PANE_FILL, minHeight: 0 }}>
+      <div ref={splitRef} style={{ display: 'flex', alignItems: 'stretch', gap: 0, ...PANE_FILL, minHeight: 0 }}>
         <DocPane
           title="Letter of Credit"
           meta={credit.reference ?? credit.fileName}
-          style={{ flex: `0 0 ${leftWidth}px`, width: leftWidth, minWidth: 260 }}
+          style={{ flex: `${split} 1 0`, minWidth: 0 }}
         >
           <div style={{ padding: '14px 16px', fontFamily: 'var(--font-mono)', fontSize: 11.5, lineHeight: 1.85, color: 'var(--me-ink)' }}>
             {credit.lines?.map((l) => (
@@ -126,12 +140,19 @@ export default function ExaminePane({ onOpenFinding }) {
           </div>
         </DocPane>
 
-        <ResizeHandle width={leftWidth} onResize={setLeftWidth} side="left" min={300} max={760} reset={DEFAULT_LEFT} />
+        <ResizeHandle
+          width={Math.round(split * rowWidth)}
+          onResize={(px) => setSplit(clamp(rowWidth ? px / rowWidth : DEFAULT_SPLIT))}
+          side="left"
+          min={0}
+          max={rowWidth || 4000}
+          reset={Math.round(DEFAULT_SPLIT * rowWidth)}
+        />
 
         <DocPane
           title={doc.docType}
           meta={doc.reference ?? doc.fileName}
-          style={{ flex: 1, minWidth: 320 }}
+          style={{ flex: `${1 - split} 1 0`, minWidth: 0 }}
           toolbar={(
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <IconButton icon="chevron-left" size="sm" title="Previous page" onClick={() => goPage(page - 1)} disabled={page <= 1} />
@@ -162,6 +183,8 @@ export default function ExaminePane({ onOpenFinding }) {
     </div>
   )
 }
+
+const clamp = (share) => Math.min(1 - MIN_SHARE, Math.max(MIN_SHARE, share))
 
 function emptyDraft(doc, page) {
   return {
