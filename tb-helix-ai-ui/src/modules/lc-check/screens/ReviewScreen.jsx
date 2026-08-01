@@ -13,11 +13,17 @@ import { plural } from '@shared/lib/format'
 import MarkdownDoc from '@shared/ds/MarkdownDoc'
 import BundleViewer from '../components/BundleViewer'
 import ExaminePane from '../components/ExaminePane'
+import ResizeHandle from '@shared/ds/ResizeHandle'
 import { PANE_FILL } from '../components/paneHeight'
 import DiscrepancyStatement from '../components/DiscrepancyStatement'
-import DispositionChips from '../components/DispositionChips'
-import { severityMeta, dispositionLabel } from '../state/severity'
+import OutcomeSelect from '../components/OutcomeSelect'
+import OutcomeCell, { OutcomeMark } from '../components/OutcomeCell'
+import { outcomeMeta, initialsOf } from '../state/outcome'
+import { settledBy, bySettledBy } from '../data/checkSpecs'
 import { groupByKind, kindOf, kindMark } from '../state/findingKinds'
+import { useRailNav } from '../state/useRailNav'
+import KindGroupHeader from '../components/KindGroupHeader'
+import Notice from '@shared/ds/Notice'
 import TierTag from '../components/TierTag'
 import { useCase } from '../state/CaseContext'
 
@@ -63,14 +69,20 @@ import { useCase } from '../state/CaseContext'
 // Uncovered findings still lead their group, because an officer must not be able to
 // work top-to-bottom and come away thinking everything was checked.
 export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }) {
-  const { data, visible, officer, actions } = useCase()
+  const { data, run, visible, officer, callOf, actions } = useCase()
+  // The check that produced each finding. Coverage — and so who was settling it —
+  // lives on the plan check; a finding carries only its tier.
+  const checkById = useMemo(() => Object.fromEntries(data.checks.map((c) => [c.id, c])), [data.checks])
   // Two jobs, not two views of one job. "Findings" is checking what we found;
-  // "Examine" is looking for what we did not — which is document-led, and is the
+  // "Manual Check" is reading the credit against a presented page yourself — the
   // only route to a discrepancy our extraction fumbled. Neither contains the other,
   // so it is a mode, not a grouping.
   const [mode, setMode] = useState('findings')
   const [tab, setTab] = useState('analysis')
   const [showClean, setShowClean] = useState(false)
+  // How wide the rail sits when a finding is open. On the screen rather than per
+  // finding, so picking the next one does not undo the width you just set.
+  const [railWidth, setRailWidth] = useState(316)
 
   const docById = useMemo(() => Object.fromEntries(data.documents.map((d) => [d.id, d])), [data.documents])
 
@@ -80,34 +92,71 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
   const selected = selectedId ? visible.findings.find((f) => f.id === selectedId) ?? null : null
 
   const groups = useMemo(() => {
-    // Two different gaps, and they call for different fixes, so they are marked
-    // differently rather than lumped as "not covered":
+    // One gap is worth a mark of its own: nothing on the plan covers this at all, so
+    // somebody should author a check for it in Governance. It leads its group, because
+    // it is the engine admitting a hole rather than reporting a result.
     //
-    //   no rule      nothing in the dictionary tests this requirement. A governance
-    //                gap — somebody should author a rule for it.
-    //   not settled  a rule ran and could not conclude, so it handed the question to
-    //                a person. The rule is too weak, or the data was not there.
-    //
-    // Both are the engine admitting something, which is why they lead their group.
+    // "A check ran and could not conclude" used to be marked here too. The Outcome
+    // column says that now, in the same word the plan uses, so the mark was a second
+    // notation for something already stated — and one an officer had to be taught.
     const rest = visible.attention.map((f) => ({
       ...f,
-      gap: f.raisedByOfficer ? null : !f.checkId ? 'no rule' : f.severity === 'manual' ? 'not settled' : null,
+      // Who gives the answer — and an override makes that a person, which is what
+      // `manual` means. The tag on the row says the same thing from the same rule, so
+      // a finding the officer settled reads as theirs and sorts with the rest of the
+      // work only a person could do.
+      who: callOf(f).overridden
+        ? 'manual'
+        : f.checkId && checkById[f.checkId] ? settledBy(checkById[f.checkId]) : 'agent',
+      // Only one gap is worth a mark: nothing on the plan covers this at all, which
+      // is a hole in the rulebook to close in Governance. It used to also flag every
+      // `manual` finding as "not settled" — a third name for what the Outcome column
+      // now says in words, and one an officer had to be taught.
+      gap: !f.raisedByOfficer && !f.checkId ? 'no rule' : null,
     }))
 
-    // Uncovered first: they are the ones nothing examined, so they are the ones most
-    // easily skipped.
+    // Two keys, and the first one outranks the sequence deliberately.
+    //
+    // **Uncovered first.** They are the ones nothing examined, so they are the ones
+    // most easily skipped — and an officer must not be able to work top-to-bottom and
+    // come away thinking everything was checked.
+    //
+    // **Then the plan's own order**, by who settles it: comparison, agent, manual. The
+    // officer worked the plan in that sequence and arrives here having read it; a
+    // findings list in some other order means re-finding all of it. One definition,
+    // in `checkSpecs`, shared with Plan & Execute and with Decision.
     const gapsFirst = (a, b) => (!!b.gap) - (!!a.gap)
+    const order = bySettledBy((f) => f.who)
+    const planOrder = (a, b) => gapsFirst(a, b) || order(a, b)
 
     // One arrangement, shared with Decision — see `state/findingKinds`.
-    return groupByKind(rest, gapsFirst)
-  }, [visible.attention])
+    return groupByKind(rest, planOrder)
+  }, [visible.attention, callOf])
 
+  // Read through the officer's calls, not the engine's raw values — a discrepancy
+  // somebody cleared has to leave this count, or the header and the list under it
+  // disagree about the same twenty rows.
   const counts = {
-    discrepancy: visible.attention.filter((f) => f.severity === 'discrepancy').length,
-    possible: visible.attention.filter((f) => f.severity === 'possible').length,
-    manual: visible.manual.length,
+    discrepant: visible.attention.filter((f) => callOf(f).value === 'DISCREPANT').length,
+    doubt: visible.doubt.length,
     clean: visible.clean.length,
   }
+
+  // Visible rail order in focus mode — clean stays out until unfolded.
+  const railIds = useMemo(() => {
+    const out = []
+    for (const g of groups) for (const f of g.items) out.push(f.id)
+    if (showClean) for (const f of visible.clean) out.push(f.id)
+    return out
+  }, [groups, showClean, visible.clean])
+
+  useRailNav({
+    ids: railIds,
+    selectedId,
+    enabled: mode === 'findings',
+    onSelect: (id) => { onSelect(id); setTab('analysis') },
+    onClear: () => onSelect(null),
+  })
 
   if (!visible.findings.length) {
     return (
@@ -119,7 +168,8 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
     )
   }
 
-  const sev = selected ? severityMeta(selected.severity) : null
+  const call = selected ? callOf(selected) : null
+  const sev = call ? outcomeMeta(call.value) : null
   const doc = selected ? docById[selected.docId] : null
   const credit = data.documents.find((d) => d.role === 'credit')
   const draft = selected ? officer.drafts[selected.id] : undefined
@@ -140,9 +190,8 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--me-ink)' }}>Findings</h2>
           <span style={{ fontSize: 13, color: 'var(--me-grey-70)' }}>
             {[
-              counts.discrepancy ? plural(counts.discrepancy, 'discrepancy', 'discrepancies') : null,
-              counts.possible ? `${counts.possible} to decide` : null,
-              counts.manual ? `${counts.manual} need your own review` : null,
+              counts.discrepant ? plural(counts.discrepant, 'discrepancy', 'discrepancies') : null,
+              counts.doubt ? `${counts.doubt} in doubt` : null,
               counts.clean ? `${counts.clean} clean` : null,
             ].filter(Boolean).join(' · ') || 'Nothing back yet'}
           </span>
@@ -156,38 +205,70 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
           onChange={setMode}
           items={[
             { id: 'findings', label: 'Findings', tip: 'Check what we found' },
-            { id: 'examine', label: 'Examine the documents', tip: 'Read the pages yourself and raise what we missed' },
+            { id: 'examine', label: 'Manual Check', tip: 'Read the credit against a presented document and raise what you see' },
           ]}
         />
       </div>
 
       {mode === 'examine' ? (
-        <ExaminePane findings={visible.findings} onOpenFinding={(id) => { onSelect(id); setMode('findings'); setTab('analysis') }} />
+        <ExaminePane onOpenFinding={(id) => { onSelect(id); setMode('findings'); setTab('analysis') }} />
       ) : (
 
       // Both modes fill to the foot of the window and scroll inside themselves —
       // focus mode as two independent columns, the overview as one long table. One
       // shared scrollbar meant reading down a finding slid the list you navigate
       // with off the top of the screen.
+      // **The divider is draggable, and the rail holds the width.** How much room the
+      // list needs varies with what is in it — long check ids and wrapped titles want
+      // a wide rail, reading a long analysis wants a narrow one — and one fixed width
+      // was slightly wrong for both. The rail is the fixed pane so that stretching the
+      // window widens the finding you are reading rather than the list you picked it
+      // from.
       <div style={{
-        display: 'grid',
-        gridTemplateColumns: selected ? 'minmax(272px,316px) minmax(460px,1fr)' : 'minmax(0,1fr)',
-        gap: 16,
+        display: 'flex',
+        gap: selected ? 0 : 16,
         alignItems: 'stretch',
         ...PANE_FILL,
       }}
       >
         {selected ? null : (
-          <FindingsTable
-            groups={groups}
-            clean={visible.clean}
-            decisions={officer.decisions}
-            docById={docById}
-            onSelect={(id) => { onSelect(id); setTab('analysis') }}
-          />
+          <div style={{
+            flex: 1,
+            // A flex item now, not a grid track: the default `min-width: auto` lets
+            // the table inside push this wider than the pane and scroll the page
+            // sideways, which a `minmax(0,1fr)` track never did.
+            minWidth: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12,
+            minHeight: 0,
+          }}
+          >
+            {/* How far it got, in three words — and it does not offer to fix it.
+                Running the rest is an expensive act that changes the case, and it
+                already has a home: the primary button in the workbench header, where
+                every other action lives and where nobody arrives by accident. A
+                second trigger for it, styled as a link beside the findings somebody
+                is reading, is a misclick waiting to happen — and it was. */}
+            {run.stoppedAfterPlan ? (
+              <Notice
+                tone="warning"
+                icon="shield-alert"
+                title={`${plural(run.remaining, 'check')} not run`}
+              />
+            ) : null}
+            <FindingsTable
+              groups={groups}
+              clean={visible.clean}
+              callOf={callOf}
+              docById={docById}
+              onSelect={(id) => { onSelect(id); setTab('analysis') }}
+              onPick={(id, a) => actions.override(id, a)}
+            />
+          </div>
         )}
         {selected ? (
-        <div style={{ ...cardSurface(12), boxShadow: 'none', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+        <div style={{ ...cardSurface(12), boxShadow: 'none', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', flex: `0 0 ${railWidth}px`, width: railWidth }}>
           {/* Fixed head: the way back and the grouping. Both have to stay reachable
               while the list under them scrolls, and neither should move when you
               pick a different finding. */}
@@ -220,7 +301,7 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
                     finding={f}
                     subtitle={subtitleFor(f)}
                     selected={f.id === selected.id}
-                    decision={officer.decisions[f.id]}
+                    call={callOf(f)}
                     onSelect={() => { onSelect(f.id); setTab('analysis') }}
                   />
                 ))}
@@ -243,7 +324,7 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
                       finding={f}
                       subtitle={subtitleFor(f)}
                       selected={f.id === selected.id}
-                      decision={officer.decisions[f.id]}
+                      call={callOf(f)}
                       onSelect={() => { onSelect(f.id); setTab('analysis') }}
                     />
                   ))
@@ -254,26 +335,34 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
         </div>
         ) : null}
 
+        {selected ? <ResizeHandle width={railWidth} onResize={setRailWidth} side="left" min={232} max={520} reset={316} /> : null}
+
         {selected ? (
         // The finding's own scroller. `auto`, not the page's — reading to the bottom
         // of a long analysis must not take the list with it.
-        <div style={{ ...cardSurface(12), boxShadow: '0 2px 8px rgba(27,28,30,.06)', overflowX: 'hidden', overflowY: 'auto', minHeight: 0 }}>
+        <div style={{ ...cardSurface(12), boxShadow: '0 2px 8px rgba(27,28,30,.06)', overflowX: 'hidden', overflowY: 'auto', minHeight: 0, flex: 1, minWidth: 0, marginLeft: 7 }}>
           <div style={{ padding: '18px 22px 14px', display: 'flex', flexDirection: 'column', gap: 10, borderBottom: '1px solid var(--me-grey-15)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Badge tone={sev.tone}>{sev.label}</Badge>
+              {/* This side yields the space, because the area name can ellipsise and
+                  the control cannot: squeezing a `nowrap` trigger does not shorten it,
+                  it makes it overlap itself. */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, overflow: 'hidden' }}>
                 <Eyebrow size="sm">{selected.area}</Eyebrow>
               </div>
-              <DispositionChips variant="labelled" value={officer.decisions[selected.id]} onPick={(d) => actions.decide(selected.id, d)} />
+              {/* The value is the control: what this will be raised as, and where you
+                  change it. There is still no "Agree" — the outcome already stands,
+                  and a control whose effect is that nothing changes is one people
+                  learn to press without reading. */}
+              <OutcomeSelect call={call} align="right" onPick={(a) => actions.override(selected.id, a)} />
             </div>
             <h3 style={{ margin: 0, fontSize: 19, fontWeight: 600, letterSpacing: '-0.01em', lineHeight: 1.3, color: 'var(--me-ink)', textWrap: 'pretty' }}>{selected.title}</h3>
 
             {/* The statement that would go out in the refusal advice. */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <Eyebrow size="sm" style={{ fontWeight: 400 }}>
-                {selected.severity === 'clean' ? 'Result Statement' : 'Discrepancy Statement'}
+                {call.value === 'CLEAN' ? 'Result Statement' : 'Discrepancy Statement'}
               </Eyebrow>
-              <DiscrepancyStatement text={selected.statement} tone={sev.accent} />
+              <DiscrepancyStatement text={selected.statement} tone={sev.dot} />
             </div>
 
             <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.6, color: 'var(--me-grey)', textWrap: 'pretty' }}>{selected.detail}</p>
@@ -373,11 +462,11 @@ export default function ReviewScreen({ selectedId, onSelect, onJumpToInterpret }
 //
 // Deciding happens in the detail header, which is why there are no disposition chips
 // here. The rail navigates; the pane beside it is where the call is made.
-function RailRow({ finding, subtitle, selected, decision, onSelect }) {
-  const sev = severityMeta(finding.severity)
+function RailRow({ finding, subtitle, selected, call, onSelect }) {
   const mark = kindMark(kindOf(finding))
   return (
     <button
+      data-rail-id={finding.id}
       onClick={onSelect}
       title={finding.title}
       style={{
@@ -389,19 +478,21 @@ function RailRow({ finding, subtitle, selected, decision, onSelect }) {
       }}
     >
       <span style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
-        <span title={sev.label} style={{ width: 7, height: 7, borderRadius: 999, background: sev.dot, flex: '0 0 7px' }} />
+        <OutcomeMark outcome={call.value} size={12} />
         {finding.gap ? (
-          <span title={finding.gap === 'no rule' ? 'No rule in the dictionary tests this' : 'A rule ran and could not conclude'} style={{ display: 'flex', flexShrink: 0, color: '#946400' }}><Icon name="circle-alert" size={11} color="currentColor" /></span>
+          <span title="No check on the plan covers this — a gap to close in Governance" style={{ display: 'flex', flexShrink: 0, color: '#946400' }}><Icon name="circle-alert" size={11} color="currentColor" /></span>
         ) : (
           <span title={mark.title} style={{ display: 'flex', flexShrink: 0, color: mark.color }}><Icon name={mark.icon} size={11} color="currentColor" /></span>
         )}
         <span style={{ ...ellipsis, flex: 1, minWidth: 0, fontFamily: 'var(--font-mono)', fontSize: 10, color: finding.checkId || finding.raisedByOfficer ? 'var(--me-grey-70)' : '#946400' }}>
           {finding.checkId ?? (finding.raisedByOfficer ? 'yours' : 'no rule')}
         </span>
-        <TierTag tier={finding.settledBy} checkType={finding.checkType} size="dot" />
-        {/* Always rendered, so a decision does not change the row's width or height. */}
-        <span style={{ flex: '0 0 13px', display: 'flex', justifyContent: 'flex-end' }}>
-          {decision ? <Icon name="check" size={13} color="var(--status-success)" /> : null}
+        <TierTag tier={finding.settledBy} checkType={finding.checkType} overridden={call.overridden} size="dot" />
+        {/* Always rendered, so an override does not change the row's width or height.
+            Initials rather than a tick: two characters that say *who*, which a tick
+            cannot, and which a refusal advice has to be able to state. */}
+        <span style={{ flex: '0 0 20px', display: 'flex', justifyContent: 'flex-end', fontSize: 9.5, fontWeight: 600, letterSpacing: '.04em', color: 'var(--me-grey-70)' }}>
+          {call.overridden ? initialsOf(call.by) : null}
         </span>
       </span>
       {/* Not bolder when selected: a heavier line can wrap where the lighter one
@@ -481,42 +572,57 @@ function SourcePane({ title, meta, children }) {
 
 // The whole findings list, one line each — the same shape the plan uses, for the
 // same reason: seeing how much is left, and what kind of work it is, is a question
-// about the list rather than about any one item. Your call is a column, so progress
-// is readable without opening anything.
+// about the list rather than about any one item.
+//
+// One column, one question — the same discipline the plan screen uses, and for the
+// same reason it needed it. Column two used to be 96px holding four things at once:
+// a gap marker, the check id, how it was settled, and a "not settled" note. Nothing
+// fitted, so every one of them ellipsised to nothing and the column read as empty.
+//
+// `Settled by` and `Outcome` are in the same words and the same order as the plan,
+// so a finding is described the same way on both screens. `Cited as` came off to
+// make the room: it is on the detail pane one click away, and while triaging a list
+// the question is what was found, not which article to quote.
+//
+// **Six columns became five.** `Your call` held "Agreed / Not one / Needs you" — a
+// second vocabulary for a fact `Outcome` now states in its own words, and the source
+// of the one thing an officer could not do here: tell at a glance whether a row read
+// that way because a person said so or because nobody had touched it. The override
+// lives in the outcome cell now, as the officer's initials, which answers that and
+// says who as well.
 const FCOLS = {
   display: 'grid',
-  gridTemplateColumns: '22px 96px minmax(0,1.7fr) minmax(0,1fr) minmax(0,0.8fr) 104px',
+  // The outcome track holds a mark, a word, a chevron and — where somebody
+  // overruled the engine — their initials. Sized for the longest of them
+  // ("Discrepant", overridden) so the chevron never ends up the thing that clips:
+  // a control whose affordance is the first casualty of a narrow column is one
+  // nobody discovers.
+  gridTemplateColumns: '122px 104px 152px minmax(0,1.6fr) minmax(0,0.95fr)',
   gap: 14,
   alignItems: 'center',
 }
 
-function FindingsTable({ groups, clean, decisions, docById, onSelect }) {
+
+
+function FindingsTable({ groups, clean, callOf, docById, onSelect, onPick }) {
   const [showClean, setShowClean] = useState(false)
   return (
     <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden', minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div style={{ ...FCOLS, padding: '9px 16px', borderBottom: '1px solid var(--me-grey-15)', flexShrink: 0 }}>
-        <span />
         <Eyebrow size="sm">Check</Eyebrow>
+        <Eyebrow size="sm">Settled by</Eyebrow>
+        <Eyebrow size="sm">Outcome</Eyebrow>
         <Eyebrow size="sm">Finding</Eyebrow>
         <Eyebrow size="sm">On</Eyebrow>
-        <Eyebrow size="sm">Cited as</Eyebrow>
-        <Eyebrow size="sm">Your call</Eyebrow>
       </div>
 
       {/* The rows, and the only thing here that scrolls. */}
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
       {groups.map((g) => (
         <div key={g.label}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 16px', background: 'var(--me-grey-08)', borderBottom: '1px solid var(--me-grey-15)', flexWrap: 'wrap' }}>
-            <Chip size="sm" tone={g.tone ?? 'neutral'}>
-              {g.icon ? <Icon name={g.icon} size={11} /> : null}
-              {g.label}
-            </Chip>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>{g.items.length}</span>
-            {g.note ? <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>{g.note}</span> : null}
-          </div>
+          <KindGroupHeader group={g} count={g.items.length} />
           {g.items.map((f) => (
-            <FindingRow key={f.id} finding={f} decision={decisions[f.id]} docById={docById} onSelect={() => onSelect(f.id)} />
+            <FindingRow key={f.id} finding={f} call={callOf(f)} docById={docById} onSelect={() => onSelect(f.id)} onPick={(a) => onPick(f.id, a)} />
           ))}
         </div>
       ))}
@@ -528,7 +634,7 @@ function FindingsTable({ groups, clean, decisions, docById, onSelect }) {
             <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>{plural(clean.length, 'area')} came back clean</span>
           </button>
           {showClean
-            ? clean.map((f) => <FindingRow key={f.id} finding={f} decision={decisions[f.id]} docById={docById} onSelect={() => onSelect(f.id)} />)
+            ? clean.map((f) => <FindingRow key={f.id} finding={f} call={callOf(f)} docById={docById} onSelect={() => onSelect(f.id)} onPick={(a) => onPick(f.id, a)} />)
             : null}
         </div>
       ) : null}
@@ -537,22 +643,28 @@ function FindingsTable({ groups, clean, decisions, docById, onSelect }) {
   )
 }
 
-function FindingRow({ finding, decision, docById, onSelect }) {
-  const sev = severityMeta(finding.severity)
+// A div rather than a button, and not by preference: the Outcome cell is a menu
+// trigger now, and a button inside a button is invalid HTML that browsers resolve by
+// dropping one of them — the row would swallow the menu's clicks. `role="button"`
+// plus the two keys a button answers to gets the behaviour back honestly.
+function FindingRow({ finding, call, docById, onSelect, onPick }) {
   const mark = kindMark(kindOf(finding))
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect() }
+      }}
       title={finding.title}
       style={{ ...FCOLS, width: '100%', textAlign: 'left', padding: '10px 16px', border: 'none', borderBottom: '1px solid var(--me-grey-08)', background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}
     >
-      <span title={sev.label} style={{ width: 9, height: 9, borderRadius: '50%', background: sev.dot, justifySelf: 'center' }} />
-
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
         {/* The gap mark wins over the kind mark: that a card could not settle it,
             or that no card covers it, is the more urgent thing about the row. */}
         {finding.gap ? (
-          <span title={finding.gap === 'no rule' ? 'No rule in the dictionary tests this — a gap to close in Governance' : 'A rule ran and could not conclude, so it handed the question to you'} style={{ display: 'flex', flexShrink: 0, color: '#946400' }}><Icon name="circle-alert" size={11} color="currentColor" /></span>
+          <span title="No check on the plan covers this — a gap to close in Governance" style={{ display: 'flex', flexShrink: 0, color: '#946400' }}><Icon name="circle-alert" size={11} color="currentColor" /></span>
         ) : (
           <span title={mark.title} style={{ display: 'flex', flexShrink: 0, color: mark.color }}>
             <Icon name={mark.icon} size={11} color="currentColor" />
@@ -561,38 +673,25 @@ function FindingRow({ finding, decision, docById, onSelect }) {
         <span style={{ ...ellipsis, fontFamily: 'var(--font-mono)', fontSize: 11, color: finding.checkId ? 'var(--me-grey-70)' : finding.raisedByOfficer ? 'var(--me-grey-70)' : '#946400' }}>
           {finding.checkId ?? (finding.raisedByOfficer ? 'yours' : 'no rule')}
         </span>
-        {/* How it was settled, which the group no longer says — the list is grouped
-            by where the card came from. */}
-        <TierTag tier={finding.settledBy} checkType={finding.checkType} />
-        <span style={{ ...ellipsis, fontSize: 10, color: '#946400' }}>
-          {finding.gap === 'not settled' ? 'not settled' : ''}
-        </span>
       </span>
+
+      {/* How it was settled, in the same words the plan uses. It shared the Check
+          cell until it grew from "exact" to "Comparison" and pushed the id out. */}
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+        <TierTag tier={finding.settledBy} checkType={finding.checkType} overridden={call.overridden} />
+      </span>
+
+      {/* What came of it, whose call it now is, and where you change it — the value
+          and the control are one thing. Changing a row from the list means never
+          having to open it just to correct a tag you got wrong. */}
+      <OutcomeSelect call={call} onPick={onPick} />
 
       <span style={{ ...ellipsis, fontSize: 12.5, color: 'var(--me-ink)' }}>{finding.title}</span>
 
       <span style={{ ...ellipsis, fontSize: 11.5, color: 'var(--me-grey-70)' }}>
         {docById[finding.docId]?.docType ?? finding.quoteSource ?? '—'}
       </span>
-
-      <span style={{ ...ellipsis, fontSize: 11.5, color: 'var(--me-grey-70)' }}>
-        {finding.source ? SOURCE_LABEL[finding.source] : '—'}
-      </span>
-
-      {/* The one column that is about you rather than the finding. Blank is not
-          "no opinion" — it is work outstanding, so it says so. */}
-      <span style={{ fontSize: 11, whiteSpace: 'nowrap' }}>
-        {decision ? (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--me-ink)' }}>
-            <Icon name="check" size={12} color="var(--status-success)" />
-            {dispositionLabel(decision)}
-          </span>
-        ) : (
-          <span style={{ color: 'var(--me-blue)' }}>needs you</span>
-        )}
-      </span>
-    </button>
+    </div>
   )
 }
 
-const SOURCE_LABEL = { credit: 'the credit', practice: 'UCP / ISBP', policy: 'bank policy' }

@@ -94,28 +94,20 @@ export default function IntakeScreen() {
             )
           })}
 
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 11, border: '1px dashed var(--me-grey-20)', borderRadius: 10, color: 'var(--me-grey-70)', fontSize: 12, background: '#fff', textAlign: 'center', lineHeight: 1.4 }}>
-            <Icon name="plus" size={14} />
-            <span>Replace a file, or pull from DocEx</span>
-          </div>
-
-          {/* What the service is doing, in its own words. A stage that takes ten
-              seconds and says nothing is indistinguishable from one that hung. */}
+          {/* Status only — no replace/DocEx control. That dashed tile looked like
+              a button and did nothing; DocEx is not wired, and replacing a file
+              mid-case is not a supported path. The two slots above are the files. */}
           {run.failure ? (
             <p style={{ margin: 0, padding: '0 2px', fontSize: 11.5, lineHeight: 1.5, color: 'var(--status-error)' }}>
               Reading stopped — {run.failure}. The files are stored; rerun intake to try again.
             </p>
           ) : pending ? (
             <p style={{ margin: 0, padding: '0 2px', fontSize: 11.5, lineHeight: 1.5, color: 'var(--me-grey-70)' }}>
-              {run.activity ?? 'Reading what came in'}… Both files are stored and
-              checksummed. Nothing has been examined and nothing has been spent on
-              the presentation — this is the credit being read, once.
+              {run.activity ?? 'Reading what came in'}… Nothing examined yet.
             </p>
           ) : (
             <p style={{ margin: 0, padding: '0 2px', fontSize: 11.5, lineHeight: 1.5, color: 'var(--me-grey-70)' }}>
-              Nothing has been read yet, and nothing has been spent. Check both files
-              are the right ones, then start the review from the button above — the
-              presentation is split into documents at that point, not before.
+              Confirm both files, then start the review above.
             </p>
           )}
         </div>

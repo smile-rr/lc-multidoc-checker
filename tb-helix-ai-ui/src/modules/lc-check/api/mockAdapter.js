@@ -64,7 +64,7 @@ export async function listCases({ scope = 'all' } = {}) {
  * The pipeline, as the service declares it.
  *
  * Kept in step with `Stage.steps()` on the backend — `pipelineDisagreements` in
- * severity.js shouts if the two drift, which is the whole reason this exists
+ * stages.js shouts if the two drift, which is the whole reason this exists
  * rather than the UI simply believing its own constant.
  *
  * @returns {Promise<object[]>}
@@ -245,16 +245,25 @@ export async function addCheck(caseId, { name }) {
 /**
  * @param {string} caseId
  * @param {string} findingId
- * @param {{ disposition: import('../data/contracts.js').Disposition, note?: string }} decision
+ * @param {{ outcome: import('../data/contracts.js').Outcome, by?: string, note?: string }} override
  */
-export async function recordDecision(caseId, findingId, decision) {
+export async function recordOverride(caseId, findingId, override) {
   await wait(LATENCY.mutate)
-  void [caseId, findingId, decision]
+  void [caseId, findingId, override]
 }
 
 /**
  * @param {string} caseId
- * @param {{ verdict: import('../data/contracts.js').Verdict, note: string }} signoff
+ * @param {string} findingId
+ */
+export async function clearOverride(caseId, findingId) {
+  await wait(LATENCY.mutate)
+  void [caseId, findingId]
+}
+
+/**
+ * @param {string} caseId
+ * @param {{ status: import('../data/contracts.js').DecisionStatus, note: string }} signoff
  * @returns {Promise<{ routedTo: string }>}
  */
 /** No gate halts in the fixtures, so there is nothing to release. */

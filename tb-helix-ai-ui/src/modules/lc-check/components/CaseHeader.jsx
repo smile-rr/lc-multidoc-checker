@@ -3,10 +3,11 @@ import { Link } from 'react-router-dom'
 import Badge from '@shared/ds/Badge'
 import Button from '@shared/ds/Button'
 import Icon from '@shared/ds/Icon'
+import InfoTip from '@shared/ds/InfoTip'
 import SegmentedControl from '@shared/ds/SegmentedControl'
 import { usePersistedState } from '@shared/lib/usePersistedState'
 import { money, durationShort, usd, dueLabel } from '@shared/lib/format'
-import { RUN_MODES } from '../state/severity'
+import { RUN_MODES } from '../state/stages'
 
 // The case header — breadcrumb, identity, the facts an officer keeps re-reading,
 // and the stage tabs.
@@ -21,6 +22,9 @@ export default function CaseHeader({
   stages,
   activeStage,
   onStage,
+  // Per-tab run progress (`done` | `running` | `pending`). Selection is the
+  // underline; this is what paints the number. Absent → every tab pending.
+  progress = {},
   runMode,
   onRunMode,
   cost,
@@ -52,10 +56,20 @@ export default function CaseHeader({
   // until it is not.
   const reading = !c.creditRef
   const held = (value) => (reading ? '·  ·  ·' : value)
+  // Tolerance comes from :39A:. Show it only when the credit states one —
+  // appending `±0%` when the field is absent made every amount look tolerant.
+  const amount = reading
+    ? held(null)
+    : c.tolerancePct
+      ? `${money(c.currency, c.amount)} ±${c.tolerancePct}%`
+      : money(c.currency, c.amount)
+  // Applicant stays after Amount (original order) but is capped so Documents /
+  // Expiry / Reply Due do not shift. Full :50: text is on the InfoTip — hover,
+  // focus or click — rather than a native title= which truncates long addresses.
   const facts = [
     { k: 'Credit', v: held(c.creditRef), mono: true },
-    { k: 'Amount', v: held(`${money(c.currency, c.amount)} ±${c.tolerancePct}%`), mono: true, weight: 500 },
-    { k: 'Applicant', v: held(c.applicant) },
+    { k: 'Amount', v: amount, mono: true, weight: 500 },
+    { k: 'Applicant', v: held(c.applicant), trim: true, tip: !reading && c.applicant },
     { k: 'Documents', v: `${detail.documents.filter((d) => d.role === 'presented').length} of ${detail.bundlePages.length} pages` },
     { k: 'Expiry', v: held(c.expiry) },
     { k: 'Reply Due', v: dueLabel(detail.replyDueDays) ?? '—', weight: 600, urgent: true },
@@ -94,28 +108,6 @@ export default function CaseHeader({
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, letterSpacing: '-0.02em', color: reading ? 'var(--me-grey-70)' : 'var(--me-ink)' }}>
             {reading ? 'Reading the credit…' : c.beneficiary}
           </h1>
-
-          {factsOpen && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', margin: '4px 0 14px', border: '1px solid var(--me-grey-15)', borderRadius: 8, background: 'var(--me-grey-08)', overflow: 'hidden', width: 'fit-content' }}>
-              {facts.map((f, i) => (
-                <div key={f.k} style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '8px 16px', borderRight: i < facts.length - 1 ? '1px solid var(--me-grey-15)' : 'none', whiteSpace: 'nowrap' }}>
-                  <Eyebrow size="sm">{f.k}</Eyebrow>
-                  <span
-                    style={{
-                      fontSize: 13.5,
-                      fontFamily: f.mono ? 'var(--font-mono)' : 'var(--font-sans)',
-                      fontWeight: f.weight || 400,
-                      color: reading && f.v === '·  ·  ·'
-                        ? 'var(--me-grey-50)'
-                        : f.urgent && dueUrgent ? 'var(--status-warning)' : 'var(--me-ink)',
-                    }}
-                  >
-                    {f.v}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, paddingTop: 4 }}>
@@ -153,10 +145,77 @@ export default function CaseHeader({
         </div>
       </div>
 
+      {/* Full width under the title row. It used to sit inside the left flex
+          column beside the action pills, so `flex-wrap` broke Documents /
+          Expiry / Reply Due onto a second line whenever Applicant's address
+          ran long — while the right half of the header still looked empty. */}
+      {factsOpen && (
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'nowrap',
+            margin: '10px 0 14px',
+            border: '1px solid var(--me-grey-15)',
+            borderRadius: 8,
+            background: 'var(--me-grey-08)',
+            overflow: 'hidden',
+            minWidth: 0,
+          }}
+        >
+          {facts.map((f, i) => {
+            const color = reading && f.v === '·  ·  ·'
+              ? 'var(--me-grey-50)'
+              : f.urgent && dueUrgent ? 'var(--status-warning)' : 'var(--me-ink)'
+            // 220 cell − 32 horizontal padding. Fixed so the InfoTip button
+            // (which sizes to its label) cannot grow past the cap and defeat
+            // the ellipsis.
+            const valueStyle = {
+              fontSize: 13.5,
+              fontFamily: f.mono ? 'var(--font-mono)' : 'var(--font-sans)',
+              fontWeight: f.weight || 400,
+              color,
+              whiteSpace: 'nowrap',
+              overflow: f.trim ? 'hidden' : undefined,
+              textOverflow: f.trim ? 'ellipsis' : undefined,
+              display: 'block',
+              maxWidth: f.trim ? 188 : undefined,
+            }
+            return (
+              <div
+                key={f.k}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 2,
+                  padding: '8px 16px',
+                  borderRight: i < facts.length - 1 ? '1px solid var(--me-grey-15)' : 'none',
+                  minWidth: 0,
+                  flex: '0 0 auto',
+                  maxWidth: f.trim ? 220 : undefined,
+                }}
+              >
+                <Eyebrow size="sm">{f.k}</Eyebrow>
+                {f.tip ? (
+                  <InfoTip title="Applicant" label={<span style={valueStyle}>{f.v}</span>}>
+                    <span style={{ whiteSpace: 'pre-line' }}>{f.tip}</span>
+                  </InfoTip>
+                ) : (
+                  <span style={valueStyle}>{f.v}</span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
         {stages.map((s, i) => {
+          // Selection and progress are two channels. The underline + weight say
+          // "you are here"; the number says "has this run". Colouring the number
+          // for selection stole the only signal that could tell done from pending.
           const active = s.id === activeStage
-          const past = i < stages.findIndex((x) => x.id === activeStage)
+          const state = progress[s.id] ?? 'pending'
+          const num = NUMBER_TONE[state] ?? NUMBER_TONE.pending
           return (
             <button
               key={s.id}
@@ -170,7 +229,7 @@ export default function CaseHeader({
                 background: 'none',
                 border: 'none',
                 borderBottom: `2px solid ${active ? 'var(--me-blue)' : 'transparent'}`,
-                color: active ? 'var(--me-ink)' : past ? 'var(--me-grey)' : 'var(--me-grey-70)',
+                color: active ? 'var(--me-ink)' : state === 'done' ? 'var(--me-grey)' : 'var(--me-grey-70)',
                 fontSize: 13.5,
                 fontWeight: active ? 600 : 400,
               }}
@@ -185,8 +244,8 @@ export default function CaseHeader({
                   justifyContent: 'center',
                   fontSize: 11.5,
                   fontFamily: 'var(--font-mono)',
-                  background: active ? 'var(--me-blue)' : past ? 'var(--me-green-20)' : 'var(--me-grey-15)',
-                  color: active ? '#fff' : past ? '#1F7A00' : 'var(--me-grey-70)',
+                  background: num.bg,
+                  color: num.fg,
                 }}
               >
                 {i + 1}
@@ -203,6 +262,14 @@ export default function CaseHeader({
       </div>
     </header>
   )
+}
+
+// Number tone is progress only — never selection. Blue here means the stage is
+// running right now; green means it has finished; grey means it has not started.
+const NUMBER_TONE = {
+  done: { bg: 'var(--me-green-20)', fg: '#1F7A00' },
+  running: { bg: 'var(--me-blue)', fg: '#fff' },
+  pending: { bg: 'var(--me-grey-15)', fg: 'var(--me-grey-70)' },
 }
 
 function PillButton({ title, active, onClick, children }) {

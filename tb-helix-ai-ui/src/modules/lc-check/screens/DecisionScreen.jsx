@@ -2,14 +2,17 @@ import { cardSurface } from '@shared/ds/Card'
 import { ellipsis } from '@shared/ds/text'
 import { useState, useMemo } from 'react'
 import Button from '@shared/ds/Button'
-import Chip from '@shared/ds/Chip'
 import Icon from '@shared/ds/Icon'
 import { toneOf } from '@shared/lib/tone'
 import { plural } from '@shared/lib/format'
-import DispositionChips from '../components/DispositionChips'
 import DiscrepancyStatement from '../components/DiscrepancyStatement'
-import { severityMeta, dispositionLabel, VERDICTS } from '../state/severity'
+import { OutcomeMark } from '../components/OutcomeCell'
+import OutcomeSelect from '../components/OutcomeSelect'
+import { outcomeMeta, CASE_STATUS, tally } from '../state/outcome'
+import { settledBy, bySettledBy } from '../data/checkSpecs'
 import { groupByKind, kindOf, kindMark } from '../state/findingKinds'
+import KindGroupHeader from '../components/KindGroupHeader'
+import Notice from '@shared/ds/Notice'
 import TierTag from '../components/TierTag'
 import { PANE_FILL } from '../components/paneHeight'
 import { useCase } from '../state/CaseContext'
@@ -17,17 +20,31 @@ import { useCase } from '../state/CaseContext'
 // Stage 5 — the officer's decision.
 //
 // The engine has no vote here. Every finding needing a call is listed with the
-// check that produced it, the statement that would go out in the advice, and the
-// officer's disposition. The verdict, the note and the signature are theirs.
+// check that produced it, the statement that would go out in the advice, and what
+// it will be raised as. The status, the note and the signature are theirs.
+//
+// **A call can be made here as well as in Review**, with the same control and the
+// same two values — Clear it, or Call it discrepant. Both screens write through
+// `actions.override`, so there is one write path and no way for the two to hold
+// different answers; what differs is what is in front of you when you decide. Review
+// has the document pane and the credit anchor and is where a disputed reading gets
+// settled; this screen has the whole list and the advice about to go out, and the
+// call you make here is usually the one you already reached — a row you meant to
+// clear and want to clear now that you can see the notice it would appear on. Sending
+// somebody back a tab for that is a rule with nothing behind it, so the expanded row
+// still links to Review for the evidence.
+//
+// What this screen owns alone is the act Review cannot make: where the presentation
+// lands.
 //
 // Rows collapse because this list is read twice for different reasons: once
-// scanning for what is still open, once reading a specific finding in full. A
+// scanning for what is unresolved, once reading a specific finding in full. A
 // list that is always expanded serves the second and defeats the first.
 // What a finding is cited against, in the words a notice uses.
 const CITE = { credit: 'the credit', practice: 'UCP / ISBP', policy: 'bank policy' }
 
 export default function DecisionScreen({ onOpenFinding }) {
-  const { data, visible, officer, actions } = useCase()
+  const { data, run, visible, officer, callOf, status, actions } = useCase()
   const [expanded, setExpanded] = useState({})
 
   const checkById = useMemo(() => Object.fromEntries(data.checks.map((c) => [c.id, c])), [data.checks])
@@ -51,24 +68,39 @@ export default function DecisionScreen({ onOpenFinding }) {
   // officer worked the findings list by these three headings; arriving at the
   // decision to find one flat list means re-finding everything they just read.
   //
-  // It also front-loads the cheap calls: a rule finding is a sum you agree or
-  // reject in seconds, so putting them together clears most of the list before the
-  // reading starts.
-  const groups = useMemo(() => groupByKind(rows), [rows])
+  // **And sorted the same way inside each group** — by who settled it: comparison,
+  // then agent, then manual, from `checkSpecs`. This list had no order at all, so it
+  // came out in whatever sequence the service returned, and the officer who had just
+  // worked the plan and then the findings in one sequence met a third arrangement on
+  // the screen where they sign. It also front-loads the cheap reading: a comparison
+  // is a sum you check in seconds, so most of the list clears before the prose starts.
+  const groups = useMemo(() => {
+    // An override makes a person the one who settled it, so it sorts as manual — the
+    // same rule the tag on the row states. Your own calls collect at the foot of their
+    // group, which is where you look to see what you have actually touched.
+    const order = bySettledBy((f) => (
+      callOf(f).overridden ? 'manual'
+        : f.checkId && checkById[f.checkId] ? settledBy(checkById[f.checkId]) : 'agent'))
+    return groupByKind(rows, order)
+  }, [rows, checkById, callOf])
 
-  const decided = rows.filter((f) => officer.decisions[f.id]).length
-  const open = rows.length - decided
   const allExpanded = rows.length > 0 && rows.every((f) => expanded[f.id])
 
   const toggle = (id) => setExpanded((s) => ({ ...s, [id]: !s[id] }))
   const setAll = (on) => setExpanded(on ? Object.fromEntries(rows.map((f) => [f.id, true])) : {})
 
-  const tally = [
-    { key: 'agreed', label: 'agreed', tone: 'success', n: rows.filter((f) => officer.decisions[f.id] === 'agreed').length },
-    { key: 'rejected', label: 'not discrepancies', tone: 'error', n: rows.filter((f) => officer.decisions[f.id] === 'rejected').length },
-    { key: 'parked', label: 'parked', tone: 'warning', n: rows.filter((f) => officer.decisions[f.id] === 'parked').length },
-    { key: 'open', label: 'still open', tone: 'neutral', n: open },
-  ]
+  // Checks that were planned and never reached. Not the ones this credit never
+  // triggered or the planner stood down — those are answers, and the planner cannot
+  // stand a rule down without raising a card for it.
+  const unrun = (data.checks ?? []).filter((c) => !c.findingId && !c.notCovered && c.areaId && !c.suppressedBecause)
+
+  // The four counts, and deliberately no fifth. There is no "still open" any more:
+  // every finding carries an outcome from the moment it runs, so there is nothing
+  // left to be open. What used to sit in that slot — an undecided count the officer
+  // was implicitly asked to drive to zero — is exactly the pressure that turns a
+  // review into a click-through. What is unresolved says DOUBT and routes the case
+  // to further check, which is an answer rather than a chore.
+  const counts = tally(visible.findings, officer.overrides, unrun.length)
 
   return (
     // The findings scroll; the decision does not.
@@ -78,7 +110,11 @@ export default function DecisionScreen({ onOpenFinding }) {
     // under the hand whichever finding is on screen. So the left column is the only
     // scroller here, and the panel stays put beside it.
     <section className="helix-screen" style={{ padding: '18px 32px 16px', display: 'grid', gridTemplateColumns: 'minmax(360px,1fr) minmax(320px,400px)', gap: 16, alignItems: 'stretch', ...PANE_FILL }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, overflow: 'auto' }}>
+      {/* The column does not scroll — the findings card inside it does. Scrolling the
+          whole strip took the header, the tally and the policy holds off the top with
+          it, so an officer working down a long list lost the counts they were working
+          against and the hold they were supposed to be mindful of. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 }}>
       {/* Held, not refused. A sanctions or policy hold stops the payment without
           being a discrepancy: the documents may comply perfectly. It cannot be
           stated to the presenting bank under art. 16(c), so it is above the
@@ -110,10 +146,10 @@ export default function DecisionScreen({ onOpenFinding }) {
         </div>
       ) : null}
 
-      <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '13px 18px', borderBottom: '1px solid var(--me-grey-15)', minHeight: 56 }}>
+      <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '13px 18px', borderBottom: '1px solid var(--me-grey-15)', minHeight: 56, flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)' }}>Dispositions</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)' }}>Findings</span>
             {rows.length ? (
               <button
                 onClick={() => setAll(!allExpanded)}
@@ -124,19 +160,37 @@ export default function DecisionScreen({ onOpenFinding }) {
               </button>
             ) : null}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            {tally.map((t) => {
-              const tone = toneOf(t.tone)
-              return (
-                <span key={t.key} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 9px', borderRadius: 999, background: tone.wash, fontSize: 12, color: tone.text, whiteSpace: 'nowrap' }}>
-                  <span style={{ fontFamily: 'var(--font-mono)' }}>{t.n}</span>
-                  <span>{t.label}</span>
-                </span>
-              )
-            })}
+          {/* The tally reads in the outcome's own words and its own marks — no washes
+              behind it. A pill per count put four filled shapes on a header whose job
+              is to be read past, and the two that matter are already the only ones
+              carrying hue. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+            {counts.map((t) => (
+              <span key={t.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--me-grey-70)', whiteSpace: 'nowrap' }}>
+                <OutcomeMark outcome={t.key} size={12} />
+                <span style={{ fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--me-ink)' }}>{t.n}</span>
+                <span>{t.label.toLowerCase()}</span>
+              </span>
+            ))}
           </div>
         </div>
 
+        {/* How far it got. It states and does not act: running the rest belongs to
+            the workbench's primary button, not to a link on the screen where the
+            officer is deciding. */}
+        {run.stoppedAfterPlan ? (
+          <div style={{ padding: '12px 18px 0' }}>
+            <Notice
+              tone="warning"
+              icon="shield-alert"
+              title={`${plural(run.remaining, 'check')} not run`}
+            />
+          </div>
+        ) : null}
+
+        {/* The rows, and the only thing in the card that scrolls — the same shape
+            Review's findings table uses, so the two lists behave alike. */}
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         {rows.length === 0 ? (
           <div style={{ padding: '28px 18px', fontSize: 13, color: 'var(--me-grey-70)' }}>
             Nothing needs a decision yet — run the review first.
@@ -144,18 +198,12 @@ export default function DecisionScreen({ onOpenFinding }) {
         ) : (
           groups.map((g) => (
             <div key={g.key}>
-              {/* The same band Review's list uses, for the same three groups. */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 18px', background: 'var(--me-grey-08)', borderBottom: '1px solid var(--me-grey-15)', flexWrap: 'wrap' }}>
-                <Chip size="sm" tone={g.tone}>
-                  <Icon name={g.icon} size={11} />
-                  {g.label}
-                </Chip>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>{g.items.length}</span>
-                <span style={{ fontSize: 11.5, color: 'var(--me-grey-70)' }}>{g.note}</span>
-              </div>
+              {/* The same band the plan and the report use — one component, so the
+                  four groups cannot be labelled or coloured differently here. */}
+              <KindGroupHeader group={g} count={g.items.length} />
               {g.items.map((f) => {
-            const d = officer.decisions[f.id]
-            const sev = severityMeta(f.severity)
+            const call = callOf(f)
+            const sev = outcomeMeta(call.value)
             const isOpen = !!expanded[f.id]
             const check = f.checkId ? checkById[f.checkId] : null
             const mark = kindMark(kindOf(f))
@@ -167,7 +215,12 @@ export default function DecisionScreen({ onOpenFinding }) {
                     down, so every line a row spends on itself is a row fewer on the
                     screen — the marks that were on a third line now sit inline on the
                     first, which is where the eye already is. */}
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '7px 18px' }}>
+                {/* A grid, not a flex. The outcome is the tail of a row whose content
+                    is variable width, so it would sit at a different x on every line —
+                    you could not run your eye down the column and see where the case
+                    stands, which is the one thing this screen is for. Pinned to a
+                    track, the outcomes read as a column. */}
+                <div style={{ display: 'grid', gridTemplateColumns: '15px minmax(0,1fr) auto', alignItems: 'center', gap: 10, padding: '7px 18px' }}>
                   <button
                     onClick={() => toggle(f.id)}
                     aria-expanded={isOpen}
@@ -176,8 +229,6 @@ export default function DecisionScreen({ onOpenFinding }) {
                   >
                     <Icon name={isOpen ? 'chevron-down' : 'chevron-right'} size={15} />
                   </button>
-
-                  <span title={sev.label} style={{ width: 7, height: 7, borderRadius: 999, background: sev.dot, flex: '0 0 7px', marginTop: 6 }} />
 
                   <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
@@ -202,7 +253,7 @@ export default function DecisionScreen({ onOpenFinding }) {
                       </span>
                       {/* How it was settled. On this screen it decides whether the
                           statement can go out as written or has to be read first. */}
-                      <TierTag tier={f.settledBy} checkType={f.checkType} />
+                      <TierTag tier={f.settledBy} checkType={f.checkType} overridden={call.overridden} />
                       {/* What it is cited against, which decides whether it can go on
                           a refusal advice at all. */}
                       {CITE[f.source] ? (
@@ -219,21 +270,28 @@ export default function DecisionScreen({ onOpenFinding }) {
                     </span>
                   </div>
 
-                  {/* Fixed width: the label changes from "Open" to "Not one" as
-                      the officer decides, and a shrinking label slid the chips
-                      out from under the cursor mid-click. */}
-                  <span style={{ flex: '0 0 62px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', marginTop: 3, color: d ? toneOf(d === 'agreed' ? 'success' : d === 'parked' ? 'warning' : 'error').text : 'var(--me-grey-70)' }}>
-                    {dispositionLabel(d)}
+                  {/* What it will be raised as, with the seam in full where a person
+                      overruled the engine. There is room for it here — this is the
+                      last screen before the advice goes out, and "the model called
+                      this discrepant and somebody cleared it" is precisely what a
+                      checker reading over the officer's shoulder needs to see.
+                      Nothing here is clickable: the call is made in Review, where the
+                      evidence is, and the row below links back to it. */}
+                  {/* One track, centred on the row rather than pinned to its top.
+                      It was a value and a button cluster on two separately nudged
+                      baselines, which is why neither lined up with the title beside
+                      them or with the rows above and below. The value *is* the
+                      control now, so there is one thing to align and it sits on the
+                      row's own centre line. */}
+                  <span style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <OutcomeSelect call={call} align="right" onPick={(a) => actions.override(f.id, a)} />
                   </span>
-                  <div style={{ marginTop: 0 }}>
-                    <DispositionChips value={d} onPick={(next) => actions.decide(f.id, next)} />
-                  </div>
                 </div>
 
                 {isOpen ? (
                   // Recessed, so an open row reads as a nested panel instead of
                   // blending into the rows above and below it.
-                  <div style={{ margin: '0 18px 12px 55px', padding: '12px 14px', background: 'var(--me-grey-08)', border: '1px solid var(--me-grey-15)', borderRadius: 9, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ margin: '0 18px 12px 43px', padding: '12px 14px', background: 'var(--me-grey-08)', border: '1px solid var(--me-grey-15)', borderRadius: 9, display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <DiscrepancyStatement text={f.statement} tone={sev.accent} compact onSurface />
                     {/* Where the wording came from. A statement derived from a rule's
                         own Raise line plus the real values is exact and reproducible;
@@ -270,6 +328,7 @@ export default function DecisionScreen({ onOpenFinding }) {
             </div>
           ))
         )}
+        </div>
       </div>
       </div>
 
@@ -284,28 +343,51 @@ export default function DecisionScreen({ onOpenFinding }) {
             <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--me-grey-70)' }}>To {data.authoriser}</span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: open ? 'var(--me-grey-70)' : 'var(--status-success)' }}>
-            <Icon name={open ? 'circle-dashed' : 'check-circle-2'} size={14} />
-            <span>{open ? `${plural(open, 'finding')} still open` : 'Every finding has a call — ready to send'}</span>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingTop: 2, borderTop: '1px solid var(--me-grey-08)' }}>
-            {VERDICTS.map((v) => {
-              const on = officer.verdict === v.id
+          {/* Where the presentation lands. Derived from the outcomes and marked as
+              derived, so the officer can see the arithmetic they are agreeing with —
+              and can disagree, which is the same two slots a finding has, one level
+              up. The old three options were `refuse | waiver | second look`: two
+              outcomes and an action, mixed on one axis, none of them computed from
+              anything. */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingTop: 6, borderTop: '1px solid var(--me-grey-08)' }}>
+            <span style={{ fontSize: 12.5, color: 'var(--me-grey-70)', paddingBottom: 4 }}>This presentation is</span>
+            {Object.entries(CASE_STATUS).map(([key, s]) => {
+              const on = status.value === key
               return (
                 <button
-                  key={v.id}
-                  onClick={() => actions.dispatch({ type: 'verdict', verdict: v.id })}
-                  title={v.sub}
-                  style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 2px', cursor: 'pointer', background: 'none', border: 'none', textAlign: 'left' }}
+                  key={key}
+                  onClick={() => actions.dispatch({ type: 'case_status', status: key })}
+                  title={s.consequence}
+                  style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 2px', cursor: 'pointer', background: 'none', border: 'none', textAlign: 'left', fontFamily: 'inherit', width: '100%' }}
                 >
                   <span style={{ width: 15, height: 15, flex: '0 0 15px', borderRadius: 999, border: `1.5px solid ${on ? 'var(--me-blue)' : 'var(--me-grey-50)'}`, background: on ? 'var(--me-blue)' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {on ? <span style={{ width: 5, height: 5, borderRadius: 999, background: '#fff' }} /> : null}
                   </span>
-                  <span style={{ fontSize: 13, color: 'var(--me-ink)', fontWeight: on ? 600 : 400 }}>{v.label}</span>
+                  <span style={{ fontSize: 13.5, color: 'var(--me-ink)', fontWeight: on ? 600 : 400 }}>{s.label}</span>
+                  {/* Only on the computed one, and only while it is still the
+                      computed one — once somebody has chosen, the mark would be
+                      claiming the machine agreed with them. */}
+                  {key === status.derived && !status.chosen ? (
+                    <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--me-grey-50)' }}>derived</span>
+                  ) : null}
                 </button>
               )
             })}
+            <p style={{ margin: '8px 0 0', paddingTop: 10, borderTop: '1px solid var(--me-grey-08)', fontSize: 12.5, lineHeight: 1.55, color: 'var(--me-grey)' }}>
+              {CASE_STATUS[status.value].consequence}
+            </p>
+            {/* Take-up-subject-to-waiver is a real outcome and it is not a fourth
+                status: it does not change what was found, it changes what the bank
+                does about it. So it is an act under Discrepant rather than a value
+                that would let the status misdescribe the examination. */}
+            {status.value === 'DISCREPANT' ? (
+              <button
+                onClick={() => actions.flash('Waiver request drafted — the applicant is asked to waive the discrepancies.')}
+                style={{ alignSelf: 'flex-start', marginTop: 8, fontSize: 12, color: 'var(--me-blue-deep)', cursor: 'pointer', background: 'none', border: 'none', borderBottom: '1px solid var(--me-blue-20)', padding: 0, fontFamily: 'inherit' }}
+              >
+                Seek a waiver instead
+              </button>
+            ) : null}
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4, borderTop: '1px solid var(--me-grey-08)' }}>
@@ -332,7 +414,7 @@ export default function DecisionScreen({ onOpenFinding }) {
           {[
             { icon: 'user-check', color: 'var(--me-blue)', text: 'You are the maker of record', sub: 'The AI pre-check does not sign anything' },
             { icon: 'arrow-right', color: 'var(--me-blue)', text: `Checker: ${data.authoriser}`, sub: 'Amount over USD 1m — a senior checker must confirm' },
-            { icon: 'alert-triangle', color: 'var(--status-warning)', text: `${plural(visible.manual.length, 'item')} the AI did not cover`, sub: 'Passed to the checker as open questions' },
+            { icon: 'alert-triangle', color: 'var(--status-warning)', text: `${plural(visible.doubt.length, 'item')} nothing settled`, sub: 'Passed to the checker as open questions' },
           ].map((r) => (
             <div key={r.text} style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}>
               <span style={{ display: 'flex', marginTop: 2 }}><Icon name={r.icon} size={14} color={r.color} /></span>

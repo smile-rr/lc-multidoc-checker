@@ -3,13 +3,15 @@ import Eyebrow from '@shared/ds/Eyebrow'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import MarkdownDoc from '@shared/ds/MarkdownDoc'
-import Badge from '@shared/ds/Badge'
 import Chip from '@shared/ds/Chip'
 import Icon from '@shared/ds/Icon'
 import RuleText from '@shared/ds/RuleText'
 import Tabs from '@shared/ds/Tabs'
+import Notice from '@shared/ds/Notice'
 import { toneOf } from '@shared/lib/tone'
 import { SOURCE_META } from '../data/checkSpecs'
+import OutcomeCell from './OutcomeCell'
+import { useCase } from '../state/CaseContext'
 
 
 // One side of a condition: a dictionary field read off a named document, or a
@@ -27,8 +29,11 @@ function Operand({ o }) {
 
 const SEVERITY_TONE = { CRITICAL: 'error', MAJOR: 'warning', MINOR: 'neutral' }
 
-const STATUS_LABEL = { planned: 'Planned', queued: 'Queued', running: 'Running now', done: 'Done', skipped: 'Not run' }
-const STATUS_TONE = { done: 'green', running: 'blue', skipped: 'neutral', planned: 'neutral', queued: 'neutral' }
+// The outcome is rendered by `OutcomeCell`, the same component the plan row and the
+// findings list use — so the pane you open from a row cannot describe that row's
+// result in different words from the row itself. It used to be a Badge with its own
+// tone map, which is how "passed" came to be green here and grey three centimetres
+// to the left.
 
 /**
  * What a check is, for one credit.
@@ -38,8 +43,9 @@ const STATUS_TONE = { done: 'green', running: 'blue', skipped: 'neutral', planne
  * "run by / applies / rule reference" — metadata about a check rather than the
  * check itself, which told an officer nothing they could act on.
  */
-export default function CheckSpecCard({ check, status, finding, onOpenFinding }) {
+export default function CheckSpecCard({ check, outcome, finding, onOpenFinding }) {
   const [tab, setTab] = useState('rule')
+  const { run } = useCase()
   // Normalised once, because `spec` is a map the service assembles and not every
   // check has every key — a gate carries a severity and a rule and nothing else.
   // Reading `spec.refs.length` off one of those threw, and a thrown render is a
@@ -48,10 +54,22 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
   const spec = check.spec ?? {}
   const refs = spec.refs ?? []
   const sevTone = toneOf(SEVERITY_TONE[spec.severity] ?? 'neutral')
-  // A rule carries its rows and its resolved operands; a requirement carries a
-  // compiled prompt. Which one this is decides what the card can honestly show.
   const rd = check.ruleDef
-  const isExact = check.tier === 'exact' && !!rd
+  // The condition rows, wherever they came from. Fixtures resolve them client-side
+  // into `ruleDef`, with each operand's extracted value attached; the service sends
+  // the condition itself on `spec.rows`. A requirement the planner compiled out of
+  // :47A: exists only in the second form — it is in no dictionary — and it is the
+  // one whose working most needs reading, because nobody reviewed it before it ran.
+  const rows = rd?.rows ?? spec.rows ?? []
+  // Whether this is settled by comparing fields or by an agent reading. It decides
+  // what the card can honestly show, and which tab the middle one is.
+  const isExact = check.tier === 'exact' && rows.length > 0
+  // Which *kind* of card it is, which is a different question — a requirement the
+  // planner compiled is exact and is still a requirement. Reading the kind off the
+  // tier labelled every compiled :47A: condition "Rule", which is the one thing it
+  // is not: a rule was authored and approved before it ever ran, and this was
+  // written during this run and reviewed by nobody.
+  const isRequirement = check.plannedByLlm || check.origin === 'credit'
   const src = SOURCE_META[check.source] ?? SOURCE_META.credit
 
   return (
@@ -59,7 +77,12 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
       <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--me-grey-15)', display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--me-grey-70)' }}>{check.id}</span>
-          <Badge tone={STATUS_TONE[status]}>{STATUS_LABEL[status]}</Badge>
+          {outcome?.outcome ? (
+            <OutcomeCell
+              call={{ machine: outcome.outcome, value: outcome.outcome, overridden: false, reason: outcome.outcomeReason }}
+              size={12}
+            />
+          ) : null}
           <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', color: sevTone.text }}>{spec.severity}</span>
           {check.plannedByLlm ? (
             <span
@@ -101,17 +124,44 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
 
       {/* Which kind of check this is, stated before its content — the two cards
           share a shell, so the shell has to say which one you are reading. */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '10px 20px', background: isExact ? 'var(--me-blue-20)' : 'var(--me-green-20)', borderBottom: '1px solid var(--me-grey-15)', flexWrap: 'wrap' }}>
-        <Chip size="sm" tone={isExact ? 'blue' : 'green'}>
-          <Icon name={isExact ? 'equal' : 'list-checks'} size={11} />
-          {isExact ? 'Rule' : 'Requirement'}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '10px 20px', background: isRequirement ? 'var(--me-green-20)' : 'var(--me-blue-20)', borderBottom: '1px solid var(--me-grey-15)', flexWrap: 'wrap' }}>
+        <Chip size="sm" tone={isRequirement ? 'green' : 'blue'}>
+          <Icon name={isRequirement ? 'list-checks' : 'equal'} size={11} />
+          {isRequirement ? 'Requirement' : 'Rule'}
         </Chip>
-        <span style={{ fontSize: 11.5, lineHeight: 1.45, color: isExact ? 'var(--me-blue-deep)' : '#1F7A00' }}>
-          {isExact
-            ? 'Evaluated here on extracted fields. No model reads it, and it answers the same way every time.'
-            : 'Read against the presentation by an agent, which forms a view you can question.'}
+        {/* Kind and how it is settled — they cross freely, so both are stated. One
+            clause each; the long version was two sentences nobody read twice. */}
+        <span style={{ fontSize: 11.5, lineHeight: 1.45, color: isRequirement ? '#1F7A00' : 'var(--me-blue-deep)' }}>
+          {isRequirement ? "Read from this credit's own text" : 'From the dictionary'}
+          {' · '}
+          {isExact ? 'settled by comparison' : 'settled by an agent'}
         </span>
       </div>
+
+      {/* Set aside for this credit. Above the tabs, because it changes what every
+          one of them means: none of this ran. */}
+      {check.suppressedBecause ? (
+        <div style={{ padding: '10px 20px', borderBottom: '1px solid var(--me-grey-15)' }}>
+          <Notice tone="warning" title="Set aside for this credit">
+            {check.suppressedBecause} You have a card asking you to confirm that.
+          </Notice>
+        </div>
+      ) : null}
+
+      {/* The planner's reason for ending the run, on the check that caused it.
+          It used to be a banner across the top of the plan — where it repeated the
+          status badge, cost a quarter of the screen, and sat nowhere near the row it
+          was about. An officer who wants to know why the examination stopped clicks
+          the check that stopped it, which is where they were already looking. */}
+      {check.gate && outcome?.outcome === 'DISCREPANT' && run.stoppedAfterPlan && run.stoppedBecause ? (
+        <div style={{ padding: '10px 20px', borderBottom: '1px solid var(--me-grey-15)' }}>
+          {/* The detail pane is where the reasoning belongs — somebody clicked to get
+              here. The list screens say "17 checks not run" and stop. */}
+          <Notice tone="warning" icon="shield-alert" title="The examination stopped here">
+            {run.stoppedBecause}
+          </Notice>
+        </div>
+      ) : null}
 
       <Tabs
         style={{ padding: '8px 20px 0', borderBottom: '1px solid var(--me-grey-15)' }}
@@ -143,12 +193,17 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
             </Field>
             {isExact ? (
               <>
-                <Field label="Applies to">
-                  <span style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--me-ink)' }}>{rd.scope}</span>
-                </Field>
+                {/* Fixture-only detail. The service sends the condition and not a
+                    sentence about its scope, so this is absent rather than blank
+                    where it has nothing to say. */}
+                {rd?.scope ? (
+                  <Field label="Applies to">
+                    <span style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--me-ink)' }}>{rd.scope}</span>
+                  </Field>
+                ) : null}
                 <Field label="Conditions">
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {rd.rows.map((r, i) => (
+                    {rows.map((r, i) => (
                       <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 7, flexWrap: 'wrap', fontSize: 12.5 }}>
                         {i > 0 && <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--me-grey-50)' }}>and</span>}
                         <Operand o={r.l} />
@@ -159,12 +214,13 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
                     ))}
                   </div>
                 </Field>
-                <Field label="Raises">
-                  <span style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--me-grey)' }}>{rd.message}</span>
-                </Field>
+                {rd?.message ? (
+                  <Field label="Raises">
+                    <span style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--me-grey)' }}>{rd.message}</span>
+                  </Field>
+                ) : null}
               </>
-            ) : null}
-            {isExact ? null : (
+            ) : (
             <Field label="Rule">
               {spec.rule ? (
                 <RuleText text={spec.rule} />
@@ -173,10 +229,10 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
               )}
             </Field>
             )}
-            {check.notCovered ? (
-              <div style={{ padding: '10px 12px', borderRadius: 9, background: '#FBEFCF', fontSize: 12.5, color: '#946400', lineHeight: 1.55 }}>
-                No rule in the dictionary tests this condition, so it was not examined. It is passed to you as an open question.
-              </div>
+            {check.coverage === 'human' || (check.notCovered && !isExact) ? (
+              <Notice tone="warning" icon="user">
+                Nothing on the plan tests this. Yours to settle.
+              </Notice>
             ) : null}
           </div>
         ) : null}
@@ -187,6 +243,16 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
               Nothing is sent anywhere: this check is evaluated here, on the fields below. It gives
               the same answer every time it is run on the same presentation.
             </span>
+            {/* Each operand with the value actually read for it. Resolved client-side
+                against the fixtures; against the service it is the `comparison` rows
+                on the finding, which the Result tab links to — so this table appears
+                only where the values are genuinely in hand. Listing operands with no
+                values would look like a reading that came back empty. */}
+            {!rd ? (
+              <span style={{ fontSize: 12.5, lineHeight: 1.6, color: 'var(--me-grey-70)' }}>
+                The values it compared are on its result, once it has run.
+              </span>
+            ) : (
             <div style={{ ...cardSurface(10), boxShadow: 'none', overflow: 'hidden' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.1fr) minmax(0,1fr) minmax(0,1.2fr) 64px', gap: 12, padding: '8px 12px', borderBottom: '1px solid var(--me-grey-15)', background: 'var(--me-grey-08)' }}>
                 <Eyebrow size="sm">Field</Eyebrow>
@@ -205,11 +271,12 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
                 </div>
               ))}
             </div>
-            {!rd.ready ? (
-              <div style={{ padding: '10px 12px', borderRadius: 9, background: '#FBEFCF', fontSize: 12.5, color: '#946400', lineHeight: 1.55 }}>
+            )}
+            {rd && !rd.ready ? (
+              <Notice tone="warning">
                 This rule cannot be answered on this presentation — {rd.missing.map((m) => `${m.field} @ ${m.doc}`).join(' and ')} was not extracted.
-                It will be reported as not covered. A missing input is not evidence of compliance.
-              </div>
+                It is reported as unanswerable. A missing input is not evidence of compliance.
+              </Notice>
             ) : null}
           </div>
         ) : null}
@@ -240,28 +307,33 @@ export default function CheckSpecCard({ check, status, finding, onOpenFinding })
         ) : null}
 
         {tab === 'result' ? (
-          status !== 'done' ? (
-            <span style={{ fontSize: 13, color: 'var(--me-grey-70)' }}>
-              {status === 'skipped'
-                ? 'Not run for this credit — the trigger above was not met.'
-                : status === 'running'
-                  ? 'Running now.'
-                  : 'Not run yet.'}
+          !finding ? (
+            <span style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--me-grey-70)' }}>
+              {outcome?.busy
+                ? 'Running now.'
+                : outcome?.outcomeReason === 'TRIGGER_NOT_MET'
+                  ? 'This credit never brought it into play — the trigger above was not met.'
+                  : outcome?.outcomeReason === 'SET_ASIDE'
+                    ? "Stood down by this credit's own terms, so it was never run."
+                    : outcome?.outcomeReason === 'NOT_REACHED'
+                      ? 'The plan ended before this ran. You can still run it from the workbench.'
+                      : outcome?.outcome === 'CLEAN'
+                        ? 'Nothing to report.'
+                        : 'Not run yet.'}
             </span>
-          ) : finding ? (
+          ) : (
             <button
               onClick={() => onOpenFinding(finding.id)}
               style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%', textAlign: 'left', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--me-grey-15)', background: 'var(--me-grey-08)', cursor: 'pointer' }}
             >
               <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--me-ink)', lineHeight: 1.4 }}>{finding.title}</span>
-              <span style={{ fontSize: 12.5, color: 'var(--me-grey)', lineHeight: 1.55 }}>{finding.analysis.why}</span>
+              {/* A finding the planner raised has no analysis — nobody has looked at
+                  it yet, which is the whole reason it is on the report. */}
+              {finding.analysis?.why ? (
+                <span style={{ fontSize: 12.5, color: 'var(--me-grey)', lineHeight: 1.55 }}>{finding.analysis.why}</span>
+              ) : null}
               <span style={{ fontSize: 11.5, color: 'var(--me-blue)' }}>Review this finding →</span>
             </button>
-          ) : (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 13, color: 'var(--status-success)' }}>
-              <Icon name="check" size={14} />
-              Nothing to report.
-            </span>
           )
         ) : null}
       </div>

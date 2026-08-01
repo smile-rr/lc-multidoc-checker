@@ -87,7 +87,7 @@ export default function SpendPanel({ spend }) {
             <Split>
               <Unit label="pages read" value={String(spend.totalPages)} tip="Bundle pages rendered and read by the vision model across all cases examined this period." />
               <Unit label="cards run" value={String(spend.checksRun)} tip="Rules executed, exact and judged. Excludes rules whose trigger the credit did not meet — those are recorded as not applicable, never as passes." />
-              <Unit label="findings" value={String(spend.findingsRaised)} tip="Conclusions returned with quoted evidence and a citation, of every severity — discrepancies, possible discrepancies, clean results and items left for a person." />
+              <Unit label="findings" value={String(spend.findingsRaised)} tip="Conclusions returned with quoted evidence and a citation, of every outcome — discrepant, in doubt and clean." />
             </Split>
 
             <Rule />
@@ -275,7 +275,7 @@ function SpendOnly({ spend }) {
         <Cell><Unit label="avoided" value={usdFine(spend.costAvoided)} tip="What derivation-cache hits would have cost if re-run cold." /></Cell>
         <Cell><Unit label="cards run" value={String(spend.checksRun)} tip="Rules executed. Excludes rules whose trigger the credit did not meet — those are recorded as not applicable, never as passes." /></Cell>
         <Cell><Unit label="settled free" value={`${spend.freeCardsPerCase} / ${spend.cardsPerCase}`} tip="Cards per case settled by comparison rather than by asking a model — deterministic, and identical on every run." /></Cell>
-        <Cell><Unit label="findings" value={String(spend.findingsRaised)} tip="Conclusions returned, of every severity." /></Cell>
+        <Cell><Unit label="findings" value={String(spend.findingsRaised)} tip="Conclusions returned, of every outcome." /></Cell>
         <Cell><Unit label="cached" value={percent(spend.cachedInputPct)} tip="Share of model attempts answered from the derivation cache (no provider call)." /></Cell>
       </div>
 

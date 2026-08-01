@@ -5,7 +5,7 @@ import { StaticRouter } from 'react-router-dom/server'
 import AppShell from '@platform/AppShell'
 import { CaseContext } from '@modules/lc-check/state/CaseContext'
 import { summariseRun } from '@modules/lc-check/state/runCost'
-import { STAGES, needsAction } from '@modules/lc-check/state/severity'
+import { STAGES } from '@modules/lc-check/state/stages'
 import { caseDetailFor } from '@modules/lc-check/data/fixtures.js'
 import IntakeScreen from '@modules/lc-check/screens/IntakeScreen'
 import InterpretScreen from '@modules/lc-check/screens/InterpretScreen'
@@ -25,15 +25,40 @@ const ROUTES = [
   '/governance/agents',
   '/governance/dictionary',
   '/governance/library',
+  '/governance/prices',
   '/nonsense',
 ]
 
-// A finished run with a couple of decisions already made — the state in which
+// A finished run with a couple of overrides already made — the state in which
 // the most conditional branches on every screen are live.
+//
+// Both directions are covered on purpose, because they render differently and only
+// one of them is common: `f-date` is a discrepancy an officer cleared (the seam,
+// with the engine's value struck behind theirs), `f-cert` is a doubt they called
+// discrepant (the rare direction). A fixture with only the common one leaves the
+// other rendering path untested until a real officer finds it.
+const callOf = (overrides) => (f) => {
+  const machine = f?.outcome ?? 'NOT_RUN'
+  const o = f ? overrides[f.id] : null
+  return {
+    machine,
+    value: o?.outcome ?? machine,
+    overridden: !!o,
+    by: o?.by ?? null,
+    at: o?.at ?? null,
+    reason: f?.outcomeReason ?? null,
+  }
+}
+
 function finishedCaseValue() {
   const data = caseDetailFor('CHK-25-0128-014')
   const areaIds = data.areas.map((a) => a.id)
   const findings = data.findings
+  const overrides = {
+    'f-date': { outcome: 'CLEAN', by: 'R. Ning', at: '2026-07-31T14:22:00Z' },
+    'f-cert': { outcome: 'DISCREPANT', by: 'R. Ning', at: '2026-07-31T14:26:00Z' },
+  }
+  const effective = (f) => callOf(overrides)(f).value
   return {
     caseId: data.id,
     loading: false,
@@ -41,24 +66,31 @@ function finishedCaseValue() {
     data,
     run: { segmented: 6, segmentTotal: 6, completedAreaIds: areaIds, activeAreaId: null, started: true, finished: true, mode: 'auto', done: ['interpret', 'plan', 'execute'], activeStep: null },
     officer: {
-      decisions: { 'f-date': 'agreed', 'f-cert': 'parked' },
+      overrides,
       notes: { 'f-date': 'Applicant contacted.' },
       drafts: {},
       addedChecks: [], raised: [], stopOnRuleFailure: true,
-      verdict: 'refuse',
+      status: null,
       reviewNote: 'Shipment is late — raising it.',
       submitted: false,
     },
     ui: { toast: 'Saved', askOpen: true, costOpen: true, askThread: [{ who: 'assistant', text: 'Ask me anything.' }, { who: 'officer', text: 'Why?' }] },
     visible: {
       findings,
-      attention: findings.filter(needsAction),
-      clean: findings.filter((f) => f.severity === 'clean'),
-      manual: findings.filter((f) => f.severity === 'manual'),
+      attention: findings.filter((f) => effective(f) === 'DISCREPANT' || effective(f) === 'DOUBT'),
+      clean: findings.filter((f) => effective(f) === 'CLEAN'),
+      doubt: findings.filter((f) => effective(f) === 'DOUBT'),
     },
     stages: STAGES,
+    // Discrepant, because `f-cert` above was called one by hand — which exercises
+    // the branch where the officer's status matches the derived one but was not
+    // chosen, and so still renders the "derived" mark.
+    status: { derived: 'DISCREPANT', value: 'DISCREPANT', chosen: false },
+    // Closed over `overrides` rather than reading `this` — the screens destructure
+    // these off the context, which drops the receiver.
+    callOf: callOf(overrides),
     actions: {
-      flash() {}, startRun() {}, advanceRun() {}, decide() {}, saveNote() {}, dispatch() {}, raiseFinding() {},
+      flash() {}, startRun() {}, advanceRun() {}, override() {}, saveNote() {}, raiseFinding() {},
       addCheck() {}, submit() {}, askQuestion() {}, dispatch() {},
     },
   }
@@ -70,9 +102,15 @@ function freshCaseValue() {
   return {
     ...v,
     run: { segmented: 0, segmentTotal: 6, completedAreaIds: [], activeAreaId: null, started: false, finished: false, mode: 'step', done: [], activeStep: null },
-    officer: { ...v.officer, decisions: {}, notes: {}, reviewNote: '' },
+    officer: { ...v.officer, overrides: {}, notes: {}, reviewNote: '', status: null },
+    callOf: callOf({}),
+    // Nothing has run, so nothing is unresolved and nothing refuses it. The derived
+    // status of an empty case is Clean, and that is the branch worth rendering — it
+    // is the one where the sign-off panel is at its most confident and has the least
+    // behind it.
+    status: { derived: 'CLEAN', value: 'CLEAN', chosen: false },
     ui: { ...v.ui, toast: null, askOpen: false, costOpen: false },
-    visible: { findings: [], attention: [], clean: [], manual: [] },
+    visible: { findings: [], attention: [], clean: [], doubt: [] },
   }
 }
 
@@ -122,6 +160,7 @@ function stageCases(value, tag) {
         stages={STAGES}
         activeStage="review"
         onStage={noop}
+        progress={Object.fromEntries(STAGES.map((s) => [s.id, s.id === 'decide' ? 'pending' : 'done']))}
         runMode={value.run.mode}
         onRunMode={noop}
         cost={cost}

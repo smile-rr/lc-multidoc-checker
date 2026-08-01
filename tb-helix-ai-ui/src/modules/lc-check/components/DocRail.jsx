@@ -8,8 +8,9 @@ import { pageList } from '@shared/lib/format'
 // the bundle. Rows appear as segmentation finds them, with skeletons standing in
 // for the rest — the officer sees the work happening rather than a spinner.
 //
-// During extract, each presented row shows a trailing mark: spinner while that
-// document is being read, check when it is done.
+// During extract, each presented row shows a trailing mark: spinner on the one
+// document currently being read, check when that document is done. Waiting rows
+// stay blank — the backend reads one at a time, so the rail should too.
 export default function DocRail({
   documents,
   selectedId,

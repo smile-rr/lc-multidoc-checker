@@ -194,7 +194,13 @@ export function foldRunLog(events = [], now = Date.now()) {
     }
     if (event.type === 'llm_cached') {
       const stage = stageFor(event.stage)
-      const step = openStep ?? [...stage.steps].reverse().find((s) => s.key === event.step)
+      // The event's own step wins over whatever is open. `openStep` reads as "the step
+      // this belongs to" only while steps run one after another — interpret now reads
+      // several documents at once, so the last one to announce is not the one that got
+      // the cache hit, and the ⚡ landed on whichever row happened to start most
+      // recently. The fallback stays for tapes written before the event carried a step.
+      const named = event.step && [...stage.steps].reverse().find((s) => s.key === event.step)
+      const step = named || openStep
       if (step) step.cacheHit = true
     }
 
@@ -291,9 +297,12 @@ function row(event, t) {
 function describe(type, p, info) {
   switch (type) {
     case 'segment': return `page ${p.done} of ${p.total}`
+    // Documents are read several at a time, so their steps open together and finish out
+    // of order. This is the one row that says how far through the bundle the stage is.
+    case 'extract': return `document ${p.done} of ${p.total}`
     case 'area_started': return p.areaId
     case 'area_done': return p.areaId
-    case 'finding': return `${p.findingId} · ${p.severity}`
+    case 'finding': return `${p.findingId} · ${p.outcome}`
     case 'gate_halted': return p.statement || p.checkId
     case 'stage_failed': return p.message
     case 'awaiting_officer': return `waiting for the officer to start ${p.next}`

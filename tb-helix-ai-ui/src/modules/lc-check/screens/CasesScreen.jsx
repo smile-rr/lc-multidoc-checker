@@ -6,7 +6,8 @@ import Badge from '@shared/ds/Badge'
 import Button from '@shared/ds/Button'
 import { money, dueLabel, plural } from '@shared/lib/format'
 import * as api from '../api/lcCheckApi'
-import { pipelineDisagreements } from '../state/severity'
+import { pipelineDisagreements } from '../state/stages'
+import { PANE_FILL } from '../components/paneHeight'
 import NewCheckModal from '../components/NewCheckModal'
 import SpendPanel from '../components/SpendPanel'
 
@@ -25,7 +26,10 @@ const FILTERS = [
   { id: 'due', label: 'Due Today' },
 ]
 
-const COLS = '148px 108px minmax(200px,1fr) 148px 96px 132px 104px'
+// Check / Credit are mono refs that must stay on one line. Credit refs run to
+// ~19 chars once amendments appear (LCWIDG-2024-0317-A1); 108px wrapped them.
+const COLS = '148px 168px minmax(180px,1fr) 128px 64px 140px 96px'
+const TABLE_MIN = 1100
 
 export default function CasesScreen() {
   const navigate = useNavigate()
@@ -68,8 +72,21 @@ export default function CasesScreen() {
   const dueToday = (rows ?? []).filter((r) => r.replyDueDays === 0).length
 
   return (
-    <section className="helix-screen" style={{ padding: '26px 32px 40px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: '12px 20px' }}>
+    // One viewport. The title, filters and spend panel stay put; only the cases
+    // table scrolls. Same rule as the workbench — see `paneHeight`.
+    <section
+      className="helix-screen"
+      style={{
+        height: '100vh',
+        minHeight: 0,
+        padding: '26px 32px 8px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 16,
+        overflow: 'hidden',
+      }}
+    >
+      <div style={{ flexShrink: 0, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: '12px 20px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           <h1 style={{ margin: 0, fontSize: 21, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--me-ink)' }}>Cases</h1>
           <p style={{ margin: 0, fontSize: 13, color: 'var(--me-grey-70)' }}>
@@ -103,10 +120,35 @@ export default function CasesScreen() {
         </div>
       </div>
 
-      <SpendPanel spend={spend} />
+      <div style={{ flexShrink: 0 }}>
+        <SpendPanel spend={spend} />
+      </div>
 
-      <div style={{ ...cardSurface(12), boxShadow: 'none', overflowX: 'auto' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: '0 14px', padding: '10px 20px', background: 'var(--me-grey-08)', fontSize: 11.5, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--me-grey-70)', minWidth: 1000 }}>
+      <div
+        style={{
+          ...cardSurface(12),
+          boxShadow: 'none',
+          ...PANE_FILL,
+          overflow: 'auto',
+        }}
+      >
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: COLS,
+            gap: '0 14px',
+            padding: '10px 20px',
+            background: 'var(--me-grey-08)',
+            fontSize: 11.5,
+            letterSpacing: '0.07em',
+            textTransform: 'uppercase',
+            color: 'var(--me-grey-70)',
+            minWidth: TABLE_MIN,
+            position: 'sticky',
+            top: 0,
+            zIndex: 1,
+          }}
+        >
           <span>Check</span>
           <span>Credit</span>
           <span>Beneficiary</span>
@@ -117,7 +159,7 @@ export default function CasesScreen() {
         </div>
 
         {rows === null ? (
-          <div style={{ padding: '16px 20px' }}>
+          <div style={{ padding: '16px 20px', minWidth: TABLE_MIN }}>
             {[0, 1, 2, 3, 4].map((i) => (
               <div key={i} style={{ height: 10, borderRadius: 3, background: 'var(--me-grey-08)', margin: '14px 0' }} />
             ))}
@@ -131,15 +173,15 @@ export default function CasesScreen() {
               <div
                 key={r.id}
                 onClick={() => navigate(`/lc-check/cases/${r.id}/intake`)}
-                style={{ display: 'grid', gridTemplateColumns: COLS, gap: '0 14px', padding: '13px 20px', borderBottom: '1px solid var(--me-grey-08)', fontSize: 13, alignItems: 'center', cursor: 'pointer', minWidth: 1000 }}
+                style={{ display: 'grid', gridTemplateColumns: COLS, gap: '0 14px', padding: '13px 20px', borderBottom: '1px solid var(--me-grey-08)', fontSize: 13, alignItems: 'center', cursor: 'pointer', minWidth: TABLE_MIN }}
               >
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--me-ink)' }}>{r.id}</span>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--me-grey-70)' }}>{r.creditRef}</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--me-ink)', whiteSpace: 'nowrap' }}>{r.id}</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--me-grey-70)', whiteSpace: 'nowrap' }}>{r.creditRef}</span>
                 <span style={{ color: 'var(--me-ink)', ...ellipsis }}>{r.beneficiary}</span>
-                <span style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 12.5, color: 'var(--me-ink)' }}>{money(r.currency, r.amount)}</span>
+                <span style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 12.5, color: 'var(--me-ink)', whiteSpace: 'nowrap' }}>{money(r.currency, r.amount)}</span>
                 <span style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--me-grey-70)' }}>{r.pageCount}</span>
                 <span><Badge tone={STATUS_TONE[r.status] || 'neutral'}>{r.statusLabel}</Badge></span>
-                <span style={{ textAlign: 'right', fontSize: 12.5, color: urgent ? 'var(--status-warning)' : 'var(--me-grey-70)' }}>{dueLabel(r.replyDueDays)}</span>
+                <span style={{ textAlign: 'right', fontSize: 12.5, color: urgent ? 'var(--status-warning)' : 'var(--me-grey-70)', whiteSpace: 'nowrap' }}>{dueLabel(r.replyDueDays)}</span>
               </div>
             )
           })

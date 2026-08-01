@@ -10,7 +10,8 @@
 //   GET    /lc-check/cases/{id}
 //   GET    /lc-check/cases/{id}/stream           SSE
 //   POST   /lc-check/cases/{id}/stages/{stage}/run
-//   POST   /lc-check/cases/{id}/findings/{fid}/decision
+//   POST   /lc-check/cases/{id}/findings/{fid}/outcome
+//   DELETE /lc-check/cases/{id}/findings/{fid}/outcome
 //   POST   /lc-check/cases/{id}/checks
 //   POST   /lc-check/cases/{id}/signoff
 //   POST   /lc-check/cases/{id}/ask
@@ -156,10 +157,24 @@ export async function addCheck(caseId, { name }) {
   return api.post(`${base}/cases/${encodeURIComponent(caseId)}/checks`, { name })
 }
 
-export async function recordDecision(caseId, findingId, { disposition, note }) {
+/**
+ * The officer overruling the engine on one finding.
+ *
+ * A POST rather than a PUT on the finding, and the finding's own outcome is never
+ * touched: the machine's value and the officer's are two slots, and the file has to
+ * be able to show both. The service appends this to `lc_officer_action`.
+ */
+export async function recordOverride(caseId, findingId, { outcome, by, note }) {
   return api.post(
-    `${base}/cases/${encodeURIComponent(caseId)}/findings/${encodeURIComponent(findingId)}/decision`,
-    { disposition, note },
+    `${base}/cases/${encodeURIComponent(caseId)}/findings/${encodeURIComponent(findingId)}/outcome`,
+    { outcome, by, note: note ?? null },
+  )
+}
+
+/** Withdrawing an override. Also an append — the earlier call stays in the file. */
+export async function clearOverride(caseId, findingId) {
+  return api.del(
+    `${base}/cases/${encodeURIComponent(caseId)}/findings/${encodeURIComponent(findingId)}/outcome`,
   )
 }
 
@@ -173,8 +188,8 @@ export async function overrideGate(caseId, { note } = {}) {
   return api.post(`${base}/cases/${encodeURIComponent(caseId)}/gate/override`, { note: note ?? null })
 }
 
-export async function submitCase(caseId, { verdict, note }) {
-  return api.post(`${base}/cases/${encodeURIComponent(caseId)}/signoff`, { verdict, note })
+export async function submitCase(caseId, { status, note }) {
+  return api.post(`${base}/cases/${encodeURIComponent(caseId)}/signoff`, { status, note })
 }
 
 export async function ask(caseId, question) {

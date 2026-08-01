@@ -112,11 +112,34 @@
  */
 
 /**
- * @typedef {'discrepancy'|'possible'|'clean'|'manual'} Severity
- * - discrepancy: will not pass as presented
- * - possible:    flagged, needs a human call
- * - clean:       checked and satisfied
- * - manual:      not covered by the engine — a human must decide
+ * @typedef {'DISCREPANT'|'DOUBT'|'CLEAN'|'NOT_RUN'} Outcome
+ * What came of a check. One vocabulary from the plan to the advice — see
+ * `state/outcome.js`.
+ * - DISCREPANT: a ground to refuse on
+ * - DOUBT:      nothing settled it; waiting on a person, and `outcomeReason` says why
+ * - CLEAN:      it held
+ * - NOT_RUN:    no result exists. Never carried by a finding — a finding *is* a
+ *               result — so it appears on a plan check that produced none.
+ */
+
+/**
+ * @typedef {'LOW_CONFIDENCE'|'UNANSWERABLE'|'NO_RULE'|'HUMAN_ONLY'|'OFFICER_UNSURE'|'NOT_REACHED'|'TRIGGER_NOT_MET'|'SET_ASIDE'} OutcomeReason
+ * Why an absence is what it is. Only DOUBT and NOT_RUN carry one; DISCREPANT and
+ * CLEAN are conclusions and explain themselves.
+ *
+ * `OFFICER_UNSURE` is the one a person writes, and it is never stored on the finding —
+ * it is derived where an override sets DOUBT. That is what keeps "the engine could not
+ * settle this" and "the officer would not" answerable apart, now that both can say it.
+ */
+
+/**
+ * @typedef {'DISCREPANT'|'FURTHER_CHECK'|'CLEAN'} DecisionStatus
+ * Where a presentation lands. Derived from the findings' effective outcomes, and
+ * overridable by the officer at sign-off.
+ *
+ * Deliberately not `CaseStatus`, which is taken and means something else — the
+ * badge on the case list, which mixes lifecycle (`running`, `with_authoriser`) with
+ * result. This is the result alone.
  */
 
 /**
@@ -131,7 +154,9 @@
  * confirm; `reason` is the rule that makes the difference matter.
  * @typedef {object} Finding
  * @property {string} id
- * @property {Severity} severity
+ * @property {Outcome} outcome  The engine's own value. An officer's disagreement is
+ *   recorded beside it, never over it — see `officer.overrides`.
+ * @property {OutcomeReason|null} [outcomeReason]
  * @property {string} area          Concern label, e.g. 'Shipment terms'.
  * @property {string|null} areaId   CheckArea that produced it.
  * @property {string|null} checkId  PlanCheck that produced it.
@@ -155,6 +180,15 @@
  */
 
 /**
+ * @typedef {'deterministic'|'semi-deterministic'|'human'} Coverage
+ * How well a planned check can be settled at all. Derived by the service from the
+ * tier it filed the check at, never authored beside it:
+ * - deterministic:      an exact condition over extracted fields. Free, reproducible.
+ * - semi-deterministic: an agent reads it and forms a view.
+ * - human:              nothing on the plan tests it. The officer settles it.
+ */
+
+/**
  * One check in the plan for a case.
  * @typedef {object} PlanCheck
  * @property {string} id            e.g. 'CHK-20'
@@ -164,6 +198,13 @@
  * @property {string} ruleRef         UCP/ISBP citation.
  * @property {string|null} findingId  Populated once the check has run.
  * @property {boolean} addedByOfficer Recorded against the officer's name.
+ * @property {boolean} gate           A gate — settled on the credit and the
+ *   presentation record alone, before a page is read. Runs with the plan, not the run.
+ * @property {Coverage} coverage
+ * @property {?string} suppressedBecause  The clause of *this* credit that stood a standing
+ *   rule down, quoted. Null for every other kind of skip — which is what makes the two
+ *   distinguishable, since both are a check that did not run. A suppression always raises a
+ *   card asking the officer to confirm it, so it is never the last word.
  */
 
 /**
@@ -191,21 +232,19 @@
  */
 
 /**
- * @typedef {'agreed'|'parked'|'rejected'} Disposition
- * - agreed:   the finding stands and will be raised
- * - parked:   the officer wants a second opinion
- * - rejected: the officer overrides the engine; goes back to the model team
- */
-
-/**
- * @typedef {object} FindingDecision
+ * The officer disagreeing with the engine on one finding.
+ *
+ * `outcome` is one of the two values an officer may write — `CLEAN` or
+ * `DISCREPANT`. Never `DOUBT`, which is the engine reporting the limit of its own
+ * reach rather than a confidence a person records, and never `NOT_RUN`, which is the
+ * absence of a run.
+ *
+ * @typedef {object} OutcomeOverride
  * @property {string} findingId
- * @property {Disposition} disposition
- * @property {string} note
- */
-
-/**
- * @typedef {'refuse'|'waiver'|'second'} Verdict
+ * @property {Outcome} outcome
+ * @property {string} by
+ * @property {string} at    ISO timestamp
+ * @property {string} [note]
  */
 
 /**
@@ -230,8 +269,19 @@
  * @property {?string} error             What stopped it, if a stage failed. A halted run
  *                                       has to be distinguishable from a slow one.
  * @property {boolean} started
- * @property {boolean} finished
+ * @property {boolean} finished          The run is over — including when the plan ended it.
  * @property {number} segmented          Documents carved out of the bundle so far.
+ * @property {boolean} stoppedAfterPlan  The plan weighed a a gate failing against this
+ *                                       credit and decided the remaining checks were spend
+ *                                       on a settled question. Not a halt: the case parks at
+ *                                       `execute` like any other and the ordinary run button
+ *                                       finishes it. All it changes is that Auto stops.
+ * @property {?string} stoppedBecause    The planner's reason, in the words shown on screen.
+ * @property {number} remaining          Planned checks not yet run.
+ * @property {number} humanReview        Planned checks nothing but a person can settle.
+ * @property {'review'|'decision'} destination  Where an unattended run should leave the
+ *                                       officer: the decision normally, the report when
+ *                                       something on the plan needs a person.
  * @property {string[]} completedAreaIds  Areas that have returned.
  */
 
@@ -277,7 +327,8 @@
  * @property {string} presentedDate
  * @property {string} presentingBank
  * @property {number|null} replyDueDays
- * @property {string} authoriser
+ * @property {string} officer     Who is examining it — the name an override is initialled with.
+ * @property {string} authoriser  Who signs after them.
  * @property {string} pdfUrl         Where the presentation bundle PDF is served.
  * @property {number} totalPages     Pages in the bundle.
  * @property {RunState} runState     The run state this case is already in.

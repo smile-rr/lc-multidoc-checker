@@ -15,7 +15,7 @@ import ReviewScreen from './ReviewScreen'
 import DecisionScreen from './DecisionScreen'
 import { CaseProvider, useCase } from '../state/CaseContext'
 import { summariseRun, summariseLedger } from '../state/runCost'
-import { STAGES, RUN_STAGES, stageMeta, stageAfter } from '../state/severity'
+import { STAGES, RUN_STAGES, stageMeta, stageAfter, tabProgress } from '../state/stages'
 
 // The case workbench. The stage lives in the URL (`/lc-check/cases/:id/:stage`)
 // so a stage is linkable and the back button steps through the review the way
@@ -30,7 +30,7 @@ export default function CaseWorkbench() {
 }
 
 function WorkbenchBody() {
-  const { caseId, data, loading, error, run, runStages, visible, ui, actions } = useCase()
+  const { caseId, data, loading, error, run, runStages, visible, ui, callOf, actions } = useCase()
   // The service's list once it has answered; the built-in order until then.
   const bar = runStages ?? RUN_STAGES
   const { stage } = useParams()
@@ -55,16 +55,20 @@ function WorkbenchBody() {
   // not left on a stage that finished a minute ago. Following stops the moment
   // the officer picks a tab themselves — a run that yanks the view out from
   // under someone reading is worse than one that sits still.
+  // Where Auto stops is the service's answer, and it is the plan's: the decision
+  // normally, the report when the plan holds something only a person can settle.
+  // Ending every run at the report meant an officer with nothing to review was
+  // handed a list of clean findings and left to find the Decision tab themselves.
+  const destination = run.destination ?? 'review'
   useEffect(() => {
     if (!run.live || !run.following) return
     if (run.activeStage) {
       const target = stageMeta(run.activeStage, bar)?.stage
       if (target && target !== activeStage) navigate(`/lc-check/cases/${caseId}/${target}`, { replace: true })
-    } else if (run.finished && run.mode === 'auto' && activeStage !== 'review') {
-      // Auto ends at the report. Step waits to be asked.
-      navigate(`/lc-check/cases/${caseId}/review`, { replace: true })
+    } else if (run.finished && run.mode === 'auto' && activeStage !== destination) {
+      navigate(`/lc-check/cases/${caseId}/${destination}`, { replace: true })
     }
-  }, [run.live, run.following, run.activeStage, run.finished, run.mode, activeStage, caseId, navigate])
+  }, [run.live, run.following, run.activeStage, run.finished, run.mode, destination, activeStage, caseId, navigate])
 
   // The cost pill and the drawer read the same summary, so they cannot disagree.
   // The fixture's run steps are one for reading, one for planning, one for the
@@ -138,10 +142,25 @@ function WorkbenchBody() {
       // finished run. Disabled, so it cannot be pressed twice.
       return { label: stageMeta(run.activeStage, bar)?.running ?? 'Running…', disabled: true }
     }
+    // The plan stopped short on purpose. The run is over and the work is not, so the
+    // button offers the thing the planner declined to do rather than the thing it
+    // did — "Open the report" here would look like the examination was complete.
+    // Reversing the decision is one press, because a decision a model made about
+    // spending the bank's money is not one an officer should have to work around.
+    if (run.stoppedAfterPlan) {
+      return {
+        label: run.remaining
+          ? `Run the ${plural(run.remaining, 'check')} that were not run`
+          : 'Run the remaining checks',
+        run: actions.runNext,
+      }
+    }
     if (run.finished) {
-      // Both modes: the run is over and the report is the next place to go.
-      // Auto used to hide the button here, which read as a dead workbench.
-      return activeStage !== 'review' ? { label: 'Open the report', run: () => goStage('review') } : null
+      // Both modes: the run is over and the next place to go is wherever the plan
+      // says. Auto used to hide the button here, which read as a dead workbench.
+      return activeStage !== destination
+        ? { label: destination === 'decide' ? 'Open the decision' : 'Open the report', run: () => goStage(destination) }
+        : null
     }
     if (!run.started) {
       return {
@@ -167,21 +186,39 @@ function WorkbenchBody() {
     return null
   })()
 
+  const discrepancies = visible.attention.filter((f) => callOf(f).value === 'DISCREPANT').length
   const status = run.halted
     // Not "Paused". The examination stopped on purpose and will not resume by
     // itself, which is a different thing to tell an officer than "still going".
-    ? { tone: 'warning', label: `Halted · ${run.haltedBy ?? 'hard check'}` }
+    ? { tone: 'warning', label: `Halted · ${run.haltedBy ?? 'gate'}` }
     : run.failure
     ? { tone: 'error', label: 'Stopped' }
     : run.busy && !run.activeStage
     ? { tone: 'blue', label: run.activity ?? 'Reading' }
+    // A run the plan ended is *finished*, and says so in the same words as any other
+    // finished run. It used to get its own badge — "Stopped after plan · 19 checks
+    // not run" — which reads as a case waiting to be resumed, when the examination
+    // has reached its answer and the officer's next move is to decide. That the
+    // checks were not run is a fact about the plan, so it lives on the plan's own
+    // stage indicator, next to the group it is about.
     : run.finished
-    ? { tone: 'error', label: `${plural(visible.attention.filter((f) => f.severity === 'discrepancy').length, 'discrepancy', 'discrepancies')} · reply due` }
+    ? { tone: 'error', label: `${plural(discrepancies, 'discrepancy', 'discrepancies')} · reply due` }
     : run.activeStage
       ? { tone: 'blue', label: stageMeta(run.activeStage, bar)?.badge ?? 'Review Running' }
       : run.started
         ? { tone: 'blue', label: `Paused · ${run.done.length} of ${bar.length} Steps` }
         : { tone: 'neutral', label: 'Awaiting Check' }
+
+  // Number colour on the stage tabs — run progress, not which tab is open.
+  const progressArgs = {
+    done: run.done,
+    activeStage: run.activeStage,
+    finished: run.finished,
+    stoppedAfterPlan: run.stoppedAfterPlan,
+    creditReady: !!data.credit?.creditRef,
+    busy: run.busy,
+  }
+  const progress = Object.fromEntries(STAGES.map((s) => [s.id, tabProgress(s.id, progressArgs)]))
 
   return (
     // One viewport, bounded. The header takes what it needs, the stage gets the rest,
@@ -196,6 +233,7 @@ function WorkbenchBody() {
         stages={STAGES}
         activeStage={activeStage}
         onStage={(id) => { actions.dispatch({ type: 'unfollow' }); goStage(id) }}
+        progress={progress}
         runMode={run.mode}
         onRunMode={(mode) => actions.dispatch({ type: 'run_mode', mode })}
         cost={cost}

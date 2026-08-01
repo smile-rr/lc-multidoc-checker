@@ -333,7 +333,7 @@ const CASE_01 = {
       // A rule whose input was never extracted. It did not pass and it did not
       // fail — it could not run, which is a third outcome the UI has to say out
       // loud, because a missing input is not evidence of compliance.
-      id: 'f-pres', severity: 'manual', area: 'Dates & Shipment', areaId: 'a3', checkId: 'DATE-48',
+      id: 'f-pres', outcome: 'DOUBT', outcomeReason: 'UNANSWERABLE', area: 'Dates & Shipment', areaId: 'a3', checkId: 'DATE-48',
       docId: 'mt700', page: null, creditTag: '48',
       statement: 'PRESENTATION DATE NOT ESTABLISHED — PERIOD UNDER FIELD 48 COULD NOT BE TESTED',
       title: 'We could not test the presentation period',
@@ -359,7 +359,7 @@ const CASE_01 = {
       // policy rather than an article. What makes it different is downstream — it
       // stops the payment without being a discrepancy, so it cannot be stated to the
       // presenting bank under art. 16(c). Seeded so that separation is visible.
-      id: 'f-fc', severity: 'possible', area: 'Sanctions & Parties', areaId: 'a6', checkId: 'PARTY-FC04',
+      id: 'f-fc', outcome: 'DOUBT', outcomeReason: 'LOW_CONFIDENCE', area: 'Sanctions & Parties', areaId: 'a6', checkId: 'PARTY-FC04',
       docId: 'BOL', page: 2, creditTag: null,
       statement: 'VESSEL NAME RETURNS A POSSIBLE MATCH ON THE RESTRICTED-PARTY LIST',
       title: 'The vessel returns a possible sanctions match',
@@ -380,7 +380,7 @@ const CASE_01 = {
     {
       // Raised by a person, not by a check. Seeded so the third group and the
       // provenance marks are visible without anyone having to raise one first.
-      id: 'f-officer-1', severity: 'possible', area: 'Raised by you', areaId: null, checkId: null,
+      id: 'f-officer-1', outcome: 'DOUBT', outcomeReason: 'LOW_CONFIDENCE', area: 'Raised by you', areaId: null, checkId: null,
       raisedByOfficer: true,
       docId: 'INV', page: 1, creditTag: null,
       statement: 'INVOICE UNIT PRICE SHOWN NET OF DISCOUNT NOT MENTIONED IN THE CREDIT',
@@ -394,7 +394,7 @@ const CASE_01 = {
       trace: [{ key: 'raised by', value: 'the examining officer' }],
     },
     {
-      id: 'f-date', severity: 'discrepancy', area: 'Shipment terms', areaId: 'a3', checkId: 'DATE-44C',
+      id: 'f-date', outcome: 'DISCREPANT', area: 'Shipment terms', areaId: 'a3', checkId: 'DATE-44C',
       docId: 'BOL', page: 2, creditTag: '44C',
       statement: 'LATE SHIPMENT — B/L ON BOARD 14 JAN 2025, CREDIT REQUIRES SHIPMENT NOT LATER THAN 31 DEC 2024',
       title: 'Shipment is two weeks later than the credit allows',
@@ -416,7 +416,7 @@ const CASE_01 = {
       trace: [{ key: 'read by', value: 'Dates & Shipment review' }, { key: 'source', value: 'bundle p.2' }, { key: 'basis', value: 'UCP600 art.14(c), field 44C' }],
     },
     {
-      id: 'f-cond', severity: 'discrepancy', area: 'Additional conditions', areaId: 'a5', checkId: 'COND-47A.1',
+      id: 'f-cond', outcome: 'DISCREPANT', area: 'Additional conditions', areaId: 'a5', checkId: 'COND-47A.1',
       docId: 'INV', page: 1, creditTag: '47A',
       statement: 'INVOICE DOES NOT QUOTE CONTRACT NO. WIDG-PO-2024-0317 AS REQUIRED BY FIELD 47A',
       title: 'The invoice does not quote the contract number the credit requires',
@@ -438,7 +438,7 @@ const CASE_01 = {
       trace: [{ key: 'read by', value: 'General review · conditions agent' }, { key: 'source', value: 'bundle p.1' }, { key: 'basis', value: 'UCP600 art.14(d); field 47A' }],
     },
     {
-      id: 'f-trans', severity: 'discrepancy', area: 'Transhipment', areaId: 'a5', checkId: 'TRANS-43T',
+      id: 'f-trans', outcome: 'DISCREPANT', area: 'Transhipment', areaId: 'a5', checkId: 'TRANS-43T',
       docId: 'BOL', page: 2, creditTag: '43T',
       statement: 'B/L SHOWS TRANSHIPMENT AT SINGAPORE, CREDIT PROHIBITS TRANSHIPMENT (FIELD 43T)',
       title: 'The bill of lading shows transhipment, which the credit forbids',
@@ -460,7 +460,7 @@ const CASE_01 = {
       trace: [{ key: 'read by', value: 'General Review' }, { key: 'source', value: 'bundle p.2' }, { key: 'basis', value: 'UCP600 art.20(c); field 43T' }],
     },
     {
-      id: 'f-cert', severity: 'possible', area: 'Certificates', areaId: 'a2', checkId: 'DOCSET-14A',
+      id: 'f-cert', outcome: 'DOUBT', outcomeReason: 'LOW_CONFIDENCE', area: 'Certificates', areaId: 'a2', checkId: 'DOCSET-14A',
       docId: 'BC', page: 5, creditTag: '46A',
       statement: 'BENEFICIARY\'S CERTIFICATE DOES NOT STATE PRE-SHIPMENT INSPECTION AS REQUIRED BY FIELD 46A',
       title: 'The beneficiary’s certificate is silent on pre-shipment inspection',
@@ -482,7 +482,7 @@ const CASE_01 = {
       trace: [{ key: 'read by', value: 'Presentation & Completeness review' }, { key: 'source', value: 'bundle p.5' }, { key: 'basis', value: 'UCP600 art.14(f); field 46A' }],
     },
     {
-      id: 'f-extra', severity: 'possible', area: 'Document set', areaId: 'a2', checkId: 'DOCSET-A31',
+      id: 'f-extra', outcome: 'DOUBT', outcomeReason: 'LOW_CONFIDENCE', area: 'Document set', areaId: 'a2', checkId: 'DOCSET-A31',
       docId: 'WC', page: 6, creditTag: '46A',
       statement: 'WARRANTY CERTIFICATE PRESENTED BUT NOT CALLED FOR BY THE CREDIT — DISREGARDED',
       title: 'A warranty certificate was presented that the credit does not call for',
@@ -507,7 +507,7 @@ const CASE_01 = {
       // A rule that failed on a row the officer still has to weigh: 498 against 500
       // is not in doubt, what it means is. The goods-description row held; the
       // quantity row (index 1) is the one that broke.
-      id: 'f-qty', severity: 'possible', area: 'Consistency', areaId: 'a5', checkId: 'XD-A23', failedRow: 1,
+      id: 'f-qty', outcome: 'DOUBT', outcomeReason: 'LOW_CONFIDENCE', area: 'Consistency', areaId: 'a5', checkId: 'XD-A23', failedRow: 1,
       docId: 'PKL', page: 3, creditTag: '45A',
       statement: 'QUANTITY CONFLICT — PACKING LIST 498 CARTONS AGAINST INVOICE 500 UNITS',
       title: 'The packing list shows 498 cartons against 500 units on the invoice',
@@ -529,7 +529,7 @@ const CASE_01 = {
       trace: [{ key: 'read by', value: 'General Review' }, { key: 'source', value: 'bundle p.1, p.3' }, { key: 'basis', value: 'ISBP821 A23' }],
     },
     {
-      id: 'f-amt', severity: 'clean', area: 'Amount', areaId: 'a4', checkId: 'AMT-30A',
+      id: 'f-amt', outcome: 'CLEAN', area: 'Amount', areaId: 'a4', checkId: 'AMT-30A',
       docId: 'INV', page: 1, creditTag: '32B',
       statement: 'AMOUNT DRAWN USD 56,000.00 WITHIN CREDIT AMOUNT USD 60,000.00 LESS 10 PCT TOLERANCE',
       title: 'Amount drawn is within the 10% tolerance',
@@ -541,7 +541,7 @@ const CASE_01 = {
       trace: [{ key: 'read by', value: 'Goods, Amounts & Tolerance review' }, { key: 'basis', value: 'UCP600 art.30(a)' }],
     },
     {
-      id: 'f-goods', severity: 'clean', area: 'Goods description', areaId: 'a4', checkId: 'GOODS-18C',
+      id: 'f-goods', outcome: 'CLEAN', area: 'Goods description', areaId: 'a4', checkId: 'GOODS-18C',
       docId: 'INV', page: 1, creditTag: '45A',
       statement: 'GOODS DESCRIPTION ON INVOICE CORRESPONDS WITH FIELD 45A',
       title: 'Goods description on the invoice corresponds with the credit',
@@ -557,7 +557,7 @@ const CASE_01 = {
     // saw a duplicate key and selecting it always opened the first. On this case the
     // receipt stamp did not read, so the unanswerable one is the true finding.
     {
-      id: 'f-orig', severity: 'clean', area: 'Document set', areaId: 'a2', checkId: 'DOCSET-17',
+      id: 'f-orig', outcome: 'CLEAN', area: 'Document set', areaId: 'a2', checkId: 'DOCSET-17',
       docId: 'INV', page: 1, creditTag: '46A',
       statement: 'INVOICE PRESENTED IN ONE ORIGINAL AND THREE COPIES AS REQUIRED',
       title: 'Invoice presented in one original and three copies as required',
@@ -569,7 +569,7 @@ const CASE_01 = {
       trace: [{ key: 'read by', value: 'Presentation & Completeness review' }, { key: 'basis', value: 'UCP600 art.17' }],
     },
     {
-      id: 'f-party', severity: 'clean', area: 'Parties', areaId: 'a6', checkId: 'PARTY-FC04',
+      id: 'f-party', outcome: 'CLEAN', area: 'Parties', areaId: 'a6', checkId: 'PARTY-FC04',
       docId: 'mt700', creditTag: '59',
       // Scoped to the named parties, because the vessel is not clear on this case —
       // f-fc holds the partial match against it. Two findings on one check said
@@ -584,7 +584,7 @@ const CASE_01 = {
       trace: [{ key: 'read by', value: 'Sanctions & Parties screening' }, { key: 'lists', value: 'refreshed 28 JAN 2025 06:00 SGT' }],
     },
     {
-      id: 'm-lang', severity: 'manual', area: 'No rule yet', areaId: null, checkId: null,
+      id: 'm-lang', outcome: 'DOUBT', outcomeReason: 'NO_RULE', area: 'No rule yet', areaId: null, checkId: null,
       docId: 'mt700', creditTag: '47A',
       statement: 'NOT CHECKED — FIELD 47A REQUIRES ALL DOCUMENTS IN ENGLISH, NO RULE DEFINED',
       title: 'A condition about document language has no rule behind it',
@@ -606,7 +606,7 @@ const CASE_01 = {
       trace: [{ key: 'status', value: 'no rule in dictionary' }, { key: 'raised', value: 'dictionary request DR-2291' }],
     },
     {
-      id: 'm-partial', severity: 'manual', area: 'Not reliable yet', areaId: null, checkId: 'TRANS-43P',
+      id: 'm-partial', outcome: 'DOUBT', outcomeReason: 'HUMAN_ONLY', area: 'Not reliable yet', areaId: null, checkId: 'TRANS-43P',
       docId: 'BOL', page: 2, creditTag: '43P',
       statement: 'NOT RELIED ON — PARTIAL SHIPMENT WORDING BELOW OUR AGREEMENT THRESHOLD',
       title: 'Partial-shipment wording — we do not check this well enough to rely on',
@@ -627,7 +627,7 @@ const CASE_01 = {
       trace: [{ key: 'agreement', value: '73% over the last 90 days' }, { key: 'policy', value: 'below 90% — human decides' }],
     },
     {
-      id: 'm-ocr', severity: 'manual', area: 'Low confidence', areaId: null, checkId: 'DOCSET-03',
+      id: 'm-ocr', outcome: 'DOUBT', outcomeReason: 'UNANSWERABLE', area: 'Low confidence', areaId: null, checkId: 'DOCSET-03',
       docId: 'BOE', page: 4, creditTag: '46A',
       statement: 'NOT CHECKED — DRAWEE BLOCK ON BILL OF EXCHANGE COULD NOT BE READ',
       title: 'The drawee block on the bill of exchange could not be read',
@@ -750,7 +750,7 @@ const CASE_02 = {
       // screen at once. Nothing formed a view here: two figures were read off one
       // page and multiplied. Checking it is checking a sum, which is why it leads —
       // it is the quickest call on the list.
-      id: 'f-ext2', severity: 'discrepancy', area: 'Amount', areaId: 'a4', checkId: 'AMT-C6',
+      id: 'f-ext2', outcome: 'DISCREPANT', area: 'Amount', areaId: 'a4', checkId: 'AMT-C6',
       docId: 'INV', page: 1, creditTag: '45A',
       statement: 'INVOICE EXTENSION DOES NOT COMPUTE — 5,000 UNITS AT USD 10.10 IS USD 50,500.00 AGAINST AN INVOICE TOTAL OF USD 50,000.00, AND THE CREDIT STATES USD 10.00 PER UNIT',
       title: 'The invoice arithmetic does not come out',
@@ -776,7 +776,7 @@ const CASE_02 = {
       // without anyone having to raise one first, and so an officer's finding can be
       // seen travelling through Review into the decision. This is the OCR backstop
       // the Examine pane exists for: nothing failed, we simply could not read it.
-      id: 'f-officer-2', severity: 'possible', area: 'Raised by you', areaId: null, checkId: null,
+      id: 'f-officer-2', outcome: 'DOUBT', outcomeReason: 'LOW_CONFIDENCE', area: 'Raised by you', areaId: null, checkId: null,
       raisedByOfficer: true,
       docId: 'BOL', page: 2, creditTag: null,
       statement: 'BILL OF LADING ENDORSEMENT ILLEGIBLE — TO WHOSE ORDER THE GOODS ARE ENDORSED CANNOT BE ESTABLISHED',
@@ -794,7 +794,7 @@ const CASE_02 = {
       trace: [{ key: 'raised by', value: 'the examining officer' }, { key: 'source', value: 'bundle p.2' }],
     },
     {
-      id: 'f-comp', severity: 'discrepancy', area: 'Goods description', areaId: 'a4', checkId: 'GOODS-18C',
+      id: 'f-comp', outcome: 'DISCREPANT', area: 'Goods description', areaId: 'a4', checkId: 'GOODS-18C',
       docId: 'BC', page: 5, creditTag: '45A',
       statement: 'GOODS DESCRIPTION CONFLICT — CERTIFICATE STATES SILK TRIM, CREDIT STATES COTTON 100 PCT',
       title: 'The certificate describes a silk trim the credit does not mention',
@@ -806,7 +806,7 @@ const CASE_02 = {
       trace: [{ key: 'read by', value: 'Goods, Amounts & Tolerance review' }, { key: 'source', value: 'bundle p.5' }, { key: 'basis', value: 'UCP600 art.14(d)' }],
     },
     {
-      id: 'f-extra2', severity: 'possible', area: 'Document set', areaId: 'a2', checkId: 'DOCSET-A31',
+      id: 'f-extra2', outcome: 'DOUBT', outcomeReason: 'LOW_CONFIDENCE', area: 'Document set', areaId: 'a2', checkId: 'DOCSET-A31',
       docId: 'WC', page: 6, creditTag: '46A',
       statement: 'WARRANTY CERTIFICATE PRESENTED BUT NOT CALLED FOR BY THE CREDIT — DISREGARDED',
       title: 'A warranty certificate was presented that the credit does not call for',
@@ -818,7 +818,7 @@ const CASE_02 = {
       trace: [{ key: 'read by', value: 'Presentation & Completeness review' }, { key: 'basis', value: 'ISBP821 A31' }],
     },
     {
-      id: 'f-amt2', severity: 'clean', area: 'Amount', areaId: 'a4', checkId: 'AMT-30A',
+      id: 'f-amt2', outcome: 'CLEAN', area: 'Amount', areaId: 'a4', checkId: 'AMT-30A',
       docId: 'INV', page: 1, creditTag: '32B',
       statement: 'AMOUNT DRAWN USD 50,000.00 EQUALS CREDIT AMOUNT',
       title: 'Amount drawn matches the credit exactly',
@@ -830,7 +830,7 @@ const CASE_02 = {
       trace: [{ key: 'read by', value: 'Goods, Amounts & Tolerance review' }, { key: 'basis', value: 'UCP600 art.30(a)' }],
     },
     {
-      id: 'f-pres2', severity: 'clean', area: 'Presentation', areaId: 'a3', checkId: 'DATE-48',
+      id: 'f-pres2', outcome: 'CLEAN', area: 'Presentation', areaId: 'a3', checkId: 'DATE-48',
       docId: 'INV', page: 1, creditTag: '48',
       statement: 'PRESENTED 18 NOV 2025, WITHIN 21 DAYS OF SHIPMENT AND BEFORE EXPIRY',
       title: 'Presented in time — 10 days after shipment',
@@ -842,7 +842,7 @@ const CASE_02 = {
       trace: [{ key: 'read by', value: 'Dates & Shipment review' }, { key: 'basis', value: 'UCP600 art.6(d), 14(c)' }],
     },
     {
-      id: 'f-cons2', severity: 'clean', area: 'Consistency', areaId: 'a5', checkId: 'XD-A23',
+      id: 'f-cons2', outcome: 'CLEAN', area: 'Consistency', areaId: 'a5', checkId: 'XD-A23',
       docId: 'PKL', page: 3, creditTag: '45A',
       statement: 'QUANTITIES AGREE ACROSS INVOICE AND PACKING LIST',
       title: 'Quantities agree across the invoice and packing list',
@@ -854,7 +854,7 @@ const CASE_02 = {
       trace: [{ key: 'read by', value: 'General Review' }, { key: 'basis', value: 'ISBP821 A23' }],
     },
     {
-      id: 'f-party2', severity: 'clean', area: 'Parties', areaId: 'a6', checkId: 'PARTY-FC04',
+      id: 'f-party2', outcome: 'CLEAN', area: 'Parties', areaId: 'a6', checkId: 'PARTY-FC04',
       docId: 'mt700', creditTag: '59',
       statement: 'PARTIES SCREENED — NO MATCHES',
       title: 'Parties screened — nothing to report',
@@ -866,7 +866,7 @@ const CASE_02 = {
       trace: [{ key: 'read by', value: 'Sanctions & Parties screening' }],
     },
     {
-      id: 'm-lang2', severity: 'manual', area: 'No rule yet', areaId: null, checkId: null,
+      id: 'm-lang2', outcome: 'DOUBT', outcomeReason: 'NO_RULE', area: 'No rule yet', areaId: null, checkId: null,
       docId: 'mt700', creditTag: '47A',
       statement: 'NOT CHECKED — FIELD 47A REQUIRES ALL DOCUMENTS IN ENGLISH, NO RULE DEFINED',
       title: 'A condition about document language has no rule behind it',
@@ -921,7 +921,7 @@ const CASE_03 = {
   },
   findings: [
     {
-      id: 'f-amt3', severity: 'clean', area: 'Amount', areaId: 'a4', checkId: 'AMT-30A',
+      id: 'f-amt3', outcome: 'CLEAN', area: 'Amount', areaId: 'a4', checkId: 'AMT-30A',
       docId: 'INV', page: 1, creditTag: '32B',
       statement: 'AMOUNT DRAWN GBP 100.00 EQUALS CREDIT AMOUNT',
       title: 'Amount drawn matches the credit exactly',
@@ -931,7 +931,7 @@ const CASE_03 = {
       trace: [{ key: 'read by', value: 'Goods, Amounts & Tolerance review' }, { key: 'basis', value: 'UCP600 art.30(a)' }],
     },
     {
-      id: 'f-goods3', severity: 'clean', area: 'Goods description', areaId: 'a4', checkId: 'GOODS-18C',
+      id: 'f-goods3', outcome: 'CLEAN', area: 'Goods description', areaId: 'a4', checkId: 'GOODS-18C',
       docId: 'INV', page: 1, creditTag: '45A',
       statement: 'GOODS DESCRIPTION ON INVOICE CORRESPONDS WITH FIELD 45A',
       title: 'Goods description corresponds with the credit',
@@ -943,7 +943,7 @@ const CASE_03 = {
       trace: [{ key: 'read by', value: 'Goods, Amounts & Tolerance review' }, { key: 'basis', value: 'UCP600 art.18(c)' }],
     },
     {
-      id: 'f-pres3', severity: 'clean', area: 'Presentation', areaId: 'a3', checkId: 'DATE-48',
+      id: 'f-pres3', outcome: 'CLEAN', area: 'Presentation', areaId: 'a3', checkId: 'DATE-48',
       docId: 'INV', page: 1, creditTag: '48',
       statement: 'PRESENTED 20 JUN 2022, WITHIN 21 DAYS OF DISPATCH AND BEFORE EXPIRY 31 JUL 2022',
       title: 'Presented in time — 4 days after dispatch',
@@ -954,7 +954,7 @@ const CASE_03 = {
       trace: [{ key: 'read by', value: 'Dates & Shipment review' }, { key: 'basis', value: 'UCP600 art.6(d), 14(c)' }],
     },
     {
-      id: 'f-cons3', severity: 'clean', area: 'Consistency', areaId: 'a5', checkId: 'XD-A23',
+      id: 'f-cons3', outcome: 'CLEAN', area: 'Consistency', areaId: 'a5', checkId: 'XD-A23',
       docId: 'PKL', page: 3, creditTag: '45A',
       statement: 'INVOICE, PACKING LIST AND DRAFT AGREE',
       title: 'The set is internally consistent',
@@ -965,7 +965,7 @@ const CASE_03 = {
       trace: [{ key: 'read by', value: 'General Review' }, { key: 'basis', value: 'ISBP821 A23' }],
     },
     {
-      id: 'f-party3', severity: 'clean', area: 'Parties', areaId: 'a6', checkId: 'PARTY-FC04',
+      id: 'f-party3', outcome: 'CLEAN', area: 'Parties', areaId: 'a6', checkId: 'PARTY-FC04',
       docId: 'mt700', creditTag: '59',
       statement: 'PARTIES SCREENED — NO MATCHES',
       title: 'Parties screened — nothing to report',
@@ -976,7 +976,7 @@ const CASE_03 = {
       trace: [{ key: 'read by', value: 'Sanctions & Parties screening' }],
     },
     {
-      id: 'm-nodate3', severity: 'manual', area: 'No rule yet', areaId: null, checkId: null,
+      id: 'm-nodate3', outcome: 'DOUBT', outcomeReason: 'TRIGGER_NOT_MET', area: 'No rule yet', areaId: null, checkId: null,
       docId: 'mt700', creditTag: '46A',
       statement: 'NOT CHECKED — NO FIELD 44C IN THIS CREDIT, NO LATEST SHIPMENT DATE TO TEST',
       title: 'This credit names no latest shipment date',
@@ -1240,7 +1240,7 @@ ${f.quote}
 
 *${f.quoteSource}*
 
-## ${f.severity === 'clean' ? 'Why this satisfies the rule' : 'Why that is a problem'}
+## ${f.outcome === 'CLEAN' ? 'Why this satisfies the rule' : 'Why that is a problem'}
 
 ${a.why}
 ${cite ? `\n**Basis:** ${cite}\n` : ''}${options}${confidence}`
@@ -1280,7 +1280,7 @@ function withProvenance(findings, checksById, facts) {
     // Which row failed is a fact about the rule's run, so the finding states it. A
     // discrepancy that does not say defaults to the first row; anything else defaults
     // to none, which is what a clean result means.
-    const failedRow = f.failedRow ?? (f.severity === 'discrepancy' ? 0 : null)
+    const failedRow = f.failedRow ?? (f.outcome === 'DISCREPANT' ? 0 : null)
     return {
       ...f,
       settledBy,
@@ -1299,12 +1299,13 @@ function buildFindings(def) {
       requirement: (f.expected ?? '').split('\n').join(' '),
       presented: `${(f.quote ?? '').split('\n').join(' ')} — ${f.quoteSource}.`,
       why: f.reason,
-      options: f.severity === 'clean' ? ['Nothing to do — recorded as checked.'] : [],
-      confidence: f.severity === 'clean' ? 'HIGH' : 'MED',
+      options: f.outcome === 'CLEAN' ? ['Nothing to do — recorded as checked.'] : [],
+      confidence: f.outcome === 'CLEAN' ? 'HIGH' : 'MED',
     }
     return {
       id: f.id,
-      severity: f.severity,
+      outcome: f.outcome,
+      outcomeReason: f.outcomeReason ?? null,
       area: f.area,
       areaId: f.areaId,
       checkId: f.checkId,
@@ -1387,6 +1388,9 @@ function buildCase(defKey, overrides) {
     presentingBank: def.presentingBank,
     replyDueDays: overrides.replyDueDays,
     authoriser: def.authoriser,
+    // Who is examining it. Distinct from the authoriser, who signs after them — and the
+    // name the override mark initials, so the file says who cleared what.
+    officer: def.officer ?? 'R. Ning',
     pdfUrl: sample.pdfUrl,
     totalPages: sample.totalPages,
     documents,
@@ -1424,8 +1428,8 @@ const CASE_INDEX = {
 export const CASE_LIST = Object.entries(CASE_INDEX).map(([id, e]) => {
   const detail = buildCase(e.def, { id, ...e })
   const revealed = e.runState.finished ? detail.findings : []
-  const discrepancies = revealed.filter((f) => f.severity === 'discrepancy').length
-  const toDecide = revealed.filter((f) => f.severity === 'possible' || f.severity === 'manual').length
+  const discrepancies = revealed.filter((f) => f.outcome === 'DISCREPANT').length
+  const toDecide = revealed.filter((f) => f.outcome === 'DOUBT').length
   return {
     id,
     creditRef: detail.credit.creditRef,

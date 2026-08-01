@@ -1,21 +1,18 @@
 import { createContext, useContext, useReducer, useEffect, useRef, useCallback, useMemo } from 'react'
 import * as api from '../api/lcCheckApi'
-import { STAGES, RUN_STAGES, runStagesFrom, stageAfter, doneThroughStage, needsAction } from './severity'
+import { STAGES, RUN_STAGES, runStagesFrom, stageAfter, doneThroughStage, destinationTab } from './stages'
+import { effectiveOutcome, outcomeOf, needsAttention, caseStatus } from './outcome'
 
 /**
  * Maps extract / extract-md step events onto a doc-rail mark.
  *
- * Two states only: working (spinner) while any pass is in flight for that doc,
- * done when layout finishes (or fields fail). The parent fan-out `extract`
- * parks every presented doc as working so the rail lights up as soon as
- * reading begins — even before documents have reloaded from segment.
+ * One document at a time: spinner on the doc currently being read, check when
+ * its layout pass finishes. The backend walks documents sequentially, so the
+ * rail should too — lighting every row at once hides which one is in flight.
  *
  * @returns {{ code: string, status: 'working'|'done'|'failed' } | null}
  */
 function extractMark(step, type, status) {
-  if (step === 'extract' && type === 'step_started') {
-    return { code: '*', status: 'working' }
-  }
   const m = /^(extract(?:-md)?):(.+)$/.exec(step || '')
   if (!m) return null
   const [, kind, code] = m
@@ -81,8 +78,6 @@ const initial = {
      * Cleared when a new interpret starts.
      */
     docExtract: {},
-    /** True once the extract fan-out has announced itself (parent or per-doc). */
-    extractStarted: false,
     /** Areas fully returned, in completion order. */
     completedAreaIds: [],
     /** The area currently being examined, if any. */
@@ -116,6 +111,34 @@ const initial = {
     haltedBy: null,
 
     /**
+     * The plan weighed a a gate failing against this credit and decided the
+     * remaining checks were spend on a question already settled.
+     *
+     * Deliberately not `halted`. Nothing is blocked: the case parks at `execute`
+     * like any other and the ordinary run button finishes it. All this changes is
+     * that Auto stops chaining — a run that carried on regardless would make the
+     * decision pointless, and one that offered no way back would make it final,
+     * which it is not. `stoppedBecause` is the planner's reason, shown on screen so
+     * the officer can disagree with something specific.
+     */
+    stoppedAfterPlan: false,
+    stoppedBecause: null,
+    /** Planned checks not yet run. What the "run them anyway" button counts. */
+    remaining: 0,
+    /** Planned checks nothing but a person can settle. Nought means Auto ends at the decision. */
+    humanReview: 0,
+    /**
+     * Where Auto leaves the officer, as a tab id: `decide` normally, `review` when
+     * the plan holds something a person has to settle.
+     *
+     * The service's answer, not one worked out here. It follows from the plan, and
+     * a browser deriving it again from a copy of the plan is a second opinion that
+     * can disagree with the first. `review` until it has answered, which is where
+     * every run used to end.
+     */
+    destination: 'review',
+
+    /**
      * True only for a run started in this session. A case can arrive already
      * examined, and the stage tabs must not drag the officer to the report the
      * moment they open one.
@@ -126,23 +149,40 @@ const initial = {
   },
 
   officer: {
-    /** findingId -> Disposition */
-    decisions: {},
+    /**
+     * findingId -> `{ outcome, by, at }` — where, and only where, the officer
+     * disagreed with the engine.
+     *
+     * **This holds overrides, not decisions.** It used to hold one disposition per
+     * finding, defaulted on read, and then materialised for every row at sign-off so
+     * the file could show somebody had accepted each ground. All of that existed to
+     * work around a vocabulary in which the officer's silence had no meaning. It has
+     * one now: the outcome the engine reached stands, and it is already written down.
+     * So this map is sparse by construction, it is only ever written by a deliberate
+     * act, and every key in it is a place a person overruled the machine.
+     */
+    overrides: {},
     /** findingId -> note text (saved) */
     notes: {},
     /** findingId -> note text (in the box, unsaved) */
     drafts: {},
     /** Checks the officer added to this case's plan. */
     addedChecks: [],
-    // Whether a critical failure found by arithmetic should stop the run before
-    // any model spend. Set in the plan, before pressing go, so Auto keeps its
-    // promise not to surprise you — you chose this.
-    stopOnRuleFailure: true,
+    // There used to be a `stopOnRuleFailure` here — a checkbox on the plan saying
+    // whether a failed exact rule should stop the run before any model spend. That
+    // question now has an answer with more behind it: Governance authors what a
+    // a gate failing means (`onFail`), and the planner weighs it against this
+    // credit's own :47A: before deciding. A third control asking the same thing in
+    // the browser could only disagree with them.
     // Findings a person raised. Kept apart from the engine's own, because the two
     // carry different weight and a refusal advice has to be able to say which is
     // which — an officer's observation is not a check's output.
     raised: [],
-    verdict: 'refuse',
+    /**
+     * The case's status where the officer set one by hand; null means the derived
+     * value stands. Same two slots as a finding's outcome, one level up.
+     */
+    status: null,
     reviewNote: '',
     submitted: false,
   },
@@ -174,13 +214,18 @@ function reducer(state, action) {
       // From the service's last-finished stage — never wipe to [] on a merge.
       // That reset made Step show "Paused · 0 of 3" after Interpret and left
       // Auto asking for the same stage again until the service rejected it.
-      const fromService = finished
+      // A run the plan ended is finished *and* has a stage that never ran. Marking
+      // every stage done because the run is over would leave the officer with "Open
+      // the report" where the only useful button is "run the checks that were
+      // skipped" — the run is over, and the work is not.
+      const fromService = finished && !action.data.runState?.stoppedAfterPlan
         ? bar.map((s) => s.id)
         : doneThroughStage(loaded?.stage, bar)
       // Keep anything this tab already recorded if the service answer is behind
       // (e.g. stage_done landed before the refetch sees the new park).
       const done = [...new Set([...fromService, ...(action.merge ? state.run.done : [])])]
       const halted = Boolean(loaded?.halted)
+      const stoppedAfterPlan = Boolean(loaded?.stoppedAfterPlan)
       return {
         ...state,
         loading: false,
@@ -194,6 +239,11 @@ function reducer(state, action) {
           done,
           halted,
           haltedBy: loaded?.haltedBy ?? null,
+          stoppedAfterPlan,
+          stoppedBecause: loaded?.stoppedBecause ?? null,
+          remaining: loaded?.remaining ?? 0,
+          humanReview: loaded?.humanReview ?? 0,
+          destination: destinationTab(loaded?.destination),
           // The run owns activeStage. The load does not — not on a merge, and not
           // on a plain load either, which is what this used to say.
           //
@@ -216,19 +266,22 @@ function reducer(state, action) {
           // must not find it live and try the next stage.
           live: halted ? false : action.merge ? state.run.live : false,
           following: action.merge ? state.run.following : true,
-          // Docs often land on the refresh that follows segment — after the parent
-          // extract step has already announced. Fill any gaps as working so the rail
-          // does not sit blank until the first extract:CODE event.
-          docExtract: (() => {
-            if (!action.merge || state.run.activeStage !== 'interpret' || !state.run.extractStarted) {
-              return state.run.docExtract
-            }
-            const next = { ...state.run.docExtract }
-            for (const d of action.data.documents ?? []) {
-              if (d.role === 'presented' && !next[d.id]) next[d.id] = 'working'
-            }
-            return next
-          })(),
+        },
+        officer: {
+          ...state.officer,
+          // Adopted from the service on a full load, so opening a case someone already
+          // worked keeps the seam — with the officer id and timestamp the file actually
+          // recorded, which is what the mark on the row has to name.
+          //
+          // **Not on a merge.** A merge is a refetch during a run, and an override is
+          // written optimistically then POSTed; adopting the server's copy here would
+          // drop any call made in the moment between the two. The same rule the run
+          // state above follows, for the same reason.
+          overrides: action.merge
+            ? state.officer.overrides
+            : Object.fromEntries(
+              (action.data.overrides ?? []).map((o) => [o.findingId, { outcome: o.outcome, by: o.by, at: o.at }]),
+            ),
         },
       }
     }
@@ -265,7 +318,7 @@ function reducer(state, action) {
     case 'run_started':
       return {
         ...state,
-        run: { ...state.run, started: true, finished: false, done: [], activeStage: null, segmented: 0, docExtract: {}, extractStarted: false, completedAreaIds: [], activeAreaId: null, live: true, following: true, failure: null },
+        run: { ...state.run, started: true, finished: false, done: [], activeStage: null, segmented: 0, docExtract: {}, completedAreaIds: [], activeAreaId: null, live: true, following: true, failure: null },
       }
     case 'resume_run':
       // Pick up a parked case without wiping `done` — run_started is only for a cold start.
@@ -288,38 +341,15 @@ function reducer(state, action) {
           // Fresh extract markers only when interpret starts — other stages
           // leave the last read's ticks alone so the rail still says what was done.
           docExtract: action.stageId === 'interpret' ? {} : state.run.docExtract,
-          extractStarted: action.stageId === 'interpret' ? false : state.run.extractStarted,
         },
       }
     case 'doc_extract': {
       const { code, status } = action
       if (!code || !status) return state
-      // Parent extract step: park every presented doc as working so the rail shows
-      // progress is under way, then each extract:CODE keeps/flips its own row.
-      if (code === '*') {
-        const docs = state.data?.documents ?? []
-        const next = { ...state.run.docExtract }
-        let changed = false
-        for (const d of docs) {
-          if (d.role !== 'presented' || next[d.id]) continue
-          next[d.id] = status
-          changed = true
-        }
-        return {
-          ...state,
-          run: {
-            ...state.run,
-            extractStarted: true,
-            docExtract: changed ? next : state.run.docExtract,
-          },
-        }
-      }
-      if (state.run.docExtract[code] === status) {
-        return state.run.extractStarted ? state : { ...state, run: { ...state.run, extractStarted: true } }
-      }
+      if (state.run.docExtract[code] === status) return state
       return {
         ...state,
-        run: { ...state.run, extractStarted: true, docExtract: { ...state.run.docExtract, [code]: status } },
+        run: { ...state.run, docExtract: { ...state.run.docExtract, [code]: status } },
       }
     }
     case 'stage_done': {
@@ -327,13 +357,25 @@ function reducer(state, action) {
       // that, so the two can never disagree.
       const done = state.run.done.includes(action.stageId) ? state.run.done : [...state.run.done, action.stageId]
       const complete = (state.runStages ?? RUN_STAGES).every((s) => done.includes(s.id))
+      // **A stage finishing only ends the run when it is the stage that was running.**
+      //
+      // One press can run two stages: the gate declares itself WITH_NEXT, so asking
+      // for the plan runs gate *then* plan, and each publishes its own stage_done.
+      // Clearing `activeStage` on the first of them told the workbench that plan had
+      // finished while plan was still going — and in Auto that is not a cosmetic lie.
+      // The auto-runner saw nothing running, asked for plan a second time, tore down
+      // the stream it was already listening on, and got 409 already_running back.
+      // `runPipelineStep` reports a refused start as `stage_failed`, which sets
+      // `live: false` — so Auto died at the plan stage on every single run, with the
+      // events from the real plan stage going to a subscription nobody held.
+      const wasActive = state.run.activeStage === action.stageId
       return {
         ...state,
         run: {
           ...state.run,
           done,
-          activeStage: null,
-          activeAreaId: null,
+          activeStage: wasActive ? null : state.run.activeStage,
+          activeAreaId: wasActive ? null : state.run.activeAreaId,
           finished: complete,
           completedAreaIds: complete ? action.areaIds ?? state.run.completedAreaIds : state.run.completedAreaIds,
         },
@@ -357,8 +399,24 @@ function reducer(state, action) {
         },
       }
 
-    case 'decide':
-      return { ...state, officer: { ...state.officer, decisions: { ...state.officer.decisions, [action.findingId]: action.disposition } } }
+    // The officer overruling the engine on one finding, and taking it back. Two
+    // actions rather than one that also accepts null, because "I disagree" and "I
+    // withdraw my disagreement" are different entries in the file.
+    case 'override':
+      return {
+        ...state,
+        officer: {
+          ...state.officer,
+          overrides: {
+            ...state.officer.overrides,
+            [action.findingId]: { outcome: action.outcome, by: action.by, at: action.at },
+          },
+        },
+      }
+    case 'undo_override': {
+      const { [action.findingId]: _dropped, ...rest } = state.officer.overrides
+      return { ...state, officer: { ...state.officer, overrides: rest } }
+    }
     case 'draft_note':
       return { ...state, officer: { ...state.officer, drafts: { ...state.officer.drafts, [action.findingId]: action.text } } }
     case 'save_note':
@@ -375,12 +433,10 @@ function reducer(state, action) {
       return { ...state, officer: { ...state.officer, raised: [...state.officer.raised, action.finding] } }
     case 'unraise_finding':
       return { ...state, officer: { ...state.officer, raised: state.officer.raised.filter((f) => f.id !== action.id) } }
-    case 'stop_on_rule_failure':
-      return { ...state, officer: { ...state.officer, stopOnRuleFailure: action.on } }
     case 'add_check':
       return { ...state, officer: { ...state.officer, addedChecks: [...state.officer.addedChecks, action.check] } }
-    case 'verdict':
-      return { ...state, officer: { ...state.officer, verdict: action.verdict } }
+    case 'case_status':
+      return { ...state, officer: { ...state.officer, status: action.status } }
     case 'review_note':
       return { ...state, officer: { ...state.officer, reviewNote: action.text } }
     case 'submitted':
@@ -448,7 +504,12 @@ export function CaseProvider({ caseId, children }) {
     return () => { alive = false }
   }, [])
 
-  // Watches work this browser did not start.
+  // The latest state, reachable from a callback that closed over an older one.
+  // Needed exactly once — reporting on a refetch that landed after the handler was
+  // created — and by the passive watcher below.
+  const stateRef = useRef(state)
+  stateRef.current = state
+
   //
   // Intake begins when the files land, so by the time the workbench mounts it is
   // already running. Without this the officer would sit on a case with no
@@ -460,6 +521,13 @@ export function CaseProvider({ caseId, children }) {
   //
   // Same extract / segment handling as startStep: a workbench opened mid-interpret
   // must still light the rail marks, not only the activity label.
+  //
+  // **And the same stage handling**, which it did not have. This watcher dispatched
+  // `activity` and nothing else, so `run.activeStage` stayed null for every run this
+  // tab did not personally start — a reload mid-plan, a second tab, and every stage
+  // Auto chained after the first. Everything that asks "what is running" reads that
+  // field, so the workbench reported a case that was actively planning as "not
+  // planned yet": the system was working and the screen said it had not begun.
   const busy = state.run.busy
   useEffect(() => {
     if (!busy) return undefined
@@ -469,8 +537,18 @@ export function CaseProvider({ caseId, children }) {
         const mark = extractMark(event.step, event.type, event.status)
         if (mark) dispatch({ type: 'doc_extract', code: mark.code, status: mark.status })
         if (event.refresh) reload(true)
+      } else if (event.type === 'stage_started') {
+        dispatch({ type: 'stage_started', stageId: event.stage })
+      } else if (event.type === 'stage_done') {
+        dispatch({ type: 'activity_ended' })
+        dispatch({ type: 'stage_done', stageId: event.stage, areaIds: stateRef.current.data?.areas?.map((a) => a.id) })
+        reload(true)
       } else if (event.type === 'segment') {
         dispatch({ type: 'segmented', done: event.done, total: event.total })
+      } else if (event.type === 'area_started') {
+        dispatch({ type: 'area_started', areaId: event.areaId })
+      } else if (event.type === 'area_done') {
+        dispatch({ type: 'area_done', areaId: event.areaId })
       } else if (event.type === 'stage_failed') {
         dispatch({ type: 'stage_failed', message: event.message })
       } else if (event.type === 'awaiting_officer' || event.type === 'gate_halted') {
@@ -487,12 +565,6 @@ export function CaseProvider({ caseId, children }) {
     },
     [],
   )
-
-  // The latest state, reachable from a callback that closed over an older one.
-  // Needed exactly once — reporting on a refetch that landed after the handler was
-  // created — and kept to that one use.
-  const stateRef = useRef(state)
-  stateRef.current = state
 
   const flash = useCallback((message) => {
     dispatch({ type: 'toast', message })
@@ -531,16 +603,21 @@ export function CaseProvider({ caseId, children }) {
         else if (event.type === 'area_started') dispatch({ type: 'area_started', areaId: event.areaId })
         else if (event.type === 'area_done') dispatch({ type: 'area_done', areaId: event.areaId })
         else if (event.type === 'stage_done') {
-          startGate.current = false
-          dispatch({ type: 'activity_ended' })
+          // Only the stage this call asked for releases the latch. An intermediate
+          // stage — the gate riding along with the plan — is recorded and nothing
+          // more; releasing on it would let a second start through the door.
+          const mine = event.stage === stepId
+          if (mine) startGate.current = false
+          if (mine) dispatch({ type: 'activity_ended' })
           dispatch({ type: 'stage_done', stageId: event.stage, areaIds: areas.map((a) => a.id) })
+          if (!mine) return
           // A step produced rows — documents, facts, checks, findings — and the event
           // said so without carrying them. Refetch, then report on what came back:
           // counting findings from the copy loaded before the step ran would report
           // the previous run's number.
           reload(true).then(() => {
             if (event.stage !== 'execute') return
-            const bad = (stateRef.current.data?.findings ?? []).filter((f) => f.severity === 'discrepancy').length
+            const bad = (stateRef.current.data?.findings ?? []).filter((f) => f.outcome === 'DISCREPANT').length
             flash(bad ? `Report ready — ${bad} discrepanc${bad === 1 ? 'y' : 'ies'} to look at.` : 'Report ready — nothing to raise.')
           })
         }
@@ -583,29 +660,118 @@ export function CaseProvider({ caseId, children }) {
   // so switching to Auto halfway through a stepped run picks it up from where it
   // stopped instead of stranding it with no button.
   useEffect(() => {
-    const { mode, live, started, finished, activeStage, done, busy } = state.run
+    const { mode, live, started, finished, activeStage, done, busy, stoppedAfterPlan } = state.run
     // `busy` as well as `activeStage`: the first is the service saying a stage is
     // running, the second is this tab saying it started one. Either is a reason
     // not to start another, and relying on our own flag alone is what let a
     // second tab — or a reload — pile a run on top of a run.
     if (mode !== 'auto' || !live || !started || finished || activeStage || busy) return
+    // The plan decided the rest was not worth running. Auto respects that — a
+    // chained execute here would spend the money the decision existed to save, and
+    // would do it without anybody seeing the reason it was not supposed to.
+    if (stoppedAfterPlan) return
     const next = stageAfter(done, state.runStages ?? RUN_STAGES)
     if (next) startStep(next.id)
   }, [state.run, startStep])
 
-  const decide = useCallback(
-    (findingId, disposition) => {
-      dispatch({ type: 'decide', findingId, disposition })
-      api.recordDecision(caseId, findingId, { disposition }).catch(() => {})
+  /**
+   * What a finding is taken to be — the officer's call where they made one, the
+   * engine's where they did not.
+   *
+   * **The system's conclusion stands unless somebody disagrees with it.** An
+   * examination that finds eight discrepancies and then asks the officer to click
+   * "Agree" eight times has not saved anyone anything — it has moved the work and
+   * added a step, and the complaint writes itself: the AI made more work, not less.
+   * The value is in the exceptions, so the exceptions are what attention is spent on.
+   *
+   * The old safety argument — *the machine's answer may carry itself; its silence may
+   * not* — is still the whole point, and it is now carried by the vocabulary rather
+   * than by a defaulting rule. A check that concluded says DISCREPANT or CLEAN and
+   * that conclusion stands. A check that could not says DOUBT, and DOUBT is not a
+   * ground: it never reaches a refusal notice, and it routes the case to further
+   * check by itself. Nothing has to remember to withhold a default, because there is
+   * no default to withhold.
+   *
+   * `overridden` is what keeps this honest on screen: a row the engine settled and a
+   * row a person settled must not look the same, or the screen stops being a record
+   * of a review.
+   */
+  const callOf = useCallback(
+    (finding) => outcomeOf(finding, state.officer.overrides),
+    [state.officer.overrides],
+  )
+
+  // ---- Derived: what the officer can see right now ------------------------
+  //
+  // A finding only exists for the UI once the area that produced it has come
+  // back. Before that it is not "hidden" — it genuinely has not been found yet.
+  const visible = useMemo(() => {
+    const data = state.data
+    if (!data) return { findings: [], attention: [], clean: [], doubt: [] }
+    const done = new Set(state.run.completedAreaIds)
+    const overrides = state.officer.overrides
+    const findings = data.findings
+      .filter((f) => {
+        // A finding nothing settled has no area to have come back — it is complete
+        // only once the run is.
+        if (f.outcome === 'DOUBT' && !f.areaId) return state.run.finished
+        return f.areaId ? done.has(f.areaId) : state.run.finished
+      })
+      .concat(state.officer.raised)
+    return {
+      findings,
+      // Buckets read through the officer's calls, not the engine's raw values: a
+      // discrepancy somebody cleared is not attention any more, and a clean row
+      // somebody raised is. Reading `f.outcome` here is what would have the counts
+      // on the header disagree with the list under it.
+      attention: findings.filter((f) => needsAttention(f, overrides)),
+      clean: findings.filter((f) => effectiveOutcome(f, overrides) === 'CLEAN'),
+      doubt: findings.filter((f) => effectiveOutcome(f, overrides) === 'DOUBT'),
+    }
+  }, [state.data, state.run.completedAreaIds, state.run.finished, state.officer.raised, state.officer.overrides])
+
+  /**
+   * Where this presentation lands, and whether anybody said so by hand.
+   *
+   * Checks that were planned and never reached count toward further check; ones this
+   * credit never triggered, or that the planner stood down, do not — they are answers
+   * rather than gaps, and the planner cannot stand a rule down without raising a card
+   * for it. See `caseStatus`.
+   */
+  const status = useMemo(() => {
+    const unrun = (state.data?.checks ?? []).filter((c) => !c.findingId && !c.notCovered)
+    const derived = caseStatus(visible.findings, state.officer.overrides, unrun)
+    return { derived, value: state.officer.status ?? derived, chosen: !!state.officer.status }
+  }, [state.data, visible.findings, state.officer.overrides, state.officer.status])
+
+
+  /**
+   * The officer overruling the engine on one finding — or taking it back.
+   *
+   * `action` is an outcome the officer may write (`CLEAN` / `DISCREPANT`) or the
+   * literal `'undo'`. Never `DOUBT`: doubt is the engine reporting the limit of its
+   * own reach, not a confidence a person records. Never `NOT_RUN`: that is the
+   * absence of a run, and nothing asserts it.
+   */
+  const override = useCallback(
+    (findingId, action) => {
+      if (action === 'undo') {
+        dispatch({ type: 'undo_override', findingId })
+        api.clearOverride(caseId, findingId).catch(() => {})
+        flash("Reverted to the system's own outcome.")
+        return
+      }
+      const by = state.data?.officer ?? 'You'
+      const at = new Date().toISOString()
+      dispatch({ type: 'override', findingId, outcome: action, by, at })
+      api.recordOverride(caseId, findingId, { outcome: action, by }).catch(() => {})
       flash(
-        disposition === 'agreed'
-          ? 'Added to your review — it will be raised.'
-          : disposition === 'parked'
-            ? 'Parked — the checker will see it as an open question.'
-            : 'Set aside — your call overrides ours and goes to the model team.',
+        action === 'CLEAN'
+          ? 'Cleared — your call overrides ours, and the file records both.'
+          : 'Called discrepant — it will be stated on the advice.',
       )
     },
-    [caseId, flash],
+    [caseId, state.data, flash],
   )
 
   const saveNote = useCallback(
@@ -633,7 +799,12 @@ export function CaseProvider({ caseId, children }) {
       const n = state.officer.raised.length + 1
       const finding = {
         id: `officer-${n}`,
-        severity: draft.severity ?? 'possible',
+        // An officer raising something has already formed the view — that is what
+        // raising is. It defaults to a discrepancy, and the same override control
+        // clears it if they change their mind. It is never DOUBT: a person does not
+        // record their own uncertainty as the engine's inability to conclude.
+        outcome: draft.outcome ?? 'DISCREPANT',
+        outcomeReason: null,
         title: draft.title,
         detail: draft.detail ?? '',
         statement: (draft.title ?? '').toUpperCase(),
@@ -662,11 +833,25 @@ export function CaseProvider({ caseId, children }) {
     [state.officer.raised.length, flash],
   )
 
+  /**
+   * Signs the case off.
+   *
+   * This used to walk every finding first and write out the disposition each one had
+   * merely been *taken* to have, so that nothing reached a refusal notice as a ground
+   * the file could not show somebody had accepted. That loop is gone, and nothing
+   * replaced it: an outcome is written when the check produces it, an override is
+   * written when the officer makes it, and neither was ever an assumption needing to
+   * be made real at the end. What the officer signs is the status, which is one act
+   * over a list they can see.
+   */
   const submit = useCallback(async () => {
-    const { routedTo } = await api.submitCase(caseId, { verdict: state.officer.verdict, note: state.officer.reviewNote })
+    const { routedTo } = await api.submitCase(caseId, {
+      status: status.value,
+      note: state.officer.reviewNote,
+    })
     dispatch({ type: 'submitted' })
     flash(`Sent to ${routedTo} — your decision and open questions are attached.`)
-  }, [caseId, state.officer.verdict, state.officer.reviewNote, flash])
+  }, [caseId, status.value, state.officer.reviewNote, flash])
 
   const askQuestion = useCallback(
     async (question) => {
@@ -677,37 +862,17 @@ export function CaseProvider({ caseId, children }) {
     [caseId],
   )
 
-  // ---- Derived: what the officer can see right now ------------------------
-  //
-  // A finding only exists for the UI once the area that produced it has come
-  // back. Before that it is not "hidden" — it genuinely has not been found yet.
-  const visible = useMemo(() => {
-    const data = state.data
-    if (!data) return { findings: [], attention: [], clean: [], manual: [] }
-    const done = new Set(state.run.completedAreaIds)
-    const findings = data.findings
-      .filter((f) => {
-        if (f.severity === 'manual') return state.run.finished
-        return f.areaId ? done.has(f.areaId) : state.run.finished
-      })
-      .concat(state.officer.raised)
-    return {
-      findings,
-      attention: findings.filter(needsAction),
-      clean: findings.filter((f) => f.severity === 'clean'),
-      manual: findings.filter((f) => f.severity === 'manual'),
-    }
-  }, [state.data, state.run.completedAreaIds, state.run.finished])
-
   const value = useMemo(
     () => ({
       ...state,
       caseId,
       visible,
       stages: STAGES,
-      actions: { flash, runNext, overrideGate, decide, saveNote, addCheck, raiseFinding, submit, askQuestion, dispatch },
+      callOf,
+      status,
+      actions: { flash, runNext, overrideGate, override, saveNote, addCheck, raiseFinding, submit, askQuestion, dispatch },
     }),
-    [state, caseId, visible, flash, runNext, overrideGate, decide, saveNote, addCheck, raiseFinding, submit, askQuestion],
+    [state, caseId, visible, callOf, status, flash, runNext, overrideGate, override, saveNote, addCheck, raiseFinding, submit, askQuestion],
   )
 
   return <CaseContext.Provider value={value}>{children}</CaseContext.Provider>

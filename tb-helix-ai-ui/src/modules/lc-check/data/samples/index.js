@@ -1,8 +1,8 @@
-// The three real presentation bundles from `test/cases/`, as shipped assets.
+// The three real presentation bundles from `test/cases/`, as mock fixtures.
 //
 // The MT700s are imported as raw text and parsed at load, so the credit an
-// officer reads is byte-for-byte the file the backend would receive. The PDFs
-// are served from `public/samples/` because react-pdf needs a URL.
+// officer reads is byte-for-byte the file the backend would receive. Bundle
+// PDFs are not shipped — mock mode shows the credit without a PDF pane.
 //
 // Page → document mapping mirrors each bundle's `deal.manifest.yml`. Keep them
 // in step: if a manifest changes, the segments below must change with it, or the
@@ -43,7 +43,7 @@ const SEGMENTS_02 = [
 ]
 
 export const SAMPLES = {
-  '01': { id: '01', lcText: lc01, pdfUrl: '/samples/deal-01.pdf', totalPages: 6, segments: SEGMENTS },
-  '02': { id: '02', lcText: lc02, pdfUrl: '/samples/deal-02.pdf', totalPages: 9, segments: SEGMENTS_02 },
-  '03': { id: '03', lcText: lc03, pdfUrl: '/samples/deal-03.pdf', totalPages: 6, segments: SEGMENTS },
+  '01': { id: '01', lcText: lc01, pdfUrl: null, totalPages: 6, segments: SEGMENTS },
+  '02': { id: '02', lcText: lc02, pdfUrl: null, totalPages: 9, segments: SEGMENTS_02 },
+  '03': { id: '03', lcText: lc03, pdfUrl: null, totalPages: 6, segments: SEGMENTS },
 }

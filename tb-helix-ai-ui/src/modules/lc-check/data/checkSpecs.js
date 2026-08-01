@@ -123,8 +123,8 @@ export const TIER_META = {
 // What the *officer* needs from the tier, which is one bit rather than four: did a
 // model form a view?
 //
-//   exact   the answer is reproducible. Check the arithmetic and move on.
-//   judged  a view was formed. Read it before you rely on it, and it cost money.
+//   comparison  the answer is reproducible. Check the working and move on.
+//   agent       a view was formed. Read it before you rely on it.
 //
 // Not "static / dynamic": both are equally static as authored artefacts — neither
 // changes per credit, both are versioned text in the dictionary. The genuinely
@@ -168,18 +168,178 @@ export const checkTier = (id) => (checkType(id) === 'PROGRAMMATIC' ? 'exact' : '
 //                       is AGENT_TOOL the date and amount arithmetic goes through
 //                       compute tools, so the maths is exact even where the reading
 //                       is not.
-//   manual              nothing tests it. Yours to check, and the plan should say so
-//                       before the run rather than after.
-export const COVERAGE = {
-  deterministic: { label: 'deterministic', color: 'var(--me-blue-deep)', note: 'An exact rule tests this. Same answer every time.' },
-  'semi-deterministic': { label: 'semi-deterministic', color: '#1F7A00', note: 'A judged rule tests this — an agent reads it and forms a view.' },
-  manual: { label: 'manual — yours', color: '#946400', note: 'No rule tests this. It is yours to check.' },
+//   human               nothing tests it. Yours to settle, and the plan says so before
+//                       the run rather than after.
+//
+// The third one is worded **"your judgement"** and was "manual — yours". Two reasons
+// the old word had to go. `manual` is already taken by a severity ("Needs Your
+// Review"), so the same word named a property of a check and a property of a finding
+// in adjacent columns. And in trade finance *manual examination* means a person
+// checking documents without any of this — so a plan reading "manual" beside a check
+// invited exactly the wrong reading of what the machine had and had not done.
+// "Your judgement" says what is being asked for and collides with nothing.
+// There is deliberately no label map here any more.
+//
+// `coverage` and "settled by" are the same axis: the service derives one from the
+// tier and the officer reads the other. Giving each its own words meant the
+// requirement group's sub-heads said "deterministic · semi-deterministic · your
+// judgement" while the column three centimetres to the left said "Comparison ·
+// Agent · Manual" — one fact, two vocabularies, on one screen. The wire values stay
+// as they are; every label comes from `SETTLED_BY` below.
+
+// ---------------------------------------------------------------------------
+// Two axes, one column each. This replaces a single "State" column that held
+// nine values across four different questions — lifecycle (`planned`, `queued`,
+// `running`), outcome (`passed`, `discrepancy`, `to decide`), readiness (`needs
+// a field`, `not covered`) and ownership (`yours`). Nine values that do not
+// answer one question read as placeholder text, which is exactly how they read.
+//
+//   SETTLED BY  who gives the answer. Known when the check is planned, and it
+//               never changes afterwards.
+//   OUTCOME     what came of it. Empty until it runs.
+//
+// All three name *what does the work*, which is what makes them comparable and
+// what makes them readable without being taught: a comparison, an agent, or a
+// person by hand.
+//
+// Two earlier words were tried and dropped. **"You"** collided with an
+// officer-added check — "settled by you" and "raised by you" are different claims
+// and must not share a word. **"Examiner"** is the domain's correct term and is
+// exactly the problem: it has to be learned, and a column heading that needs
+// training is a column heading that gets misread until the training happens.
+//
+// "Manual" was rejected once, for a reason that turned out not to apply here: the
+// worry was that severity `manual` already means something else. It does — but it
+// renders as "Needs Your Review" and the word itself appears nowhere a person can
+// see it. And the trade-finance sense of *manual examination*, a person checking
+// documents without any of this, is precisely what this value means. The
+// connotation is right, not misleading.
+// ---------------------------------------------------------------------------
+
+// **Colour is for attention, not for taxonomy.** All three are the same grey, and
+// the icon is what tells them apart.
+//
+// They were blue, green and amber, which put three hues on a column that never needs
+// acting on — this is a stable classification, not an alert. On a screen that also
+// colours outcomes, group chips and stage pills, it left seven hues competing and
+// none of them meaning "look here". Hue is spent on discrepancies and on what is
+// waiting for the officer, and nowhere else.
+export const SETTLED_BY = {
+  comparison: {
+    label: 'Comparison',
+    color: 'var(--me-grey-70)',
+    icon: 'equal',
+    note: 'Two extracted values read against each other. You can check the working, and it answers the same way every time.',
+  },
+  agent: {
+    label: 'Agent',
+    color: 'var(--me-grey-70)',
+    icon: 'sparkles',
+    note: 'An agent reads the presentation and forms a view. Read the view before you rely on it.',
+  },
+  manual: {
+    label: 'Manual',
+    color: 'var(--me-grey-70)',
+    icon: 'user-round',
+    note: 'Nothing on the plan tests this. You settle it against the documents yourself.',
+  },
 }
 
+/** The three coverages the service derives, in the words the officer reads. */
+export const SETTLED_BY_COVERAGE = {
+  deterministic: 'comparison',
+  'semi-deterministic': 'agent',
+  human: 'manual',
+}
+
+/** Who answers this check. Derived from coverage, which the service derives from the tier. */
+export function settledBy(check) {
+  return SETTLED_BY_COVERAGE[coverageOfCheck(check)] ?? 'agent'
+}
+
+/**
+ * The order rows are read in: comparison, then agent, then manual.
+ *
+ * Taken from `SETTLED_BY`'s own key order rather than restated, so the sequence cannot
+ * drift from the vocabulary it sorts. It runs cheapest-and-most-reproducible first, which
+ * is also least-to-most of the officer's attention — you clear the arithmetic, then read
+ * the agent's views, then do the work nothing could do for you.
+ *
+ * **Plan & Execute, Review and Decision all sort by this.** They are three views of one
+ * list, and an officer who works the plan top-to-bottom and then finds the findings in a
+ * different order has to re-find everything they just read. The plan established the
+ * sequence; the other two follow it.
+ */
+export const SETTLED_BY_ORDER = Object.keys(SETTLED_BY)
+
+/**
+ * Compare two things by who settles them.
+ *
+ * @param whoOf maps the item to a `SETTLED_BY` key — `settledBy` for a plan check, a
+ *              lookup through the finding's check for a finding.
+ */
+export const bySettledBy = (whoOf) => (a, b) =>
+  SETTLED_BY_ORDER.indexOf(whoOf(a)) - SETTLED_BY_ORDER.indexOf(whoOf(b))
+
+// `OUTCOME` and `outcomeOfFinding` used to live here, holding nine values across two
+// questions: what came of a check, and *why* where the answer was an absence. They
+// are now four values and a reason beside them, in `state/outcome.js` — one
+// vocabulary shared by the plan, the findings list and the decision, rather than one
+// this file kept and one `severity.js` kept, which is how "passed" came to be grey
+// here and green three centimetres away.
+//
+// The distinctions that map held are all still drawn. "A check ran and could not
+// conclude" is a field to fix, "nothing tests this" is a rule to write, and "this
+// credit never called for it" is neither — but none of those is a different answer
+// to *what came of this*. They are reasons under DOUBT and NOT_RUN.
+
 export function coverageOf(ruleIds = [], tierOf = checkTier) {
-  if (!ruleIds.length) return 'manual'
+  if (!ruleIds.length) return 'human'
   return ruleIds.every((id) => tierOf(id) === 'exact') ? 'deterministic' : 'semi-deterministic'
 }
+
+/**
+ * How well one planned check can be settled, asked of the check itself.
+ *
+ * The service derives this when it plans the check, from the tier it filed it at —
+ * so a condition the planner compiled out of :47A: into field operands comes back
+ * `deterministic`, which is the whole point of compiling it. `coverageOf` above
+ * looks the tier up in the *dictionary*, and a card the planner wrote for one credit
+ * is in no dictionary; it stays for the fixtures, which have no service to ask.
+ */
+export const coverageOfCheck = (check) =>
+  check?.coverage ?? (check?.notCovered ? 'human' : coverageOf([check?.id]))
+
+// Sorting inside the Rule group.
+//
+// Exact before judged, because that is the order an officer reads them in: the free,
+// reproducible half is scanned and the judged half is read. Then by concern, so the
+// dates sit together and the amounts sit together — twenty rules in catalogue order
+// is twenty unrelated sentences, and the same twenty grouped by what they are about
+// can be read down a column.
+//
+// A sort and not a second grouping. The screen groups by provenance (see
+// `state/findingKinds`) and adding concern headings under that would make the plan a
+// tree, which is one more thing to navigate for a list of twenty.
+export const CONCERN_ORDER = ['DATE', 'AMT', 'GOODS', 'DOCSET', 'TRANS', 'CERT', 'PARTY', 'XD', 'COND', 'REQ', 'GEN']
+
+const concernRank = (id) => {
+  const at = CONCERN_ORDER.indexOf(String(id ?? '').split('-')[0])
+  return at < 0 ? CONCERN_ORDER.length : at
+}
+
+export function sortPlanChecks(checks = []) {
+  return checks.slice().sort((a, b) => {
+    const tier = (a.tier === 'exact' ? 0 : 1) - (b.tier === 'exact' ? 0 : 1)
+    if (tier) return tier
+    const concern = concernRank(a.id) - concernRank(b.id)
+    if (concern) return concern
+    return String(a.id).localeCompare(String(b.id))
+  })
+}
+
+// The three buckets a requirement falls into, in the order they cost you attention.
+export const COVERAGE_ORDER = ['deterministic', 'semi-deterministic', 'human']
 
 export const GATES = ['DATE-31D']
 export const isGate = (id) => GATES.includes(id)
