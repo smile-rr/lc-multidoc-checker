@@ -49,7 +49,14 @@ public final class ReadRows {
     public record BundlePage(int pageNo, String docCode, String label) {
     }
 
-    /** A field read off a document. {@code valueNorm} is what rules compare. */
+    /**
+     * A field read off a document.
+     *
+     * <p>{@code value} is what rules compare and what an officer reads — the operator parses
+     * it, because reading an amount and reading a date are different jobs. {@code valueNorm}
+     * is an upper-cased copy and is <em>not</em> the comparison source, whatever the column
+     * comment said for its first year.
+     */
     public record Fact(
             String docCode,
             String label,
@@ -159,6 +166,9 @@ public final class ReadRows {
             String quoteSource,
             String reason,
             String analysis,
+            /** The settled rows, as jsonb. Written since exact checks existed, read by
+             *  nobody until the review screen was given them. */
+            String comparison,
             boolean raisedByOfficer,
             String checkId,
             String origin,

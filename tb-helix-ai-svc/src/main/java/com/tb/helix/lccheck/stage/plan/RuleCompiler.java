@@ -1,16 +1,16 @@
 package com.tb.helix.lccheck.stage.plan;
 
 import com.tb.helix.governance.spi.CheckCatalog;
-import com.tb.helix.lccheck.rule.Operator;
+import com.tb.helix.governance.types.ConditionFn;
+import com.tb.helix.governance.types.ConditionTree;
+import com.tb.helix.governance.types.Operator;
 import com.tb.helix.lccheck.service.DocumentTypes;
 
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 /**
@@ -23,10 +23,20 @@ import java.util.Set;
  * authoring it. Left as prose they cost a model call apiece and come back as an opinion.
  *
  * <p>So the planner is given the vocabulary and asked to compile where it can. This class is
- * the customs post. <b>A rule that does not validate does not become an exact check</b> — the
- * card is demoted to judged and the reason recorded, because the one outcome that must never
- * happen is an invented comparison reported to an officer as deterministic. Three ways a
- * compiled rule is rejected, and all three are things a model does:
+ * the customs post, and it checks two different things in two passes:
+ *
+ * <ol>
+ *   <li><b>Shape</b> — delegated to {@link ConditionTree}, which is what the console writes
+ *       and what the evaluator walks. Nothing is re-stated here.
+ *   <li><b>Vocabulary</b> — whether the operands name something this bank actually reads.
+ *       No schema can answer that; it is the dictionary's to answer, and it is the half that
+ *       matters.
+ * </ol>
+ *
+ * <p><b>A rule that does not validate does not become an exact check</b> — the card is
+ * demoted to judged and the reason recorded, because the one outcome that must never happen
+ * is an invented comparison reported to an officer as deterministic. Three ways a compiled
+ * rule is rejected, and all three are things a model does:
  *
  * <ul>
  *   <li>an operator nobody implements, or one of the four that are judgements wearing an
@@ -35,7 +45,9 @@ import java.util.Set;
  *       means the planner claimed determinism it has not got.
  *   <li>a document code outside the dictionary — the comparison would read a document that
  *       does not exist and return INCONCLUSIVE forever.
- *   <li>a field key nothing extracts. Same outcome, harder to spot, because the code is real.
+ *   <li>a field key nothing extracts off that document. Same outcome, harder to spot,
+ *       because the code is real. {@code helix_gov.v_dangling_reference} reports the same
+ *       mistake in a rule a person authored, where it is reported rather than refused.
  * </ul>
  *
  * <p>The vocabulary it validates against is also the vocabulary it hands the planner
@@ -46,10 +58,10 @@ import java.util.Set;
 public class RuleCompiler {
 
     /** Why a compiled rule was not accepted, or empty when it was. */
-    public record Verdict(Object groups, List<String> problems) {
+    public record Verdict(Object rule, List<String> problems) {
 
         public boolean ok() {
-            return groups != null && problems.isEmpty();
+            return rule != null && problems.isEmpty();
         }
 
         public String why() {
@@ -66,48 +78,31 @@ public class RuleCompiler {
     }
 
     /**
-     * Validates a rule the planner wrote, returning the {@code groups} array to store.
+     * Validates a rule the planner wrote, returning what to store.
+     *
+     * <p>What comes back is the whole tree rather than its {@code groups}, version included.
+     * A stored condition that did not say which reader it needs is one a later build has to
+     * guess at, and the guess that runs the half it understands is the dangerous one.
      *
      * @param rule what came back — either the whole {@code {"groups": [...]}} object or the
      *             array itself, because a model asked for one reliably produces the other
      */
-    @SuppressWarnings("unchecked")
     public Verdict compile(Object rule) {
-        Object groups = rule instanceof Map<?, ?> m ? m.get("groups") : rule;
-        if (!(groups instanceof List<?> list) || list.isEmpty()) {
-            return new Verdict(null, List.of("no conditions"));
+        ConditionTree.Parsed parsed = ConditionTree.parse(rule);
+        if (!parsed.ok()) {
+            return new Verdict(null, parsed.problems());
         }
 
         List<String> problems = new ArrayList<>();
-        int rows = 0;
-        for (Object g : list) {
-            if (!(g instanceof Map<?, ?> raw)) {
-                problems.add("a group that is not a group");
-                continue;
-            }
-            Object rowList = ((Map<String, Object>) raw).get("rows");
-            if (!(rowList instanceof List<?> rl) || rl.isEmpty()) {
-                problems.add("a group with no rows");
-                continue;
-            }
-            for (Object r : rl) {
-                if (!(r instanceof Map<?, ?> row)) {
-                    problems.add("a row that is not a row");
-                    continue;
-                }
-                rows++;
-                check((Map<String, Object>) row, problems);
-            }
-        }
-        if (rows == 0) problems.add("no conditions");
-        return new Verdict(problems.isEmpty() ? groups : null, List.copyOf(problems));
+        for (ConditionTree.Row row : parsed.tree().rows()) check(row, problems);
+
+        return new Verdict(problems.isEmpty() ? parsed.tree().toMap() : null, List.copyOf(problems));
     }
 
-    @SuppressWarnings("unchecked")
-    private void check(Map<String, Object> row, List<String> problems) {
-        Operator op = Operator.of(String.valueOf(row.get("op")));
+    private void check(ConditionTree.Row row, List<String> problems) {
+        Operator op = row.op();
         if (op == Operator.UNKNOWN) {
-            problems.add("\"" + row.get("op") + "\" is not an operator this examination knows");
+            problems.add("that is not an operator this examination knows");
             return;
         }
         // The four judgement operators are honest in the console and dishonest here. An
@@ -118,37 +113,87 @@ public class RuleCompiler {
             return;
         }
 
-        operand(row.get("l"), "left", problems);
-        if (!op.unary()) {
-            Object right = row.get("r");
-            // A literal right-hand side is how a credit's own value gets into a comparison —
-            // "shows LC-2024-0031". It names no document, so there is nothing to resolve.
-            boolean literal = right instanceof Map<?, ?> m
-                    && ((Map<String, Object>) m).get("literal") != null;
-            if (!literal) operand(right, "right", problems);
+        // Both sides ranging over every document is a cross product nobody authored and
+        // nobody could read. Caught here rather than silently taking the left, so a planner
+        // that writes it is told rather than half-obeyed.
+        if (row.left().wildcard() && row.right().wildcard()) {
+            problems.add("both sides read every document, which compares nothing to nothing");
+            return;
+        }
+
+        operand(row.left(), "left", problems);
+        // A literal right-hand side is how a credit's own value gets into a comparison —
+        // "shows LC-2024-0031". It names no document, so there is nothing to resolve.
+        if (!op.unary() && !row.right().isLiteral()) {
+            operand(row.right(), "right", problems);
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private void operand(Object operand, String side, List<String> problems) {
-        if (!(operand instanceof Map<?, ?> raw)) {
-            problems.add("the " + side + " side is missing");
+    private void operand(ConditionTree.Operand operand, String side, List<String> problems) {
+        if (operand.isLiteral()) return;
+
+        if (operand.isComputed()) {
+            compute(operand, side, problems);
             return;
         }
-        Map<String, Object> o = (Map<String, Object>) raw;
-        String doc = str(o.get("doc"));
-        String field = str(o.get("field"));
-        if (doc == null || field == null) {
+
+        if (!operand.names()) {
             problems.add("the " + side + " side names no document and field");
             return;
         }
-        if (!docTypes.known(doc)) {
-            problems.add(doc + " is not a document type in the dictionary");
+
+        // Ranging over the presentation. There is no document to check it against — that is
+        // the point — so what is checked is that the field is one somebody reads off
+        // something, since a wildcard over a field nothing extracts matches nothing for ever
+        // and looks exactly like a check that ran.
+        if (operand.wildcard()) {
+            if (documentsBinding(operand.field()).isEmpty()) {
+                problems.add(operand.field() + " is not read from any document, so reading it "
+                        + "off every document reads it off none");
+            }
             return;
         }
-        if (!fieldsOf(doc).contains(field)) {
-            problems.add(field + " is not read from " + doc);
+
+        if (!docTypes.known(operand.doc())) {
+            problems.add(operand.doc() + " is not a document type in the dictionary");
+            return;
         }
+        if (!fieldsOf(operand.doc()).contains(operand.field())) {
+            problems.add(operand.field() + " is not read from " + operand.doc());
+        }
+    }
+
+    /**
+     * A value the condition works out, checked before it is trusted to work anything out.
+     *
+     * <p>The name and the count, then every argument by the same rules — an argument is an
+     * operand, so {@code date_plus(BOL.on_board_date, 21)} is checked exactly as the two
+     * operands it is made of.
+     */
+    private void compute(ConditionTree.Operand operand, String side, List<String> problems) {
+        ConditionFn fn = operand.fn();
+        if (fn == null) {
+            problems.add("the " + side + " side computes something with a function this "
+                    + "examination does not have");
+            return;
+        }
+        if (!fn.accepts(operand.args().size())) {
+            problems.add(fn.arityComplaint(operand.args().size()));
+            return;
+        }
+        for (ConditionTree.Operand arg : operand.args()) {
+            operand(arg, side, problems);
+        }
+    }
+
+    /** Every document the dictionary says one field is readable from. */
+    private Set<String> documentsBinding(String fieldKey) {
+        Set<String> docs = new LinkedHashSet<>();
+        if (fieldKey == null) return docs;
+        for (CheckCatalog.DocTypeDef d : docTypes.all()) {
+            if (fieldsOf(d.code()).contains(fieldKey)) docs.add(d.code());
+        }
+        return docs;
     }
 
     /** Every field key the dictionary says is readable off one document. */
@@ -187,40 +232,41 @@ public class RuleCompiler {
         return sb.toString();
     }
 
-    /** The comparisons a rule may use. The judgement four are deliberately absent. */
+    /**
+     * The comparisons a rule may use. The judgement four are deliberately absent.
+     *
+     * <p>Generated from the enum rather than described again here. There used to be a
+     * hand-written map of sixteen wire names to sixteen sentences sitting in this class, a
+     * second list of the same names with different wording in the browser, and the enum —
+     * three copies of one vocabulary, kept in step by hand.
+     */
     public String operators() {
-        Map<String, String> described = new LinkedHashMap<>();
-        described.put("eq", "text is the same");
-        described.put("ne", "text differs");
-        described.put("contains", "the left text contains the right");
-        described.put("oneof", "the left value is one of a comma-separated right list");
-        described.put("matches", "the left text matches the right regular expression");
-        described.put("nmatches", "the left text does not match the right regular expression");
-        described.put("n_eq", "amounts are equal");
-        described.put("lte", "the left amount is at most the right");
-        described.put("gte", "the left amount is at least the right");
-        described.put("within_pct", "the left amount is within tol percent of the right");
-        described.put("d_eq", "the dates are the same day");
-        described.put("d_lte", "the left date is on or before the right");
-        described.put("d_gte", "the left date is on or after the right");
-        described.put("d_within", "the left date is within tol days of the right");
-        described.put("present", "the left field is stated at all (no right side)");
-        described.put("absent", "the left field is not stated (no right side)");
-
         StringBuilder sb = new StringBuilder();
-        for (Operator o : Operator.values()) {
+        for (Operator o : Operator.authorable()) {
             if (!o.decidable()) continue;
-            String note = described.get(o.wire());
             sb.append("    ").append(o.wire());
-            if (note != null) sb.append(" — ").append(note);
+            if (o.describe() != null) sb.append(" — ").append(o.describe());
+            if (o.usesTol()) sb.append(" (reads tol)");
             sb.append('\n');
         }
         return sb.toString();
     }
 
-    private static String str(Object o) {
-        if (o == null) return null;
-        String s = String.valueOf(o).strip();
-        return s.isEmpty() ? null : s;
+    /**
+     * The values a condition may work out, rather than read.
+     *
+     * <p>Without these, UCP 600 art. 14(c) cannot be written down: there is no field called
+     * "twenty-one days after the on-board date", so the demand went to a model and came back
+     * as an opinion about arithmetic. There are eight of them and a planner may use those
+     * eight, which is what keeps a compiled rule something the compiler can check.
+     */
+    public String functions() {
+        StringBuilder sb = new StringBuilder();
+        for (ConditionFn f : ConditionFn.all()) {
+            sb.append("    ").append(f.wire())
+              .append(f.arity() < 0 ? "(a, b, …)" : f.arity() == 1 ? "(a)" : "(a, b)")
+              .append(" — ").append(f.describe()).append('\n');
+        }
+        return sb.toString();
     }
 }

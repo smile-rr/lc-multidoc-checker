@@ -133,6 +133,7 @@ helix:
         "[extract.doc.md]": 90d
         "[plan.requirements]": 30d
         "[judge.rule]": 30d
+        "[judge.agent]": 30d
       purge-cron: "0 30 3 * * *"
 
   # --- Document handling --------------------------------------------------
@@ -170,6 +171,8 @@ helix:
       # document that straddles the boundary stays one document.
       segment: { max-long-edge-px: 800,  max-pages: 40 }
       extract: { max-long-edge-px: 1600, max-pages: 12 }
+      # Scanned credit → SWIFT dump. Needs to read tags; same budget as extract.
+      transcribe: { max-long-edge-px: 1600, max-pages: 12 }
       # Only when a human disputes what the model read.
       forensic: { max-long-edge-px: 2600, max-pages: 4 }
 
@@ -254,12 +257,13 @@ helix:
   # Domain code asks for a role, never a slot. More than one slot on a role means
   # consensus: they run in parallel and vote, first slot breaking ties.
   roles:
-    segment:   [vlm-1]
-    read-text: [llm-1]
-    extract:   [vlm-1]
-    plan:      [llm-1]
-    judge:     [llm-1]
-    narrate:   [llm-1]
+    segment:    [vlm-1]
+    read-text:  [llm-1]
+    extract:    [vlm-1]
+    transcribe: [vlm-1]
+    plan:       [llm-1]
+    judge:      [llm-1]
+    narrate:    [llm-1]
 
   # --- lc-check -----------------------------------------------------------
   check:
@@ -283,6 +287,31 @@ helix:
       #   db pool   — maximum-pool-size is 10, shared with everything else
       # Raise it only with all three in view.
       concurrency: 4
+    execute:
+      # How many examiners are asked at once.
+      #
+      # The judged checks are grouped by the remit they fall in — time & availability,
+      # transport, goods & pricing, the document set — and each group is ONE call
+      # answering all of its checks, instead of one call per check each carrying the
+      # whole presentation again.
+      #
+      # The first group runs ALONE and the rest fan out behind it. That is not
+      # timidity: every group's prompt opens with the same fact sheet, and a provider
+      # only holds that prefix once a call carrying it has returned. Firing all of
+      # them together sends the same page of facts N times and is billed N times —
+      # the same trap the three vision passes within one document avoid, for the same
+      # reason. Change this to "all in parallel" and the bill goes up, not down.
+      concurrency: 3
+      # How many checks one examiner is asked about at once. A group is one answer
+      # with one entry per check, and a long list is where entries start going
+      # missing. A missing entry is recorded as DOUBT rather than lost — but it is
+      # still a question that cost money and was not answered.
+      group-size: 8
+      # Whether an examiner is given the text of the articles their remit answers to,
+      # rather than their numbers. A model asked to apply "UCP 600 art. 20" is being
+      # asked what it remembers; one given the article is being asked to read. Costs
+      # a few hundred tokens per group, per case.
+      anchors: true
     agent:
       # Hard cap on an agentic rule's tool-calling turns. A per-rule
       # max_iterations may lower this; nothing raises it.
@@ -298,6 +327,17 @@ helix:
       # provider mishandles it — the plan is then a plain structured call and the run
       # still works, less well.
       thinking: ${HELIX_PLAN_THINKING:true}
+      # Completions the requirement reader may use, tools included.
+      #
+      # It is a tool loop for one reason: it writes conditions and cannot tell whether
+      # what it wrote will be accepted. `check_condition` tells it, before it commits,
+      # and the alternative is a silently demoted card that costs a model call on
+      # every presentation for ever.
+      #
+      # Four: one to draft, one or two to check and fix, one to answer. A budget spent
+      # is treated as NO ANSWER — the dictionary rules still stand and the step records
+      # that the credit's own conditions were not read, which is the honest outcome.
+      max-turns: 4
 
   # --- Governance ---------------------------------------------------------
   governance:

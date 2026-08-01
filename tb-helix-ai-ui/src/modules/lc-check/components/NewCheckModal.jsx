@@ -23,15 +23,28 @@ import * as api from '../api/lcCheckApi'
 // credit *means* is read in Intake, where it can report itself as it goes.
 
 const ACCEPT = {
-  credit: '.txt,.swift,text/plain',
+  credit: '.txt,.swift,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   bundle: '.pdf,.tif,.tiff,application/pdf,image/tiff',
 }
+
+const CREDIT_EXT = /\.(txt|swift|pdf|docx)$/i
+const BUNDLE_EXT = /\.(pdf|tif|tiff)$/i
 
 // The fixtures name the files a demo would have dropped. In mock there is no
 // file to pick, so the dialog behaves as it always has — click a slot, it fills.
 const DEMO = Object.fromEntries(INTAKE_SLOTS.map((s) => [s.id, { name: s.fileName, size: null }]))
 
 const sizeOf = (file) => (file.size == null ? null : `${Math.max(1, Math.round(file.size / 1024))} KB`)
+
+const acceptOf = (slotId, file) => {
+  if (slotId === 'credit') return CREDIT_EXT.test(file.name)
+  if (slotId === 'bundle') return BUNDLE_EXT.test(file.name)
+  return true
+}
+
+const rejectOf = (slotId) => (slotId === 'credit'
+  ? 'Credit must be .txt, .swift, .pdf or .docx.'
+  : 'Presentation must be .pdf, .tif or .tiff.')
 
 export default function NewCheckModal({ open, onClose, onCreated }) {
   const [files, setFiles] = useState({})
@@ -56,6 +69,12 @@ export default function NewCheckModal({ open, onClose, onCreated }) {
   // came from, and a case created by mistake is deleted rather than waited out.
 
   const put = (slotId, file) => {
+    // accept= filters the picker; drag-and-drop does not. Reject here so a Word
+    // invoice dropped on the credit slot does not become a case that fails later.
+    if (!acceptOf(slotId, file)) {
+      setFailed(rejectOf(slotId))
+      return
+    }
     setFiles((s) => ({ ...s, [slotId]: { name: file.name, size: sizeOf(file), file } }))
     setFailed(null)
   }
@@ -101,7 +120,7 @@ export default function NewCheckModal({ open, onClose, onCreated }) {
       open={open}
       onClose={onClose}
       title="New Check"
-      subtitle="Drop the credit and the presentation. You start the review on the next screen."
+          subtitle="Drop the credit (.txt / .pdf / .docx) and the presentation. You start the review on the next screen."
       footer={
         <>
           <span style={{ fontSize: 12.5, color: failed ? 'var(--status-error)' : 'var(--me-grey-70)' }}>{hint}</span>

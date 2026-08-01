@@ -51,5 +51,14 @@ public record RunState(
         int remaining,
         int humanReview,
         String destination,
+        /**
+         * Who presses next — {@code auto} or {@code step}.
+         *
+         * <p>On the case rather than in the browser, because it is a fact about how this
+         * examination is being conducted. It lived in one tab's reducer, initialised to
+         * {@code auto} on every mount, so the one mode you choose <em>because</em> you want
+         * to be asked was the one that did not survive a reload.
+         */
+        String mode,
         List<String> completedAreaIds) {
 }

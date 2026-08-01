@@ -389,7 +389,7 @@
   ],
   "checks": [
     {
-      "id": "REQ-41A",
+      "id": "AVAIL-41A",
       "domain": "Time & availability",
       "cases": 4,
       "severity": "CRITICAL",
@@ -416,7 +416,7 @@
       "checkType": "AGENT"
     },
     {
-      "id": "REQ-38",
+      "id": "TRANSF-38",
       "domain": "Time & availability",
       "cases": 1,
       "draft": true,
@@ -803,7 +803,7 @@
     }
   },
   "checkDefaults": {
-    "REQ-41A": {
+    "AVAIL-41A": {
       "fields": [
         "Place of presentation",
         "Available with",
@@ -815,7 +815,7 @@
         "Draft / bill of exchange"
       ]
     },
-    "REQ-38": {
+    "TRANSF-38": {
       "fields": [
         "Available with",
         "Beneficiary name",

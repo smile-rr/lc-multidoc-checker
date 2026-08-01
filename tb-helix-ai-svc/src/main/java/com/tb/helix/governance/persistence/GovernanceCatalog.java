@@ -57,6 +57,42 @@ public class GovernanceCatalog implements CheckCatalog {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
+    public List<AgentCard> agents() {
+        return jdbc.query("""
+                SELECT body, ordinal
+                  FROM helix_gov.v_agent
+                 ORDER BY ordinal, id
+                """, (rs, i) -> {
+            Map<String, Object> a = document(rs.getString("body"));
+            Map<String, Object> config = a.get("config") instanceof Map<?, ?> c
+                    ? (Map<String, Object>) c : Map.of();
+
+            // Authored where an author has said so; the display category otherwise. `cat` was
+            // the only thing that named a domain before this was consumed, and it happens to
+            // match — but it is a heading on a card, and a heading being load-bearing is how
+            // renaming one for the screen quietly stops an examiner being asked anything.
+            List<String> domains = strings(a.get("domains"));
+            if (domains.isEmpty() && a.get("cat") != null) domains = List.of(str(a.get("cat")));
+
+            List<AgentCard.Anchor> anchors = new java.util.ArrayList<>();
+            if (config.get("anchors") instanceof List<?> list) {
+                for (Object o : list) {
+                    if (o instanceof Map<?, ?> m) {
+                        Map<String, Object> anchor = (Map<String, Object>) m;
+                        anchors.add(new AgentCard.Anchor(str(anchor.get("ref")), str(anchor.get("desc"))));
+                    }
+                }
+            }
+
+            return new AgentCard(
+                    str(a.get("id")), str(a.get("name")), str(a.get("domainId")),
+                    domains, str(a.get("summary")), str(a.get("behavior")),
+                    List.copyOf(anchors), rs.getInt("ordinal"));
+        });
+    }
+
+    @Override
     public List<DocTypeDef> docTypes() {
         return jdbc.query("""
                 SELECT body, role, before_reading
@@ -98,9 +134,22 @@ public class GovernanceCatalog implements CheckCatalog {
                 kind);
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Matched with spacing and case ignored. A check cites {@code UCP600 Art.18} and an
+     * agent's anchor says {@code UCP 600 Art. 18} — one citation, two spellings, and an exact
+     * match returned nothing for the second while looking exactly like an article the book
+     * did not have. Neither spelling is wrong, so neither is corrected; the lookup is what
+     * gives.
+     */
     @Override
     public String articleText(String code) {
-        return jdbc.queryForList("SELECT body FROM helix_gov.v_article WHERE code = ?", String.class, code)
+        if (code == null) return "";
+        return jdbc.queryForList("""
+                SELECT body FROM helix_gov.v_article
+                 WHERE lower(replace(code, ' ', '')) = lower(replace(?, ' ', ''))
+                """, String.class, code)
                 .stream().findFirst().orElse("");
     }
 
@@ -122,9 +171,16 @@ public class GovernanceCatalog implements CheckCatalog {
                 strings(c.get("refs")),
                 strings(c.get("fields")),
                 strings(c.get("docs")),
-                // The rule's condition tree, as the console authored it. Null for a judged
-                // check, which has no conditions to evaluate — its wording IS the check.
-                c.get("rule") instanceof Map<?, ?> rule ? rule.get("groups") : null);
+                // The whole rule, as the console authored it — version, scope, the Raise line
+                // and the groups. Null for a judged check, which has no conditions to
+                // evaluate: its wording IS the check.
+                //
+                // It used to hand over `groups` alone, which dropped two things the
+                // examination wants. The version, so a tree written for a later reader can
+                // be refused rather than half-run; and the author's Raise line, which is the
+                // wording a discrepancy is stated in and was being replaced by a sentence
+                // this service generated from the values.
+                c.get("rule") instanceof Map<?, ?> rule ? rule : null);
     }
 
     @SuppressWarnings("unchecked")

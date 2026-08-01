@@ -61,8 +61,11 @@ dependencies {
     // --- Documents -----------------------------------------------------------
     // TwelveMonkeys teaches ImageIO to read TIFF, which the JDK cannot do for the
     // CCITT G4 and LZW frames that scanned bank documents actually arrive as.
+    // POI reads the Word form a credit sometimes arrives in (pasted SWIFT dump);
+    // PDFBox already covers the text-layer PDF case via PDFTextStripper.
     implementation("org.apache.pdfbox:pdfbox:3.0.7")
     implementation("com.twelvemonkeys.imageio:imageio-tiff:3.12.0")
+    implementation("org.apache.poi:poi-ooxml:5.4.1")
 
     // No SWIFT library. A message is split on `:NN[A]:` by SwiftReader — twenty lines of
     // regex — and what the fields *mean* is read by a model, so a parser that models the

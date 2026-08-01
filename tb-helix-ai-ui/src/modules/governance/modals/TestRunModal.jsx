@@ -47,7 +47,7 @@ export default function TestRunModal({ v }) {
               <Badge tone="error">2 discrepancies</Badge>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, fontSize: 13, lineHeight: 1.6, color: 'var(--me-grey)' }}>
-              <div><strong style={{ color: 'var(--status-error)' }}>1. Critical — Availability / place of expiry.</strong> The credit is available with any bank, yet expiry is stated in London while shipment and presentation occur in Singapore. <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--me-grey-70)' }}>(REQ-41A · UCP 600 art. 6)</span></div>
+              <div><strong style={{ color: 'var(--status-error)' }}>1. Critical — Availability / place of expiry.</strong> The credit is available with any bank, yet expiry is stated in London while shipment and presentation occur in Singapore. <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--me-grey-70)' }}>(AVAIL-41A · UCP 600 art. 6)</span></div>
               <div><strong style={{ color: '#946400' }}>2. Major — Expiry buffer.</strong> Presentation location is cross-border from the beneficiary and the expiry date leaves no courier buffer — operational risk of a late presentation. <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--me-grey-70)' }}>(DATE-31D · UCP 600 art. 6(d))</span></div>
               <div style={{ color: 'var(--me-grey-70)' }}>All other conditions across three groups passed. <strong style={{ color: 'var(--me-ink)' }}>Recommendation:</strong> raise the availability discrepancy and warn on the buffer.</div>
             </div>

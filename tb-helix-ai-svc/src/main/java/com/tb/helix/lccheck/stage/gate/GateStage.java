@@ -9,6 +9,7 @@ import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.rule.RuleEvaluator;
+import com.tb.helix.lccheck.service.Comparisons;
 import com.tb.helix.lccheck.service.DocumentTypes;
 import com.tb.helix.lccheck.pipeline.*;
 import com.tb.helix.lccheck.pipeline.StageContext;
@@ -63,14 +64,17 @@ public class GateStage implements Stage {
     private final DocumentTypes docTypes;
 
     private final RuleEvaluator rules;
+    private final Comparisons comparisons;
     private final com.fasterxml.jackson.databind.ObjectMapper json;
 
     public GateStage(CheckCatalog catalog, CaseStore cases, DocumentTypes docTypes,
-                     RuleEvaluator rules, com.fasterxml.jackson.databind.ObjectMapper json) {
+                     RuleEvaluator rules, Comparisons comparisons,
+                     com.fasterxml.jackson.databind.ObjectMapper json) {
         this.catalog = catalog;
         this.cases = cases;
         this.docTypes = docTypes;
         this.rules = rules;
+        this.comparisons = comparisons;
         this.json = json;
     }
 
@@ -153,34 +157,50 @@ public class GateStage implements Stage {
             // having been read. That constraint is real and it is upheld elsewhere: a gate
             // qualifies only when every operand reads a document marked available before
             // reading. It never needed a second implementation of comparison.
-            RuleEvaluator.Result result = rules.evaluate(parseRule(gate.rule()), readings(ctx));
+            RuleEvaluator.Result result = rules.evaluate(parseRule(gate.rule()), readings(ctx), presented(ctx));
 
-            if (result.failed()) {
-                String statement = statement(result, expiry, presented);
-                cases.upsertFinding(ctx.caseId(), Rows.of(
-                        "id", "gate-" + gate.id(), "checkId", gate.id(),
-                        "outcome", "DISCREPANT", "area", "Time & availability", "areaId", "gate",
-                        "docId", docTypes.scheduleCode(), "title", gate.title(),
-                        "statement", statement, "statementSource", "derived",
-                        "detail", result.why(),
-                        "expected", "Presented on or before " + expiry,
-                        "quote", "Presented " + presented,
-                        "reason", String.join(", ", gate.refs()),
-                        "failedRow", result.failedRowIndex(),
-                        "comparison", result.rows().stream().map(r -> Rows.of(
-                                "id", r.id(), "op", r.op(), "label", r.label(), "outcome", r.outcome().name(),
-                                "left", r.left(), "right", r.right(), "why", r.why())).toList(),
-                        "creditAnchorId", "tag-31D",
-                        "confidence", "HIGH"));
-                log.info("Threshold check {} failed on case {}: {}",
-                        gate.id(), ctx.caseId(), result.why());
-            } else if (result.outcome() == RuleEvaluator.Outcome.INCONCLUSIVE) {
-                // A threshold check with a missing operand — the covering schedule was not
-                // presented, most often. Reported as unsettled rather than passed: a missing
-                // input is not evidence that the presentation was in time.
-                log.info("Threshold check {} could not be settled on case {}: {}",
-                        gate.id(), ctx.caseId(), result.why());
-            }
+            // A finding for every outcome, not only for a failure.
+            //
+            // This wrote one when the rule FAILED and logged the other two. So a threshold
+            // check that could not be settled — the covering schedule was not presented,
+            // which is the common case — left NOTHING on the case, and a screen reading "no
+            // finding" showed it as clean. A threshold check reporting a presentation it
+            // never managed to examine as clean is the worst answer this system can give,
+            // and it was the answer for every unsettled gate.
+            var quoted = result.firstUnsettled().orElse(null);
+            cases.upsertFinding(ctx.caseId(), Rows.of(
+                    "id", "gate-" + gate.id(), "checkId", gate.id(),
+                    "outcome", result.outcomeWord(),
+                    "outcomeReason", result.reasonWord(),
+                    "area", "Time & availability", "areaId", "gate",
+                    "docId", quoted == null || quoted.left().doc() == null
+                            ? docTypes.scheduleCode() : quoted.left().doc(),
+                    "title", gate.title(),
+                    // Only a discrepancy gets refusal wording. A DOUBT never reaches a
+                    // notice, and drafting one for it would put a ground on the file that
+                    // nothing established.
+                    "statement", result.failed() ? statement(result) : null,
+                    "statementSource", "derived",
+                    "detail", result.why(),
+                    // Off the row that actually broke, or the first one left unsettled. Both
+                    // of these used to be written out longhand about expiry — "Presented on
+                    // or before <date>" — on every threshold check there was, because there
+                    // was only ever one. A second gate about where the presentation was made
+                    // would have reported itself as a date problem.
+                    "expected", quoted == null ? null
+                            : quoted.right() == null ? quoted.label() : quoted.right().value(),
+                    "quote", quoted == null ? null : quoted.left().value(),
+                    "reason", String.join(", ", gate.refs()),
+                    "failedRow", result.failedRowIndex(),
+                    "comparison", comparisons.of(result),
+                    // The tag the credit states it in, looked up from the fact the
+                    // comparison read rather than asserted. `tag-31D` was hardcoded, so
+                    // the viewer highlighted the expiry line whatever the gate compared.
+                    "creditAnchorId", creditAnchor(ctx, quoted),
+                    "confidence", result.outcome() == RuleEvaluator.Outcome.INCONCLUSIVE
+                            ? "LOW" : "HIGH"));
+            log.info("Threshold check {} on case {}: {} — {}",
+                    gate.id(), ctx.caseId(), result.outcomeWord(), result.why());
 
             // Every verdict, in the plan's vocabulary rather than the evaluator's. This is
             // what the planner reads, and it carries the author's own `onFail` so the planner
@@ -199,25 +219,81 @@ public class GateStage implements Stage {
         }
 
         boolean anyFailed = verdicts.stream().anyMatch(v -> "FAIL".equals(v.get("outcome")));
-        return StepResult.ok(Rows.of(
+        long unsettled = verdicts.stream()
+                .filter(v -> "INCONCLUSIVE".equals(v.get("outcome"))).count();
+
+        // `done` rather than `ok`, and the difference is not cosmetic: a step's note is what
+        // sets `refresh` on the stream, and `refresh` is what tells the browser to refetch.
+        //
+        // This returned `ok` with no note — so the gate wrote its findings and its plan rows
+        // and then told the browser that nothing had landed. The discrepancies sat invisible
+        // until `requirements` finished twelve seconds later, or `govern` twenty-nine, and an
+        // officer watching a case that had already found a ground for refusal saw an empty
+        // screen and a spinner.
+        //
+        // There is nothing to wait for. A threshold verdict is final when the threshold check
+        // ends: the planner may overrule what a failure MEANS — whether the rest of the run is
+        // worth doing — but it never rewrites the finding. The consequence is pending; the
+        // outcome is not.
+        String note = gates.size() + (gates.size() == 1 ? " threshold check" : " threshold checks")
+                + (anyFailed ? " — discrepancy found" : "")
+                + (unsettled > 0 ? " — " + unsettled + " could not be settled" : "");
+        return StepResult.done(note, Rows.of(
                 "gates", gates.size(),
                 "verdict", anyFailed ? "FAIL" : "PASS",
                 "results", verdicts));
     }
 
     /**
-     * The refusal wording, which has to name dates rather than fields.
+     * The refusal wording, in the register a notice is written in.
      *
-     * <p>The evaluator's reason is written for the workbench — "Presentation date on the
-     * covering schedule 2026-08-02 is after Expiry date on the letter of credit 2026-07-30".
-     * A notice under UCP 600 art. 16 says the same thing in the register a bank sends, and
-     * the two are not the same sentence.
+     * <p>The author's own Raise line, upper-cased. The evaluator's reason is written for the
+     * workbench — "Presentation date on CS 2026-08-02 is after Expiry date on LC 2026-07-30"
+     * — and a notice under UCP 600 art. 16 says the same thing differently; that difference
+     * is the author's to write, and they did, in the box labelled Raise.
+     *
+     * <p>It used to be a sentence about expiry composed here, for every threshold check
+     * there was. That held while there was one. The moment a bank authors a second gate the
+     * composed sentence is about the wrong thing, and it is the sentence that goes out.
      */
-    private String statement(RuleEvaluator.Result result, LocalDate expiry, LocalDate presented) {
-        if (expiry != null && presented != null) {
-            return "PRESENTATION MADE ON " + presented + " AFTER CREDIT EXPIRY " + expiry + ".";
+    private String statement(RuleEvaluator.Result result) {
+        String raise = result.raise();
+        return raise == null ? null : raise.toUpperCase(java.util.Locale.ROOT);
+    }
+
+    /**
+     * The line in the credit a failed threshold check hangs off.
+     *
+     * <p>Taken from the fact the comparison actually read: intake records which tag each
+     * credit field came from, so the anchor is already known and does not have to be mapped
+     * from a field key to a tag in a table that would need maintaining.
+     */
+    private String creditAnchor(StageContext ctx, RuleEvaluator.RowResult failure) {
+        if (failure == null) return null;
+        for (var side : new RuleEvaluator.Side[] { failure.right(), failure.left() }) {
+            if (side == null || side.doc() == null || side.field() == null) continue;
+            for (ReadRows.Fact f : cases.facts(ctx.caseId())) {
+                if (side.doc().equals(f.docCode()) && side.field().equals(f.fieldKey())
+                        && f.anchorId() != null) {
+                    return f.anchorId();
+                }
+            }
         }
-        return String.valueOf(result.why()).toUpperCase();
+        return null;
+    }
+
+    /**
+     * Every document code this case holds.
+     *
+     * <p>A threshold check reads the credit and the covering schedule, and the schedule is
+     * the one that routinely is not there. "No CS was presented" and "the CS was presented
+     * but no presentation date was read from it" are the two ways this gate goes unsettled,
+     * and they are not the same conversation.
+     */
+    private java.util.Set<String> presented(StageContext ctx) {
+        java.util.Set<String> out = new java.util.LinkedHashSet<>();
+        for (ReadRows.Document d : cases.documents(ctx.caseId())) out.add(d.docCode());
+        return out;
     }
 
     /** The case's facts, in the shape the evaluator asks for. Mapping happens here, at the

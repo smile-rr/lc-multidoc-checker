@@ -14,7 +14,8 @@ import java.util.Objects;
  * cache, and the cache is consulted before any of this is built. A request that carried a
  * PDF and rendered it internally would render on every cache hit.
  *
- * @param role       {@link LlmRole#SEGMENT} or {@link LlmRole#EXTRACT}
+ * @param role       {@link LlmRole#SEGMENT}, {@link LlmRole#EXTRACT} or
+ *                   {@link LlmRole#TRANSCRIBE}
  * @param pages      PNG bytes, in page order. Order is meaningful — a two-page invoice
  *                   read backwards yields plausible nonsense.
  * @param prompt     the extraction spec: which fields, of what type, with what provenance

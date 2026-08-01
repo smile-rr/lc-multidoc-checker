@@ -211,15 +211,22 @@ function Row({ r, check }) {
         groups={r.opGroups.map((og) => ({ label: og.label, options: og.ops }))}
       />
       {r.showRight && <Operand o={r.right} flag={r.incomplete} />}
+      {/* Offered wherever there is a right-hand side, because that is where an author
+          reaches for it — but only three operators read one. On the rest it is inert,
+          and it says so rather than reading like an instruction: a qualifier of
+          "corresponds, not identical" beside `equals` is discarded, and the comparison
+          run is a strict string equality. */}
       {r.showTol && (
         <input
           className="inline-edit"
           value={r.tol}
           onChange={r.onChangeTol}
           onFocus={check.onFocus}
-          placeholder="qualifier"
-          title="Tolerance or qualifier — 5%, 21 calendar days, corresponds not identical"
-          style={{ flex: '0 1 160px', minWidth: 96, height: 28, padding: '0 7px', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey)' }}
+          placeholder={r.tolUsed ? 'qualifier' : 'note (not read)'}
+          title={r.tolUsed
+            ? 'Tolerance — 5%, 21 calendar days. This operator reads it.'
+            : `“${r.opLabel}” does not read a qualifier. Anything typed here is a note for a reader, not part of the comparison.`}
+          style={{ flex: '0 1 160px', minWidth: 96, height: 28, padding: '0 7px', fontFamily: 'var(--font-mono)', fontSize: 11, color: r.tolUsed ? 'var(--me-grey)' : 'var(--me-grey-50)', fontStyle: r.tolUsed ? 'normal' : 'italic' }}
         />
       )}
       {check.editing && (
@@ -229,9 +236,26 @@ function Row({ r, check }) {
   )
 }
 
-// One side of a condition: a dictionary field read from a named document, or a
-// fixed value / expression typed in place.
+// One side of a condition: a dictionary field read from a named document, a fixed
+// value typed in place, or a value the condition works out for itself.
+//
+// The third is shown and not edited. The planner writes them — "within 21 days of
+// shipment" is an on-board date, a number and an addition, and no field holds the
+// answer — and composing one here means picking a function, then operands for its
+// arguments, then operands for theirs. That is an editor of its own. Rendering it
+// read-only is the honest interim: an author can see exactly what will be compared
+// and can replace the whole operand, which is the change they would want anyway.
 function Operand({ o, flag }) {
+  if (o.isComputed) {
+    return (
+      <span
+        title="Worked out from the presentation. Written by the planner; replace the operand to change it."
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, maxWidth: 300, border: '1px dashed var(--me-blue-20)', background: 'var(--me-blue-20)', borderRadius: 6, padding: '4px 9px', fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--me-blue-deep)' }}
+      >
+        <span style={ellipsis}>{o.computedText}</span>
+      </span>
+    )
+  }
   if (o.isLiteral) {
     return (
       <input

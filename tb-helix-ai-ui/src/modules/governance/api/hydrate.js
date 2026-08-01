@@ -22,6 +22,8 @@
 // onto its own fixture behind a banner nobody could explain.
 // ===========================================================================
 
+import { adopt as adoptOperators } from '@shared/lib/operators'
+
 /** Replaces an array's contents, keeping the reference every importer holds. */
 function refill(target, items) {
   if (!Array.isArray(target)) return
@@ -126,6 +128,14 @@ export function hydrateSeed(seed, data) {
   // refuse the delete; the console maintains the reference now, and this is how it
   // finds out where it did not.
   seed.dangling = data.dangling ?? []
+
+  // What a condition may compare with, straight off the service's own enum. The
+  // console used to carry its own list of twenty operators with its own labels,
+  // its own grouping and its own idea of which ones take a qualifier — three
+  // judgements about a vocabulary it does not own. An operator added to the
+  // service now appears here without an edit, and one that is a judgement rather
+  // than a comparison says so.
+  adoptOperators(data.conditions)
 
   return seed
 }

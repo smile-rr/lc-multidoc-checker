@@ -11,21 +11,8 @@ import Notice from '@shared/ds/Notice'
 import { toneOf } from '@shared/lib/tone'
 import { SOURCE_META } from '../data/checkSpecs'
 import OutcomeCell from './OutcomeCell'
+import ConditionRows from './ConditionRows'
 import { useCase } from '../state/CaseContext'
-
-
-// One side of a condition: a dictionary field read off a named document, or a
-// value derived on the spot.
-function Operand({ o }) {
-  if (!o) return null
-  if (o.literal) return <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--me-ink)', background: 'var(--me-grey-08)', borderRadius: 5, padding: '2px 6px' }}>{o.literal}</span>
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 5, background: 'var(--me-grey-08)', border: '1px solid var(--me-grey-15)', borderRadius: 6, padding: '2px 7px' }}>
-      <span style={{ fontWeight: 600, color: 'var(--me-ink)' }}>{o.field}</span>
-      <span style={{ fontSize: 10.5, color: 'var(--me-grey-70)' }}>{o.doc}</span>
-    </span>
-  )
-}
 
 const SEVERITY_TONE = { CRITICAL: 'error', MAJOR: 'warning', MINOR: 'neutral' }
 
@@ -55,12 +42,14 @@ export default function CheckSpecCard({ check, outcome, finding, onOpenFinding }
   const refs = spec.refs ?? []
   const sevTone = toneOf(SEVERITY_TONE[spec.severity] ?? 'neutral')
   const rd = check.ruleDef
-  // The condition rows, wherever they came from. Fixtures resolve them client-side
-  // into `ruleDef`, with each operand's extracted value attached; the service sends
-  // the condition itself on `spec.rows`. A requirement the planner compiled out of
-  // :47A: exists only in the second form — it is in no dictionary — and it is the
-  // one whose working most needs reading, because nobody reviewed it before it ran.
-  const rows = rd?.rows ?? spec.rows ?? []
+  // The condition, wherever it came from — `spec.condition` against the service,
+  // resolved client-side into `ruleDef` against the fixtures. Both are the same
+  // ComparisonView the review screen draws, unsaturated: every operand named and
+  // nothing read yet. A requirement the planner compiled out of :47A: exists in no
+  // dictionary, and it is the one whose working most needs reading, because nobody
+  // reviewed it before it ran.
+  const condition = spec.condition ?? rd ?? null
+  const rows = condition?.rows ?? []
   // Whether this is settled by comparing fields or by an agent reading. It decides
   // what the card can honestly show, and which tab the middle one is.
   const isExact = check.tier === 'exact' && rows.length > 0
@@ -196,27 +185,20 @@ export default function CheckSpecCard({ check, outcome, finding, onOpenFinding }
                 {/* Fixture-only detail. The service sends the condition and not a
                     sentence about its scope, so this is absent rather than blank
                     where it has nothing to say. */}
-                {rd?.scope ? (
+                {condition?.scope ? (
                   <Field label="Applies to">
-                    <span style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--me-ink)' }}>{rd.scope}</span>
+                    <span style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--me-ink)' }}>{condition.scope}</span>
                   </Field>
                 ) : null}
                 <Field label="Conditions">
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {rows.map((r, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 7, flexWrap: 'wrap', fontSize: 12.5 }}>
-                        {i > 0 && <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--me-grey-50)' }}>and</span>}
-                        <Operand o={r.l} />
-                        <span style={{ fontWeight: 600, color: 'var(--me-blue-deep)' }}>{r.op}</span>
-                        <Operand o={r.r} />
-                        {r.tol ? <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--me-grey-70)' }}>({r.tol})</span> : null}
-                      </div>
-                    ))}
-                  </div>
+                  {/* The same rows the review screen shows, before anything has been
+                      read. One component, so what the officer confirms on the plan is
+                      recognisably what they are shown afterwards. */}
+                  <ConditionRows condition={condition} compact />
                 </Field>
-                {rd?.message ? (
+                {condition?.message ? (
                   <Field label="Raises">
-                    <span style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--me-grey)' }}>{rd.message}</span>
+                    <span style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--me-grey)' }}>{condition.message}</span>
                   </Field>
                 ) : null}
               </>

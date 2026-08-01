@@ -103,7 +103,13 @@ export const byOutcome = (a, b) =>
  * once you know which kind it is. Each of these was a value of its own in the map
  * this replaces, and each names a different piece of work:
  *
- *   UNANSWERABLE     a check ran and could not conclude — a field to fix.
+ *   NOT_PRESENTED    a document the check reads is not in the bundle — the
+ *                    presentation's gap, and usually a missing-document discrepancy
+ *                    another check raises properly.
+ *   NOT_EXTRACTED    the document IS there and we did not read the field off it —
+ *                    OUR gap, and the only signal that gets extraction fixed.
+ *   UNANSWERABLE     something was read and cannot be used — a date that will not
+ *                    parse, an amount that is not a number.
  *   NO_RULE          nothing on the plan tests this — a rule to write in Governance.
  *   HUMAN_ONLY       the planner said before the run that only a person could settle it.
  *   NOT_REACHED      the plan ended before this ran. Still runnable.
@@ -122,9 +128,17 @@ export const REASON = {
     label: 'low confidence',
     tip: 'An agent formed a view and was not confident in it. Read the analysis before relying on it.',
   },
+  NOT_PRESENTED: {
+    label: 'not presented',
+    tip: 'A document this check reads is not in the bundle. Nothing was read because there was nothing to read — look for it as a missing document, not as a reading we got wrong.',
+  },
+  NOT_EXTRACTED: {
+    label: 'not extracted',
+    tip: 'The document is here and we did not read this field off it. That is our gap, not the presentation\u2019s — the value may well be on the page.',
+  },
   UNANSWERABLE: {
     label: 'unanswerable',
-    tip: 'A field this reads was not extracted. A missing input is not evidence of compliance.',
+    tip: 'A value was read and could not be used — a date that will not parse, an amount that is not a number. A missing input is not evidence of compliance.',
   },
   NO_RULE: {
     label: 'no rule',

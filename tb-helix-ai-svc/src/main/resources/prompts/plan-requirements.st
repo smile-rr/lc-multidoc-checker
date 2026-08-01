@@ -54,23 +54,48 @@ The shape:
   ]}]}
 
   logic     "all" — every row must hold — or "any"
-  l, r      an operand: {"doc": CODE, "field": KEY} using only the document codes
-            and field keys listed above, for that document. The right-hand side may
-            instead be {"literal": "..."} for a value stated in the credit itself.
+  l, r      an operand, in one of three forms (below)
   op        one of the operators listed above, and nothing else
-  tol       for within_pct and d_within only: the number, as a string
+  tol       for lte, within_pct and d_within only: the number, as a string.
+            Every other operator ignores it, so do not write instructions there.
+
+AN OPERAND IS ONE OF THREE THINGS
+
+  a field       {"doc": CODE, "field": KEY} — using only the document codes and
+                field keys listed above, for that document
+
+  a fixed value {"literal": "..."} — a value the credit itself states
+
+  a value you   {"expr": {"fn": NAME, "args": [ operand, operand ]}} — one of the
+  work out      functions listed above, over operands of any of these three forms
+
+Two things a `doc` may say beyond a document code:
+
+  "*"           every document that carries this field. Use it when the credit
+                says "on all documents" — one row, not one row per document you
+                guessed at. Only one side of a row may say "*".
 
 Write a rule when the requirement compares two things that are both extracted, or
-compares one extracted thing against a value the credit states. Examples:
+compares one extracted thing against a value the credit states, or against a value
+the functions can work out. Examples:
 
   "Invoice must show the credit number"
       contains — INV goods_description against the credit number as a literal
 
   "Beneficiary name on all documents to agree with field 59"
-      one row per document, eq against LC beneficiary
+      eq — {"doc": "*", "field": "beneficiary_name"} against LC beneficiary_name
 
   "Drafts to be drawn at 90 days sight"
       eq — BOE tenor against "90 DAYS SIGHT" as a literal
+
+  "Documents to be presented within 21 days of shipment"
+      d_lte — CS presentation_date against
+      {"expr": {"fn": "date_plus", "args": [
+          {"doc": "BOL", "field": "on_board_date"}, {"literal": "21"}]}}
+
+  "Invoice value to equal quantity times unit price"
+      n_eq — INV invoice_value against
+      {"expr": {"fn": "product_of", "args": [ … ]}}
 
 Leave `rule` null when the requirement asks for a judgement — whether a description
 "corresponds", whether two addresses are the same place, whether a document is

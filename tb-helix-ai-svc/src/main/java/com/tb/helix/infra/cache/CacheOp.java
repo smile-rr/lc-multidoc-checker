@@ -104,4 +104,28 @@ public final class CacheOp {
      */
     public static final String JUDGE_RULE = "judge.rule";
     public static final int    JUDGE_RULE_V = 1;
+
+    /**
+     * One examiner's whole remit against one set of facts.
+     *
+     * <p>Its own op rather than a version of {@link #JUDGE_RULE}, because the unit is
+     * different: a remit is several checks answered together, and its key carries which ones.
+     * The grain is coarser and hits a little less often — but the calls it stands in for were
+     * one per check, each carrying the same page of facts, so the trade is heavily in favour.
+     *
+     * <p>Keyed on the facts, the examiner, and the exact set of checks asked. Dropping one
+     * check from a group is a different question and gets a different answer, which is what
+     * keeps a re-plan from being served a conclusion about a check it no longer runs.
+     */
+    public static final String JUDGE_AGENT = "judge.agent";
+    public static final int    JUDGE_AGENT_V = 1;
+
+    /**
+     * A scanned credit PDF to plain SWIFT text.
+     *
+     * <p>Its own op: the prompt is about transcription, not field extraction, and must be
+     * tunable without invalidating {@link #EXTRACT_CREDIT} (the text reading that follows).
+     */
+    public static final String TRANSCRIBE_CREDIT = "transcribe.credit";
+    public static final int    TRANSCRIBE_CREDIT_V = 1;
 }

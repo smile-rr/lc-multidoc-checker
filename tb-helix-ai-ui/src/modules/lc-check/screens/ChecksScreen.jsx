@@ -374,7 +374,20 @@ export default function ChecksScreen({ onOpenFinding }) {
             </span>
           ))}
         </span>
-        {/* What it is doing right now, in the service's own words. */}
+        {/* Which step, and how far through — then what it is doing, in the service's
+            own words. The step first because it is the part that keeps moving: the
+            activity line can sit unchanged for seventeen seconds while `govern`
+            thinks, and a line that does not change is indistinguishable from a
+            stall. */}
+        {working && run.step ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, fontSize: 11.5, fontWeight: 600, color: 'var(--me-blue-deep)' }}>
+            <Spinner size={11} />
+            {run.step.key}
+            <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 500, color: 'var(--me-grey-70)' }}>
+              {run.step.index}/{run.step.total}
+            </span>
+          </span>
+        ) : null}
         {working && run.activity ? (
           <span style={{ ...ellipsis, fontSize: 11.5, color: 'var(--me-grey-70)', minWidth: 0 }}>{run.activity}</span>
         ) : null}

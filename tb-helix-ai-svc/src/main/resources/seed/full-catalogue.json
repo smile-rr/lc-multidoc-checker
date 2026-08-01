@@ -17,22 +17,82 @@
       "beforeReading": true
     },
     {
+      "key": "BOE",
+      "name": "Draft / bill of exchange",
+      "ordinal": 2,
+      "description": "The draft drawn under the credit."
+    },
+    {
       "key": "INV",
       "name": "Commercial invoice",
-      "ordinal": 2,
+      "ordinal": 3,
       "description": "Issued by the beneficiary; lists goods, quantities and value."
     },
     {
       "key": "BOL",
       "name": "Bill of lading",
-      "ordinal": 3,
+      "ordinal": 4,
       "description": "Carrier's receipt and document of title for sea shipment."
     },
     {
-      "key": "BOE",
-      "name": "Draft / bill of exchange",
-      "ordinal": 4,
-      "description": "The draft drawn under the credit."
+      "key": "AWB",
+      "name": "Air waybill",
+      "ordinal": 5,
+      "description": "Air carrier receipt evidencing shipment by air."
+    },
+    {
+      "key": "MTD",
+      "name": "Multimodal transport doc",
+      "ordinal": 6,
+      "description": "Covers at least two different modes of transport."
+    },
+    {
+      "key": "CPB",
+      "name": "Charter-party B/L",
+      "ordinal": 7,
+      "description": "Bill of lading issued subject to a charter party."
+    },
+    {
+      "key": "INS",
+      "name": "Insurance document",
+      "ordinal": 8,
+      "description": "Evidence of cargo insurance cover."
+    },
+    {
+      "key": "PKL",
+      "name": "Packing list",
+      "ordinal": 9,
+      "description": "Breakdown of how the goods are packed."
+    },
+    {
+      "key": "COO",
+      "name": "Certificate of origin",
+      "ordinal": 10,
+      "description": "States the country where goods were produced."
+    },
+    {
+      "key": "INSP",
+      "name": "Inspection certificate",
+      "ordinal": 11,
+      "description": "Third-party evidence the goods were inspected."
+    },
+    {
+      "key": "BC",
+      "name": "Beneficiary certificate",
+      "ordinal": 12,
+      "description": "A statement signed by the beneficiary itself."
+    },
+    {
+      "key": "TD",
+      "name": "Transport document",
+      "ordinal": 13,
+      "description": "Any transport document where the credit names no particular form."
+    },
+    {
+      "key": "WC",
+      "name": "Warranty certificate",
+      "ordinal": 90,
+      "description": "Quality undertaking by the beneficiary."
     }
   ],
   "fields": [
@@ -58,6 +118,21 @@
         {
           "doc": "BOL",
           "note": "UCP 600 art. 27. Copy the clause verbatim — 'three cartons torn', 'drums leaking'. Added stamps and manuscript notes only. Pre-printed exculpatory wording ('said to contain', 'shipper's load and count') is NOT adverse clausing. OMIT THIS FIELD ENTIRELY when the document is clean; do not answer 'none' or 'null'.",
+          "ordinal": 10
+        },
+        {
+          "doc": "AWB",
+          "note": "UCP 600 art. 27. As for the bill of lading — added clauses only. Omit entirely when clean.",
+          "ordinal": 10
+        },
+        {
+          "doc": "MTD",
+          "note": "UCP 600 art. 27. Added clauses only. Omit entirely when clean.",
+          "ordinal": 10
+        },
+        {
+          "doc": "CPB",
+          "note": "UCP 600 art. 27. Added clauses only. Omit entirely when clean.",
           "ordinal": 10
         }
       ]
@@ -123,6 +198,21 @@
           "ordinal": 9
         },
         {
+          "doc": "AWB",
+          "note": "ISBP 821 §A. Depends on corrections_present: answer NA whenever corrections_present is NO — there is nothing to authenticate, and NO would be read as an unauthenticated correction. Answer YES only if every correction carries the issuer's initials or stamp, NO if any does not.",
+          "ordinal": 9
+        },
+        {
+          "doc": "INS",
+          "note": "ISBP 821 §A. Depends on corrections_present: answer NA whenever corrections_present is NO — there is nothing to authenticate, and NO would be read as an unauthenticated correction. Answer YES only if every correction carries the issuer's initials or stamp, NO if any does not.",
+          "ordinal": 9
+        },
+        {
+          "doc": "COO",
+          "note": "ISBP 821 §A. Depends on corrections_present: answer NA whenever corrections_present is NO — there is nothing to authenticate, and NO would be read as an unauthenticated correction. Answer YES only if every correction carries the issuer's initials or stamp, NO if any does not. A legalised or certified document's corrections must be authenticated by whoever legalised or certified it.",
+          "ordinal": 9
+        },
+        {
           "doc": "BOE",
           "note": "ISBP 821 §A. Depends on corrections_present: answer NA whenever corrections_present is NO — there is nothing to authenticate, and NO would be read as an unauthenticated correction. Answer YES only if every correction carries the issuer's initials or stamp, NO if any does not.",
           "ordinal": 9
@@ -142,11 +232,38 @@
           "ordinal": 8
         },
         {
+          "doc": "AWB",
+          "note": "Any altered date, quantity, party or airport.",
+          "ordinal": 8
+        },
+        {
+          "doc": "INS",
+          "note": "Any altered amount, date or party.",
+          "ordinal": 8
+        },
+        {
+          "doc": "COO",
+          "note": "Any altered country, quantity or party.",
+          "ordinal": 8
+        },
+        {
           "doc": "BOE",
           "note": "Any altered amount, tenor or drawee.",
           "ordinal": 8
         }
       ]
+    },
+    {
+      "key": "cover_date",
+      "name": "Cover date",
+      "bindings": [
+        {
+          "doc": "INS",
+          "note": "\"Cover effective from\" if shown, else the date of issue"
+        }
+      ],
+      "valueType": "DATE",
+      "description": "The date insurance cover takes effect."
     },
     {
       "key": "credit_amount",
@@ -183,6 +300,10 @@
         {
           "doc": "INV",
           "note": "Code beside the total"
+        },
+        {
+          "doc": "INS",
+          "note": "Currency of the sum insured"
         }
       ],
       "valueType": "CURRENCY_CODE",
@@ -245,6 +366,11 @@
           "ordinal": 13
         },
         {
+          "doc": "INS",
+          "note": "UCP 600 art. 28. An insurance document payable to order must be endorsed, usually in blank.",
+          "ordinal": 13
+        },
+        {
           "doc": "BOE",
           "note": "Check the reverse for the drawer's endorsement.",
           "ordinal": 13
@@ -278,6 +404,16 @@
           "doc": "BOL",
           "note": "UCP 600 art. 26(b). One of: prepaid, collect, none. Read the stamp or the ticked box, not the printed labels of both options.",
           "ordinal": 12
+        },
+        {
+          "doc": "AWB",
+          "note": "One of: prepaid, collect, none.",
+          "ordinal": 12
+        },
+        {
+          "doc": "MTD",
+          "note": "One of: prepaid, collect, none.",
+          "ordinal": 12
         }
       ]
     },
@@ -304,6 +440,18 @@
       ],
       "valueType": "STRING",
       "description": "How the goods are described."
+    },
+    {
+      "key": "insured_amount",
+      "name": "Insured amount",
+      "bindings": [
+        {
+          "doc": "INS",
+          "note": "Amount beside \"sum insured\" or \"amount insured\""
+        }
+      ],
+      "valueType": "AMOUNT",
+      "description": "Sum insured shown on the insurance document."
     },
     {
       "key": "invoice_value",
@@ -342,6 +490,25 @@
       "description": "The last date shipment may be effected."
     },
     {
+      "key": "legalisation_present",
+      "name": "Legalisation or visa",
+      "kind": "DOC_ATTESTATION",
+      "valueType": "BOOLEAN",
+      "description": "Whether a consular, embassy or chamber-of-commerce legalisation stamp appears on the document.",
+      "bindings": [
+        {
+          "doc": "COO",
+          "note": "A chamber of commerce, consular or embassy stamp legalising the certificate.",
+          "ordinal": 14
+        },
+        {
+          "doc": "INSP",
+          "note": "A consular or authority stamp legalising the certificate.",
+          "ordinal": 14
+        }
+      ]
+    },
+    {
       "key": "legibility",
       "name": "Legibility",
       "kind": "DOC_ATTESTATION",
@@ -354,7 +521,17 @@
           "ordinal": 16
         },
         {
+          "doc": "INS",
+          "note": "One of: clear, partial, poor.",
+          "ordinal": 16
+        },
+        {
           "doc": "BOE",
+          "note": "One of: clear, partial, poor.",
+          "ordinal": 16
+        },
+        {
+          "doc": "COO",
           "note": "One of: clear, partial, poor.",
           "ordinal": 16
         }
@@ -367,6 +544,10 @@
         {
           "doc": "BOL",
           "note": "Dated on-board notation; the issue date only where the wording is pre-printed"
+        },
+        {
+          "doc": "AWB",
+          "note": "Actual flight-date notation — not the issue date"
         }
       ],
       "valueType": "DATE",
@@ -382,6 +563,16 @@
         {
           "doc": "BOL",
           "note": "UCP 600 art. 20(a)(ii). One of: preprinted, added, none. 'added' means a separate dated on-board notation was stamped or written on; that date is the shipment date, not the issue date.",
+          "ordinal": 11
+        },
+        {
+          "doc": "MTD",
+          "note": "One of: preprinted, added, none.",
+          "ordinal": 11
+        },
+        {
+          "doc": "CPB",
+          "note": "One of: preprinted, added, none.",
           "ordinal": 11
         }
       ]
@@ -402,6 +593,31 @@
           "doc": "BOL",
           "note": "UCP 600 art. 17. One of: original, duplicate, triplicate, copy, none.",
           "ordinal": 6
+        },
+        {
+          "doc": "AWB",
+          "note": "One of: original, duplicate, triplicate, copy, none. The shipper's original is the one to look at.",
+          "ordinal": 6
+        },
+        {
+          "doc": "MTD",
+          "note": "One of: original, duplicate, triplicate, copy, none.",
+          "ordinal": 6
+        },
+        {
+          "doc": "CPB",
+          "note": "One of: original, duplicate, triplicate, copy, none.",
+          "ordinal": 6
+        },
+        {
+          "doc": "INS",
+          "note": "One of: original, duplicate, triplicate, copy, none. UCP 600 art. 28(b): where the document says it was issued in more than one original, all must be presented.",
+          "ordinal": 6
+        },
+        {
+          "doc": "COO",
+          "note": "One of: original, duplicate, triplicate, copy, none.",
+          "ordinal": 6
         }
       ]
     },
@@ -415,6 +631,21 @@
         {
           "doc": "BOL",
           "note": "UCP 600 art. 20(a)(iv). The number stated in 'number of originals' or a '3/3' notation. Null if the document does not say.",
+          "ordinal": 7
+        },
+        {
+          "doc": "MTD",
+          "note": "The number of originals stated on the face.",
+          "ordinal": 7
+        },
+        {
+          "doc": "CPB",
+          "note": "The number of originals stated on the face.",
+          "ordinal": 7
+        },
+        {
+          "doc": "INS",
+          "note": "UCP 600 art. 28(b). The number of originals the insurance document says were issued.",
           "ordinal": 7
         }
       ]
@@ -438,10 +669,6 @@
         {
           "doc": "LC",
           "note": "41A / 41D — the bank line before \"BY\""
-        },
-        {
-          "doc": "CS",
-          "note": "The bank and place the documents were lodged with, as the schedule states it"
         }
       ],
       "valueType": "STRING",
@@ -525,6 +752,26 @@
       "description": "Whether an official seal, company chop or embossed stamp appears on the document, distinct from a signature.",
       "bindings": [
         {
+          "doc": "COO",
+          "note": "The chamber of commerce or issuing authority's seal.",
+          "ordinal": 5
+        },
+        {
+          "doc": "INSP",
+          "note": "The inspecting body's seal or chop.",
+          "ordinal": 5
+        },
+        {
+          "doc": "BC",
+          "note": "The beneficiary's company chop, where one is used instead of or beside a signature.",
+          "ordinal": 5
+        },
+        {
+          "doc": "WC",
+          "note": "The beneficiary's company chop.",
+          "ordinal": 5
+        },
+        {
           "doc": "CS",
           "note": "The presenting bank's receipt chop.",
           "ordinal": 5
@@ -540,6 +787,16 @@
       "bindings": [
         {
           "doc": "BOL",
+          "note": "One of: handwritten, facsimile, rubber stamp, embossed, perforated, electronic, printed.",
+          "ordinal": 2
+        },
+        {
+          "doc": "AWB",
+          "note": "One of: handwritten, facsimile, rubber stamp, embossed, perforated, electronic, printed.",
+          "ordinal": 2
+        },
+        {
+          "doc": "INS",
           "note": "One of: handwritten, facsimile, rubber stamp, embossed, perforated, electronic, printed.",
           "ordinal": 2
         },
@@ -563,8 +820,53 @@
           "ordinal": 1
         },
         {
+          "doc": "AWB",
+          "note": "UCP 600 art. 23(a)(i). YES if signed in any form art. 3 accepts.",
+          "ordinal": 1
+        },
+        {
+          "doc": "MTD",
+          "note": "UCP 600 art. 19(a)(i). YES if signed in any form art. 3 accepts.",
+          "ordinal": 1
+        },
+        {
+          "doc": "CPB",
+          "note": "UCP 600 art. 22(a)(i). Signed by the master, owner, charterer or a named agent.",
+          "ordinal": 1
+        },
+        {
+          "doc": "TD",
+          "note": "Signed in any form art. 3 accepts.",
+          "ordinal": 1
+        },
+        {
+          "doc": "INS",
+          "note": "UCP 600 art. 28(a). Signed by an insurance company, underwriter or their agent or proxy.",
+          "ordinal": 1
+        },
+        {
           "doc": "BOE",
           "note": "Signed by the drawer on the face of the draft.",
+          "ordinal": 1
+        },
+        {
+          "doc": "COO",
+          "note": "Signed by the issuer named on the certificate.",
+          "ordinal": 1
+        },
+        {
+          "doc": "BC",
+          "note": "Signed by the beneficiary — it is the beneficiary's own statement.",
+          "ordinal": 1
+        },
+        {
+          "doc": "WC",
+          "note": "Signed by the beneficiary.",
+          "ordinal": 1
+        },
+        {
+          "doc": "INSP",
+          "note": "Signed by the inspecting party.",
           "ordinal": 1
         }
       ]
@@ -580,6 +882,36 @@
           "doc": "BOL",
           "note": "The name printed with or beneath the signature. Null if present but illegible — that is not the same as unsigned.",
           "ordinal": 3
+        },
+        {
+          "doc": "AWB",
+          "note": "The name printed with or beneath the signature.",
+          "ordinal": 3
+        },
+        {
+          "doc": "MTD",
+          "note": "The name printed with or beneath the signature.",
+          "ordinal": 3
+        },
+        {
+          "doc": "CPB",
+          "note": "The name printed with or beneath the signature.",
+          "ordinal": 3
+        },
+        {
+          "doc": "INS",
+          "note": "The insurer, underwriter or agent named with the signature.",
+          "ordinal": 3
+        },
+        {
+          "doc": "COO",
+          "note": "The issuing body named with the signature — a chamber of commerce, a ministry.",
+          "ordinal": 3
+        },
+        {
+          "doc": "INSP",
+          "note": "The inspecting party named with the signature.",
+          "ordinal": 3
         }
       ]
     },
@@ -593,6 +925,26 @@
         {
           "doc": "BOL",
           "note": "UCP 600 art. 20(a)(i). Copy the capacity as printed: 'as carrier', 'as agent for XYZ Lines, the carrier', 'as master'. Null when the signature names a company and no capacity — that absence is the finding.",
+          "ordinal": 4
+        },
+        {
+          "doc": "AWB",
+          "note": "UCP 600 art. 23(a)(i). 'as carrier' or 'as agent for the carrier <name>'. Null when no capacity is stated.",
+          "ordinal": 4
+        },
+        {
+          "doc": "MTD",
+          "note": "UCP 600 art. 19(a)(i). Capacity as printed, or null.",
+          "ordinal": 4
+        },
+        {
+          "doc": "CPB",
+          "note": "UCP 600 art. 22(a)(i). 'as master', 'as owner', 'as charterer', or as agent for a named one of those.",
+          "ordinal": 4
+        },
+        {
+          "doc": "INS",
+          "note": "'as insurer', 'as underwriter', 'as agent for <insurer>'. UCP 600 art. 28(a).",
           "ordinal": 4
         }
       ]
@@ -635,15 +987,15 @@
         ],
         "anchors": [
           {
-            "ref": "UCP600 Art.6",
+            "ref": "UCP 600 Art. 6",
             "desc": "Availability, expiry date and place for presentation"
           },
           {
-            "ref": "UCP600 Art.14",
+            "ref": "UCP 600 Art. 14",
             "desc": "Standard for examination of documents"
           },
           {
-            "ref": "UCP600 Art.29",
+            "ref": "UCP 600 Art. 29",
             "desc": "Extension of expiry date or last day for presentation"
           }
         ],
@@ -707,10 +1059,7 @@
       "summary": "Validity period, latest shipment date, place of expiry and how the credit is available.",
       "behavior": "You read the letter of credit's validity period, latest shipment date, place of expiry and how the credit is available. Flag anything that risks a late or mis-routed presentation. Reason step by step and cite the UCP 600 / ISBP 821 article behind each call.",
       "domainId": "EXPIRY_AVAILABILITY",
-      "description": "Reads the validity period, shipment timing and availability of the credit — the first things an experienced checker looks at.",
-      "domains": [
-        "Time & availability"
-      ]
+      "description": "Reads the validity period, shipment timing and availability of the credit — the first things an experienced checker looks at."
     },
     {
       "id": "transport",
@@ -732,11 +1081,11 @@
         ],
         "anchors": [
           {
-            "ref": "UCP600 Art.20",
+            "ref": "UCP 600 Art. 20",
             "desc": "Bill of lading"
           },
           {
-            "ref": "ISBP821 E",
+            "ref": "ISBP 821 E",
             "desc": "Transport document practice"
           }
         ],
@@ -785,10 +1134,7 @@
       "summary": "Bills of lading, air waybills, multimodal and charter-party documents.",
       "behavior": "You examine transport documents — bills of lading, air waybills, multimodal and charter-party. Check loading evidence, on-board dating, ports of loading/discharge and clean status against the credit.",
       "domainId": "TRANSPORT_DOCS",
-      "description": "Bills of lading, air waybills, multimodal and charter-party documents — loading evidence, dating and ports.",
-      "domains": [
-        "Transport"
-      ]
+      "description": "Bills of lading, air waybills, multimodal and charter-party documents — loading evidence, dating and ports."
     },
     {
       "id": "invoice",
@@ -810,11 +1156,11 @@
         ],
         "anchors": [
           {
-            "ref": "UCP600 Art.18",
+            "ref": "UCP 600 Art. 18",
             "desc": "Commercial invoice"
           },
           {
-            "ref": "ISBP821 A",
+            "ref": "ISBP 821 A",
             "desc": "General principles of examination"
           }
         ],
@@ -860,82 +1206,131 @@
       "summary": "Goods description, amounts and pricing, marks and quantities.",
       "behavior": "You check the commercial invoice: the goods description corresponds to the credit, amounts and unit prices sit within tolerance, and marks and quantities are consistent across documents.",
       "domainId": "INVOICE_GOODS",
-      "description": "Commercial invoice — goods description corresponding to the credit, amounts, tolerances and unit prices.",
-      "domains": [
-        "Goods & pricing"
-      ]
+      "description": "Commercial invoice — goods description corresponding to the credit, amounts, tolerances and unit prices."
     },
     {
-      "id": "documents",
-      "cat": "Documents & Conditions",
-      "icon": "file-check",
-      "name": "Document Set & Conditions Review",
-      "accent": "#7A5AF8",
-      "eyebrow": "Documents · Conditions",
-      "ordinal": 3,
-      "domainId": "DOCS_CONDITIONS",
-      "summary": "The set presented, how it is executed, and what this credit adds in 46A and 47A.",
-      "description": "Reads the document set against what the credit calls for, the marks that authenticate each page, and the applicant's own conditions.",
-      "behavior": "You examine the presentation as a set: whether every document the credit calls for is there, whether corrections are authenticated, and whether this credit's own conditions in 46A and 47A are satisfied. A condition naming no document and no data point is non-documentary — report it as a note rather than a discrepancy. Cite the UCP 600 / ISBP 821 article behind each call.",
+      "id": "insurance",
+      "cat": "Insurance",
+      "icon": "shield-check",
+      "name": "Insurance Documents Review",
+      "accent": "#7A5AF0",
       "config": {
         "order": "sev_desc",
-        "holistic": true,
-        "tools": [],
+        "tools": [
+          {
+            "on": true,
+            "name": "Currency & tolerance maths"
+          }
+        ],
         "anchors": [
           {
-            "ref": "UCP600 Art.14",
-            "desc": "Standard for examination of documents"
-          },
-          {
-            "ref": "ISBP821 A",
-            "desc": "General principles, corrections and conditions"
+            "ref": "UCP 600 Art. 28",
+            "desc": "Insurance document and coverage"
           }
         ],
         "docTypes": [
-          "Letter of credit",
-          "Commercial invoice",
-          "Bill of lading",
-          "Draft / bill of exchange"
+          "Insurance document"
         ],
         "guidance": [
           {
-            "concept": "Documents required",
-            "field": "46A",
-            "expr": "DOCUMENTS REQUIRED"
+            "expr": "AT LEAST 110% OF CIF/CIP",
+            "field": "32B",
+            "concept": "Cover amount"
           },
           {
-            "concept": "Additional conditions",
-            "field": "47A",
-            "expr": "ADDITIONAL CONDITIONS"
+            "expr": "ON OR BEFORE SHIPMENT",
+            "field": "44C",
+            "concept": "Cover date"
           }
         ],
+        "holistic": false,
         "lcFields": [
-          "Documents required",
-          "Additional conditions",
-          "Credit reference"
+          "Goods description",
+          "Credit amount",
+          "Latest shipment date"
         ]
       },
       "groups": [
         {
-          "gid": "DOC_SET",
-          "name": "The set presented",
-          "ordinal": 0,
-          "desc": "Whether what the credit calls for is here, and properly executed.",
-          "checks": []
-        },
-        {
-          "gid": "CREDIT_CONDITIONS",
-          "name": "This credit's own conditions",
-          "ordinal": 1,
-          "desc": "What 46A and 47A add beyond UCP.",
+          "gid": "INS_COVERAGE",
+          "desc": "Amount, currency and cover dates.",
+          "name": "Coverage & risks",
+          "ordinal": 7,
           "checks": []
         }
       ],
-      "domains": [
-        "Documents required",
-        "Additional conditions",
-        "Compliance"
-      ]
+      "eyebrow": "Insurance · Cover",
+      "ordinal": 3,
+      "summary": "Coverage amount, insured risks and cover dates.",
+      "behavior": "You check insurance documents: coverage is at least 110% of CIF/CIP value, insured risks and currency match the credit, and cover is effective on or before shipment.",
+      "domainId": "INSURANCE_DOCS",
+      "description": "Insurance documents — coverage amount, insured risks and cover dates against the credit."
+    },
+    {
+      "id": "beneficiary",
+      "cat": "Party Details",
+      "icon": "users",
+      "name": "Beneficiary & Applicant Details",
+      "accent": "#E5544E",
+      "config": {
+        "order": "sev_desc",
+        "tools": [
+          {
+            "on": true,
+            "name": "Match banks to countries"
+          },
+          {
+            "on": false,
+            "name": "Retrieve similar past cases"
+          }
+        ],
+        "anchors": [
+          {
+            "ref": "UCP 600 Art. 14",
+            "desc": "Standard for examination of documents"
+          },
+          {
+            "ref": "ISBP 821 A",
+            "desc": "General principles of examination"
+          }
+        ],
+        "docTypes": [
+          "Commercial invoice",
+          "Covering schedule"
+        ],
+        "guidance": [
+          {
+            "expr": "NAME + ADDRESS",
+            "field": "59",
+            "concept": "Beneficiary"
+          },
+          {
+            "expr": "NAME + ADDRESS",
+            "field": "50",
+            "concept": "Applicant"
+          }
+        ],
+        "holistic": false,
+        "lcFields": [
+          "Beneficiary name",
+          "Applicant name"
+        ]
+      },
+      "groups": [
+        {
+          "gid": "BEN_IDENTITY",
+          "desc": "Names and addresses across documents.",
+          "name": "Party identity",
+          "ordinal": 8,
+          "checks": []
+        }
+      ],
+      "eyebrow": "Parties · Identity",
+      "ordinal": 4,
+      "summary": "Names, addresses and consistency of parties across documents.",
+      "behavior": "You check party details — beneficiary and applicant names and addresses — for consistency across the documents and against the credit.",
+      "domainId": "PARTY_DETAILS",
+      "description": "Beneficiary and applicant details — names, addresses and consistency of parties across the documents."
     }
   ],
   "checks": [
@@ -988,37 +1383,91 @@
       "citedAs": "practice",
       "severity": "MAJOR",
       "checkType": "PROGRAMMATIC",
-      "suggestion": "Add a row for unit price against the credit once pricing is extracted.",
-      "docs": [
-        "INV",
-        "LC"
-      ]
+      "suggestion": "Add a row for unit price against the credit once pricing is extracted."
     },
     {
-      "id": "AVAIL-41A",
+      "id": "CERT-28",
       "body": "",
-      "docs": [
-        "LC",
-        "CS"
-      ],
       "refs": [
-        "UCP600 Art.6"
+        "UCP600 Art.28"
       ],
-      "title": "Presented where the credit is available",
-      "domain": "Time & availability",
-      "fields": [
-        "place_of_expiry",
-        "place_of_presentation",
-        "available_with"
-      ],
+      "rule": {
+        "scope": "When the credit calls for an insurance document",
+        "groups": [
+          {
+            "id": "g1",
+            "rows": [
+              {
+                "l": {
+                  "doc": "INS",
+                  "field": "insured_amount"
+                },
+                "r": {
+                  "literal": "110% of Invoice value @ Commercial invoice"
+                },
+                "id": "r1",
+                "op": "gte",
+                "tol": ""
+              },
+              {
+                "l": {
+                  "doc": "INS",
+                  "field": "currency"
+                },
+                "r": {
+                  "doc": "LC",
+                  "field": "currency"
+                },
+                "id": "r2",
+                "op": "eq",
+                "tol": ""
+              },
+              {
+                "l": {
+                  "doc": "INS",
+                  "field": "cover_date"
+                },
+                "r": {
+                  "doc": "BOL",
+                  "field": "on_board_date"
+                },
+                "id": "r3",
+                "op": "d_lte",
+                "tol": ""
+              }
+            ],
+            "logic": "all"
+          }
+        ],
+        "message": "Insurance cover is below 110% of the invoice value, in the wrong currency, or dated after shipment."
+      },
+      "title": "Insurance coverage amount",
+      "domain": "Insurance",
       "citedAs": "practice",
       "severity": "MAJOR",
       "checkType": "PROGRAMMATIC",
-      "suggestion": "Where the credit is available by mixed payment, each portion wants its own row against the draft that covers it.",
-      "gate": true,
-      "onFail": "CONTINUE",
+      "suggestion": "Add a condition confirming the insurance is assignable or endorsed in blank."
+    },
+    {
+      "id": "CLEAN-27",
+      "title": "Transport document is clean",
+      "body": "",
+      "domain": "Transport",
+      "severity": "CRITICAL",
+      "checkType": "PROGRAMMATIC",
+      "citedAs": "practice",
+      "refs": [
+        "UCP600 Art.27",
+        "UCP600 Art.26"
+      ],
+      "docs": [
+        "BOL"
+      ],
+      "fields": [
+        "adverse_clausing"
+      ],
       "rule": {
-        "scope": "Every presentation",
+        "scope": "Any presentation including a bill of lading",
         "groups": [
           {
             "id": "g1",
@@ -1026,24 +1475,11 @@
             "rows": [
               {
                 "id": "r1",
-                "op": "eq",
+                "op": "absent",
                 "tol": "",
                 "l": {
-                  "doc": "CS",
-                  "field": "place_of_presentation"
-                },
-                "r": {
-                  "doc": "LC",
-                  "field": "place_of_expiry"
-                }
-              },
-              {
-                "id": "r2",
-                "op": "present",
-                "tol": "",
-                "l": {
-                  "doc": "LC",
-                  "field": "available_with"
+                  "doc": "BOL",
+                  "field": "adverse_clausing"
                 },
                 "r": {
                   "literal": ""
@@ -1052,8 +1488,9 @@
             ]
           }
         ],
-        "message": "The documents were presented somewhere other than the place the credit expires, or the credit does not say where it is available."
-      }
+        "message": "The bill of lading carries a clause declaring the goods or packaging defective."
+      },
+      "suggestion": "UCP 600 art. 26 makes 'shipper's load and count' and 'said to contain' acceptable, and the reading is instructed not to record them here. If one appears in a finding, the extraction is wrong, not the document."
     },
     {
       "id": "COND-47A",
@@ -1120,7 +1557,7 @@
     },
     {
       "id": "DATE-31D",
-      "body": "",
+      "body": "Check whether the beneficiary has enough time to present documents before the LC expires. The key factor is whether the presentation location matches where the beneficiary is based — not simply whether it says \"any bank.\"\n\nFields to look at: {Place of presentation}, {Expiry date}, {Beneficiary name}, {Latest shipment date}, {Presentation period}\n\n- If the presentation location is in the beneficiary's own country: no extra buffer needed. {Expiry date} just needs to be later than the date documents would realistically be ready.\n- If the presentation location is in a different country from the beneficiary (this can happen even with a nominated bank, not just \"any bank\"): add roughly 3-5 working days as a buffer, since documents need to be couriered cross-border.\n- If it says \"any bank\" with no country specified: treat this the same as a local presentation — no buffer needed.\n\nNote: the buffer is an operational risk flag, not a UCP requirement — don't treat it as a hard discrepancy, just something to warn about.",
       "docs": [
         "LC",
         "CS"
@@ -1136,12 +1573,8 @@
         "groups": [
           {
             "id": "g1",
-            "logic": "all",
             "rows": [
               {
-                "id": "r1",
-                "op": "d_lte",
-                "tol": "",
                 "l": {
                   "doc": "CS",
                   "field": "presentation_date"
@@ -1149,9 +1582,26 @@
                 "r": {
                   "doc": "LC",
                   "field": "expiry_date"
-                }
+                },
+                "id": "r1",
+                "op": "d_lte",
+                "tol": ""
+              },
+              {
+                "l": {
+                  "doc": "CS",
+                  "field": "place_of_presentation"
+                },
+                "r": {
+                  "doc": "LC",
+                  "field": "place_of_expiry"
+                },
+                "id": "r2",
+                "op": "eq",
+                "tol": ""
               }
-            ]
+            ],
+            "logic": "all"
           }
         ],
         "message": "Documents were presented after the credit expired."
@@ -1160,13 +1610,193 @@
       "domain": "Time & availability",
       "fields": [
         "expiry_date",
-        "presentation_date"
+        "place_of_presentation",
+        "latest_shipment_date",
+        "beneficiary_name",
+        "presentation_period"
       ],
       "citedAs": "practice",
       "severity": "CRITICAL",
       "checkType": "PROGRAMMATIC",
-      "suggestion": "Runs before anything is read. Art. 29(a) rolls an expiry falling on a day the bank is closed, and 47A can extend the presentation period — which is why a failure here records a discrepancy and lets the plan read the credit rather than ending the examination itself.",
-      "onFail": "STOP"
+      "suggestion": "Runs before anything is read. If it fails, nothing in the documents can cure it."
+    },
+    {
+      "id": "DOCSET-42C",
+      "body": "",
+      "refs": [
+        "UCP600 Art.6"
+      ],
+      "rule": {
+        "scope": "Any presentation that includes a draft",
+        "groups": [
+          {
+            "id": "g1",
+            "rows": [
+              {
+                "l": {
+                  "doc": "BOE",
+                  "field": "draft_tenor"
+                },
+                "r": {
+                  "doc": "LC",
+                  "field": "draft_tenor"
+                },
+                "id": "r1",
+                "op": "eq",
+                "tol": ""
+              },
+              {
+                "l": {
+                  "doc": "BOE",
+                  "field": "drawee"
+                },
+                "r": {
+                  "doc": "LC",
+                  "field": "drawee"
+                },
+                "id": "r2",
+                "op": "same_party",
+                "tol": ""
+              }
+            ],
+            "logic": "all"
+          }
+        ],
+        "message": "The draft does not agree with the tenor or drawee stated in the credit."
+      },
+      "title": "Draft tenor and drawee",
+      "domain": "Time & availability",
+      "citedAs": "practice",
+      "severity": "MAJOR",
+      "checkType": "PROGRAMMATIC",
+      "suggestion": "Consider a condition for drafts drawn on a reimbursing bank rather than the issuing bank."
+    },
+    {
+      "id": "DOCSET-46A",
+      "body": "Read {Documents required} as a list: one requirement per numbered or lettered item, and check the presentation against each in turn.\n\n- A document of the type the item names is in the presentation.\n- At least one original is presented, unless the item calls only for copies. \"In triplicate\" means one original and two copies.\n- Where a full set is called for on a transport document, every original the document itself says was issued is presented.\n- Signed, certified or legalised where the item says so.\n- Issued by the party the item names, where it names one. If the issuer is worded differently but performs the same function, put it to a checker rather than raising it.\n- The invoice is made out to the applicant, in the currency of the credit, and describes the goods as the credit does.\n- No document is dated later than the date of presentation.\n\nA sentence that qualifies every item (\"all documents in English\") applies to each document, not only the last one.",
+      "docs": [
+        "LC"
+      ],
+      "refs": [
+        "UCP600 Art.14"
+      ],
+      "title": "Every document the credit calls for is present",
+      "domain": "Documents required",
+      "fields": [
+        "documents_required"
+      ],
+      "citedAs": "practice",
+      "severity": "CRITICAL",
+      "checkType": "AGENT",
+      "suggestion": "Add an assertion for legalisation wording — three recent cases turned on it."
+    },
+    {
+      "id": "ORIG-17",
+      "title": "An original was presented",
+      "body": "",
+      "domain": "Documents required",
+      "severity": "MAJOR",
+      "checkType": "PROGRAMMATIC",
+      "citedAs": "practice",
+      "refs": [
+        "UCP600 Art.17"
+      ],
+      "docs": [
+        "INV"
+      ],
+      "fields": [
+        "original_marking"
+      ],
+      "rule": {
+        "scope": "Every presentation with a commercial invoice",
+        "groups": [
+          {
+            "id": "g1",
+            "logic": "all",
+            "rows": [
+              {
+                "id": "r1",
+                "op": "oneof",
+                "tol": "",
+                "l": {
+                  "doc": "INV",
+                  "field": "original_marking"
+                },
+                "r": {
+                  "literal": "original, none"
+                }
+              }
+            ]
+          }
+        ],
+        "message": "The invoice presented appears to be a copy rather than an original."
+      },
+      "suggestion": "'none' passes on purpose: UCP 600 art. 17(b) makes a document original by its apparently original signature, stamp or label, so an unmarked invoice on the issuer's stationery is an original. Only an explicit COPY or DUPLICATE marking fails."
+    },
+    {
+      "id": "PARTY-FC04",
+      "body": "When any party, vessel or port on the documents appears on a sanctions or restricted-party list, hold the presentation and escalate before honouring.\n\nFields to look at: {Beneficiary name}, {Applicant name}, {Port of loading}, {Port of discharge}\n\n- If any named party matches a restricted-party list: hold and escalate.\n- If a vessel or port is subject to restrictions: hold and escalate.",
+      "docs": [
+        "INV",
+        "BOL"
+      ],
+      "title": "Restricted-party screening",
+      "domain": "Compliance",
+      "fields": [
+        "port_of_loading",
+        "port_of_discharge",
+        "beneficiary_name",
+        "applicant_name"
+      ],
+      "citedAs": "practice",
+      "severity": "CRITICAL",
+      "checkType": "AGENT",
+      "suggestion": "Link this check to the party fields so screening runs on every named party automatically."
+    },
+    {
+      "id": "REQ-38",
+      "body": "When the credit is transferable, watch where the second beneficiary sits and how documents are substituted. Routing a presentation through a third country can change the expiry and availability picture.\n\nFields to look at: {Available with}, {Beneficiary name}, {Place of expiry}\n\n- If the second beneficiary is in a different country from the first: re-check the place of expiry and the presentation route.\n- The substituted invoice and draft must still satisfy the original availability terms.",
+      "docs": [
+        "LC",
+        "INV"
+      ],
+      "refs": [
+        "UCP600 Art.38"
+      ],
+      "title": "Transferable-credit routing",
+      "domain": "Time & availability",
+      "fields": [
+        "place_of_expiry",
+        "available_with",
+        "beneficiary_name"
+      ],
+      "citedAs": "practice",
+      "severity": "MAJOR",
+      "checkType": "AGENT",
+      "suggestion": "No condition yet for transferring the insurance benefit to the second beneficiary — consider adding one."
+    },
+    {
+      "id": "REQ-41A",
+      "body": "Read the availability terms together with the place of expiry. The key risk is when the credit is available with any bank, or when the availability method does not match the draft actually presented.\n\nFields to look at: {Available with}, {Place of presentation}, {Draft tenor}, {Place of expiry}\n\n- If available with a named nominated bank: the place of expiry should sit with that bank.\n- If available with any bank, no country specified: check the place of expiry against the country of presentation and flag routing risk.\n- The availability method — sight, acceptance or negotiation — must match the draft presented.",
+      "docs": [
+        "LC",
+        "BOE"
+      ],
+      "refs": [
+        "UCP600 Art.6"
+      ],
+      "title": "Where and how the credit is available",
+      "domain": "Time & availability",
+      "fields": [
+        "place_of_expiry",
+        "place_of_presentation",
+        "available_with",
+        "draft_tenor"
+      ],
+      "citedAs": "practice",
+      "severity": "CRITICAL",
+      "checkType": "AGENT",
+      "suggestion": "Add a condition for credits available by mixed payment (part sight, part deferred) — confirm each portion matches its own draft."
     },
     {
       "id": "SIGN-20",
@@ -1301,36 +1931,85 @@
       "citedAs": "practice",
       "severity": "CRITICAL",
       "checkType": "PROGRAMMATIC",
-      "suggestion": "Add a condition for charter-party bills of lading, which are examined differently.",
-      "docs": [
-        "BOL",
-        "LC",
-        "CS"
-      ]
+      "suggestion": "Add a condition for charter-party bills of lading, which are examined differently."
     },
     {
       "id": "XD-14",
-      "body": "Read the goods description and the named parties across the credit, the invoice and the bill of lading, and decide whether they can all be true of one shipment.\n\nThe standard is UCP 600 art. 14(d): data need not be identical, but must not conflict.\n\n- Goods. The invoice description must correspond with the credit (art. 18(c)). A more specific description on the invoice — a model number, a grade, a pack size — corresponds and does not conflict. A transport document may describe the goods in general terms, and general terms that are consistent with the credit do not conflict. What conflicts is goods that cannot be the same goods.\n- Parties. A difference in legal form or punctuation is not a conflict: ACME TRADING CO., LTD. and Acme Trading Company Limited are one company. A different company is a conflict.\n- Addresses. The party's address need not match, but the country must not differ from what the credit states (art. 14(j)).\n\nRaise one finding per conflict, naming both documents and quoting both readings. Where the two merely differ without conflicting, say so and raise nothing — a difference that matters to nobody is not a discrepancy.",
+      "body": "",
       "refs": [
         "UCP600 Art.14",
         "UCP600 Art.18"
       ],
+      "rule": {
+        "scope": "Every presentation, across all documents",
+        "groups": [
+          {
+            "id": "g1",
+            "rows": [
+              {
+                "l": {
+                  "doc": "INV",
+                  "field": "goods_description"
+                },
+                "r": {
+                  "doc": "LC",
+                  "field": "goods_description"
+                },
+                "id": "r1",
+                "op": "eq",
+                "tol": "corresponds, not identical"
+              },
+              {
+                "l": {
+                  "doc": "BOL",
+                  "field": "goods_description"
+                },
+                "r": {
+                  "doc": "INV",
+                  "field": "goods_description"
+                },
+                "id": "r2",
+                "op": "noconflict",
+                "tol": "general terms allowed"
+              },
+              {
+                "l": {
+                  "doc": "INV",
+                  "field": "beneficiary_name"
+                },
+                "r": {
+                  "doc": "LC",
+                  "field": "beneficiary_name"
+                },
+                "id": "r3",
+                "op": "same_party",
+                "tol": ""
+              },
+              {
+                "l": {
+                  "doc": "INV",
+                  "field": "applicant_name"
+                },
+                "r": {
+                  "doc": "LC",
+                  "field": "applicant_name"
+                },
+                "id": "r4",
+                "op": "addr_same_country",
+                "tol": ""
+              }
+            ],
+            "logic": "all"
+          }
+        ],
+        "message": "Data on the documents conflicts within the same presentation."
+      },
       "title": "Documents do not conflict with each other",
       "domain": "Goods & pricing",
       "citedAs": "practice",
       "severity": "CRITICAL",
-      "checkType": "AGENT",
-      "suggestion": "Was authored as a comparison over four rows, three of which used an operator that is a judgement. The catalogue now derives that and files it here; the wording above is what those rows were reaching for.",
-      "docs": [
-        "INV",
-        "LC",
-        "BOL"
-      ],
-      "fields": [
-        "goods_description",
-        "beneficiary_name",
-        "applicant_name"
-      ]
+      "checkType": "PROGRAMMATIC",
+      "suggestion": "Add a row for marks and numbers once packing lists are extracted."
     }
   ],
   "books": [

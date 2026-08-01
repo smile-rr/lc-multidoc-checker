@@ -1,7 +1,10 @@
 package com.tb.helix.lccheck.service;
 
+import com.tb.helix.harness.doc.CreditMaterial;
+import com.tb.helix.harness.doc.CreditTextExtractor;
 import com.tb.helix.harness.doc.PageRenderer;
 import com.tb.helix.infra.blob.BlobStore;
+import com.tb.helix.infra.error.DocumentException;
 import com.tb.helix.infra.error.NotFoundException;
 import com.tb.helix.lccheck.persistence.CaseRow;
 import com.tb.helix.lccheck.persistence.CaseStore;
@@ -16,7 +19,6 @@ import com.tb.helix.lccheck.types.pipeline.StageId;
 
 import org.springframework.stereotype.Service;
 
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -41,17 +43,19 @@ public class CaseService {
     private final IntakeStage intake;
     private final BlobStore blobs;
     private final PageRenderer renderer;
+    private final CreditTextExtractor creditText;
     private final SwiftReader swift;
     private final StageLauncher pipeline;
 
     public CaseService(CaseStore store, CaseAssembler assembler, IntakeStage intake,
-                       BlobStore blobs, PageRenderer renderer,
+                       BlobStore blobs, PageRenderer renderer, CreditTextExtractor creditText,
                        SwiftReader swift, StageLauncher pipeline) {
         this.store = store;
         this.assembler = assembler;
         this.intake = intake;
         this.blobs = blobs;
         this.renderer = renderer;
+        this.creditText = creditText;
         this.swift = swift;
         this.pipeline = pipeline;
     }
@@ -175,8 +179,12 @@ public class CaseService {
      * that the examination relies on is {@code CreditReader}'s, and it happens in intake
      * where it can report itself.
      */
-    public List<Map<String, String>> peek(byte[] creditText) {
-        return assembler.peek(swift.read(new String(creditText, StandardCharsets.UTF_8)));
+    public List<Map<String, String>> peek(byte[] creditBytes, String creditName) {
+        return switch (creditText.materialize(creditBytes, creditName)) {
+            case CreditMaterial.PlainText plain -> assembler.peek(swift.read(plain.text()));
+            case CreditMaterial.ScannedPdf ignored -> throw new DocumentException(
+                    "This credit PDF looks like a scan. Create the case — intake will read it with vision.");
+        };
     }
 
     /**
@@ -276,6 +284,18 @@ public class CaseService {
      * is a surrogate nobody should have to see. A raw uuid is tolerated too, which is worth
      * the two lines when debugging from a SQL console.
      */
+    /**
+     * Records how this case is to be worked — auto or step.
+     *
+     * <p>Not part of running anything, which is why it is not on the launcher: it is a
+     * standing decision taken before a run and outliving it. It used to be a field in one
+     * browser tab's reducer, so the mode an officer picked *because* they wanted to be asked
+     * was reset to auto by a reload.
+     */
+    public void setRunMode(String caseId, String mode, String officerId) {
+        store.setRunMode(caseId, mode, officerId);
+    }
+
     public String resolve(String ref) {
         return store.idForRef(ref).orElseGet(() -> {
             if (ref != null && ref.length() == 36 && store.find(ref).isPresent()) return ref;

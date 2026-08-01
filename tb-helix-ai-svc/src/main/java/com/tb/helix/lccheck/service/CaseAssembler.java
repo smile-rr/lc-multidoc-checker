@@ -36,8 +36,11 @@ import java.util.Map;
 public class CaseAssembler {
 
     private final com.fasterxml.jackson.databind.ObjectMapper json;
+    private final Comparisons comparisons;
 
-    public CaseAssembler(com.fasterxml.jackson.databind.ObjectMapper json) {
+    public CaseAssembler(com.fasterxml.jackson.databind.ObjectMapper json,
+                         Comparisons comparisons) {
+        this.comparisons = comparisons;
         this.json = json;
     }
 
@@ -108,7 +111,7 @@ public class CaseAssembler {
      *                   lookup per check would be twenty-three queries for one join.
      */
     public PlanCheckView planCheck(ReadRows.PlanCheck c, String findingRef) {
-        List<Map<String, Object>> rows = conditionRows(c.ruleDef());
+        ComparisonView condition = comparisons.plan(parsed(c.ruleDef()));
         return new PlanCheckView(
                 c.checkId(), nz(c.name()), c.areaId(),
                 nz(c.appliesBecause()), nz(c.ruleRef()),
@@ -131,7 +134,7 @@ public class CaseAssembler {
                 // Authored where there is an author, derived from the operands otherwise.
                 // A threshold check declares no doc types — it is about the credit and the
                 // covering schedule, which its operands say and nothing else does.
-                c.docCodes().isEmpty() ? docsIn(rows) : c.docCodes(),
+                c.docCodes().isEmpty() ? docsIn(condition) : c.docCodes(),
                 findingRef,
                 // The citations were being dropped here. `lc_plan_check.refs` holds them —
                 // UCP600 Art.6, Art.14, Art.29 for the expiry gate — and the card that shows
@@ -140,23 +143,23 @@ public class CaseAssembler {
                 Rows.of("severity", nz(c.severity()),
                         "rule", nz(c.name()),
                         "refs", c.refs() == null ? List.of() : c.refs(),
-                        // The condition itself, flattened to the rows a screen draws. A check
-                        // whose condition the officer cannot read is a label, not a check —
+                        // The condition itself, in the shape a screen draws — the same shape
+                        // a finding's comparison arrives in, with nothing read yet. A check
+                        // whose condition the officer cannot read is a label, not a check,
                         // and this is the only way a planner-authored exact rule, which
                         // exists in no dictionary, can be read at all.
-                        "rows", rows));
+                        "condition", condition,
+                        "rows", condition == null ? List.of() : condition.rows()));
     }
 
     /** The documents a condition reads, in the order it reads them, without repeats. */
-    @SuppressWarnings("unchecked")
-    private List<String> docsIn(List<Map<String, Object>> rows) {
+    private List<String> docsIn(ComparisonView condition) {
         List<String> out = new ArrayList<>();
-        for (Map<String, Object> row : rows) {
-            for (String side : List.of("l", "r")) {
-                if (row.get(side) instanceof Map<?, ?> o
-                        && ((Map<String, Object>) o).get("doc") instanceof String doc
-                        && !doc.isBlank() && !out.contains(doc)) {
-                    out.add(doc);
+        if (condition == null) return out;
+        for (ComparisonView.Line row : condition.rows()) {
+            for (ComparisonView.Side side : List.of(row.left(), row.right())) {
+                if (side != null && side.doc() != null && !out.contains(side.doc())) {
+                    out.add(side.doc());
                 }
             }
         }
@@ -164,29 +167,22 @@ public class CaseAssembler {
     }
 
     /**
-     * The rows of a stored condition tree, groups flattened away.
+     * A stored condition, as an object the tree parser can read.
      *
-     * <p>Groups and their connectors matter to the evaluator and not to a reader — a plan
-     * screen showing "group 1 of 2, connector AND" is showing its own data structure. Every
-     * seeded rule is one group; the flattening loses nothing anybody reads.
+     * <p>All this does now is undo the jsonb. Reading the tree — what a group is, what a row
+     * is, which version this build may evaluate — belongs to {@code ConditionTree}, and this
+     * used to have its own quiet opinion about it: it accepted a bare array of groups and
+     * nothing else, so the day the column started carrying the whole rule the plan screen
+     * would have shown every exact check with no conditions at all and reported nothing
+     * wrong.
      */
-    @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> conditionRows(String ruleDef) {
-        if (ruleDef == null || ruleDef.isBlank()) return List.of();
+    private Object parsed(String ruleDef) {
+        if (ruleDef == null || ruleDef.isBlank()) return null;
         try {
-            Object parsed = json.readValue(ruleDef, Object.class);
-            List<Map<String, Object>> out = new ArrayList<>();
-            if (parsed instanceof List<?> groups) {
-                for (Object g : groups) {
-                    if (g instanceof Map<?, ?> group && group.get("rows") instanceof List<?> rows) {
-                        for (Object r : rows) if (r instanceof Map<?, ?> row) out.add((Map<String, Object>) row);
-                    }
-                }
-            }
-            return out;
+            return json.readValue(ruleDef, Object.class);
         } catch (Exception e) {
             // A condition that cannot be read costs the officer the working, not the check.
-            return List.of();
+            return null;
         }
     }
 
@@ -205,7 +201,26 @@ public class CaseAssembler {
                 Origin.of(f.origin()).wire(),
                 f.checkType(), f.citedAs(),
                 jsonObject(f.analysis()),
+                comparison(f.comparison()),
                 List.of());
+    }
+
+    /**
+     * The settled rows as the browser reads them.
+     *
+     * <p>Converted rather than passed through as a map, so the wire shape is the record and
+     * a column that has gone stale — written by a build before {@link ComparisonView}
+     * existed — is dropped rather than half-rendered. An officer looking at a comparison with
+     * three of its four keys missing would be reading a table with holes in it and no reason
+     * given for them.
+     */
+    private ComparisonView comparison(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        try {
+            return json.readValue(raw, ComparisonView.class);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /**
@@ -268,6 +283,7 @@ public class CaseAssembler {
                 // something a person has to settle — the plan answered that when it was made,
                 // and it does not change afterwards.
                 plan.get("destination") == null ? "decision" : String.valueOf(plan.get("destination")),
+                row.runMode() == null ? "auto" : row.runMode(),
                 finished ? Areas.ALL.stream().map(CheckArea::id).toList() : List.of());
     }
 

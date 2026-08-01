@@ -104,6 +104,7 @@ public class CaseStore {
                     rs.getString("statement"), rs.getString("statement_source"), rs.getString("detail"),
                     rs.getString("expected"), rs.getString("quote"), rs.getString("quote_source"),
                     rs.getString("reason"), rs.getString("analysis"),
+                    rs.getString("comparison"),
                     rs.getBoolean("raised_by_officer"), rs.getString("check_id"),
                     rs.getString("origin"), rs.getString("tier"), rs.getString("check_type"),
                     rs.getString("cited_as"));
@@ -166,6 +167,7 @@ public class CaseStore {
             rs.getString("stage"),
             rs.getString("next_stage"),
             rs.getBoolean("awaiting_officer"),
+            rs.getString("run_mode"),
             rs.getString("credit_ref"),
             date(rs.getDate("issued_date")),
             rs.getString("applicant"),
@@ -180,6 +182,7 @@ public class CaseStore {
             rs.getString("tenor"),
             rs.getString("goods"),
             rs.getString("credit_text_sha"),
+            rs.getString("credit_source_sha"),
             rs.getString("source_bundle_sha"),
             rs.getString("bundle_pdf_sha"),
             rs.getInt("page_count"),
@@ -658,6 +661,18 @@ public class CaseStore {
     }
 
     // --- Officer actions ----------------------------------------------------
+
+    /**
+     * How this case is being worked, and who said so.
+     *
+     * <p>Written with the action rather than as a bare patch: a case that stops asking
+     * before each stage is a case somebody decided should stop asking, and on a file read
+     * months later that decision is worth being able to find.
+     */
+    public void setRunMode(String caseId, String mode, String officerId) {
+        jdbc.update("UPDATE helix_check.lc_case SET run_mode = ? WHERE id = ?::uuid", mode, caseId);
+        recordAction(caseId, "set_run_mode", mode, java.util.Map.of(), officerId, null);
+    }
 
     public void recordAction(String caseId, String action, String target, Object payload,
                              String officerId, String note) {

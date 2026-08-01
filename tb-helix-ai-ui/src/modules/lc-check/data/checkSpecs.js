@@ -415,6 +415,7 @@ export function resolveRuleInputs(id, facts = []) {
   // documents routinely carry the same field name — that is the whole point of a
   // cross-document check.
   const find = (o) => facts.find((f) => f.label === o.factLabel && (!o.factDoc || f.docId === o.factDoc)) ?? null
+
   const operands = def.rows.flatMap((r) => [r.l, r.r].filter((o) => o && o.factLabel))
   const seen = new Set()
   const inputs = operands
@@ -433,7 +434,54 @@ export function resolveRuleInputs(id, facts = []) {
       }
     })
   const missing = inputs.filter((i) => !i.resolved)
-  return { ...def, inputs, missing, ready: missing.length === 0 }
+
+  return {
+    scope: def.scope,
+    message: def.message,
+    failedRow: null,
+    rows: def.rows.map((r, i) => ({
+      id: `r${i + 1}`,
+      // These fixtures were written with the operator already in words, which is
+      // what the service now resolves for a finding. `op` is the wire name and is
+      // absent here; the component falls back to `opLabel`, so both render alike.
+      op: null,
+      opLabel: r.op,
+      label: null,
+      outcome: 'NOT_RUN',
+      tol: r.tol,
+      left: side(r.l, find),
+      right: side(r.r, find),
+      why: null,
+    })),
+    inputs,
+    missing,
+    ready: missing.length === 0,
+  }
+}
+
+/**
+ * One side of a fixture row, in the shape the service sends.
+ *
+ * The fixtures name a document twice — `factDoc` is the code a fact is filed under
+ * and `doc` is what it is called on screen — which is exactly the split the wire
+ * has as `doc` and `docLabel`. It only ever looked like two things because nothing
+ * put them side by side.
+ */
+function side(o, find) {
+  if (!o) return null
+  if (o.literal != null && !o.factLabel) {
+    return { doc: null, docLabel: null, field: null, label: null, value: o.literal, resolved: true, literal: true }
+  }
+  const fact = find(o)
+  return {
+    doc: o.factDoc ?? 'computed',
+    docLabel: o.doc ?? null,
+    field: o.field ?? null,
+    label: o.field ?? null,
+    value: fact ? fact.value : null,
+    resolved: !!fact,
+    literal: false,
+  }
 }
 
 /**
@@ -450,38 +498,22 @@ export function resolveRuleInputs(id, facts = []) {
  * guessed from severity — which fixed the failure to row 0 and could only fail at
  * all on a discrepancy, so a multi-row rule always blamed its first row and a rule
  * whose failure the officer still has to weigh showed every row passing. A real
- * evaluator returns it per row; the shape is the same.
+ * evaluator returns it per row; the shape is the same, and now so is the wire.
  */
 export function ruleOutcome(id, facts = [], failedRow = null) {
   const def = resolveRuleInputs(id, facts)
   if (!def) return null
-  // Every operand resolves the same way, computed ones included — they are in
-  // `inputs` under the same key `resolveRuleInputs` filed them by.
-  const valueOf = (o) => {
-    if (!o) return null
-    const field = o.field ?? o.literal
-    const doc = o.field ? o.doc : 'computed'
-    const hit = def.inputs.find((i) => i.field === field && i.doc === doc)
-    return { field, doc, value: hit ? hit.value : null, resolved: !!(hit && hit.resolved), confidence: hit ? hit.confidence : null }
-  }
   return {
     ...def,
-    message: def.message,
-    rows: def.rows.map((r, i) => {
-      const left = valueOf(r.l)
-      const right = valueOf(r.r)
-      return {
-        op: r.op,
-        tol: r.tol,
-        left,
-        right,
-        // Unanswerable beats failed: a row missing an input did not fail, it never ran.
-        verdict:
-          !left?.resolved || (right && !right.resolved)
-            ? 'unanswerable'
-            : failedRow === null ? 'pass' : i === failedRow ? 'fail' : 'pass',
-      }
-    }),
+    failedRow,
+    rows: def.rows.map((r, i) => ({
+      ...r,
+      // Unanswerable beats failed: a row missing an input did not fail, it never ran.
+      outcome:
+        !r.left?.resolved || (r.right && !r.right.resolved)
+          ? 'INCONCLUSIVE'
+          : failedRow === null ? 'PASS' : i === failedRow ? 'FAIL' : 'PASS',
+    })),
   }
 }
 

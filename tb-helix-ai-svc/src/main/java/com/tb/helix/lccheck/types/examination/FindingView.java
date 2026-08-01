@@ -47,5 +47,13 @@ public record FindingView(
         String checkType,
         String source,
         Map<String, Object> analysis,
+        /**
+         * The rows an exact check compared, or null when a model settled it.
+         *
+         * <p>Not a rendering of the outcome — the outcome is one word and this is the
+         * working behind it. A judged finding has {@code analysis} instead, which is a view
+         * somebody formed; the two are never both present and the difference is the point.
+         */
+        ComparisonView comparison,
         List<?> trace) {
 }

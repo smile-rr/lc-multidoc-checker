@@ -188,6 +188,16 @@ export async function overrideGate(caseId, { note } = {}) {
   return api.post(`${base}/cases/${encodeURIComponent(caseId)}/gate/override`, { note: note ?? null })
 }
 
+/**
+ * Who presses next on this case — auto or step.
+ *
+ * A PUT rather than part of a run, because it is a standing decision about how this
+ * examination is conducted, taken before a run and outliving it.
+ */
+export async function setRunMode(caseId, mode) {
+  return api.put(`${base}/cases/${caseId}/mode`, { mode })
+}
+
 export async function submitCase(caseId, { status, note }) {
   return api.post(`${base}/cases/${encodeURIComponent(caseId)}/signoff`, { status, note })
 }

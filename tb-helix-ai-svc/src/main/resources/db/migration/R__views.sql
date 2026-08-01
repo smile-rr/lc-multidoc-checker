@@ -236,7 +236,26 @@ checks AS (
     SELECT c.id, c.body, c.updated_at,
            COALESCE(c.body ->> 'status', 'ACTIVE')       AS status,
            COALESCE(c.body ->> 'checkType', 'AGENT')      AS check_type,
-           COALESCE((c.body ->> 'gate')::boolean, FALSE)  AS is_gate
+           COALESCE((c.body ->> 'gate')::boolean, FALSE)  AS is_gate,
+           -- Whether the condition asks for a reading rather than a comparison.
+           --
+           -- Four operators are judgements wearing an operator's clothes: "does not
+           -- conflict with" is UCP 600 art. 14(d), and deciding whether "WIDGETS, MODEL
+           -- IW-2024" conflicts with "INDUSTRIAL WIDGETS" is an examiner's judgement, not
+           -- a string comparison. A check using one CANNOT be settled by comparison,
+           -- whatever its author typed in `checkType`.
+           --
+           -- Derived here rather than discovered at run time. It used to be the engine
+           -- that noticed, halfway through executing a check the console had drawn as
+           -- "Comparison", and rerouted it to a model — so a card said "settled by
+           -- comparison" and produced a model's opinion. Which kind of check something is
+           -- is the rulebook's answer, and it is knowable the moment it is authored.
+           EXISTS (
+               SELECT 1
+                 FROM jsonb_path_query(c.body, '$.rule.groups[*].rows[*].op') o
+                WHERE o #>> '{}' IN ('noconflict', 'same_party', 'same_country',
+                                     'addr_same_country')
+           ) AS has_judgement_op
       FROM helix_gov.document c WHERE c.kind = 'check'
 ),
 operands AS (
@@ -255,14 +274,25 @@ SELECT c.id,
        c.body,
        c.status,
        c.check_type,
-       CASE WHEN c.check_type = 'PROGRAMMATIC' THEN 'EXACT' ELSE 'JUDGED' END AS tier,
+       -- Stored intent narrowed by possibility, exactly like gate_on below. An author
+       -- may type PROGRAMMATIC over a condition that asks for a judgement; they cannot
+       -- make it one.
+       CASE WHEN c.check_type = 'PROGRAMMATIC' AND NOT c.has_judgement_op
+            THEN 'EXACT' ELSE 'JUDGED' END                        AS tier,
+       c.has_judgement_op,
        o.docs                                                     AS operand_docs,
        (o.row_count > 0)                                          AS has_conditions,
-       (c.check_type = 'PROGRAMMATIC' AND o.row_count > 0
+       -- AN AGENT CHECK CAN NEVER BE A THRESHOLD CHECK.
+       --
+       -- A gate runs before anything has been read, to decide whether reading is worth
+       -- paying for. A judgement costs a model call, so gating on one spends the money
+       -- the gate exists to save — and it does it on the least evidence, since nothing
+       -- has been read yet. This tested the DECLARED check_type, so a check typed
+       -- PROGRAMMATIC over a `same_party` row qualified: an agent rule, gating.
+       (c.check_type = 'PROGRAMMATIC' AND NOT c.has_judgement_op AND o.row_count > 0
         AND o.docs <@ pre.codes)                                  AS gate_eligible,
-       -- Stored intent narrowed by possibility. A rule that stops qualifying stops
-       -- being a gate rather than continuing to claim it runs first.
-       (c.is_gate AND c.check_type = 'PROGRAMMATIC' AND o.row_count > 0
+       (c.is_gate AND c.check_type = 'PROGRAMMATIC' AND NOT c.has_judgement_op
+        AND o.row_count > 0
         AND o.docs <@ pre.codes)                                  AS gate_on,
        (SELECT COUNT(*) FROM helix_gov.comment m
          WHERE m.target_kind = 'CHECK' AND m.target_id = c.id)    AS comment_count,
@@ -272,21 +302,53 @@ SELECT c.id,
   JOIN operands o ON o.id = c.id;
 
 -- ----------------------------------------------------------------------------
--- A binding naming a document type that does not exist.
+-- A reference to something that is not there.
 --
--- The database used to refuse this with a foreign key, which stopped the mistake and
--- told the author nothing they could act on. The console maintains the reference now;
--- this is how anyone sees where it did not.
+-- The database used to refuse the first of these with a foreign key, which stopped the
+-- mistake and told the author nothing they could act on. The console maintains the
+-- reference now; this is how anyone sees where it did not.
+--
+-- The third row type is the one that costs an examination. An operand naming a document
+-- that exists and a FIELD NOBODY READS FROM IT compiles, stores, plans and runs — and
+-- returns INCONCLUSIVE on every presentation for ever, because the fact it joins on is
+-- never written. It looks exactly like a check that ran. The seeded expiry gate did this
+-- for its whole life: it compared `place_of_presentation` on the covering schedule, and
+-- only the credit had a binding for that field, so the one check that runs before
+-- anything is read could never return PASS.
+--
+-- `RuleCompiler` rejects precisely this in a rule the planner wrote. Nothing rejects it
+-- in a rule a person wrote, because an author is allowed to get ahead of the dictionary —
+-- so it is reported rather than refused.
 -- ----------------------------------------------------------------------------
 DROP VIEW IF EXISTS helix_gov.v_dangling_reference CASCADE;
 CREATE VIEW helix_gov.v_dangling_reference AS
-SELECT 'field_binding'  AS whose, b.field_key AS id, b.doc_code AS missing_doc_code
+SELECT 'field_binding'  AS whose, b.field_key AS id, b.doc_code AS missing_doc_code,
+       NULL::text       AS missing_field_key
   FROM helix_gov.v_field_binding b
  WHERE NOT EXISTS (SELECT 1 FROM helix_gov.v_doc_type d WHERE d.code = b.doc_code)
 UNION ALL
-SELECT 'check_operand', c.id, d
+SELECT 'check_operand', c.id, d, NULL
   FROM helix_gov.v_check_list c, unnest(c.operand_docs) d
- WHERE NOT EXISTS (SELECT 1 FROM helix_gov.v_doc_type t WHERE t.code = d);
+ WHERE NOT EXISTS (SELECT 1 FROM helix_gov.v_doc_type t WHERE t.code = d)
+UNION ALL
+SELECT 'check_operand_field', o.id, o.doc, o.field
+  FROM (
+      SELECT c.id,
+             q ->> 'doc'   AS doc,
+             q ->> 'field' AS field
+        FROM helix_gov.document c,
+             LATERAL (
+                 SELECT jsonb_path_query(c.body, '$.rule.groups[*].rows[*].l') AS q
+                 UNION ALL
+                 SELECT jsonb_path_query(c.body, '$.rule.groups[*].rows[*].r')
+             ) t
+       WHERE c.kind = 'check'
+         AND q ->> 'doc' IS NOT NULL
+         AND q ->> 'field' IS NOT NULL
+  ) o
+ WHERE EXISTS (SELECT 1 FROM helix_gov.v_doc_type t WHERE t.code = o.doc)
+   AND NOT EXISTS (SELECT 1 FROM helix_gov.v_field_binding b
+                    WHERE b.doc_code = o.doc AND b.field_key = o.field);
 
 -- ----------------------------------------------------------------------------
 -- Usage counts, for the console's "in use by" chips.

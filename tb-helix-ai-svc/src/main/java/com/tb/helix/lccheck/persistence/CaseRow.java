@@ -29,6 +29,8 @@ public record CaseRow(
         String stage,
         String nextStage,
         boolean awaitingOfficer,
+        /** Who presses next: {@code auto} or {@code step}. A property of the case. */
+        String runMode,
 
         // --- Credit terms, denormalised so the cases list is one query ---
         String creditRef,
@@ -47,6 +49,8 @@ public record CaseRow(
 
         // --- What we hold ---
         String creditTextSha,
+        /** Original credit upload; set for every create. Text dump may equal this. */
+        String creditSourceSha,
         String sourceBundleSha,
         String bundlePdfSha,
         int pageCount,

@@ -5,6 +5,7 @@ import com.tb.helix.harness.llm.LlmGateway;
 import com.tb.helix.harness.llm.LlmRole;
 import com.tb.helix.harness.llm.text.PromptContext;
 import com.tb.helix.harness.llm.text.TextRequest;
+import com.tb.helix.harness.llm.tool.ToolRequest;
 import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
@@ -82,16 +83,21 @@ public class PlanStage implements Stage {
     private final CaseStore cases;
     private final DocumentTypes docTypes;
     private final RuleCompiler rules;
+    private final PlannerTools planner;
     private final Prompts prompts;
     private final LlmGateway models;
     private final DerivationCache cache;
     private final ObjectMapper json;
     private final boolean thinking;
+    private final int maxTurns;
 
     public PlanStage(CheckCatalog catalog, CaseStore cases, DocumentTypes docTypes,
-                     RuleCompiler rules, LlmGateway models, DerivationCache cache, Prompts prompts,
-                     ObjectMapper json,
-                     @Value("${helix.check.plan.thinking:true}") boolean thinking) {
+                     RuleCompiler rules, PlannerTools planner, LlmGateway models,
+                     DerivationCache cache, Prompts prompts, ObjectMapper json,
+                     @Value("${helix.check.plan.thinking:true}") boolean thinking,
+                     @Value("${helix.check.plan.max-turns:4}") int maxTurns) {
+        this.planner = planner;
+        this.maxTurns = Math.max(1, maxTurns);
         this.catalog = catalog;
         this.cases = cases;
         this.docTypes = docTypes;
@@ -151,6 +157,12 @@ public class PlanStage implements Stage {
                     "citedAs", card.citedAs() == null ? "practice" : card.citedAs(),
                     "areaId", applies ? area(card) : null,
                     "name", card.title(), "appliesBecause", because,
+                    // The author's own wording. For a judged check this IS the instruction —
+                    // the catalogue has said so since it was written — and it was going no
+                    // further than the catalogue: the carefully worded reading of :47A:
+                    // reached the examiner as a title and nothing else. An exact check has
+                    // its rows instead, and prose beside them invites the two to disagree.
+                    "executionPlan", card.exact() ? null : card.body(),
                     "ruleRef", String.join(", ", card.refs()),
                     "severity", card.severity(), "refs", card.refs(),
                     "ruleDef", card.rule(),
@@ -162,7 +174,14 @@ public class PlanStage implements Stage {
                     "status", applies ? "PLANNED" : "SKIPPED", "ordinal", ordinal++));
             if (applies) planned++;
         }
-        return StepResult.ok(Map.of("ruleCards", planned, "nextOrdinal", ordinal));
+        // `done` rather than `ok`: the note is what sets `refresh` on the stream, and this
+        // step has just written every standing rule card onto the case — in about eighty
+        // milliseconds. Reported as `ok`, the browser was told nothing had landed and the
+        // cards stayed invisible until the requirement reader finished twelve seconds later.
+        // The plan looked like it did nothing for twelve seconds and then everything at once,
+        // when in fact the cheap part was over almost immediately.
+        return StepResult.done(planned + (planned == 1 ? " rule card" : " rule cards"),
+                Map.of("ruleCards", planned, "nextOrdinal", ordinal));
     }
 
     // =========================================================================
@@ -197,6 +216,7 @@ public class PlanStage implements Stage {
                 .stable("DOCUMENT TYPE CODES", docTypes.vocabulary())
                 .stable("FIELDS THAT CAN BE COMPARED, BY DOCUMENT", rules.vocabulary())
                 .stable("OPERATORS A CONDITION MAY USE", rules.operators())
+                .stable("VALUES A CONDITION MAY WORK OUT", rules.functions())
                 .varying("FIELD 46A — DOCUMENTS REQUIRED", docs)
                 .varying("FIELD 47A — ADDITIONAL CONDITIONS", conditions);
 
@@ -206,10 +226,25 @@ public class PlanStage implements Stage {
         List<Map<String, Object>> found;
         try {
             var hit = cache.computeIfAbsent(key, Map.class, () -> {
-                var result = models.complete(TextRequest.json(
-                        LlmRole.PLAN, prompts.get("plan-system"), prompt.render()));
+                // A tool loop rather than one completion, for one reason: the planner is
+                // writing conditions and cannot tell whether what it wrote will be accepted.
+                // `RuleCompiler` can, and does — but afterwards, and an invalid condition is
+                // then silently demoted to a judged card that costs a model call on every
+                // presentation for ever. Asking before it commits closes that loop inside the
+                // call, for the price of one more completion when it uses it and none when
+                // it does not.
+                var result = models.loop(new ToolRequest(
+                        LlmRole.PLAN, prompts.get("plan-system"), prompt.render(),
+                        planner.forRequirements(), maxTurns, Map.of()));
+                if (!result.concluded()) {
+                    // The budget ended the conversation rather than the model doing so, so
+                    // there is no answer — only a partial one, and a partial conversation
+                    // read as a verdict is how an unfinished plan looks like a complete one.
+                    throw new IllegalStateException("the planner used its whole turn budget ("
+                            + result.iterations() + ") without answering");
+                }
                 return new DerivationCache.Entry<>(parse(result.content()), null,
-                        result.rawResponse(), ModelSpend.of(result.usage(), result.model()));
+                        result.content(), ModelSpend.of(result.usage(), result.model()));
             });
             found = readList(hit.value(), "requirements");
         } catch (RuntimeException e) {
@@ -267,11 +302,11 @@ public class PlanStage implements Stage {
         String howToCheck = nz(str(r.get("howToCheck")));
         String because = "Read from " + source + " of this credit";
 
-        Object groups = null;
+        Object condition = null;
         if (r.get("rule") != null) {
             RuleCompiler.Verdict v = rules.compile(r.get("rule"));
             if (v.ok()) {
-                groups = v.groups();
+                condition = v.rule();
             } else {
                 log.info("Requirement {} on case {} could not be compiled ({}) — judging it instead",
                         id, ctx.caseId(), v.why());
@@ -279,13 +314,13 @@ public class PlanStage implements Stage {
             }
         }
 
-        boolean human = groups == null && Boolean.TRUE.equals(r.get("notCovered"));
-        String tier = groups != null ? "EXACT" : "JUDGED";
+        boolean human = condition == null && Boolean.TRUE.equals(r.get("notCovered"));
+        String tier = condition != null ? "EXACT" : "JUDGED";
 
         cases.upsertPlanCheck(ctx.caseId(), Rows.of(
                 "id", id, "origin", Origin.CREDIT.name(),
                 "tier", tier,
-                "checkType", groups != null ? "PROGRAMMATIC" : "AGENT",
+                "checkType", condition != null ? "PROGRAMMATIC" : "AGENT",
                 "gate", false, "citedAs", "credit", "areaId", Areas.CREDIT,
                 "name", what,
                 "appliesBecause", because,
@@ -293,10 +328,10 @@ public class PlanStage implements Stage {
                 "severity", severity(r.get("severity")),
                 "refs", List.of(), "plannedByLlm", true,
                 "notCovered", human,
-                "ruleDef", groups,
+                "ruleDef", condition,
                 // Only a judged card has a prompt to assemble. An exact one has its rows,
                 // and writing prose beside them invites the two to disagree.
-                "executionPlan", groups != null ? null : howToCheck,
+                "executionPlan", condition != null ? null : howToCheck,
                 "coverage", human ? "HUMAN" : coverage(tier),
                 // Only codes the dictionary knows. The planner is given the vocabulary
                 // and usually obeys it; one that invents a code would otherwise put a
@@ -304,7 +339,7 @@ public class PlanStage implements Stage {
                 "docCodes", strings(r.get("documents")).stream().filter(docTypes::known).toList(),
                 "status", "PLANNED", "ordinal", ordinal));
 
-        return groups != null;
+        return condition != null;
     }
 
     // =========================================================================
@@ -508,32 +543,41 @@ public class PlanStage implements Stage {
      *
      * <p>The convention is {@code <CONCERN>-<ANCHOR>[.<clause>]} and it is already what the
      * dictionary uses: {@code DATE-31D} is a date check reading tag 31D. A planner card keeps
-     * the shape — {@code CR-47A.2} — so it still says which tag it came from, which is
+     * the shape — {@code REQ-47A.2} — so it still says which tag it came from, which is
      * self-describing in a way a bare running number is not.
      *
      * <p><b>One prefix and one counter</b>, deliberately. An earlier pass took the concern
      * from the tag, so a plan read {@code DOCSET-46A.1, DOCSET-46A.2, COND-47A.1,
      * DOCSET-46A.3} — two prefixes alternating and each restarting its own numbering, for a
-     * set of cards that all came out of the same model call. {@code CR} is every requirement
-     * this credit produced, numbered once through: {@code CR-46A.1 … CR-46A.5, CR-47A.6}.
+     * set of cards that all came out of the same model call. {@code REQ} is every requirement
+     * this credit produced, numbered once through: {@code REQ-46A.1 … REQ-46A.5, REQ-47A.6}.
      *
-     * <p>It replaces {@code REQ-01}, which was wrong twice over. {@code 01} anchors on
-     * nothing, and <b>{@code REQ} is a dictionary concern</b> — the seeded catalogue ships
-     * {@code REQ-38} and {@code REQ-41A}. The planner and an author were minting into one
-     * namespace with {@code UNIQUE (case_id, check_id)} underneath, so the day somebody
-     * authored {@code REQ-01} the planner's upsert would have overwritten their check with
-     * a requirement read off a credit, silently.
+     * <p><b>Two namespaces, one column.</b> {@code lc_plan_check} has {@code UNIQUE (case_id,
+     * check_id)} and both an author and this class mint into it. What keeps them apart is a
+     * rule with no exceptions, stated on {@link CheckCatalog} and enforced here:
      *
-     * <p>The clause suffix is what keeps the two apart for good: the dictionary owns
-     * {@code COND-47A}, the standing check over the whole field; the planner owns
-     * {@code COND-47A.1}, {@code .2}, {@code .3}. And every id is checked against what is
-     * already on the case before it is used, so a collision is impossible rather than
-     * merely unlikely.
+     * <ul>
+     *   <li>a dictionary id <b>never</b> carries a clause suffix — {@code COND-47A} is the
+     *       standing check over the whole field;
+     *   <li>a planner id <b>always</b> does — {@code REQ-47A.1}, {@code .2}, {@code .3}.
+     * </ul>
+     *
+     * <p>That is why {@code REQ} is safe to use as the prefix, and it is why the two seeded
+     * checks that once held it — {@code REQ-38} and {@code REQ-41A} — were renamed to
+     * {@code TRANSF-38} and {@code AVAIL-41A}. A concern is what the check is about; a
+     * requirement read off a credit is not a concern, and it should not have looked like one.
+     *
+     * <p>Belt and braces: every id is checked against what is already on the case before it
+     * is used, and {@code select} runs before this does — so the dictionary's ids are already
+     * there and a collision is impossible rather than merely unlikely.
      */
     private static final class ClauseIds {
 
-        /** Credit requirement. Not a dictionary concern, so it can never collide with one. */
-        private static final String PREFIX = "CR";
+        /**
+         * Credit requirement. Only ever minted with a clause suffix, which is what keeps this
+         * out of the dictionary's namespace however the two grow.
+         */
+        private static final String PREFIX = "REQ";
 
         private final Set<String> taken;
         private final Map<String, Integer> seq = new LinkedHashMap<>();

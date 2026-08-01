@@ -93,7 +93,7 @@ public class CaseController {
     /** What the credit says before a case exists — shown as soon as the MT700 is dropped. */
     @PostMapping(value = "/cases/peek", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public List<Map<String, String>> peek(@RequestPart("credit") MultipartFile credit) throws IOException {
-        return cases.peek(credit.getBytes());
+        return cases.peek(credit.getBytes(), credit.getOriginalFilename());
     }
 
     @GetMapping("/cases/{ref}")
@@ -114,6 +114,25 @@ public class CaseController {
     }
 
     // --- Running ------------------------------------------------------------
+
+    /**
+     * Who presses next on this case.
+     *
+     * <p>Its own endpoint rather than a field on the run, because it is not part of running
+     * anything — it is a standing decision about how this examination is conducted, taken
+     * before a run and outliving it. Recorded as an officer action for the same reason: a
+     * case that stops asking is a case somebody decided should stop asking.
+     */
+    @PutMapping("/cases/{ref}/mode")
+    public Map<String, Object> setMode(@PathVariable String ref, @RequestBody Map<String, Object> body,
+                                       @RequestParam(defaultValue = "officer") String officerId) {
+        String mode = String.valueOf(body.getOrDefault("mode", "auto")).toLowerCase();
+        if (!mode.equals("auto") && !mode.equals("step")) {
+            throw new IllegalArgumentException("A run mode is auto or step, not \"" + mode + "\".");
+        }
+        cases.setRunMode(cases.resolve(ref), mode, officerId);
+        return Map.of("mode", mode);
+    }
 
     @PostMapping("/cases/{ref}/stages/{stage}/run")
     public Map<String, Object> run(@PathVariable String ref, @PathVariable String stage,

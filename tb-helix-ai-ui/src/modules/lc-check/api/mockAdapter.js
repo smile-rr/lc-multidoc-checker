@@ -271,6 +271,11 @@ export async function overrideGate() {
   return { overridden: true }
 }
 
+export async function setRunMode(caseId, mode) {
+  void caseId
+  return { mode }
+}
+
 export async function submitCase(caseId, signoff) {
   await wait(LATENCY.mutate)
   void signoff

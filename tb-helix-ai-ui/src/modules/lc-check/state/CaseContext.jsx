@@ -1,6 +1,6 @@
 import { createContext, useContext, useReducer, useEffect, useRef, useCallback, useMemo } from 'react'
 import * as api from '../api/lcCheckApi'
-import { STAGES, RUN_STAGES, runStagesFrom, stageAfter, doneThroughStage, destinationTab } from './stages'
+import { STAGES, RUN_STAGES, runStagesFrom, stageAfter, doneThroughStage, destinationTab, stepsOf } from './stages'
 import { effectiveOutcome, outcomeOf, needsAttention, caseStatus } from './outcome'
 
 /**
@@ -58,10 +58,20 @@ const initial = {
    */
   runStages: null,
 
+  /** GET /lc-check/pipeline, verbatim — the source of each stage's declared steps. */
+  runPipeline: null,
+
   run: {
     /**
      * Who presses "next" — see RUN_MODES. The steps and their order are the same
      * either way; the mode decides nothing except whether the run asks.
+     *
+     * **Adopted from the case, not defaulted here.** This was initialised to 'auto'
+     * on every mount, so an officer who put a case into Step and then reloaded,
+     * changed tab or handed it over found it running unattended again — the one
+     * mode you pick *because* you want to be asked was the one that did not survive
+     * being looked away from. It is a property of the case now; this is only what
+     * shows before the case has loaded.
      */
     mode: 'auto',
     /** Stages of the run that have completed, in order. */
@@ -95,6 +105,21 @@ const initial = {
      */
     busy: false,
     activity: null,
+    /**
+     * Which declared step is running, and how far through the stage it is.
+     *
+     * `{ key, index, total }` — "govern, 3 of 3". Only DECLARED steps count: a stage
+     * fans out into sub-steps (`attest:INV`, one per check) that are not in the
+     * pipeline's list, and counting those would make the position jump about. A
+     * sub-step leaves the position on the declared step it belongs to, which is
+     * where the officer's attention should stay anyway.
+     *
+     * Exists because the plan's three steps cost wildly different amounts: `select`
+     * writes every card in 78ms, then `requirements` and `govern` spend half a minute
+     * producing nothing visible. Cards appeared, the screen went quiet, and the only
+     * way to know it had not hung was to read the log.
+     */
+    step: null,
     /** What stopped it, if a stage failed. A stalled run has to be distinguishable. */
     failure: null,
 
@@ -234,6 +259,9 @@ function reducer(state, action) {
         run: {
           ...state.run,
           segmentTotal: action.data.totalPages ?? state.run.segmentTotal,
+          // The case's own, so a reload, a second tab and a colleague all see the
+          // same pacing. Falls back to whatever is on screen while it loads.
+          mode: loaded?.mode ?? state.run.mode,
           started: Boolean(loaded?.started || state.run.started),
           finished,
           done,
@@ -261,6 +289,7 @@ function reducer(state, action) {
           activeAreaId: action.merge ? state.run.activeAreaId : null,
           busy,
           activity: busy ? (action.merge ? state.run.activity : null) : null,
+          step: busy ? (action.merge ? state.run.step : null) : null,
           failure: loaded?.error ?? null,
           // A halted run is over until an officer overrides it, so the auto-runner
           // must not find it live and try the next stage.
@@ -292,8 +321,16 @@ function reducer(state, action) {
     // the work is is another.
     case 'activity':
       return { ...state, run: { ...state.run, failure: null, activity: action.label } }
+    case 'step_at': {
+      // Only a step the pipeline declared moves the position. Anything else is a
+      // fan-out underneath one, and belongs to whichever declared step is running.
+      const steps = stepsOf(state.runPipeline, action.stage)
+      const index = steps.indexOf(action.step)
+      if (index < 0) return state
+      return { ...state, run: { ...state.run, step: { key: action.step, index: index + 1, total: steps.length } } }
+    }
     case 'activity_ended':
-      return { ...state, run: { ...state.run, activity: null } }
+      return { ...state, run: { ...state.run, activity: null, step: null } }
     // A failed stage ends the run, rather than freeing the auto-runner to try the
     // same stage again immediately.
     //
@@ -307,7 +344,7 @@ function reducer(state, action) {
     // `live: false` is the fix and the whole of it. The failure is on screen and
     // the officer decides what to do about it, which is what officer-paced means.
     case 'stage_failed':
-      return { ...state, run: { ...state.run, busy: false, live: false, activity: null, activeStage: null, failure: action.message } }
+      return { ...state, run: { ...state.run, busy: false, live: false, activity: null, step: null, activeStage: null, failure: action.message } }
     // The halt is released. The finding stays where it is — this says only that the
     // examination may go on, which is why it does not touch findings or status.
     case 'gate_overridden':
@@ -329,7 +366,9 @@ function reducer(state, action) {
     case 'pipeline':
       // What the service says it can run. Wording and tab placement stay here; the
       // list and its order come from there.
-      return { ...state, runStages: runStagesFrom(action.pipeline) }
+      // Kept whole as well as reduced to the bar: the bar needs which stages an
+      // officer may start, the step counter needs every stage's declared steps.
+      return { ...state, runStages: runStagesFrom(action.pipeline), runPipeline: action.pipeline }
     case 'run_mode':
       return { ...state, run: { ...state.run, mode: action.mode } }
     case 'stage_started':
@@ -534,12 +573,20 @@ export function CaseProvider({ caseId, children }) {
     return api.watchCase(caseId, (event) => {
       if (event.type === 'step_started' || event.type === 'step_finished') {
         dispatch({ type: 'activity', label: event.label })
+        if (event.type === 'step_started') dispatch({ type: 'step_at', stage: event.stage, step: event.step })
         const mark = extractMark(event.step, event.type, event.status)
         if (mark) dispatch({ type: 'doc_extract', code: mark.code, status: mark.status })
         if (event.refresh) reload(true)
       } else if (event.type === 'stage_started') {
         dispatch({ type: 'stage_started', stageId: event.stage })
       } else if (event.type === 'stage_done') {
+        // Release the latch here too, not only in the subscription `startStep` opened.
+        // A run can finish on this path — a reconnect, a second tab, a stage another
+        // window started — and when it did, the latch this tab closed on its own click
+        // was never opened again. Every later press then did nothing, silently, until
+        // the workbench was remounted: which is exactly "I have to click Plan several
+        // times before anything happens".
+        startGate.current = false
         dispatch({ type: 'activity_ended' })
         dispatch({ type: 'stage_done', stageId: event.stage, areaIds: stateRef.current.data?.areas?.map((a) => a.id) })
         reload(true)
@@ -579,7 +626,13 @@ export function CaseProvider({ caseId, children }) {
       const snap = stateRef.current.run
       if (startGate.current || snap.activeStage || snap.busy) return
       const areas = stateRef.current.data?.areas ?? []
-      if (!areas.length) return
+      // The case has not finished loading. Said out loud rather than returned in
+      // silence: this fires on a press made during the first paint, and a press that
+      // vanishes teaches the officer to press harder.
+      if (!areas.length) {
+        flash('Still loading this case — try again in a moment.')
+        return
+      }
       startGate.current = true
       unsubscribe.current?.()
       dispatch({ type: 'stage_started', stageId: stepId })
@@ -589,6 +642,7 @@ export function CaseProvider({ caseId, children }) {
           // What the stage is doing right now, in its own words. The area bars say
           // how far along; this says which step it is actually on.
           dispatch({ type: 'activity', label: event.label })
+          if (event.type === 'step_started') dispatch({ type: 'step_at', stage: event.stage, step: event.step })
           const mark = extractMark(event.step, event.type, event.status)
           if (mark) dispatch({ type: 'doc_extract', code: mark.code, status: mark.status })
           if (event.refresh) reload(true)
@@ -626,16 +680,50 @@ export function CaseProvider({ caseId, children }) {
     [caseId, flash, reload],
   )
 
-  /** The officer asking for the next step — the first press also starts the run. */
+  // The last word on the latch: if the service says nothing is running and this tab
+  // says nothing is running, then nothing is running, whatever a missed event left
+  // behind. Without this a dropped stream — a laptop lid, a proxy timeout, a tab in
+  // the background — leaves the latch closed for the life of the workbench, and every
+  // press after it is swallowed.
+  const activeStage = state.run.activeStage
+  useEffect(() => {
+    if (!busy && !activeStage) startGate.current = false
+  }, [busy, activeStage])
+
+  /**
+   * The officer asking for the next step — the first press also starts the run.
+   *
+   * <p>Every refusal says something. This had three silent returns, and a button that
+   * does nothing and explains nothing is a button you press again: which is how "I
+   * have to click Plan several times" happens whether or not anything is wrong.
+   */
   const runNext = useCallback(() => {
     const snap = stateRef.current.run
-    if (startGate.current || snap.activeStage || snap.busy) return
+    if (startGate.current || snap.activeStage || snap.busy) {
+      flash('A stage is already running on this case.')
+      return
+    }
     const next = stageAfter(snap.done, stateRef.current.runStages ?? RUN_STAGES)
-    if (!next) return
+    if (!next) {
+      flash('Every stage has run. There is nothing further to start.')
+      return
+    }
     if (!snap.started) dispatch({ type: 'run_started' })
     else if (!snap.live) dispatch({ type: 'resume_run' })
     startStep(next.id)
-  }, [startStep])
+  }, [startStep, flash])
+
+  /**
+   * Who presses next, remembered on the case.
+   *
+   * <p>Written through before the toggle moves, so a mode that did not save does not
+   * show as saved. The reducer still updates immediately — the officer's own tab
+   * should not lag a round trip behind their own click.
+   */
+  const setRunMode = useCallback((mode) => {
+    dispatch({ type: 'run_mode', mode })
+    api.setRunMode(caseId, mode).catch((e) => flash(e.message ?? 'The run mode could not be saved'))
+  }, [caseId, flash])
 
   /**
    * The officer accepts the gate's ground and lets the examination continue.
@@ -870,9 +958,9 @@ export function CaseProvider({ caseId, children }) {
       stages: STAGES,
       callOf,
       status,
-      actions: { flash, runNext, overrideGate, override, saveNote, addCheck, raiseFinding, submit, askQuestion, dispatch },
+      actions: { flash, runNext, setRunMode, overrideGate, override, saveNote, addCheck, raiseFinding, submit, askQuestion, dispatch },
     }),
-    [state, caseId, visible, callOf, status, flash, runNext, overrideGate, override, saveNote, addCheck, raiseFinding, submit, askQuestion],
+    [state, caseId, visible, callOf, status, flash, runNext, setRunMode, overrideGate, override, saveNote, addCheck, raiseFinding, submit, askQuestion],
   )
 
   return <CaseContext.Provider value={value}>{children}</CaseContext.Provider>

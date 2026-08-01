@@ -22,26 +22,38 @@
 // Examples
 //   DATE-44C      latest shipment date          (dictionary)
 //   AMT-30A       amount within tolerance       (dictionary)
-//   CR-47A.2      second requirement this credit imposed, read from field 47A
+//   REQ-47A.2     second requirement this credit imposed, read from field 47A
 //                                               (written by the planner)
 //   USER-01       added by an officer on a case
 //
-// `CR` is the planner's own namespace — every requirement it reads out of a credit,
-// numbered once through whichever tag each came from, so a plan reads CR-46A.1 …
-// CR-46A.5, CR-47A.6 rather than two concern prefixes alternating and each
-// restarting its count. It is deliberately not a CONCERN below: a concern is a
-// standing subject an author files a check under, and these are not authored.
+// THE CLAUSE SUFFIX IS THE NAMESPACE
+//
+// An author and the planner mint into one column with a uniqueness constraint
+// over it, and what keeps them apart is the suffix, not the prefix:
+//
+//   · an authored id NEVER carries one   — COND-47A is the standing check
+//   · a planner id ALWAYS carries one    — COND-47A.1 is one clause of this credit
+//
+// So `REQ` is free for both. The planner uses it for every requirement it reads
+// out of a credit, numbered once through whichever tag each came from, so a plan
+// reads REQ-46A.1 … REQ-46A.5, REQ-47A.6 rather than two concern prefixes
+// alternating and each restarting its count.
 //
 // Rules
 //   · one id per check, for the life of the check
 //   · never reuse an id, even after a check is retired
+//   · never author an id containing a dot
 //   · a finding always carries the id of the check that produced it, or null
 //     when nothing checked it — an uncovered condition must not borrow one
 // ===========================================================================
 
 /** The concern prefixes. Adding one is a governance decision, not a code change. */
 export const CONCERNS = {
-  REQ: 'Requirements — what the credit calls for',
+  REQ: 'Requirements — what this credit calls for, read from 46A and 47A',
+  AVAIL: 'Availability — where and how the credit may be used',
+  TRANSF: 'Transfer — second beneficiary, substitution and routing',
+  SIGN: 'Signatures and the capacity they were given in',
+  CORR: 'Corrections and how they are authenticated',
   DOCSET: 'Document set — presence, originals, signatures',
   DATE: 'Dates — shipment, presentation, expiry',
   AMT: 'Amounts — value, tolerance, unit price',

@@ -1,9 +1,12 @@
 package com.tb.helix.lccheck.stage.intake;
 
+import com.tb.helix.harness.doc.CreditMaterial;
+import com.tb.helix.harness.doc.CreditTextExtractor;
 import com.tb.helix.harness.doc.DocumentConverter;
 import com.tb.helix.harness.doc.PageRenderer;
 import com.tb.helix.infra.blob.BlobOwner;
 import com.tb.helix.infra.blob.BlobStore;
+import com.tb.helix.infra.error.DocumentException;
 import com.tb.helix.infra.pipeline.Step;
 import com.tb.helix.infra.pipeline.Trigger;
 import com.tb.helix.infra.pipeline.StepResult;
@@ -22,9 +25,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -70,6 +75,8 @@ public class IntakeStage implements Stage {
     private final BlobStore blobs;
     private final DocumentConverter converter;
     private final PageRenderer renderer;
+    private final CreditTextExtractor creditText;
+    private final CreditScanTranscriber scanTranscriber;
     private final SwiftReader swift;
     private final CreditReader creditReader;
     private final CaseStore cases;
@@ -77,11 +84,14 @@ public class IntakeStage implements Stage {
     private final ExtractionSpec spec;
 
     public IntakeStage(BlobStore blobs, DocumentConverter converter, PageRenderer renderer,
+                       CreditTextExtractor creditText, CreditScanTranscriber scanTranscriber,
                        SwiftReader swift, CreditReader creditReader, CaseStore cases,
                        DocumentTypes docTypes, ExtractionSpec spec) {
         this.blobs = blobs;
         this.converter = converter;
         this.renderer = renderer;
+        this.creditText = creditText;
+        this.scanTranscriber = scanTranscriber;
         this.swift = swift;
         this.creditReader = creditReader;
         this.cases = cases;
@@ -104,7 +114,8 @@ public class IntakeStage implements Stage {
     public List<Step<StageContext>> steps() {
         return List.of(
                 Step.<StageContext>of(CREDIT, "Reading the credit",
-                        ctx -> row(ctx).creditTextSha() != null, this::readCredit),
+                        ctx -> row(ctx).creditTextSha() != null || row(ctx).creditSourceSha() != null,
+                        this::readCredit),
                 Step.<StageContext>of(BUNDLE, "Converting the scan to PDF",
                         ctx -> row(ctx).sourceBundleSha() != null && row(ctx).bundlePdfSha() == null,
                         this::convertBundle),
@@ -124,16 +135,39 @@ public class IntakeStage implements Stage {
      * <p>A bundle that arrives as a PDF is usable immediately, so its sha is recorded as
      * the bundle's here and the viewer can open it while the credit is still being read. A
      * TIFF has to wait for the conversion, which is {@link #execute}'s.
+     *
+     * <p>A credit may arrive as plain text, a text-layer PDF, a Word file, or a scan.
+     * The original bytes are always kept under {@code credit_source_sha}. When the text
+     * layer is usable, {@code credit_text_sha} is filled here; a scan leaves it empty and
+     * {@link #readCredit} transcribes the pages with vision before the SWIFT reader runs.
+     * Either way, everything after this method sees UTF-8 SWIFT text.
      */
-    public void receive(String caseId, byte[] creditText, String creditName,
+    public void receive(String caseId, byte[] creditBytes, String creditName,
                         byte[] bundle, String bundleName, String bundleType) {
 
         Map<String, Object> patch = new LinkedHashMap<>();
 
-        if (creditText != null && creditText.length > 0) {
-            var stored = blobs.put(creditText, "text/plain", creditName);
-            blobs.reference(stored.sha256(), BlobOwner.CASE, caseId, "credit");
-            patch.put("credit_text_sha", stored.sha256());
+        if (creditBytes != null && creditBytes.length > 0) {
+            // The upload as received — evidence. A scan still needs these bytes on the
+            // pipeline thread; a text dump keeps them so a rerun can show what arrived.
+            var source = blobs.put(creditBytes, creditMediaType(creditName), creditName);
+            blobs.reference(source.sha256(), BlobOwner.CASE, caseId, "credit_source");
+            patch.put("credit_source_sha", source.sha256());
+
+            CreditMaterial material = creditText.materialize(creditBytes, creditName);
+            switch (material) {
+                case CreditMaterial.PlainText plain -> {
+                    byte[] utf8 = plain.text().getBytes(StandardCharsets.UTF_8);
+                    var stored = blobs.put(utf8, "text/plain", creditName);
+                    blobs.reference(stored.sha256(), BlobOwner.CASE, caseId, "credit");
+                    patch.put("credit_text_sha", stored.sha256());
+                }
+                case CreditMaterial.ScannedPdf ignored -> {
+                    // credit_text_sha stays null until readCredit transcribes.
+                    log.info("Case {}: credit looks like a scan — vision will read it in intake",
+                            caseId);
+                }
+            }
 
             // A placeholder document, so the intake screen has the filename to show while
             // the message behind it is still being read. It carries no reading of the
@@ -184,14 +218,35 @@ public class IntakeStage implements Stage {
      *
      * <p>Written before the bundle is touched, so the terms are on screen while the scan is
      * still converting — which is the whole reason this is four steps rather than one.
+     *
+     * <p>A scanned PDF has no {@code credit_text_sha} yet: the pages are transcribed here,
+     * once, then the ordinary SWIFT → terms path runs on the resulting text.
      */
     private StepResult readCredit(StageContext ctx) {
         String caseId = ctx.caseId();
-        String creditSha = row(ctx).creditTextSha();
-        byte[] bytes = blobs.get(creditSha).orElseThrow(
-                () -> new IllegalStateException("Credit blob " + creditSha + " is missing"));
+        CaseRow caseRow = row(ctx);
+        boolean transcribed = false;
 
-        SwiftFile file = swift.read(new String(bytes, java.nio.charset.StandardCharsets.UTF_8));
+        String creditSha = caseRow.creditTextSha();
+        if (creditSha == null) {
+            String sourceSha = caseRow.creditSourceSha();
+            if (sourceSha == null) {
+                throw new DocumentException("No credit was uploaded for this case.");
+            }
+            String plain = scanTranscriber.transcribe(sourceSha);
+            var stored = blobs.put(plain.getBytes(StandardCharsets.UTF_8), "text/plain", "lc-transcribed.txt");
+            blobs.reference(stored.sha256(), BlobOwner.CASE, caseId, "credit");
+            cases.patchCase(caseId, Map.of("credit_text_sha", stored.sha256()));
+            creditSha = stored.sha256();
+            transcribed = true;
+            log.info("Case {}: transcribed scanned credit → {}", caseId, stored.shortSha());
+        }
+
+        final String textSha = creditSha;
+        byte[] bytes = blobs.get(textSha).orElseThrow(
+                () -> new IllegalStateException("Credit blob " + textSha + " is missing"));
+
+        SwiftFile file = swift.read(new String(bytes, StandardCharsets.UTF_8));
         CreditReader.Reading reading = creditReader.read(file);
 
         // The terms as they now stand — the model has already applied every amendment in
@@ -212,11 +267,14 @@ public class IntakeStage implements Stage {
 
         writeCreditFacts(caseId, reading);
 
-        return StepResult.done(file.label() + " read", Map.of(
-                "messages", file.manifest(),
-                "credit", reading.terms(),
-                "from", reading.provenance(),
-                "lines", file.lines()));
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("messages", file.manifest());
+        detail.put("credit", reading.terms());
+        detail.put("from", reading.provenance());
+        detail.put("lines", file.lines());
+        if (transcribed) detail.put("transcribed", true);
+
+        return StepResult.done(file.label() + " read", detail);
     }
 
     /**
@@ -316,6 +374,17 @@ public class IntakeStage implements Stage {
     private boolean needsConversion(String fileName, String mediaType) {
         return converter.needsConversion(mediaType)
                 || (fileName != null && fileName.toLowerCase().matches(".*\\.tiff?$"));
+    }
+
+    private static String creditMediaType(String fileName) {
+        if (fileName == null) return "application/octet-stream";
+        String n = fileName.toLowerCase(Locale.ROOT);
+        if (n.endsWith(".pdf")) return "application/pdf";
+        if (n.endsWith(".docx")) {
+            return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        }
+        if (n.endsWith(".txt") || n.endsWith(".swift")) return "text/plain";
+        return "application/octet-stream";
     }
 
     /** The filename recorded at receive, so re-upserting the document does not lose it. */

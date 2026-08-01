@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import Icon from './Icon'
 import { Z } from './z'
 
@@ -11,39 +12,96 @@ import { Z } from './z'
 // became *horizontal* centring wherever a call site stacked the label over a
 // hint. An item here always reads from the left.
 //
-// `trigger` renders inside the same wrapper as the panel, so clicking the
-// trigger is never treated as a click outside.
-export function Menu({ open, onClose, trigger, children, align = 'left', top = 30, width = 280, maxHeight = 280, drop = 'down' }) {
-  const ref = useRef(null)
+// `trigger` renders inside the same wrapper as the panel's anchor, so clicking
+// the trigger is never treated as a click outside.
+//
+// Positioned fixed and portalled to `document.body`, measured from the trigger's
+// rect — the same reason InfoTip is. These menus live inside cards and list
+// scrollers with `overflow: hidden|auto`, and an absolutely-positioned panel is
+// clipped by those ancestors no matter how high its z-index. A row near the foot
+// of the Review findings list (DATE-31D and friends) opened a menu that painted
+// into nothing. Fixed + portal escapes the clip; auto-flip keeps it on screen.
+const GAP = 4
+
+// Call sites may still pass `top={32}` from the absolute-offset era; it is ignored —
+// placement is measured from the trigger now.
+export function Menu({ open, onClose, trigger, children, align = 'left', width = 280, maxHeight = 280, drop = 'down' }) {
+  const anchorRef = useRef(null)
+  const panelRef = useRef(null)
+  const [pos, setPos] = useState(null)
+
+  const place = useCallback(() => {
+    const el = anchorRef.current
+    if (!el || typeof window === 'undefined') return
+    const r = el.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - r.bottom
+    const spaceAbove = r.top
+    // Honour an explicit `up`, otherwise flip when the panel would not fit below.
+    const wantUp = drop === 'up'
+      || (drop === 'down' && spaceBelow < Math.min(maxHeight, 160) && spaceAbove > spaceBelow)
+
+    let left = align === 'right' ? r.right - width : r.left
+    left = Math.min(Math.max(8, left), Math.max(8, window.innerWidth - width - 8))
+
+    const available = (wantUp ? spaceAbove : spaceBelow) - GAP - 8
+    setPos({
+      left,
+      top: wantUp ? undefined : r.bottom + GAP,
+      bottom: wantUp ? window.innerHeight - r.top + GAP : undefined,
+      maxHeight: Math.min(maxHeight, Math.max(96, available)),
+    })
+  }, [align, drop, maxHeight, width])
+
   useEffect(() => {
-    if (!open) return
-    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose?.() }
+    if (!open) {
+      setPos(null)
+      return undefined
+    }
+    place()
+    const onDown = (e) => {
+      if (anchorRef.current?.contains(e.target) || panelRef.current?.contains(e.target)) return
+      onClose?.()
+    }
     const onKey = (e) => { if (e.key === 'Escape') onClose?.() }
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey)
-    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
-  }, [open, onClose])
+    window.addEventListener('scroll', place, true)
+    window.addEventListener('resize', place)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', place, true)
+      window.removeEventListener('resize', place)
+    }
+  }, [open, onClose, place])
 
   return (
-    <span ref={ref} style={{ position: 'relative', display: 'inline-flex', minWidth: 0, maxWidth: '100%' }}>
+    <span ref={anchorRef} style={{ position: 'relative', display: 'inline-flex', minWidth: 0, maxWidth: '100%' }}>
       {trigger}
-      {open && (
+      {open && pos && createPortal(
         <div
+          ref={panelRef}
           role="menu"
           style={{
-            position: 'absolute',
-            // `up` is for a trigger that sits at the foot of a clipped panel — the
-            // raise form inside FloatingPanel — where opening down would be cut off.
-            ...(drop === 'up' ? { bottom: '100%', marginBottom: 4 } : { top }),
-            [align]: 0, zIndex: Z.popover,
-            width, maxHeight, overflowY: 'auto',
-            background: '#fff', border: '1px solid var(--me-grey-20)', borderRadius: 10,
-            boxShadow: '0 12px 30px rgba(27,28,30,.16)', padding: 6,
+            position: 'fixed',
+            left: pos.left,
+            top: pos.top,
+            bottom: pos.bottom,
+            zIndex: Z.popover,
+            width,
+            maxHeight: pos.maxHeight,
+            overflowY: 'auto',
+            background: '#fff',
+            border: '1px solid var(--me-grey-20)',
+            borderRadius: 10,
+            boxShadow: '0 12px 30px rgba(27,28,30,.16)',
+            padding: 6,
             textAlign: 'left',
           }}
         >
           {children}
-        </div>
+        </div>,
+        document.body,
       )}
     </span>
   )

@@ -12,6 +12,22 @@ import java.util.List;
  *
  * <p>It is also why the two business modules never reference each other, which the build
  * enforces.
+ *
+ * <h2>The id namespace</h2>
+ *
+ * <p>An examination writes authored checks and its own requirement cards into one column with
+ * a uniqueness constraint over it, so the two namespaces are kept apart by a rule rather than
+ * by luck:
+ *
+ * <ul>
+ *   <li><b>An authored id never carries a clause suffix.</b> {@code COND-47A}, {@code DATE-31D}
+ *       — a concern and the tag it reads.
+ *   <li><b>A planner's id always does.</b> {@code REQ-47A.1}, {@code REQ-46A.2} — the same
+ *       shape with the clause it was read from appended.
+ * </ul>
+ *
+ * <p>So an author may use any concern they like, {@code REQ} included, and cannot collide with
+ * a card read off a credit. Do not author an id containing a dot.
  */
 public interface CheckCatalog {
 
@@ -31,7 +47,10 @@ public interface CheckCatalog {
      *                  will not make it the same way for every threshold check.
      * @param body      plain language with {field} tokens. For a judged check this IS the
      *                  prompt, not a description of one.
-     * @param rule      condition tree for an exact check; null for judged
+     * @param rule      the whole authored condition — {@code {v, scope, message, groups}} —
+     *                  for an exact check, null for judged. Read with
+     *                  {@link com.tb.helix.governance.types.ConditionTree#parse}, which is
+     *                  the only definition of that shape.
      */
     record CheckCard(
             String id,
@@ -90,8 +109,51 @@ public interface CheckCatalog {
         }
     }
 
+    /**
+     * One authored examiner, as an examination needs it.
+     *
+     * <p>An agent is not a model and not a prompt template. It is <em>a remit</em> — the
+     * concerns one examiner holds, the articles they answer to, and how they are told to read.
+     * A bank's checking desk is divided this way already: time and availability, transport,
+     * goods and pricing, the document set. The catalogue has held these since it was written
+     * and nothing consumed them, so every judged check was asked in isolation, with a generic
+     * instruction, over the whole presentation, one model call each.
+     *
+     * <p>Grouping by remit rather than by document is deliberate. Half of what an examiner
+     * catches is a conflict <em>between</em> documents — the goods description across the
+     * invoice, the bill of lading and the credit — and a grouping by document type cuts those
+     * comparisons in half and then has to send the other document anyway.
+     *
+     * @param domains  the check domains this examiner answers for. Matched case-insensitively
+     *                 against {@link CheckCard#domain}; a domain no agent claims falls to
+     *                 whoever the examination nominates, and is never silently dropped.
+     * @param behavior what this examiner is told they are doing. Prompt text — it goes in
+     *                 verbatim, so vagueness here is vagueness in every finding they raise.
+     * @param anchors  the articles this remit answers to, for quoting the authority rather
+     *                 than recalling it.
+     */
+    record AgentCard(String id, String name, String domainId, List<String> domains,
+                     String summary, String behavior, List<Anchor> anchors, int ordinal) {
+
+        /** @param desc what the article covers, in the author's words */
+        public record Anchor(String ref, String desc) {
+        }
+
+        public boolean claims(String domain) {
+            if (domain == null) return false;
+            return domains.stream().anyMatch(d -> d.equalsIgnoreCase(domain.strip()));
+        }
+    }
+
     /** Every active check in the pinned catalogue. */
     List<CheckCard> activeChecks();
+
+    /**
+     * The examiners, in authoring order.
+     *
+     * <p>Read by the run to decide who is asked what, and in how few calls.
+     */
+    List<AgentCard> agents();
 
     /**
      * One dictionary field, as it is read from one document.

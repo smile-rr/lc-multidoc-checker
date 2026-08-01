@@ -97,6 +97,21 @@ export function pipelineDisagreements(pipeline) {
     .map((s) => `the service can run "${s.stage}" and the run bar has no wording for it`)
 }
 
+/**
+ * The steps one stage declares, in order.
+ *
+ * From the service, like everything else about the pipeline — a step added to a stage
+ * shows up in the count without an edit here, and a stage the browser has never heard
+ * of returns nothing rather than a wrong denominator.
+ *
+ * @param {object[]} pipeline  GET /lc-check/pipeline
+ */
+export function stepsOf(pipeline, stage) {
+  if (!Array.isArray(pipeline)) return []
+  const found = pipeline.find((s) => s.stage === stage)
+  return found ? (found.steps ?? []).map((s) => s.key) : []
+}
+
 /** The next stage that has not run, or null when the run is out of stages. */
 export const stageAfter = (doneIds, stages = RUN_STAGES) => stages.find((s) => !doneIds.includes(s.id)) ?? null
 

@@ -111,6 +111,7 @@ class ArchitectureTest {
                         "org.springframework.web.client..",   // RestClient / RestTemplate
                         "org.springframework.jdbc..",         // JdbcTemplate
                         "org.apache.pdfbox..",                // PDF rendering and splitting
+                        "org.apache.poi..",                   // Word text extraction
                         "com.twelvemonkeys..",                // TIFF decoding
                         "software.amazon.awssdk..",           // object storage
                         "com.github.benmanes.caffeine..",     // L1 cache

@@ -10,7 +10,8 @@
 
 import { focusItem } from '@shared/lib/useNewItemFocus'
 import { isBlank, allPresent } from '@shared/ds/TextField'
-import seed from './data/seed.json' with { type: 'json' }
+import seed from './data/seed.json'
+import { operatorGroups, operatorLabel, operatorUnary, operatorLiteralRight, operatorUsesTol, describeOperand, ANY_DOCUMENT } from '@shared/lib/operators'
 import { hydrateSeed } from './api/hydrate'
 import * as gov from './api/governanceApi'
 
@@ -162,22 +163,38 @@ export const CARD_TYPES = {
   judged: { label: 'Agent', icon: 'sparkles', color: '#1F7A00', bg: 'var(--me-green-20)', hint: 'An agent reads the presentation and forms a view. Read the view before you rely on it.' },
 }
 export const checkTypeOf = (c) => (c && TIERS[c.checkType] ? c.checkType : 'AGENT')
-export const typeOf = (c) => TIERS[checkTypeOf(c)].tier
+
+/**
+ * Comparison or Agent — **the service's answer, not ours**.
+ *
+ * `tier` is derived in `v_check_list` from the author's `checkType` NARROWED BY WHAT IS
+ * POSSIBLE: a check whose condition uses `noconflict`, `same_party`, `same_country` or
+ * `addr_same_country` cannot be settled by comparison, whatever was typed, because those
+ * are judgements wearing an operator's clothes.
+ *
+ * This used to recompute it here, from `checkType` alone. So a check authored
+ * PROGRAMMATIC over a `same_party` row drew as a Comparison card in the console and ran
+ * as an agent — the console showing the author's intent and the run doing something else,
+ * with nothing on screen to reconcile them.
+ *
+ * Local derivation survives only as the fallback for mock mode, where there is no service
+ * to ask.
+ */
+export const typeOf = (c) => (c && (c.tier === 'EXACT' || c.tier === 'exact') ? 'exact'
+  : c && (c.tier === 'JUDGED' || c.tier === 'judged') ? 'judged'
+  : TIERS[checkTypeOf(c)].tier)
 
 // ---- Rule-card vocabulary --------------------------------------------------
-// Operators are grouped the way a checker thinks about them, not by data type.
-export const OP_GROUPS = [
-  { label: 'Text & wording', ops: [{ value: 'eq', label: 'equals' }, { value: 'noconflict', label: 'does not conflict with' }, { value: 'contains', label: 'contains' }, { value: 'oneof', label: 'is one of' }, { value: 'ne', label: 'differs from' }] },
-  { label: 'Amounts & quantities', ops: [{ value: 'n_eq', label: 'equals (amount)' }, { value: 'lte', label: 'is at most' }, { value: 'gte', label: 'is at least' }, { value: 'within_pct', label: 'is within tolerance of' }] },
-  { label: 'Dates', ops: [{ value: 'd_lte', label: 'is on or before' }, { value: 'd_gte', label: 'is on or after' }, { value: 'd_within', label: 'is within' }, { value: 'd_eq', label: 'is the same date as' }] },
-  { label: 'Parties, places & countries', ops: [{ value: 'same_party', label: 'is the same party as' }, { value: 'same_country', label: 'is in the same country as' }, { value: 'addr_same_country', label: 'address agrees (same country is enough)' }] },
-  { label: 'Presence & expression', ops: [{ value: 'present', label: 'is stated' }, { value: 'absent', label: 'is not stated' }, { value: 'matches', label: 'satisfies expression' }, { value: 'nmatches', label: 'does not satisfy expression' }] },
-]
-// Operators that take no right-hand operand, and those whose right side is an
-// expression rather than another field.
-const UNARY_OPS = ['present', 'absent']
-const EXPR_OPS = ['matches', 'nmatches']
-const opLabel = (v) => { let out = v; OP_GROUPS.forEach((g) => g.ops.forEach((o) => { if (o.value === v) out = o.label })); return out }
+// Not held here. The service owns it — an enum in `governance.types`, served with
+// the catalogue — and `@shared/lib/operators` is where the browser keeps what it
+// was given. This file used to carry its own grouped list of twenty operators with
+// its own labels, which is a second opinion about a vocabulary the console does
+// not own: adding one meant editing the enum, the planner's prompt builder and
+// this array, and the one that gets forgotten leaves the console offering a
+// comparison nothing implements.
+const isUnary = (op) => operatorUnary(op)
+const isExpr = (op) => operatorLiteralRight(op)
+const opLabel = (op) => operatorLabel(op)
 
 // A block joins the one above it with AND or OR (`connector`); the first block
 // has nothing to join to, so it carries none.
@@ -237,8 +254,8 @@ const checkIssues = (check, rule, isExact) => {
 
   const rows = rule.groups.flatMap((g) => g.rows)
   if (!rows.length) out.push('Add a condition.')
-  const side = (o) => !!(o && (o.field || o.literal))
-  const incomplete = rows.filter((r) => !side(r.l) || (!UNARY_OPS.includes(r.op) && !side(r.r)))
+  const side = (o) => !!(o && (o.field || o.literal || o.expr))
+  const incomplete = rows.filter((r) => !side(r.l) || (!isUnary(r.op) && !side(r.r)))
   if (incomplete.length) out.push(`${incomplete.length} condition${incomplete.length === 1 ? ' has' : 's have'} nothing to compare — pick a field on both sides.`)
   if (isBlank(rule.message)) out.push('Say what this raises when it fails.')
   return out
@@ -830,13 +847,26 @@ export function deriveVals(state, setState) {
       const o = (side === 'l' ? r.l : r.r) || {}
       const openKey = `${c.id}|${gid}|${r.id}|${side}`
       const set = (val) => patchRule((ru) => mapGroups(ru, gid, (g) => ({ ...g, rows: g.rows.map((x) => (x.id === r.id ? { ...x, [side]: val } : x)) })))
-      const unset = !o.field && !o.literal
+      const unset = !o.field && !o.literal && !o.expr
       return {
-        isLiteral: !!o.literal || (side === 'r' && EXPR_OPS.includes(r.op)),
-        isField: !o.literal && !(side === 'r' && EXPR_OPS.includes(r.op)),
-        field: o.field ? fieldLabel(o.field) : 'Pick a field', doc: o.field ? docLabel(o.doc) : '',
+        // A value the condition works out — date arithmetic, a percentage, a name with
+        // its legal form removed. The planner writes these out of :46A:/:47A:, where the
+        // demand is "within 21 days of shipment" and no field holds that date. The console
+        // shows one and does not yet compose one: picking a function, then operands for
+        // its arguments, then operands for theirs, is an editor of its own, and until it
+        // exists an author who needs one writes the two fields and a judged card.
+        isComputed: !!o.expr,
+        computedText: o.expr ? describeOperand(o) : '',
+        isLiteral: !!o.literal || (side === 'r' && isExpr(r.op)),
+        isField: !o.literal && !o.expr && !(side === 'r' && isExpr(r.op)),
+        field: o.field ? fieldLabel(o.field) : 'Pick a field',
+        // "every document" rather than a code nobody has a document for. A row saying
+        // `*` reads the field off whatever the presentation actually carries, and is
+        // expanded when it runs — so what an officer sees afterwards is the comparisons
+        // that were really made, not the ones somebody guessed at.
+        doc: o.field ? (o.doc === ANY_DOCUMENT ? 'every document' : docLabel(o.doc)) : '',
         literal: o.literal || '',
-        literalPlaceholder: EXPR_OPS.includes(r.op) ? 'An expression, e.g. matches /^[A-Z]{3}$/' : 'A fixed value…',
+        literalPlaceholder: isExpr(r.op) ? 'An expression, e.g. matches /^[A-Z]{3}$/' : 'A fixed value…',
         onChangeLiteral: (e) => set({ literal: e.target.value }),
         onUseLiteral: () => { set({ literal: '' }); setState({ operandOpen: null }) },
         border: unset ? 'var(--me-grey-20)' : 'var(--me-grey-15)', borderStyle: unset ? 'dashed' : 'solid',
@@ -846,19 +876,33 @@ export function deriveVals(state, setState) {
         // Grouped by document, dictionary order within each. Picking reads
         // "Commercial invoice → Invoice value", which is the order the operand is
         // addressed in and the order an examiner says it out loud.
-        book: Object.entries(
-          operandBook.reduce((acc, op) => { (acc[op.docLabel] ??= []).push(op); return acc }, {}),
-        )
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([docName, ops]) => ({
-            docName,
-            fields: ops.map((op) => ({
+        book: [
+          // The wildcard first, because "on all documents" is how a credit words the
+          // demand and an author reaching for it should not have to know it is spelt
+          // with a document code.
+          {
+            docName: 'Every document that carries it',
+            fields: [...new Map(operandBook.map((op) => [op.field, op])).values()].map((op) => ({
               field: op.fieldLabel,
-              note: op.note,
-              selected: op.field === o.field && op.doc === o.doc,
-              onPick: () => { set({ field: op.field, doc: op.doc }); setState({ operandOpen: null }) },
+              note: 'Compared on whichever documents this presentation actually carries it on.',
+              selected: op.field === o.field && o.doc === ANY_DOCUMENT,
+              onPick: () => { set({ field: op.field, doc: ANY_DOCUMENT }); setState({ operandOpen: null }) },
             })),
-          })),
+          },
+          ...Object.entries(
+            operandBook.reduce((acc, op) => { (acc[op.docLabel] ??= []).push(op); return acc }, {}),
+          )
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([docName, ops]) => ({
+              docName,
+              fields: ops.map((op) => ({
+                field: op.fieldLabel,
+                note: op.note,
+                selected: op.field === o.field && op.doc === o.doc,
+                onPick: () => { set({ field: op.field, doc: op.doc }); setState({ operandOpen: null }) },
+              })),
+            })),
+        ],
         unbound: unboundFields,
       }
     }
@@ -879,15 +923,22 @@ export function deriveVals(state, setState) {
         joiner: ri === 0 ? '' : g.logic === 'any' ? 'or' : 'and',
         op: r.op, opLabel: opLabel(r.op),
         onChangeOp: (e) => { const op = e.target.value; patchRule((ru) => mapGroups(ru, g.id, (x) => ({ ...x, rows: x.rows.map((y) => (y.id === r.id ? { ...y, op } : y)) }))) },
-        opGroups: OP_GROUPS,
-        showRight: !UNARY_OPS.includes(r.op),
-        showTol: !UNARY_OPS.includes(r.op),
+        opGroups: operatorGroups(),
+        showRight: !isUnary(r.op),
+        // The box is offered wherever a right-hand side is, because that is where an
+        // author reaches for it — but only three operators read one, and the rest
+        // discard whatever is typed. `tolUsed` is how the row says so instead of
+        // letting an inert note look like an instruction: the seeded cross-document
+        // check compares two goods descriptions with `eq` and the qualifier
+        // "corresponds, not identical", and runs a strict string equality.
+        showTol: !isUnary(r.op),
+        tolUsed: operatorUsesTol(r.op),
         tol: r.tol || '',
         onChangeTol: (e) => { const tol = e.target.value; patchRule((ru) => mapGroups(ru, g.id, (x) => ({ ...x, rows: x.rows.map((y) => (y.id === r.id ? { ...y, tol } : y)) }))) },
         onRemove: () => patchRule((ru) => tidyRule(mapGroups(ru, g.id, (x) => ({ ...x, rows: x.rows.filter((y) => y.id !== r.id) })))),
         // Flagged only once the author has been told what is missing, so a
         // half-typed condition isn't scolded while it is being typed.
-        incomplete: editing && issues.length > 0 && (!(r.l && (r.l.field || r.l.literal)) || (!UNARY_OPS.includes(r.op) && !(r.r && (r.r.field || r.r.literal)))),
+        incomplete: editing && issues.length > 0 && (!(r.l && (r.l.field || r.l.literal || r.l.expr)) || (!isUnary(r.op) && !(r.r && (r.r.field || r.r.literal || r.r.expr)))),
         left: operandVM(g.id, r, 'l'),
         right: operandVM(g.id, r, 'r'),
       })),
@@ -929,7 +980,7 @@ export function deriveVals(state, setState) {
       showFieldRows,
       ruleScope: rule ? rule.scope || '' : '', onChangeScope: (e) => { const scope = e.target.value; patchRule((ru) => ({ ...ru, scope })) },
       ruleMessage: rule ? rule.message || '' : '', onChangeMessage: (e) => { const message = e.target.value; patchRule((ru) => ({ ...ru, message })) },
-      ruleGroups, opGroups: OP_GROUPS,
+      ruleGroups, opGroups: operatorGroups(),
       onAddGroup: () => patchRule((ru) => ({ ...ru, groups: [...ru.groups, { id: uid('g'), logic: 'all', connector: 'AND', rows: [blankRow()] }] })),
       // The structure controls only appear once you are editing, and until now
       // the only way in was to click into a field — so a finished rule offered
@@ -1219,11 +1270,11 @@ export function deriveVals(state, setState) {
   const phases = PHASES.map((p) => ({ ...p, scenarios: p.scenarios.map((r) => ({ ...r, mark: r.status === 'pass' ? '✓' : '!', markBg: r.status === 'pass' ? 'var(--status-success)' : 'var(--status-warning)' })) }))
   const reviewOpen = S.panel === 'review' && !!panelCtx
   // Export reads a rule card off its rows, since it has no prose to export.
-  const operandText = (o) => (!o ? '?' : o.literal ? o.literal : o.field ? `${docLabel(o.doc)} · ${fieldLabel(o.field)}` : '?')
+  const operandText = (o) => (!o ? '?' : o.literal ? o.literal : o.expr ? describeOperand(o) : o.field ? `${o.doc === ANY_DOCUMENT ? 'Every document' : docLabel(o.doc)} · ${fieldLabel(o.field)}` : '?')
   const ruleMd = (c) => {
     const r = ruleOf(c.id)
     const blocks = r.groups
-      .map((g, gi) => (gi ? `\n\n${g.connector || 'AND'}\n\n` : '') + g.rows.map((x) => `- ${operandText(x.l)} ${opLabel(x.op)}${UNARY_OPS.includes(x.op) ? '' : ' ' + operandText(x.r)}${x.tol ? ` (${x.tol})` : ''}`).join('\n'))
+      .map((g, gi) => (gi ? `\n\n${g.connector || 'AND'}\n\n` : '') + g.rows.map((x) => `- ${operandText(x.l)} ${opLabel(x.op)}${isUnary(x.op) ? '' : ' ' + operandText(x.r)}${x.tol ? ` (${x.tol})` : ''}`).join('\n'))
       .join('')
     return `Applies to: ${r.scope || 'Every presentation'}\n\n${blocks}${r.message ? `\n\nRaise: ${r.message}` : ''}`
   }

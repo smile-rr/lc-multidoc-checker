@@ -326,7 +326,8 @@ public class StandardLlmGateway implements LlmGateway {
             if (!vision.pageLabels().isEmpty()) d.put("pageLabels", vision.pageLabels());
             String profile = vision.role().name().toLowerCase().replace('_', '-');
             // segment / extract share helix.render.profiles.*; others fall back mid.
-            if (vision.role() == LlmRole.SEGMENT || vision.role() == LlmRole.EXTRACT) {
+            if (vision.role() == LlmRole.SEGMENT || vision.role() == LlmRole.EXTRACT
+                    || vision.role() == LlmRole.TRANSCRIBE) {
                 RenderSpec spec = render.specFor(vision.role().name().toLowerCase());
                 d.put("dpi", spec.dpi());
                 d.put("maxLongEdgePx", spec.maxLongEdgePx());

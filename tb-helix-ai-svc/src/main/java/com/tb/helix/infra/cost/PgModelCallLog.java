@@ -303,10 +303,17 @@ public class PgModelCallLog implements ModelCallLog {
      *
      * <p>Empty book, or a book with no bands at all, collapses to a constant — one bucket,
      * which is exactly right when nothing prices by length.
+     *
+     * <p><b>The cast on that constant is load-bearing.</b> A bare integer in {@code GROUP BY}
+     * is an <em>ordinal position</em> in PostgreSQL, not a value, so {@code GROUP BY model_id,
+     * 0} asks to group by the zeroth selected column and is rejected — which is every spend
+     * query in a deployment whose price book prices nothing by length, i.e. the flat book this
+     * service ships with. {@code 0::int} is an expression and groups by the constant, which is
+     * what the sentence above always meant.
      */
     private String lengthBucket() {
         List<Integer> edges = prices.bandEdges();
-        if (edges.isEmpty()) return "0";
+        if (edges.isEmpty()) return "0::int";
         String array = edges.stream().map(String::valueOf)
                 .collect(java.util.stream.Collectors.joining(", "));
         return "width_bucket(prompt_tokens::numeric, ARRAY[" + array + "]::numeric[])";

@@ -140,7 +140,13 @@ function WorkbenchBody() {
     if (run.activeStage) {
       // Named rather than hidden: a button that vanishes mid-run reads as a
       // finished run. Disabled, so it cannot be pressed twice.
-      return { label: stageMeta(run.activeStage, bar)?.running ?? 'Running…', disabled: true }
+      //
+      // And named with the step it is ON. The plan's three steps cost 78ms, 12s and
+      // 17s: every card is written by the first, so the screen fills up and then
+      // says "Planning the checks…" for half a minute with nothing to show that it
+      // is still moving. The step key is the shortest honest answer to "what now".
+      const running = stageMeta(run.activeStage, bar)?.running ?? 'Running…'
+      return { label: run.step ? `${running} ${run.step.key} ${run.step.index}/${run.step.total}` : running, disabled: true }
     }
     // The plan stopped short on purpose. The run is over and the work is not, so the
     // button offers the thing the planner declined to do rather than the thing it
@@ -235,7 +241,7 @@ function WorkbenchBody() {
         onStage={(id) => { actions.dispatch({ type: 'unfollow' }); goStage(id) }}
         progress={progress}
         runMode={run.mode}
-        onRunMode={(mode) => actions.dispatch({ type: 'run_mode', mode })}
+        onRunMode={actions.setRunMode}
         cost={cost}
         costOpen={ui.costOpen}
         onToggleCost={() => actions.dispatch({ type: 'toggle_cost' })}

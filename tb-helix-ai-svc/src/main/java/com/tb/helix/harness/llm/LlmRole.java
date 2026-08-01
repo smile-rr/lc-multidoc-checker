@@ -35,6 +35,15 @@ public enum LlmRole {
      */
     READ_TEXT,
 
+    /**
+     * Transcribe page images into plain text — a scanned letter of credit.
+     *
+     * <p>Vision, but not extraction: the answer is a dump the SWIFT reader can cut, not a
+     * field map. Mapped to a VLM slot; the text {@link #READ_TEXT} call that follows is
+     * what turns the dump into terms.
+     */
+    TRANSCRIBE,
+
     /** Read this credit's 46A/47A into requirement cards. Text. */
     PLAN,
 

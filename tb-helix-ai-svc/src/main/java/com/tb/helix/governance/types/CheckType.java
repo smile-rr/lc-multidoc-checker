@@ -15,10 +15,23 @@ public enum CheckType {
     /** One structured model call, no tools. */
     AGENT(Tier.JUDGED),
 
-    /** A model plus compute tools — date arithmetic, currency. Bounded at three turns. */
+    /**
+     * A model plus compute tools.
+     *
+     * <p><b>Not distinguished from {@link #AGENT} when a check is run</b>, and that is a
+     * decision rather than an omission. Tools are given to the <em>planner</em>, which is
+     * writing conditions it cannot validate for itself; the examination has the facts in its
+     * prompt already, so a tool round trip to hand a model something we are holding is two
+     * extra completions for no new information. Where arithmetic is genuinely needed, it
+     * belongs in the condition — {@code ConditionFn} computes it deterministically, free, on
+     * every run — rather than in a conversation about the condition.
+     *
+     * <p>Kept as a type because the tier derivation is the same and an author's intent is
+     * worth recording. Do not read it as a promise that the run will behave differently.
+     */
     AGENT_TOOL(Tier.JUDGED),
 
-    /** A multi-turn tool-using loop, hard-capped. For free text a rule cannot anticipate. */
+    /** A multi-turn tool-using loop. Same caveat as {@link #AGENT_TOOL}. */
     AGENTIC(Tier.JUDGED);
 
     private final Tier tier;
