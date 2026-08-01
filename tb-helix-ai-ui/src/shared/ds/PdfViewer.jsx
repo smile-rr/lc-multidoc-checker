@@ -54,8 +54,25 @@ export default function PdfViewer({ src, file, page, onPageChange, onNumPages, h
   // True while we are scrolling on the caller's behalf. Without this, our own
   // scroll fires onPageChange, the caller sets `page`, and we scroll again —
   // the classic controlled-scroll feedback loop.
+  //
+  // `scrollTarget` is the page we are going to. The flag stays up until that
+  // page is the one in view (or a safety timeout). A fixed short timeout was
+  // not enough for smooth scroll across several pages: the observer would
+  // report an intermediate page, the rail jumped to the wrong document, and a
+  // second click was needed to land.
   const programmatic = useRef(false)
+  const scrollTarget = useRef(null)
   const visiblePage = useRef(page ?? 1)
+  const releaseTimer = useRef(0)
+
+  const releaseProgrammatic = useCallback(() => {
+    programmatic.current = false
+    scrollTarget.current = null
+    if (releaseTimer.current) {
+      window.clearTimeout(releaseTimer.current)
+      releaseTimer.current = 0
+    }
+  }, [])
 
   // Land with the page's top edge just below the toolbar, so reading starts at the
   // top of the page and continues downward — the way you read a document.
@@ -68,17 +85,21 @@ export default function PdfViewer({ src, file, page, onPageChange, onNumPages, h
     const scroller = scrollRef.current
     if (!el || !scroller) return
     programmatic.current = true
+    scrollTarget.current = n
+    visiblePage.current = n
+    if (releaseTimer.current) window.clearTimeout(releaseTimer.current)
     const delta = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top
     const top = scroller.scrollTop + delta - TOOLBAR_HEIGHT - 8
     scroller.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
-    visiblePage.current = n
-    window.setTimeout(() => { programmatic.current = false }, 420)
-  }, [])
+    // Safety only — arrival is cleared by the observer when the target is in view.
+    releaseTimer.current = window.setTimeout(releaseProgrammatic, 1500)
+  }, [releaseProgrammatic])
 
   // Caller asked for a page — go there, unless it is already the page in view.
   useEffect(() => {
     if (!page || !numPages) return
-    if (page === visiblePage.current) return
+    if (page === visiblePage.current && !programmatic.current) return
+    if (programmatic.current && scrollTarget.current === page) return
     scrollToPage(page)
   }, [page, numPages, zoom, scrollToPage])
 
@@ -94,17 +115,29 @@ export default function PdfViewer({ src, file, page, onPageChange, onNumPages, h
         let best = visiblePage.current
         let bestRatio = 0
         ratios.forEach((r, n) => { if (r > bestRatio) { bestRatio = r; best = n } })
-        if (best !== visiblePage.current) {
-          visiblePage.current = best
-          if (!programmatic.current) onPageChange?.(best)
+        if (best === visiblePage.current) return
+        visiblePage.current = best
+        // Still travelling to a rail/strip click — ignore intermediate pages so
+        // the document list does not flash the one at the top of the bundle.
+        if (programmatic.current) {
+          if (best === scrollTarget.current) {
+            releaseProgrammatic()
+            onPageChange?.(best)
+          }
+          return
         }
+        onPageChange?.(best)
       },
       { root: scroller, rootMargin: `-${TOOLBAR_HEIGHT}px 0px -55% 0px`, threshold: [0, 0.01, 0.5, 1] },
     )
 
     pageRefs.current.forEach((el) => { if (el) observer.observe(el) })
     return () => observer.disconnect()
-  }, [numPages, onPageChange, pageWidth])
+  }, [numPages, onPageChange, pageWidth, releaseProgrammatic])
+
+  useEffect(() => () => {
+    if (releaseTimer.current) window.clearTimeout(releaseTimer.current)
+  }, [])
 
   if (err) {
     return (

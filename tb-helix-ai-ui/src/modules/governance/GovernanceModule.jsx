@@ -11,7 +11,9 @@ import AgentsList from './sections/AgentsList'
 import AgentDetail from './sections/AgentDetail'
 import Dictionary from './sections/Dictionary'
 import Library from './sections/Library'
+import Prices from './sections/Prices'
 import ReviewPanel from './components/ReviewPanel'
+import CatalogNotice from './components/CatalogNotice'
 import ImportModal from './modals/ImportModal'
 import AddCaseModal from './modals/AddCaseModal'
 import TestRunModal from './modals/TestRunModal'
@@ -38,7 +40,7 @@ export default function GovernanceModule() {
   //
   // A failed load falls through to the fixture rather than to an error screen: the
   // seed IS what the service was seeded from, so an offline authoring session shows
-  // real rules rather than an apology. The banner says which one you are looking at.
+  // real rules rather than an apology. A dismissible corner notice says which one.
   const [catalog, setCatalog] = useState(() => (isApi ? { state: 'loading' } : { state: 'ready' }))
 
   useEffect(() => {
@@ -118,16 +120,9 @@ export default function GovernanceModule() {
 
   return (
     <div className="helix-screen" style={{ minHeight: '100vh', background: 'var(--me-grey-08)' }}>
-      {/* Which catalogue you are looking at, when it is not the live one.
-          A governance surface that silently shows a fixture is a surface where an
-          author spends an afternoon on rules nobody will ever run. */}
-      {catalog.error && (
-        <div style={{ padding: '7px 16px', background: '#FBEFCF', color: '#946400',
-          fontSize: 12, borderBottom: '1px solid #E8D9A8' }}>
-          Showing the built-in catalogue — the service did not answer ({catalog.error.message}).
-          Nothing you save here will be kept.
-        </div>
-      )}
+      {/* Offline fallback — fixed corner, never a top strip. Silent fixture use
+          would let an author spend an afternoon on rules nobody will ever run. */}
+      {catalog.error && <CatalogNotice detail={catalog.error.message} />}
       {/* Floating review/assistant drawer — sits beside the card that opened it:
           vertical from the opener icon, horizontal just right of that card with
           a 16px gutter, both clamped on-screen. */}
@@ -188,6 +183,7 @@ export default function GovernanceModule() {
         {v.isAgentDetail && <AgentDetail v={v} />}
         {v.isDictionary && <Dictionary v={v} />}
         {v.isLibrary && <Library v={v} />}
+        {v.isPrices && <Prices requestConfirm={v.requestConfirm} />}
       </div>
 
       <ImportModal v={v} />

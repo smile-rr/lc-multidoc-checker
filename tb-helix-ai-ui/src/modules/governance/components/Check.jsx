@@ -17,7 +17,7 @@ import JudgedBody from './JudgedBody'
 //
 //   Rule card         rows comparing a field on one document with a field on
 //                     another, run deterministically
-//   Judged rule       requirements in plain language, read out of a clause of
+//   Agent check       requirements in plain language, read out of a clause of
 //                     the credit or as standing practice
 //
 // `check` is the view-model produced by store.buildCheck().
@@ -158,9 +158,9 @@ export default function Check({ check }) {
       {/* ---- Rule card ---- */}
       {check.isExact && <ExactBody check={check} />}
 
-      {/* ---- Judged rule: which fields and documents it reads ----
+      {/* ---- Agent check: which fields and documents it reads ----
           A rule states its operands in its own rows, so these chips belong to
-          judged rules only. */}
+          agent checks only. */}
       {check.showFieldRows && (
         <>
           <ChipRow

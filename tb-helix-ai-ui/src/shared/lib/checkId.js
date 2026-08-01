@@ -22,8 +22,15 @@
 // Examples
 //   DATE-44C      latest shipment date          (dictionary)
 //   AMT-30A       amount within tolerance       (dictionary)
-//   COND-47A.2    second clause of field 47A    (written by the planner)
+//   CR-47A.2      second requirement this credit imposed, read from field 47A
+//                                               (written by the planner)
 //   USER-01       added by an officer on a case
+//
+// `CR` is the planner's own namespace — every requirement it reads out of a credit,
+// numbered once through whichever tag each came from, so a plan reads CR-46A.1 …
+// CR-46A.5, CR-47A.6 rather than two concern prefixes alternating and each
+// restarting its count. It is deliberately not a CONCERN below: a concern is a
+// standing subject an author files a check under, and these are not authored.
 //
 // Rules
 //   · one id per check, for the life of the check

@@ -147,13 +147,19 @@ export const TIERS = {
   AGENTIC: { label: 'Agentic', tier: 'judged', hint: 'A multi-iteration tool-using loop, hard-capped. One rule, many sub-results.' },
 }
 
-// Exact or judged — the officer-facing half of the tier. Named for what it says
-// about trust rather than "static / dynamic": both are equally static as authored
-// artefacts, and the genuinely dynamic thing in this system is a requirement read out
-// of a credit's :47A:, which is different on every case.
+// **Comparison or Agent** — the half of the tier anyone reads, and now the same two
+// words the examination uses on the plan. They were "Exact" and "Judged", which named
+// a property of the *answer* ("this one is exact") and left the author to work out
+// what would produce it. Comparison and Agent name the thing that does the work, so
+// the author picking one is picking a mechanism, and the officer meeting it on the
+// plan two screens later meets the identical word.
+//
+// The keys stay `exact` / `judged` because that is what the service stores and what
+// `tier` is called on the wire. A display name and a storage name are allowed to
+// differ; what is not allowed is two display names for one thing.
 export const CARD_TYPES = {
-  exact: { label: 'Exact', icon: 'equal', color: 'var(--me-blue-deep)', bg: 'var(--me-blue-20)', hint: 'An expression over fields read from the documents. Same answer every time, no model.' },
-  judged: { label: 'Judged', icon: 'list-checks', color: '#1F7A00', bg: 'var(--me-green-20)', hint: 'Read against the presentation by an agent, which forms a view. Costs tokens and needs your eye.' },
+  exact: { label: 'Comparison', icon: 'equal', color: 'var(--me-blue-deep)', bg: 'var(--me-blue-20)', hint: 'Two extracted values read against each other. Same answer every time, no model.' },
+  judged: { label: 'Agent', icon: 'sparkles', color: '#1F7A00', bg: 'var(--me-green-20)', hint: 'An agent reads the presentation and forms a view. Read the view before you rely on it.' },
 }
 export const checkTypeOf = (c) => (c && TIERS[c.checkType] ? c.checkType : 'AGENT')
 export const typeOf = (c) => TIERS[checkTypeOf(c)].tier
@@ -224,7 +230,7 @@ const checkIssues = (check, rule, isExact) => {
   // what it raises in its message, and both are required below.
   if (!isExact) {
     if (isBlank(check.body)) {
-      out.push('Write the check — for a judged check this text is the instruction the examiner is given.')
+      out.push('Write the check — for an agent check this text is the instruction the examiner is given.')
     }
     return out
   }
@@ -306,8 +312,8 @@ export const initialState = {
   // the edit snapshot.
   createdId: null,
   // Sort is per surface: a list is read by column, so it remembers a column.
-  // Sorted by kind first, so the list opens with the exact rules together and the
-  // judged ones together. Id order is arbitrary to a reader — the prefix is a concern
+  // Sorted by kind first, so the list opens with the comparisons together and the
+  // agent checks together. Id order is arbitrary to a reader — the prefix is a concern
   // (DATE, AMT, DOCSET), not a rank — whereas kind is the first thing that changes how
   // a row is read, and a list that opens sorted by it needs no click to be useful.
   checkSort: { key: 'kind', dir: 'asc' }, dictSort: { key: 'name', dir: 'asc' },
@@ -571,7 +577,7 @@ export function deriveVals(state, setState) {
 
   function gateEligibility(c) {
     const kind = hasConditions(c) ? 'exact' : typeOf(c)
-    if (kind !== 'exact') return { ok: false, why: 'Only an exact rule can run first — an agent cannot read documents before they are read.' }
+    if (kind !== 'exact') return { ok: false, why: 'Only a comparison can run first — an agent cannot read documents before they are read.' }
     const rule = ruleOf(c.id)
     const rows = (rule.groups ?? []).flatMap((g) => g.rows ?? [])
     if (!rows.length) return { ok: false, why: 'Add a condition first — there is nothing to run.' }
@@ -754,6 +760,9 @@ export function deriveVals(state, setState) {
     const rule = isExact ? ruleOf(c.id) : null
     const gate = gateEligibility(c)
     const isGateOn = !!valueOf(c, 'gate') && gate.ok
+    // STOP unless the author said otherwise — the safer of the two guesses, and the
+    // same default the service applies when the stored document is silent.
+    const onFail = valueOf(c, 'onFail') === 'CONTINUE' ? 'CONTINUE' : 'STOP'
     // A check that has examined a case is referenced by the findings it produced
     // and by any refusal advice quoting them. Deleting it orphans that record, so
     // Only a check that has never run can be deleted; one that has is retired, so
@@ -898,10 +907,24 @@ export function deriveVals(state, setState) {
             // Sent on its own rather than folded into the next save: a gate is the one
             // property whose truth the service can refuse, and the author should learn
             // that when they press it.
-            gov.setGate(c.id, !isGateOn).catch(() => {})
+            gov.setGate(c.id, !isGateOn, onFail).catch(() => {})
             setState((st) => ({ overrides: { ...st.overrides, [c.id]: { ...st.overrides[c.id], gate: !isGateOn } }, editingId: st.editingId ?? c.id }))
           }
         : null,
+      // What a failure *means*, which is the author's own judgement and the half of
+      // "hard check" that nothing can derive. Whether it can run first comes off the
+      // operands; whether it should stop the examination is an assertion about this
+      // credit type that only a person can make, and this bank does not make it the
+      // same way for every gate.
+      //
+      // STOP unless the author said otherwise: of the two ways to be wrong, spending
+      // on a settled question is recoverable and refusing on an unexamined
+      // presentation is not.
+      onFail,
+      onSetOnFail: (next) => {
+        gov.setGate(c.id, isGateOn, next).catch(() => {})
+        setState((st) => ({ overrides: { ...st.overrides, [c.id]: { ...st.overrides[c.id], onFail: next } }, editingId: st.editingId ?? c.id }))
+      },
       typeLabel: meta.label, typeIcon: meta.icon, typeColor: meta.color, typeBg: meta.bg, typeHint: meta.hint,
       showFieldRows,
       ruleScope: rule ? rule.scope || '' : '', onChangeScope: (e) => { const scope = e.target.value; patchRule((ru) => ({ ...ru, scope })) },
@@ -1150,8 +1173,8 @@ export function deriveVals(state, setState) {
       })()
   const typeFilters = [
     { id: 'all', label: 'All' },
-    { id: 'exact', label: 'Exact' },
-    { id: 'judged', label: 'Judged' },
+    { id: 'exact', label: 'Comparison' },
+    { id: 'judged', label: 'Agent' },
   ].map((t) => ({
     ...t,
     count: t.id === 'all' ? matchedChecks.length : matchedChecks.filter((c) => typeOf(c) === t.id).length,
@@ -1514,13 +1537,15 @@ export function deriveVals(state, setState) {
 
   return {
     isChecks: section === 'checks' && !checkDetail, isCheckDetail: !!checkDetail, checkDetail,
-    isAgentsList: section === 'agents' && view === 'list' && !checkDetail, isAgentDetail: section === 'agents' && view === 'detail' && !checkDetail, isLibrary: section === 'library' && !checkDetail, isDictionary: section === 'dictionary' && !checkDetail,
+    isAgentsList: section === 'agents' && view === 'list' && !checkDetail, isAgentDetail: section === 'agents' && view === 'detail' && !checkDetail, isLibrary: section === 'library' && !checkDetail, isDictionary: section === 'dictionary' && !checkDetail, isPrices: section === 'prices' && !checkDetail,
     goAgents: () => confirmLeave(() => setState({ section: 'agents', view: 'list', panel: null, activeCheckId: null, dictDetail: null })),
     goChecks: () => confirmLeave(() => setState({ section: 'checks', panel: null, activeCheckId: null, dictDetail: null })),
     goLibrary: () => confirmLeave(() => setState({ section: 'library', panel: null, activeCheckId: null, dictDetail: null })),
     goDictionary: () => confirmLeave(() => setState({ section: 'dictionary', panel: null, activeCheckId: null, dictDetail: null })),
+    goPrices: () => confirmLeave(() => setState({ section: 'prices', panel: null, activeCheckId: null, dictDetail: null })),
     // The module's tab bar owns the URL, so it asks through here.
     confirmLeave,
+    requestConfirm,
     section,
 
     // Reference library (single page: book strip + reader)
