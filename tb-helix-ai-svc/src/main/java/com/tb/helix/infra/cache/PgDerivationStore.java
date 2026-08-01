@@ -43,6 +43,11 @@ public class PgDerivationStore implements DerivationStore {
         log.info("L3 derivation store: Postgres (helix_infra.derivation)");
     }
 
+    @Override
+    public String storage() {
+        return "DB";
+    }
+
     /**
      * The model that actually charged, falling back to the key's role placeholder.
      *

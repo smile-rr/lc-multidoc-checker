@@ -137,7 +137,7 @@ public class LayeredCache implements DerivationCache {
             // provider calls and so left no ledger rows at all — which reads as a stage
             // that did nothing rather than one that did everything for free. What was
             // avoided is the most interesting number a cache has.
-            recordAvoided(key);
+            recordAvoided(key, hit.get().tier());
             return hit.get();
         }
 
@@ -163,8 +163,13 @@ public class LayeredCache implements DerivationCache {
      * any other and a cached run can be asked what it saved. It used to say
      * {@code role:extract} — a placeholder from the cache key — with zero tokens, which
      * resolved to no family and therefore to no money at all.
+     *
+     * <p>{@code tier} is which layer answered — L1 memory, L2 Redis, or L3 durable —
+     * and for L3, whether that was Postgres or the disk tree. Without it every hit
+     * read as the same "local cache", which hid whether the run was warm in-process
+     * or still paying for a durable read.
      */
-    private void recordAvoided(DerivationKey key) {
+    private void recordAvoided(DerivationKey key, CacheTier.Level tier) {
         Saved s = saved.get(key.hash());
         var scope = CallScope.current();
         String model = s != null && s.modelId() != null ? s.modelId()
@@ -180,8 +185,13 @@ public class LayeredCache implements DerivationCache {
             e.put("tokensIn", s == null ? 0 : s.promptTokens());
             e.put("tokensOut", s == null ? 0 : s.completionTokens());
             // Same nested shape as llm_call — dpi / long-edge live under detail so the
-            // one-liner stays short and a click opens them.
+            // one-liner stays short and a click opens them. Cache provenance sits here
+            // too: layer first, then L3's backend when that is what answered.
             java.util.Map<String, Object> detail = new java.util.LinkedHashMap<>(key.params());
+            if (tier != null && tier != CacheTier.Level.NONE) {
+                detail.put("cacheLayer", tier.name());
+                if (tier == CacheTier.Level.L3) detail.put("cacheStorage", l3.storage());
+            }
             if (key.inputScope() != null) detail.put("scope", key.inputScope());
             if (key.providerUrl() != null) detail.put("baseUrl", key.providerUrl());
             if (key.modelId() != null) detail.put("modelId", key.modelId());

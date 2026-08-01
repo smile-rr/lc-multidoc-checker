@@ -30,6 +30,14 @@ public interface DerivationStore {
 
     boolean enabled();
 
+    /**
+     * How this L3 is backed — {@code DB} or {@code DISK}.
+     *
+     * <p>Surfaced on {@code llm_cached} events so a run log can say whether a durable
+     * hit came from Postgres or the local derivation tree, not merely "L3".
+     */
+    String storage();
+
     Optional<Row> lookup(String cacheKey);
 
     void store(DerivationKey key, Object value, String blobSha,

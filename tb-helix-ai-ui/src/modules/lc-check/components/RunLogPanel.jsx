@@ -91,7 +91,7 @@ export default function RunLogPanel({ open, onClose, caseId }) {
       width={640}
       // A history is a list, and a list wants length. Six documents read is nine
       // rows before the stage above it is even on screen — so it opens tall, and
-      // the corner resizes it from there.
+      // any edge or corner resizes it from there.
       height={620}
     >
       {state === 'failed' ? (
@@ -204,9 +204,13 @@ function StepRow({ step }) {
           {step.key}
         </span>
         <span style={{ fontSize: 13, color: LOG_INK.label, minWidth: 0, ...ellipsis }}>{step.label}</span>
+        {/* The word alone, in the log's muted ink. It was a ⚡ in `ok` green, which
+            is the colour this panel uses for a step that succeeded — so a cached
+            step read as the most successful thing in the run, and on a mostly-cached
+            run the log was a column of green bolts. Being answered from cache is a
+            fact about where the answer came from, not a verdict on it. */}
         {step.cacheHit && (
-          <span title={CACHE.local.title} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: 10.5, color: LOG_INK.ok }}>
-            <Icon name="zap" size={12} color="currentColor" />
+          <span title={CACHE.local.title} style={{ flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: 10.5, color: LOG_INK.muted }}>
             {CACHE.local.word}
           </span>
         )}
@@ -297,6 +301,7 @@ function EventRow({ event }) {
 
 /** Preferred order for vision / slot knobs — anything else follows alphabetically. */
 const DETAIL_ORDER = [
+  'cacheLayer', 'cacheStorage',
   'dpi', 'maxLongEdgePx', 'maxPages', 'pages', 'pageLabels', 'imageBytes',
   'renderProfile', 'temperature', 'maxTokens', 'baseUrl', 'scope', 'modelId',
 ]

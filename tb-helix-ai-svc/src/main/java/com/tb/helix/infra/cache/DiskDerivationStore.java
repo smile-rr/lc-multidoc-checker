@@ -48,6 +48,11 @@ public class DiskDerivationStore implements DerivationStore {
         log.info("L3 derivation store: disk at {} (writeMd={})", root, cfg.writeMd());
     }
 
+    @Override
+    public String storage() {
+        return "DISK";
+    }
+
     private void ensureLayout() {
         try {
             Files.createDirectories(root);

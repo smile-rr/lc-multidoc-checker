@@ -278,7 +278,7 @@ function row(event, t) {
   // Nested `detail` from the gateway (dpi, long-edge, …) is for click-to-expand,
   // not the one-liner. Older tapes without it simply have nothing to open.
   const info = nested && typeof nested === 'object' && !Array.isArray(nested) ? nested : null
-  return { kind: 'event', seq, type, at: t, detail: describe(type, rest), info }
+  return { kind: 'event', seq, type, at: t, detail: describe(type, rest, info), info }
 }
 
 /**
@@ -288,7 +288,7 @@ function row(event, t) {
  * panel is to be read at a glance. Anything without a phrasing falls back to its
  * payload, so a new event type shows up as itself rather than as a blank row.
  */
-function describe(type, p) {
+function describe(type, p, info) {
   switch (type) {
     case 'segment': return `page ${p.done} of ${p.total}`
     case 'area_started': return p.areaId
@@ -311,13 +311,32 @@ function describe(type, p) {
     // A call that did not happen. The sizes are the *avoided* ones, kept so a reader can
     // see what was skipped; no money, because there is none and "$0" beside a token count
     // invites the reading that the other rows' zeros mean the same thing.
+    //
+    // Which layer answered sits where "local cache" used to — L1 / L2 / L3/db / L3/disk —
+    // so a warm in-process hit and a durable read are not the same word.
     case 'llm_cached':
-      return `${p.model} · ${CACHE.local.word} · in ${tokens(p.tokensIn)} out ${tokens(p.tokensOut)}`
+      return `${p.model} · ${cacheLayerLabel(info)} · in ${tokens(p.tokensIn)} out ${tokens(p.tokensOut)}`
     default: {
       const parts = Object.entries(p).filter(([, v]) => v != null && v !== '')
       return parts.length ? parts.map(([k, v]) => `${k} ${v}`).join(' · ') : null
     }
   }
+}
+
+/**
+ * Where a cached answer came from, short enough for the one-liner.
+ *
+ * Older events have no layer — they keep saying "local cache". New ones name the
+ * tier; L3 also names its backend (db vs disk), because those are two different
+ * durable stores behind the same level.
+ */
+function cacheLayerLabel(info) {
+  const layer = info?.cacheLayer
+  if (!layer) return CACHE.local.word
+  if (layer === 'L3' && info.cacheStorage) {
+    return `L3/${String(info.cacheStorage).toLowerCase()}`
+  }
+  return layer
 }
 
 /**

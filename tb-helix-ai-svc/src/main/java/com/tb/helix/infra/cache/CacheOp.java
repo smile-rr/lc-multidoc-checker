@@ -43,7 +43,8 @@ public final class CacheOp {
 
     /** Bundle pages to document types and page ranges. */
     public static final String SEGMENT_BUNDLE = "segment.bundle";
-    public static final int    SEGMENT_BUNDLE_V = 1;
+    /** Batched segment + absolute page numbers + boundary continuation context. */
+    public static final int    SEGMENT_BUNDLE_V = 2;
 
     /** One document's pages to extracted fields. The most expensive op in the system. */
     public static final String EXTRACT_DOC = "extract.doc";
@@ -59,6 +60,24 @@ public final class CacheOp {
      */
     public static final String EXTRACT_DOC_MD = "extract.doc.md";
     public static final int    EXTRACT_DOC_MD_V = 1;
+
+    /**
+     * One document's pages to what is on them that is not text.
+     *
+     * <p>Signatures, seals, stamps, initialled corrections, ticked boxes. A third product
+     * from the same pages and the same render spec — so the PNG render is shared and, with
+     * images leading the request, the image tokens ride the prefix the field pass paid for.
+     *
+     * <p>Its own op for the reason the others have their own: the rubric here is UCP 600
+     * art. 3, 17, 20, 27 and ISBP §A, and it will be tuned. Tuning it must not invalidate
+     * {@link #EXTRACT_DOC}, which is the most expensive op in the system.
+     *
+     * <p>It is also the dedupe for the lazy pass. A document attested during the reading and
+     * then demanded again by a requirement card read out of {@code :47A:} produces the same
+     * key, so the second look is a hit rather than a second bill.
+     */
+    public static final String ATTEST_DOC = "attest.doc";
+    public static final int    ATTEST_DOC_V = 1;
 
     /** The credit's 46A/47A to requirement cards. */
     public static final String PLAN_REQUIREMENTS = "plan.requirements";
