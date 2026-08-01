@@ -136,15 +136,51 @@ public class ChatCompletionsGateway implements LlmGateway {
         return Consensus.of(good, results);
     }
 
+    /**
+     * The bundle page each image is, appended to the instruction.
+     *
+     * <p>{@link VisionRequest#pageLabels()} existed and was never sent. Prompts asked the
+     * model to mark pages "using the page numbers given with the images" and no page number
+     * was ever given with an image, so every page marker in a layout dump was the model
+     * counting from one — which is right only when the document starts the bundle.
+     *
+     * <p>It goes on the tail of the instruction rather than between the images, because the
+     * images have to stay a contiguous identical prefix for the cache to see them as one.
+     */
+    private static String pageKey(VisionRequest request) {
+        if (request.pageLabels().isEmpty()) return "";
+        StringBuilder sb = new StringBuilder("\n\nThe images above are, in order, bundle page ");
+        for (int i = 0; i < request.pageLabels().size(); i++) {
+            if (i > 0) sb.append(i == request.pageLabels().size() - 1 ? " and " : ", ");
+            sb.append(request.pageLabels().get(i));
+        }
+        return sb.append(". Cite these numbers, not their position in the list.\n").toString();
+    }
+
     private VisionResult.SlotResult readOne(ChatCompletionsClient client, VisionRequest request) {
         long began = System.currentTimeMillis();
         try {
+            // Images first, instruction last. This ordering is the money, not a style.
+            //
+            // A provider's prefix cache matches from the first content block. One document
+            // is read three times — extract, extract.md, attest — over byte-identical
+            // images, differing only in the instruction. With the instruction first, the
+            // three requests diverge at block one and the image tokens, which are ~95% of
+            // the input, can never be reused. Reversed, the later passes ride the prefix
+            // the first one paid for.
+            //
+            // This does not touch DerivationKey: that hashes the prompt and the render
+            // params, not the message order, so existing extract.doc entries stay valid.
+            //
+            // Whether the provider actually caches image content is not something to
+            // assume. ChatCompletionsClient already parses prompt_tokens_details
+            // .cached_tokens into model_call.cached_in — read that column.
             List<Map<String, Object>> parts = new ArrayList<>();
-            parts.add(Map.of("type", "text", "text", request.prompt()));
             for (byte[] page : request.pages()) {
                 parts.add(Map.of("type", "image_url", "image_url",
                         Map.of("url", "data:image/png;base64," + Base64.getEncoder().encodeToString(page))));
             }
+            parts.add(Map.of("type", "text", "text", request.prompt() + pageKey(request)));
             var response = client.complete(
                     List.of(Map.of("role", "user", "content", parts)),
                     null, true, null, request.overrides());
