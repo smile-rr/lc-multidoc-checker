@@ -7,6 +7,8 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.sql.Date;
+import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -49,11 +51,14 @@ public class ModelPrices {
     /**
      * @param bands length bands, cheapest bound first. Empty for a vendor that charges one
      *              rate however long the prompt — which is most of them.
+     * @param note  why this row is priced as it is; free text for the console
+     * @param quotedOn the day the vendor's table was last checked
      */
     public record Price(
             String family, String label, String vendor, String tier,
             BigDecimal in, BigDecimal out, BigDecimal cachedIn,
-            List<Band> bands, List<String> patterns) {
+            List<Band> bands, List<String> patterns,
+            String note, LocalDate quotedOn) {
 
         /**
          * The rate that applies to an input of this length.
@@ -116,7 +121,8 @@ public class ModelPrices {
     /** The family a model id resolves to when the book has never heard of it. */
     public static final Price UNKNOWN = new Price(
             null, "Unpriced", "unknown", "none",
-            BigDecimal.ZERO, BigDecimal.ZERO, null, List.of(), List.of());
+            BigDecimal.ZERO, BigDecimal.ZERO, null, List.of(), List.of(),
+            null, null);
 
     private final JdbcTemplate jdbc;
     private final AtomicReference<List<Price>> book = new AtomicReference<>(List.of());
@@ -146,7 +152,8 @@ public class ModelPrices {
 
             List<Price> rows = jdbc.query("""
                     SELECT family, label, vendor, tier,
-                           in_per_million, out_per_million, cached_in_per_million, match_patterns
+                           in_per_million, out_per_million, cached_in_per_million,
+                           match_patterns, note, quoted_on
                       FROM helix_infra.model_price
                     """, (rs, i) -> new Price(
                     rs.getString("family"), rs.getString("label"), rs.getString("vendor"),
@@ -154,7 +161,9 @@ public class ModelPrices {
                     rs.getBigDecimal("in_per_million"), rs.getBigDecimal("out_per_million"),
                     rs.getBigDecimal("cached_in_per_million"),
                     bands.getOrDefault(rs.getString("family"), List.of()),
-                    patterns(rs.getArray("match_patterns"))));
+                    patterns(rs.getArray("match_patterns")),
+                    rs.getString("note"),
+                    quotedOn(rs.getDate("quoted_on"))));
 
             // Sorted once, so resolution is a scan of an already-ordered list rather than a
             // sort per call.
@@ -165,6 +174,59 @@ public class ModelPrices {
         } catch (RuntimeException e) {
             log.warn("Model price book could not be read — calls will be recorded unpriced: {}", e.toString());
         }
+    }
+
+    /**
+     * Writes one family and rereads the book.
+     *
+     * <p>Bands are replaced wholesale: the console edits the whole list, and a partial
+     * update would leave orphan bounds that no longer match the flat rate above them.
+     */
+    public void upsert(Price price) {
+        if (price.family() == null || price.family().isBlank()) {
+            throw new IllegalArgumentException("family is required");
+        }
+        jdbc.update("""
+                INSERT INTO helix_infra.model_price
+                    (family, label, vendor, tier,
+                     in_per_million, out_per_million, cached_in_per_million,
+                     match_patterns, note, quoted_on)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (family) DO UPDATE SET
+                    label                 = EXCLUDED.label,
+                    vendor                = EXCLUDED.vendor,
+                    tier                  = EXCLUDED.tier,
+                    in_per_million        = EXCLUDED.in_per_million,
+                    out_per_million       = EXCLUDED.out_per_million,
+                    cached_in_per_million = EXCLUDED.cached_in_per_million,
+                    match_patterns        = EXCLUDED.match_patterns,
+                    note                  = EXCLUDED.note,
+                    quoted_on             = EXCLUDED.quoted_on
+                """,
+                price.family(), price.label(), price.vendor(), price.tier(),
+                price.in(), price.out(), price.cachedIn(),
+                price.patterns().toArray(String[]::new),
+                price.note(),
+                price.quotedOn() == null ? Date.valueOf(LocalDate.now()) : Date.valueOf(price.quotedOn()));
+
+        jdbc.update("DELETE FROM helix_infra.model_price_band WHERE family = ?", price.family());
+        for (Band b : price.bands()) {
+            jdbc.update("""
+                    INSERT INTO helix_infra.model_price_band
+                        (family, up_to_prompt_tokens,
+                         in_per_million, out_per_million, cached_in_per_million)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    price.family(), b.upToPromptTokens(), b.in(), b.out(), b.cachedIn());
+        }
+        refresh();
+    }
+
+    /** Drops a family (and its bands) and rereads. */
+    public void delete(String family) {
+        if (family == null || family.isBlank()) return;
+        jdbc.update("DELETE FROM helix_infra.model_price WHERE family = ?", family);
+        refresh();
     }
 
     /**
@@ -230,5 +292,9 @@ public class ModelPrices {
         } catch (Exception e) {
             return List.of();
         }
+    }
+
+    private static LocalDate quotedOn(Date date) {
+        return date == null ? null : date.toLocalDate();
     }
 }
