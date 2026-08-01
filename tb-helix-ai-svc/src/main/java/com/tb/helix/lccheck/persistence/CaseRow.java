@@ -59,9 +59,22 @@ public record CaseRow(
         String authoriser,
 
         // --- The gate ---
+        //
+        // Written by nothing now. A failed threshold check records its discrepancy and lets
+        // the plan run, because the credit's own :47A: may bear on the very ground it failed
+        // on — and a case parked here could not read it. Kept because the columns exist and
+        // an old case may still carry them; `halted()` is what the workbench asks.
         boolean gateHalted,
         String gateHaltCheckId,
         String gateOverriddenBy,
+
+        /**
+         * The planner's verdict for this case, as stored — raw JSON, parsed at the edge.
+         *
+         * <p>What the gate found, what the credit's own terms did to the rulebook, and
+         * whether the rest of the run is worth doing. Null until the plan has run.
+         */
+        String planDecision,
 
         String error) {
 

@@ -17,12 +17,23 @@ import java.util.List;
  * @param nextStage what pressing the button will run. Derived on the case, not guessed from
  *               the stage order, so a pipeline that skips or folds a stage does not need the
  *               browser to know that it did.
- * @param halted a hard check stopped the examination and it will not go on until an officer
- *               says so. Distinct from every other reason a case is idle: without it the
- *               workbench reports a blocked case as "Paused", which reads as "still going"
- *               and offers a button that runs the same gate into the same wall.
+ * @param halted a threshold check stopped the examination under the behaviour that preceded
+ *               a planner able to read the credit's own terms. Nothing sets it now; a case
+ *               parked before the change still reports it, and still has its way out.
  * @param haltedBy the check that stopped it, by id — the officer overrides *that*, not the
  *               case in general.
+ * @param stoppedAfterPlan the plan weighed a threshold failure against this credit and
+ *               decided the remaining checks were spend on a settled question. Not a halt:
+ *               the case parks at {@code execute} like any other and the ordinary run button
+ *               finishes it. What it changes is that Auto stops chaining — a run that carried
+ *               on regardless would make the decision pointless.
+ * @param stoppedBecause the planner's reason, in the words the officer reads on screen.
+ * @param remaining how many planned checks have not been run. Nought once they have.
+ * @param humanReview how many planned checks nothing but a person can settle.
+ * @param destination where Auto should leave the officer: {@code decision} normally, and
+ *               {@code review} when something on the plan needs a person. Answered here
+ *               rather than worked out in the browser, because it follows from the plan and
+ *               the browser would be re-deriving it from a copy of the plan.
  */
 public record RunState(
         String stage,
@@ -35,5 +46,10 @@ public record RunState(
         boolean awaitingOfficer,
         boolean halted,
         String haltedBy,
+        boolean stoppedAfterPlan,
+        String stoppedBecause,
+        int remaining,
+        int humanReview,
+        String destination,
         List<String> completedAreaIds) {
 }

@@ -96,7 +96,9 @@ public class FactWriter {
                     // dictionary by definition.
                     "flag", flags.getOrDefault(reading.key(),
                             reading.known() ? null : "Not in the dictionary"),
-                    "confidence", "MED"));
+                    // Quiet default. Real uncertainty is LOW (or a future model
+                    // grade); MED on every row was indistinguishable from silence.
+                    "confidence", "HIGH"));
         }
         return offSchema;
     }

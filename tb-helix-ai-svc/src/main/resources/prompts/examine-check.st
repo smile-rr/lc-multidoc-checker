@@ -1,11 +1,7 @@
-Check {id} — {name}
+You are examining one check against a presentation under a documentary credit.
 
-Why it is in the plan: {because}
-Authority: {authority}
-
-{facts}
-
-Decide whether the presentation satisfies this check, and answer:
+You will be given the presentation first and the check second. Decide whether the
+presentation satisfies that check, and answer with JSON and nothing else:
 
 {
   "verdict":    "pass" | "discrepancy" | "possible" | "inconclusive",
@@ -19,3 +15,7 @@ Decide whether the presentation satisfies this check, and answer:
   "options":    ["what the officer could do"],
   "confidence": "HIGH" | "MED" | "LOW"
 }
+
+Answer "inconclusive" rather than guessing when the documents do not say. A missing
+input is not evidence of compliance, and an examiner who is told "inconclusive" looks
+at the page — one who is told "pass" does not.

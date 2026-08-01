@@ -2,6 +2,7 @@ package com.tb.helix.lccheck.stage.interpret;
 
 import com.tb.helix.harness.doc.PageRenderer;
 import com.tb.helix.harness.doc.RenderProperties;
+import com.tb.helix.harness.doc.RenderSpec;
 import com.tb.helix.harness.llm.LlmGateway;
 import com.tb.helix.harness.llm.LlmRole;
 import com.tb.helix.harness.llm.vision.VisionRequest;
@@ -9,6 +10,8 @@ import com.tb.helix.harness.llm.vision.VisionResult;
 import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
+import com.tb.helix.infra.cost.CallScope;
+import com.tb.helix.infra.pipeline.FanOut;
 import com.tb.helix.infra.pipeline.Step;
 import com.tb.helix.infra.prompt.Prompts;
 import com.tb.helix.infra.pipeline.StepResult;
@@ -26,9 +29,11 @@ import com.tb.helix.lccheck.types.pipeline.StageId;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Reading the presentation.
@@ -57,6 +62,22 @@ import java.util.*;
  *
  * <p>Running the bulk pass at extraction resolution is the single largest avoidable cost in
  * the system — roughly ten times what the question needs on a long bundle.
+ *
+ * <h2>Documents are read in parallel; a document's own passes are not</h2>
+ *
+ * <p>A twenty-document presentation read one document at a time is twenty model calls end to
+ * end, and an officer waiting through all of them. Documents are independent — separate pages,
+ * separate cache keys, separate facts — so they fan out, {@code helix.check.interpret.concurrency}
+ * at a time.
+ *
+ * <p><b>The three passes within one document stay sequential, and that is not an oversight.</b>
+ * They ride each other's prefix cache, which only works if the first has returned before the
+ * second is sent. Firing them together would pay full image tokens three times over for the
+ * same pages — the fan-out would be measurably faster and cost roughly triple.
+ *
+ * <p>Segmentation does not fan out either, for a different reason: each batch is handed the
+ * previous batch's last document type as continuation context, and that text is part of its
+ * cache key. The batches are a chain, not a set.
  */
 @Component
 public class InterpretStage implements Stage {
@@ -73,11 +94,21 @@ public class InterpretStage implements Stage {
     private final FactWriter facts;
     private final DocumentAttestor attestor;
     private final Prompts prompts;
+    private final int concurrency;
 
+    /**
+     * @param concurrency how many documents may be read at once. Four is chosen for what
+     *                    breaks first, and that is not the model: a render loads the whole
+     *                    bundle into heap, and the connection pool is ten. Raising it past
+     *                    what one provider key will take turns saved minutes into throttled
+     *                    calls.
+     */
     public InterpretStage(PageRenderer renderer, RenderProperties render, LlmGateway models,
                           DerivationCache cache, CaseStore cases, DocumentTypes docTypes,
                           ExtractionSpec spec, FactWriter facts, DocumentAttestor attestor,
-                          Prompts prompts) {
+                          Prompts prompts,
+                          @Value("${helix.check.interpret.concurrency:4}") int concurrency) {
+        this.concurrency = Math.max(1, concurrency);
         this.renderer = renderer;
         this.render = render;
         this.models = models;
@@ -350,6 +381,14 @@ public class InterpretStage implements Stage {
 
     // --- Extraction ---------------------------------------------------------
 
+    /**
+     * Every identified document, up to {@link #concurrency} of them at a time.
+     *
+     * <p>The units are independent in the only ways that matter: distinct page ranges,
+     * distinct cache keys, distinct step keys, distinct fact rows. Nothing here is ordered
+     * against anything else here — which is why this is a fan-out and the rest of the stage
+     * is not.
+     */
     private int extractAll(StageContext ctx, String pdfSha, Map<Integer, String> byPage) {
         Map<String, List<Integer>> grouped = new LinkedHashMap<>();
         byPage.forEach((page, code) -> {
@@ -357,21 +396,75 @@ public class InterpretStage implements Stage {
         });
 
         var spec = render.specFor("extract");
-        int read = 0;
-        for (var entry : grouped.entrySet()) {
-            if (ctx.cancelled()) return read;
+        List<Map.Entry<String, List<Integer>>> documents = List.copyOf(grouped.entrySet());
+        AtomicInteger done = new AtomicInteger();
+
+        List<Boolean> results = FanOut.over(documents, concurrency, entry -> {
+            // Checked here rather than before the fan-out: every unit is submitted at once
+            // and waits for a permit, so this is the point at which one has actually begun.
+            // A cancel therefore costs at most `concurrency` more documents, not all of them.
+            if (ctx.cancelled()) return Boolean.FALSE;
+
             String code = entry.getKey();
             List<Integer> pages = entry.getValue().stream().sorted().toList();
-            String scope = code + "|" + pages.get(0) + "-" + pages.get(pages.size() - 1);
-            String prompt = extractPrompt(code);
-            // The slowest thing in the stage — one vision call per document — and until
-            // now the only thing the officer saw of it was a progress bar that had
-            // already reached the end of segmentation.
-            ctx.announce("extract:" + code, "Reading the " + docTypes.label(code).toLowerCase());
+            boolean fieldsRead = extractOne(ctx, pdfSha, code, pages, spec);
 
-            var key = new DerivationKey(CacheOp.EXTRACT_DOC, CacheOp.EXTRACT_DOC_V, pdfSha, scope,
-                    DerivationKey.sha256Hex(prompt), "role:extract", null, spec.asCacheParams());
+            // One counted line rather than a dozen concurrent spinners. Emitted as each
+            // document lands, so it is real progress and not a sweep after the fact.
+            ctx.emit(HelixEvent.EXTRACT, Map.of(
+                    "done", done.incrementAndGet(), "total", documents.size()));
+            return fieldsRead;
+        });
 
+        return (int) results.stream().filter(Boolean.TRUE::equals).count();
+    }
+
+    /**
+     * One document, read three ways, in this order and on one thread.
+     *
+     * <p>See the class note: the passes share byte-identical images, and the second and third
+     * are cheap only because the first has already put that prefix in the provider's cache.
+     *
+     * @return whether the field pass produced facts. The other two passes can fail without
+     *         making the document unread — a missing layout dump costs the officer a fallback
+     *         view, a missing field pass costs them the document.
+     */
+    private boolean extractOne(StageContext ctx, String pdfSha, String code,
+                               List<Integer> pages, RenderSpec spec) {
+        String scope = code + "|" + pages.get(0) + "-" + pages.get(pages.size() - 1);
+
+        boolean fieldsRead = extractFields(ctx, pdfSha, code, pages, scope, spec);
+
+        // Layout markdown — same pages and render spec (so PNG L1 hits), separate
+        // cache op/prompt so a field hit is never mistaken for a layout hit.
+        extractLayoutMd(ctx, pdfSha, code, pages, scope, spec);
+
+        // And what is on the pages that is not text, where the dictionary asks for it.
+        attest(ctx, pdfSha, code, pages);
+
+        return fieldsRead;
+    }
+
+    /** The field pass: what the document says, under the keys a rule can cite. */
+    private boolean extractFields(StageContext ctx, String pdfSha, String code,
+                                  List<Integer> pages, String scope, RenderSpec spec) {
+        String stepKey = "extract:" + code;
+        String prompt = extractPrompt(code);
+        // The slowest thing in the stage — one vision call per document — and until
+        // now the only thing the officer saw of it was a progress bar that had
+        // already reached the end of segmentation.
+        ctx.announce(stepKey, "Reading the " + docTypes.label(code).toLowerCase());
+
+        var key = new DerivationKey(CacheOp.EXTRACT_DOC, CacheOp.EXTRACT_DOC_V, pdfSha, scope,
+                DerivationKey.sha256Hex(prompt), "role:extract", null, spec.asCacheParams());
+
+        // Narrowed to the key this pass announces and records under. The stage bound
+        // `extract` — the declared step — which was precise enough while documents were read
+        // one after another, because "the step running now" and "the document running now"
+        // were the same fact. They are not any more: with six in flight, every model call and
+        // every avoided one would be filed under the same step, and a reader working out
+        // which document cost the money would have nothing to read.
+        return CallScope.bind(CallScope.current().atStep(stepKey), () -> {
             try {
                 var hit = cache.computeIfAbsent(key, Map.class, () -> {
                     List<byte[]> images = renderer.render(pdfSha, pages, spec);
@@ -381,31 +474,24 @@ public class InterpretStage implements Stage {
                 });
 
                 int offSchema = facts.write(ctx.caseId(), code, pages.get(0), hit.value());
-                read++;
                 // Per document rather than per stage, because a cache hit here is the
                 // difference between four seconds and four minutes and the officer should
                 // see which they got.
                 Map<String, Object> what = new LinkedHashMap<>(Map.of("pages", pages));
                 if (offSchema > 0) what.put("offSchema", offSchema);
                 if (hit.tier() != com.tb.helix.infra.cache.CacheTier.Level.NONE) {
-                    ctx.recordCachedStep("extract:" + code, what, null, true);
+                    ctx.recordCachedStep(stepKey, what, null, true);
                 } else {
-                    ctx.recordStep("extract:" + code, what, true);
+                    ctx.recordStep(stepKey, what, true);
                 }
+                return true;
             } catch (RuntimeException e) {
                 // One document that could not be read must not lose the other five.
                 log.warn("Extraction failed for {} on case {}: {}", code, ctx.caseId(), e.toString());
-                ctx.recordFailedStep("extract:" + code, e.getMessage());
+                ctx.recordFailedStep(stepKey, e.getMessage());
+                return false;
             }
-
-            // Layout markdown — same pages and render spec (so PNG L1 hits), separate
-            // cache op/prompt so a field hit is never mistaken for a layout hit.
-            extractLayoutMd(ctx, pdfSha, code, pages, scope, spec);
-
-            // And what is on the pages that is not text, where the dictionary asks for it.
-            attest(ctx, pdfSha, code, pages);
-        }
-        return read;
+        });
     }
 
     /**
@@ -424,22 +510,25 @@ public class InterpretStage implements Stage {
      */
     private void attest(StageContext ctx, String pdfSha, String code, List<Integer> pages) {
         if (ctx.cancelled() || !attestor.attests(code)) return;
-        ctx.announce("attest:" + code, "Signatures & stamps · " + docTypes.label(code).toLowerCase());
-        try {
-            var result = attestor.attest(ctx.caseId(), pdfSha, code, pages);
-            Map<String, Object> what = new LinkedHashMap<>(Map.of(
-                    "pages", pages, "marks", result.marks()));
-            if (result.offSchema() > 0) what.put("offSchema", result.offSchema());
-            if (result.cached()) {
-                ctx.recordCachedStep("attest:" + code, what, null, true);
-            } else {
-                ctx.recordStep("attest:" + code, what, true);
+        String stepKey = "attest:" + code;
+        ctx.announce(stepKey, "Signatures & stamps · " + docTypes.label(code).toLowerCase());
+        CallScope.bind(CallScope.current().atStep(stepKey), () -> {
+            try {
+                var result = attestor.attest(ctx.caseId(), pdfSha, code, pages);
+                Map<String, Object> what = new LinkedHashMap<>(Map.of(
+                        "pages", pages, "marks", result.marks()));
+                if (result.offSchema() > 0) what.put("offSchema", result.offSchema());
+                if (result.cached()) {
+                    ctx.recordCachedStep(stepKey, what, null, true);
+                } else {
+                    ctx.recordStep(stepKey, what, true);
+                }
+            } catch (RuntimeException e) {
+                // One document whose marks could not be read must not lose the fields that were.
+                log.warn("Attestation failed for {} on case {}: {}", code, ctx.caseId(), e.toString());
+                ctx.recordFailedStep(stepKey, e.getMessage());
             }
-        } catch (RuntimeException e) {
-            // One document whose marks could not be read must not lose the fields that were.
-            log.warn("Attestation failed for {} on case {}: {}", code, ctx.caseId(), e.toString());
-            ctx.recordFailedStep("attest:" + code, e.getMessage());
-        }
+        });
     }
 
     /**
@@ -451,43 +540,45 @@ public class InterpretStage implements Stage {
      */
     @SuppressWarnings("unchecked")
     private void extractLayoutMd(StageContext ctx, String pdfSha, String code,
-                                 List<Integer> pages, String scope,
-                                 com.tb.helix.harness.doc.RenderSpec spec) {
+                                 List<Integer> pages, String scope, RenderSpec spec) {
         if (ctx.cancelled()) return;
+        String stepKey = "extract-md:" + code;
         String prompt = prompts.get("extract-doc-md");
-        ctx.announce("extract-md:" + code, "Layout text · " + docTypes.label(code).toLowerCase());
+        ctx.announce(stepKey, "Layout text · " + docTypes.label(code).toLowerCase());
 
         var key = new DerivationKey(CacheOp.EXTRACT_DOC_MD, CacheOp.EXTRACT_DOC_MD_V, pdfSha, scope,
                 DerivationKey.sha256Hex(prompt), "role:extract.md", null, spec.asCacheParams());
 
-        try {
-            var hit = cache.computeIfAbsent(key, Map.class, () -> {
-                List<byte[]> images = renderer.render(pdfSha, pages, spec);
-                VisionResult result = models.read(
-                        VisionRequest.of(LlmRole.EXTRACT, images, prompt, pages));
-                String md = markdownOf(result.fields());
-                Map<String, Object> value = new LinkedHashMap<>();
-                value.put("markdown", md);
-                // rawResponse = prose markdown so L3 can write a .md sidecar, not JSON.
-                return new DerivationCache.Entry<>(value, null, md, ModelSpend.of(result.usage(), result.model()));
-            });
+        CallScope.bind(CallScope.current().atStep(stepKey), () -> {
+            try {
+                var hit = cache.computeIfAbsent(key, Map.class, () -> {
+                    List<byte[]> images = renderer.render(pdfSha, pages, spec);
+                    VisionResult result = models.read(
+                            VisionRequest.of(LlmRole.EXTRACT, images, prompt, pages));
+                    String md = markdownOf(result.fields());
+                    Map<String, Object> value = new LinkedHashMap<>();
+                    value.put("markdown", md);
+                    // rawResponse = prose markdown so L3 can write a .md sidecar, not JSON.
+                    return new DerivationCache.Entry<>(value, null, md, ModelSpend.of(result.usage(), result.model()));
+                });
 
-            String md = markdownOf(hit.value());
-            if (md != null && !md.isBlank()) {
-                cases.setDocumentLayoutMd(ctx.caseId(), code, md);
+                String md = markdownOf(hit.value());
+                if (md != null && !md.isBlank()) {
+                    cases.setDocumentLayoutMd(ctx.caseId(), code, md);
+                }
+                Map<String, Object> what = Map.of(
+                        "pages", pages,
+                        "chars", md == null ? 0 : md.length());
+                if (hit.tier() != com.tb.helix.infra.cache.CacheTier.Level.NONE) {
+                    ctx.recordCachedStep(stepKey, what, null, true);
+                } else {
+                    ctx.recordStep(stepKey, what, true);
+                }
+            } catch (RuntimeException e) {
+                log.warn("Layout markdown failed for {} on case {}: {}", code, ctx.caseId(), e.toString());
+                ctx.recordFailedStep(stepKey, e.getMessage());
             }
-            Map<String, Object> what = Map.of(
-                    "pages", pages,
-                    "chars", md == null ? 0 : md.length());
-            if (hit.tier() != com.tb.helix.infra.cache.CacheTier.Level.NONE) {
-                ctx.recordCachedStep("extract-md:" + code, what, null, true);
-            } else {
-                ctx.recordStep("extract-md:" + code, what, true);
-            }
-        } catch (RuntimeException e) {
-            log.warn("Layout markdown failed for {} on case {}: {}", code, ctx.caseId(), e.toString());
-            ctx.recordFailedStep("extract-md:" + code, e.getMessage());
-        }
+        });
     }
 
     /** Pulls the markdown string out of the VLM JSON envelope {@code {markdown:…}}. */
