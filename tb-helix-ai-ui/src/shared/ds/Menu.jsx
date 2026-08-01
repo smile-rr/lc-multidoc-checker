@@ -47,7 +47,12 @@ export function Menu({ open, onClose, trigger, children, align = 'left', top = 3
 
 // One choice. `hint` sits under the label; `icon` leads it; `tone="danger"` for
 // the one destructive entry a menu is allowed.
-export function MenuItem({ label, hint, icon, mono, tone, selected, onClick, title }) {
+//
+// `color` overrides the icon's grey for a menu whose items *are* a colour vocabulary
+// — picking an outcome, say, where the hue is part of what you are choosing rather
+// than decoration on it. Left alone everywhere else, because a menu of ordinary
+// choices with a colour per row is a menu that has stopped ranking anything.
+export function MenuItem({ label, hint, icon, mono, tone, color, selected, onClick, title }) {
   return (
     <button
       role="menuitem"
@@ -60,7 +65,7 @@ export function MenuItem({ label, hint, icon, mono, tone, selected, onClick, tit
         color: tone === 'danger' ? 'var(--status-error)' : 'var(--me-ink)',
       }}
     >
-      {icon && <span style={{ flexShrink: 0, display: 'flex', color: tone === 'danger' ? 'currentColor' : 'var(--me-grey-70)', paddingTop: hint ? 1 : 0 }}><Icon name={icon} size={15} color="currentColor" /></span>}
+      {icon && <span style={{ flexShrink: 0, display: 'flex', color: tone === 'danger' ? 'currentColor' : color ?? 'var(--me-grey-70)', paddingTop: hint ? 1 : 0 }}><Icon name={icon} size={15} color="currentColor" /></span>}
       <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1 }}>
         <span style={{ fontSize: 12.5, fontWeight: hint ? 600 : 500, color: 'inherit', fontFamily: mono ? 'var(--font-mono)' : 'inherit', textAlign: 'left' }}>{label}</span>
         {hint && <span style={{ fontSize: 11, lineHeight: 1.4, color: 'var(--me-grey-70)', textAlign: 'left' }}>{hint}</span>}
