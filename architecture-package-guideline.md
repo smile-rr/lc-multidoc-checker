@@ -116,7 +116,7 @@ Splitting is cheap later and mechanical; guessing wrong costs a file and a jump 
 | Cross-boundary transport object | `...Request` / `...Response` | lives only in `api/dto` |
 | Persistence mapping | `...Row` / `...Entity` | lives only in `persistence`, never imported by `service`/`stage` directly |
 | Behavior contract | plain domain verb/noun, no `I` prefix, no `Interface` suffix | `Stage`, `ChatCompletionsClient` |
-| Behavior implementation | prefixed by technology or verb | `PgDerivationCache`, `ChatCompletionsGateway` |
+| Behavior implementation | prefixed by technology or verb | `PgDerivationCache`, `ChatCompletionsBackend` |
 | Cross-module contract owned by the consumer | `...Port` | `CheckCatalogPort` |
 | Cross-module contract fulfilled by the supplier | `...Adapter` | `LccheckCatalogAdapter` |
 | Exception | `...Exception` | own `error/` package, not `types` |

@@ -119,7 +119,7 @@ change to two modules at once. It stays small or it stops being a kernel.
 | Projection for one screen or query | `…View` | `PlanCheckView`, `FindingView` |
 | Wire format | `…Request` / `…Response` | `SignoffRequest` — `api/dto` only |
 | Behaviour contract | plain noun, no `I`, no `Interface` | `Stage`, `BlobStore` |
-| Implementation | named for its technology or its verb | `PgDerivationCache`, `ChatCompletionsGateway` |
+| Implementation | named for its technology or its verb | `PgDerivationCache`, `ChatCompletionsBackend` |
 | Published cross-module contract | plain noun in `spi/` | `CheckCatalog` |
 | Exception | `…Exception` | `NotFoundException` |
 
@@ -186,7 +186,7 @@ column: they read parsed model JSON, which genuinely has no compile-time shape.
 Typing the reads is also what made `rowsDoNotEscapeThePersistencePackage` writable. A map has no
 type for ArchUnit to check; a record does.
 
-**Writes still take `Map<String, Object>`** — `store.upsertFinding(caseId, Rows.of("severity", …))`.
+**Writes still take `Map<String, Object>`** — `store.upsertFinding(caseId, Rows.of("outcome", …))`.
 Deliberate for now: those keys are the store's own vocabulary rather than column names, `Rows.of`
 keeps them local to the call, and the same shape is what the governance controllers hand straight
 from an HTTP body. It is the obvious next step, not a finished job.
