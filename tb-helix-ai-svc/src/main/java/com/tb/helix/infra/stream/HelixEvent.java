@@ -72,6 +72,18 @@ public record HelixEvent(String caseId, String type, Map<String, Object> payload
     /** One more page of the bundle has been identified. {@code {done, total}} */
     public static final String SEGMENT = "segment";
 
+    /**
+     * One more document of the bundle has been read. {@code {done, total}}
+     *
+     * <p>The counterpart to {@link #SEGMENT}, and it exists because reading the documents
+     * stopped being a sequence. Each one still announces and closes its own step, but a
+     * dozen of them now open at once, and a dozen simultaneous spinners is a worse account
+     * of progress than one line saying seven of twelve. A reader folds consecutive events of
+     * one type into a single updating row, so this costs one row however many documents there
+     * are.
+     */
+    public static final String EXTRACT = "extract";
+
     /** A group of checks has begun / returned. {@code {areaId}} */
     public static final String AREA_STARTED = "area_started";
     public static final String AREA_DONE    = "area_done";
@@ -133,7 +145,7 @@ public record HelixEvent(String caseId, String type, Map<String, Object> payload
     /** A hard check failed and the examination stopped. {@code {checkId, statement}} */
     public static final String GATE_HALTED = "gate_halted";
 
-    /** A finding is available. {@code {findingId, severity}} */
+    /** A finding is available. {@code {findingId, outcome}} */
     public static final String FINDING = "finding";
 
     public static HelixEvent of(String caseId, String type) {

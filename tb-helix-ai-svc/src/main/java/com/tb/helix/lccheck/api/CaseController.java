@@ -2,7 +2,7 @@ package com.tb.helix.lccheck.api;
 
 import com.tb.helix.infra.cost.ModelCallLog;
 import com.tb.helix.infra.stream.EventStream;
-import com.tb.helix.lccheck.api.dto.DecisionRequest;
+import com.tb.helix.lccheck.api.dto.OutcomeOverrideRequest;
 import com.tb.helix.lccheck.api.dto.NewCheckRequest;
 import com.tb.helix.lccheck.api.dto.SignoffRequest;
 import com.tb.helix.lccheck.pipeline.DocCheckPipeline;
@@ -201,17 +201,31 @@ public class CaseController {
      */
     @PostMapping("/cases/{ref}/gate/override")
     public Map<String, Object> overrideGate(@PathVariable String ref,
-                                            @RequestBody(required = false) DecisionRequest body,
+                                            @RequestBody(required = false) OutcomeOverrideRequest body,
                                             @RequestParam(defaultValue = "officer") String officerId) {
         cases.overrideGate(ref, body == null ? null : body.note(), officerId);
         return Map.of("overridden", true);
     }
 
-    @PostMapping("/cases/{ref}/findings/{findingRef}/decision")
-    public Map<String, Object> decide(@PathVariable String ref, @PathVariable String findingRef,
-                                      @RequestBody DecisionRequest body,
-                                      @RequestParam(defaultValue = "officer") String officerId) {
-        cases.decide(ref, findingRef, body.disposition(), body.note(), officerId);
+    /** The officer overruling the engine on one finding. Appends; never overwrites. */
+    @PostMapping("/cases/{ref}/findings/{findingRef}/outcome")
+    public Map<String, Object> override(@PathVariable String ref, @PathVariable String findingRef,
+                                        @RequestBody OutcomeOverrideRequest body,
+                                        @RequestParam(defaultValue = "officer") String officerId) {
+        cases.override(ref, findingRef, body.outcome(), body.by(), body.note(), officerId);
+        return Map.of("recorded", true);
+    }
+
+    /**
+     * Withdrawing an override, so the engine's own outcome stands again.
+     *
+     * <p>A DELETE on the wire and an append underneath — that somebody disagreed and then
+     * thought better of it is exactly the kind of thing the file is kept for.
+     */
+    @DeleteMapping("/cases/{ref}/findings/{findingRef}/outcome")
+    public Map<String, Object> clearOverride(@PathVariable String ref, @PathVariable String findingRef,
+                                             @RequestParam(defaultValue = "officer") String officerId) {
+        cases.clearOverride(ref, findingRef, officerId);
         return Map.of("recorded", true);
     }
 
@@ -224,7 +238,7 @@ public class CaseController {
     @PostMapping("/cases/{ref}/signoff")
     public Map<String, Object> signoff(@PathVariable String ref, @RequestBody SignoffRequest body,
                                        @RequestParam(defaultValue = "officer") String officerId) {
-        String caseId = cases.signoff(ref, body.verdict(), body.note(), officerId);
+        String caseId = cases.signoff(ref, body.status(), body.note(), officerId);
         runner.runStage(caseId, StageId.SIGNOFF, officerId);
         return Map.of("routedTo", cases.routedTo(caseId));
     }

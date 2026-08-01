@@ -25,6 +25,14 @@ public record CaseDetail(
         String presentingBank,
         Integer replyDueDays,
         String authoriser,
+        /**
+         * Who is examining it — the name an override is initialled with on the row.
+         *
+         * <p>Distinct from {@code authoriser}, who signs after them. Two different people and
+         * two different acts, and a seam that showed the wrong one would put a name against a
+         * call they did not make.
+         */
+        String officer,
         String pdfUrl,
         Integer totalPages,
         RunState runState,
@@ -34,5 +42,15 @@ public record CaseDetail(
         List<CheckArea> areas,
         List<PlanCheckView> checks,
         List<FindingView> findings,
+        /**
+         * Where the officer overruled the engine, keyed by finding — and only there.
+         *
+         * <p>An absent entry is not a missing decision. It is the engine's own outcome
+         * standing, which is the ordinary case and the reason this map is sparse: the
+         * examination writes an outcome for every check, and a person only writes where they
+         * disagree. Sent alongside the findings rather than merged into them, because merging
+         * would destroy the pair the workbench has to be able to show.
+         */
+        List<Map<String, Object>> overrides,
         List<Map<String, Object>> runSteps) {
 }

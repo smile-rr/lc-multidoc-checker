@@ -70,6 +70,16 @@ public class CaseService {
         Map<String, List<ReadRows.Mark>> marks = store.marks(id).stream()
                 .collect(Collectors.groupingBy(ReadRows.Mark::docCode));
 
+        // Which check produced which finding. The join exists in the database and was never
+        // carried to the browser, so the plan looked every finding up by an id it had not
+        // been given — and rendered "found nothing" as "nothing wrong", on the one check
+        // that had just refused the presentation.
+        List<ReadRows.Finding> found = store.findings(id);
+        Map<String, String> findingByCheck = new LinkedHashMap<>();
+        for (ReadRows.Finding f : found) {
+            if (f.checkId() != null) findingByCheck.putIfAbsent(f.checkId(), f.findingRef());
+        }
+
         return new CaseDetail(
                 row.caseRef(),
                 row.status(),
@@ -78,6 +88,7 @@ public class CaseService {
                 row.presentingBank(),
                 assembler.daysUntil(row.replyDueDate()),
                 row.authoriser(),
+                row.assignedTo(),
                 "/api/v1/lc-check/cases/" + ref + "/bundle.pdf",
                 row.pageCount(),
                 assembler.runState(row, store.bundlePages(id).size()),
@@ -88,8 +99,17 @@ public class CaseService {
                 store.bundlePages(id).stream().map(assembler::bundlePage).toList(),
                 store.facts(id).stream().map(assembler::fact).toList(),
                 Areas.ALL,
-                store.planChecks(id).stream().map(assembler::planCheck).toList(),
-                store.findings(id).stream().map(assembler::finding).toList(),
+                store.planChecks(id).stream()
+                        .map(c -> assembler.planCheck(c, findingByCheck.get(c.checkId())))
+                        .toList(),
+                found.stream().map(assembler::finding).toList(),
+                store.overrides(id).stream()
+                        .map(o -> Map.<String, Object>of(
+                                "findingId", o.findingRef(),
+                                "outcome", o.outcome(),
+                                "by", o.by() == null ? "" : o.by(),
+                                "at", o.at() == null ? "" : o.at()))
+                        .toList(),
                 store.runSteps(id).stream().map(ReadRows.RunStep::asView).toList());
     }
 
@@ -182,9 +202,24 @@ public class CaseService {
                 Map.of("checkId", String.valueOf(row.gateHaltCheckId())), who, note);
     }
 
-    public void decide(String ref, String findingRef, String disposition, String note, String officerId) {
-        store.recordAction(resolve(ref), "disposition", findingRef,
-                Map.of("disposition", disposition == null ? "" : disposition), officerId, note);
+    /**
+     * The officer overruling the engine on one finding.
+     *
+     * <p>The finding's own {@code outcome} is deliberately not updated. Two slots, not one: the
+     * engine's value stays as it was written, and this is recorded beside it, so the file can
+     * always answer "what did we conclude, and who changed it". An update in place would answer
+     * only the second half and destroy the first.
+     */
+    public void override(String ref, String findingRef, String outcome, String by, String note,
+                         String officerId) {
+        store.recordAction(resolve(ref), "outcome_override", findingRef,
+                Map.of("outcome", outcome == null ? "" : outcome, "by", by == null ? "" : by),
+                officerId, note);
+    }
+
+    /** Withdrawing an override. An append, like the override it withdraws. */
+    public void clearOverride(String ref, String findingRef, String officerId) {
+        store.recordAction(resolve(ref), "outcome_override_cleared", findingRef, Map.of(), officerId, null);
     }
 
     /**
@@ -210,16 +245,18 @@ public class CaseService {
         store.upsertPlanCheck(id, check);
         store.recordAction(id, "add_check", checkId, Map.of("name", name), officerId, null);
 
+        // No finding yet, by construction — it was added a line ago and has not run.
         return store.planChecks(id).stream()
                 .filter(c -> checkId.equals(c.checkId()))
-                .findFirst().map(assembler::planCheck)
+                .findFirst().map(c -> assembler.planCheck(c, null))
                 .orElseThrow(() -> new NotFoundException("check", checkId));
     }
 
-    /** Records the verdict and the covering note, then assembles the advice. */
-    public String signoff(String ref, String verdict, String note, String officerId) {
+    /** Records where the presentation landed and the covering note, then assembles the advice. */
+    public String signoff(String ref, String status, String note, String officerId) {
         String id = resolve(ref);
-        store.recordAction(id, "verdict", "-", Map.of("verdict", verdict == null ? "" : verdict), officerId, null);
+        store.recordAction(id, "decision_status", "-",
+                Map.of("status", status == null ? "" : status), officerId, null);
         store.recordAction(id, "review_note", "-", Map.of(), officerId, note);
         store.recordAction(id, "submit", "-", Map.of(), officerId, null);
         return id;

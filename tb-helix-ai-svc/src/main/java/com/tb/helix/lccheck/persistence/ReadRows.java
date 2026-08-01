@@ -91,7 +91,17 @@ public final class ReadRows {
             String confidence) {
     }
 
-    /** {@code helix_check.lc_plan_check} — a check selected for this examination. */
+    /**
+     * {@code helix_check.lc_plan_check} — a check selected for this examination.
+     *
+     * @param coverage          how well this can be settled at all: {@code DETERMINISTIC},
+     *                          {@code SEMI_DETERMINISTIC} or {@code HUMAN}. Written from the
+     *                          check's own tier, so it cannot drift from it.
+     * @param suppressedBecause the credit's clause that stood a standing rule down, if one
+     *                          did. Non-null is the difference between "the trigger was not
+     *                          met" and "the planner read :47A: and set this aside" — both
+     *                          are SKIPPED, and only one of them has to be defended later.
+     */
     public record PlanCheck(
             String checkId,
             String origin,
@@ -108,10 +118,19 @@ public final class ReadRows {
             String ruleDef,
             String executionPlan,
             boolean notCovered,
+            boolean plannedByLlm,
             boolean addedByOfficer,
             String addedBy,
             String status,
+            String coverage,
+            String suppressedBecause,
+            List<String> docCodes,
             int ordinal) {
+
+        /** Whether this is one nothing can settle but a person. */
+        public boolean human() {
+            return "HUMAN".equals(coverage);
+        }
     }
 
     /**
@@ -123,7 +142,8 @@ public final class ReadRows {
      */
     public record Finding(
             String findingRef,
-            String severity,
+            String outcome,
+            String outcomeReason,
             String area,
             String areaId,
             String docCode,
@@ -204,11 +224,21 @@ public final class ReadRows {
             Integer replyDueDays) {
     }
 
-    /** The officer's verdict on a case, from {@code v_case_verdict}. */
-    public record Verdict(String verdict, String note) {
+    /**
+     * Where the officer put the presentation, from {@code v_case_verdict}.
+     *
+     * <p>{@code status} is null until somebody settles one — the derived value is not stored,
+     * because it moves whenever an override does.
+     */
+    public record Verdict(String status, String note) {
     }
 
-    /** The officer's latest call on one finding, from {@code v_finding_decision}. */
-    public record Decision(String findingRef, String disposition, String note) {
+    /**
+     * The officer overruling the engine on one finding, from {@code v_finding_override}.
+     *
+     * <p>Only findings somebody disagreed about appear. An absent row is not a missing
+     * decision — it is the engine's own outcome standing, which is the ordinary case.
+     */
+    public record Override(String findingRef, String outcome, String note, String by, String at) {
     }
 }

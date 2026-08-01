@@ -3,6 +3,7 @@ package com.tb.helix.lccheck.stage.execute;
 import com.tb.helix.governance.spi.CheckCatalog;
 import com.tb.helix.harness.llm.LlmGateway;
 import com.tb.helix.harness.llm.LlmRole;
+import com.tb.helix.harness.llm.text.PromptContext;
 import com.tb.helix.harness.llm.text.TextRequest;
 import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.DerivationCache;
@@ -227,6 +228,19 @@ public class ExecuteStage implements Stage {
      */
     private boolean settle(StageContext ctx, ReadRows.PlanCheck check,
                            String factSheet, String factDigest) {
+        // Nothing on the plan settles this one — the planner said so when it wrote the card.
+        // Sending it to a model anyway would buy an opinion on a question already routed to a
+        // person, and bill for it. So it costs nothing here, and the whole of what this does
+        // is put the question in front of the officer.
+        //
+        // Raised *here* rather than at plan time, which is where it used to be. A finding is
+        // something the examination produced; if the plan decided not to run, the question was
+        // never asked and the report must not carry it as though it had been. The plan screen
+        // keeps the full record either way.
+        if (check.human()) {
+            return recordHuman(ctx, check);
+        }
+
         if (!"EXACT".equals(check.tier()) || check.ruleDef() == null) {
             return record(ctx, check, judge(check, factSheet, factDigest));
         }
@@ -249,19 +263,24 @@ public class ExecuteStage implements Stage {
      */
     private boolean recordExact(StageContext ctx, ReadRows.PlanCheck check, RuleEvaluator.Result result) {
         String checkId = check.checkId();
-        String severity = switch (result.outcome()) {
-            case FAIL -> "discrepancy";
-            case PASS -> "clean";
-            // Not "clean". A check that could not be run has not passed, and reporting it as
+        // The rule engine's three outcomes and the officer's three words are the same three
+        // things, which is the whole point of the vocabulary — no translation, no loss.
+        String outcome = switch (result.outcome()) {
+            case FAIL -> "DISCREPANT";
+            case PASS -> "CLEAN";
+            // Not CLEAN. A check that could not be run has not passed, and reporting it as
             // clean is how an examination comes to claim it looked at something it did not.
-            case INCONCLUSIVE -> "manual";
+            case INCONCLUSIVE -> "DOUBT";
         };
+        // An operand nothing extracted — a field to fix, as opposed to a rule to write.
+        String reason = result.outcome() == RuleEvaluator.Outcome.INCONCLUSIVE ? "UNANSWERABLE" : null;
 
         var failure = result.firstFailure().orElse(null);
         cases.upsertFinding(ctx.caseId(), Rows.of(
                 "id", "f-" + checkId.toLowerCase(),
                 "checkId", checkId,
-                "severity", severity,
+                "outcome", outcome,
+                "outcomeReason", reason,
                 "area", check.name(),
                 "areaId", check.areaId(),
                 "docId", failure == null ? null : docOf(failure),
@@ -280,9 +299,41 @@ public class ExecuteStage implements Stage {
                         "left", r.left(), "right", r.right(), "why", r.why())).toList(),
                 "confidence", result.outcome() == RuleEvaluator.Outcome.INCONCLUSIVE ? "LOW" : "HIGH"));
 
-        ctx.recordStep(checkId, Map.of("verdict", result.outcome().name().toLowerCase(), "exact", true));
-        ctx.emit(HelixEvent.FINDING, Map.of("findingId", "f-" + checkId.toLowerCase(), "severity", severity));
-        return !"clean".equals(severity);
+        ctx.recordStep(checkId, Map.of("outcome", outcome, "exact", true));
+        ctx.emit(HelixEvent.FINDING, Map.of("findingId", "f-" + checkId.toLowerCase(), "outcome", outcome));
+        return !"CLEAN".equals(outcome);
+    }
+
+    /**
+     * A card only the officer can settle, put on the report as the open question it is.
+     *
+     * <p>{@code DOUBT} with reason {@code HUMAN_ONLY}, and {@code statementSource = planned}:
+     * nobody drafted this wording and nothing computed it. The reason matters — this is not a
+     * check that ran and could not conclude ({@code UNANSWERABLE}, a field to fix) nor one no
+     * rule covers ({@code NO_RULE}, a rule to write). The plan said before the run that only a
+     * person could settle it, and that is a third thing to know.
+     */
+    private boolean recordHuman(StageContext ctx, ReadRows.PlanCheck check) {
+        String checkId = check.checkId();
+        cases.upsertFinding(ctx.caseId(), Rows.of(
+                "id", "f-" + checkId.toLowerCase(),
+                "checkId", checkId,
+                "outcome", "DOUBT",
+                "outcomeReason", "HUMAN_ONLY",
+                "area", "This credit's own conditions",
+                "areaId", check.areaId(),
+                "title", check.name(),
+                "statement", null,
+                "statementSource", "planned",
+                "detail", nz(check.appliesBecause()),
+                "reason", nz(check.ruleRef()),
+                "confidence", "LOW",
+                "analysis", Rows.of("requirement", check.name(),
+                        "why", nz(check.appliesBecause()), "options", List.of())));
+
+        ctx.recordStep(checkId, Map.of("outcome", "DOUBT", "settledBy", "the officer"));
+        ctx.emit(HelixEvent.FINDING, Map.of("findingId", "f-" + checkId.toLowerCase(), "outcome", "DOUBT"));
+        return true;
     }
 
     /** Which document a failed comparison points at, for the viewer to open. */
@@ -309,20 +360,38 @@ public class ExecuteStage implements Stage {
         }
     }
 
+    /**
+     * Asks a model to settle one check.
+     *
+     * <p><b>Ordering is the whole performance story here.</b> The fact sheet is the bulk of
+     * this prompt and it is byte-identical for every judged check on the case — it is the
+     * presentation. The check itself is three short lines. Written the way a person would
+     * write it, "check X, here is the presentation", every one of a dozen judged checks
+     * differed from the previous one at character one, so a provider's prefix cache matched
+     * nothing and each call paid full price for the same page of facts.
+     *
+     * <p>Assembled instruction → presentation → check, the first judged check on a case warms
+     * a prefix that every later one reuses. Same three pieces, same words, one order change.
+     * It is the text-side twin of the vision path putting images before the instruction.
+     */
     private Map<String, Object> judge(ReadRows.PlanCheck check, String factSheet, String factDigest) {
         String checkId = check.checkId();
-        String prompt = prompts.fill("examine-check", Map.of(
-                "id", checkId,
-                "name", check.name(),
-                "because", nz(check.appliesBecause()),
-                "authority", nz(check.ruleRef()),
-                "facts", factSheet));
+        PromptContext prompt = PromptContext.create()
+                // Identical on every call this deployment will ever make.
+                .stable("HOW TO ANSWER", prompts.get("examine-check"))
+                // Identical for every judged check on this case — which is the point.
+                .varying("THE PRESENTATION", factSheet)
+                // The only part that differs check to check, so it goes last.
+                .varying("THE CHECK", "  " + checkId + " — " + check.name()
+                        + "\n  why it is in the plan: " + nz(check.appliesBecause())
+                        + "\n  authority: " + nz(check.ruleRef()));
 
         var key = new DerivationKey(CacheOp.JUDGE_RULE, CacheOp.JUDGE_RULE_V, factDigest, checkId,
-                DerivationKey.sha256Hex(prompt), "role:judge", null, Map.of());
+                prompt.digest(), "role:judge", null, Map.of());
 
         var hit = cache.computeIfAbsent(key, Map.class, () -> {
-            var result = models.complete(TextRequest.json(LlmRole.JUDGE, prompts.get("examine-system"), prompt));
+            var result = models.complete(TextRequest.json(
+                    LlmRole.JUDGE, prompts.get("examine-system"), prompt.render()));
             return new DerivationCache.Entry<>(parse(result.content()), null,
                     result.rawResponse(), ModelSpend.of(result.usage(), result.model()));
         });
@@ -336,17 +405,27 @@ public class ExecuteStage implements Stage {
         String checkId = check.checkId();
         String verdict = String.valueOf(v.getOrDefault("verdict", "inconclusive")).toLowerCase();
 
-        String severity = switch (verdict) {
-            case "discrepancy", "fail" -> "discrepancy";
-            case "possible", "doubt", "doubts" -> "possible";
-            case "pass", "clean" -> "clean";
-            default -> "manual";
+        // The agent answers in its own words; this is the only place they are mapped. An
+        // answer nothing here recognises is DOUBT, never CLEAN — a reply we could not read
+        // is not evidence that the documents complied.
+        String outcome = switch (verdict) {
+            case "discrepancy", "discrepant", "fail" -> "DISCREPANT";
+            case "pass", "clean" -> "CLEAN";
+            default -> "DOUBT";
         };
+        // An agent formed a view and doubted it, as against one that could not answer at all.
+        String reason = "DOUBT".equals(outcome)
+                ? (switch (verdict) {
+                    case "possible", "doubt", "doubts" -> "LOW_CONFIDENCE";
+                    default -> "UNANSWERABLE";
+                })
+                : null;
 
         cases.upsertFinding(ctx.caseId(), Rows.of(
                 "id", "f-" + checkId.toLowerCase(),
                 "checkId", checkId,
-                "severity", severity,
+                "outcome", outcome,
+                "outcomeReason", reason,
                 "area", check.name(),
                 "areaId", check.areaId(),
                 "docId", firstDoc(v),
@@ -364,9 +443,9 @@ public class ExecuteStage implements Stage {
                         "why", v.get("why"),
                         "options", v.getOrDefault("options", List.of()))));
 
-        ctx.recordStep(checkId, Map.of("verdict", verdict));
-        ctx.emit(HelixEvent.FINDING, Map.of("findingId", "f-" + checkId.toLowerCase(), "severity", severity));
-        return !"clean".equals(severity);
+        ctx.recordStep(checkId, Map.of("outcome", outcome));
+        ctx.emit(HelixEvent.FINDING, Map.of("findingId", "f-" + checkId.toLowerCase(), "outcome", outcome));
+        return !"CLEAN".equals(outcome);
     }
 
     /**

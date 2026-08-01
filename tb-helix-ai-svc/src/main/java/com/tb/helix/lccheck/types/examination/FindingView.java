@@ -15,10 +15,17 @@ import java.util.Map;
  *
  * <p>{@code origin}, {@code settledBy} and {@code checkType} are read through the plan check
  * that produced it rather than stored again, so a finding cannot drift from its check.
+ *
+ * <p>{@code outcome} is {@code DISCREPANT}, {@code DOUBT} or {@code CLEAN} — never
+ * {@code NOT_RUN}, because a finding <em>is</em> a result and its existence is what says the
+ * check ran. It is the engine's own value and stays that way: an officer disagreeing is
+ * recorded beside it, and the workbench resolves the pair. {@code outcomeReason} is set only
+ * where the outcome is an absence rather than a conclusion, and names which kind.
  */
 public record FindingView(
         String id,
-        String severity,
+        String outcome,
+        String outcomeReason,
         String area,
         String areaId,
         String checkId,

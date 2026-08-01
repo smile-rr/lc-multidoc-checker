@@ -48,27 +48,34 @@ public class SignoffStage implements Stage {
 
     private StepResult draftAdvice(StageContext ctx) {
         CaseRow row = cases.find(ctx.caseId()).orElseThrow();
-        Map<String, String> decisions = cases.decisions(ctx.caseId()).stream()
+        Map<String, String> overridden = cases.overrides(ctx.caseId()).stream()
                 .collect(java.util.stream.Collectors.toMap(
-                        ReadRows.Decision::findingRef,
-                        d -> String.valueOf(d.disposition()),
+                        ReadRows.Override::findingRef,
+                        ReadRows.Override::outcome,
                         (a, b) -> b));
 
-        // Only what the officer agreed reaches the advice. A parked or rejected finding was
-        // considered and set aside, and putting it in the notice anyway would make the
-        // officer's decision meaningless.
-        List<ReadRows.Finding> agreed = cases.findings(ctx.caseId()).stream()
-                .filter(f -> "agreed".equals(decisions.get(f.findingRef())))
+        // Only what stands as a discrepancy reaches the advice, with the officer's call
+        // applied — a discrepancy they cleared is not a ground, and a doubt they called
+        // discrepant is. Reading the engine's outcome alone would state our view over
+        // theirs on a notice that goes out over the bank's name.
+        //
+        // A finding left in doubt is never a ground. Art. 16(c) gives one notice and a
+        // ground left off cannot be added later, so this is the one place the omission
+        // costs something — but a doubt is precisely the case where nothing established
+        // the discrepancy, and the case status carries it to the checker instead.
+        List<ReadRows.Finding> grounds = cases.findings(ctx.caseId()).stream()
+                .filter(f -> "DISCREPANT".equals(overridden.getOrDefault(f.findingRef(), f.outcome())))
                 .toList();
 
-        String mt734 = mt734(row, agreed);
+        String mt734 = mt734(row, grounds);
         cases.patchCase(ctx.caseId(), Map.of(
                 "completed_at", java.sql.Timestamp.from(java.time.Instant.now())));
 
         return StepResult.ok(Map.of(
-                "grounds", agreed.size(),
+                "grounds", grounds.size(),
                 "mt734", mt734,
-                "verdict", cases.verdict(ctx.caseId()).map(ReadRows.Verdict::verdict).orElse("refuse")));
+                "status", cases.verdict(ctx.caseId()).map(ReadRows.Verdict::status)
+                        .orElse(grounds.isEmpty() ? "CLEAN" : "DISCREPANT")));
     }
 
     private String mt734(CaseRow c, List<ReadRows.Finding> grounds) {

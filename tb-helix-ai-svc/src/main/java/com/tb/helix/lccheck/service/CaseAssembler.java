@@ -3,6 +3,7 @@ package com.tb.helix.lccheck.service;
 import com.tb.helix.lccheck.persistence.CaseRow;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.ReadRows;
+import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.stage.intake.IntakeStage;
 import com.tb.helix.lccheck.stage.intake.SwiftFile;
 import com.tb.helix.lccheck.stage.intake.SwiftMessage;
@@ -101,29 +102,97 @@ public class CaseAssembler {
                 f.sourceText(), nz(f.confidence()), f.flag());
     }
 
-    public PlanCheckView planCheck(ReadRows.PlanCheck c) {
+    /**
+     * @param findingRef what this check produced, or null if it produced nothing. Passed in
+     *                   rather than looked up, because the caller holds both lists and a
+     *                   lookup per check would be twenty-three queries for one join.
+     */
+    public PlanCheckView planCheck(ReadRows.PlanCheck c, String findingRef) {
+        List<Map<String, Object>> rows = conditionRows(c.ruleDef());
         return new PlanCheckView(
                 c.checkId(), nz(c.name()), c.areaId(),
                 nz(c.appliesBecause()), nz(c.ruleRef()),
                 c.addedByOfficer(),
-                false,
+                // Written to the column since the planner first existed, and read back
+                // by nobody — this was a hardcoded `false`, so every requirement card
+                // arrived claiming the dictionary wrote it and the plan filed all of
+                // them under Rule. The column was right the whole time.
+                c.plannedByLlm(),
                 c.notCovered(),
                 lower(c.tier()),
                 Origin.of(c.origin()).wire(),
                 c.isGate(),
                 nz(c.citedAs()), c.checkType(), c.executionPlan(),
+                // SEMI_DETERMINISTIC to semi-deterministic. The column is an enum and the
+                // wire is a word the screen prints; the underscore is the schema's, not the
+                // officer's.
+                c.coverage() == null ? null : lower(c.coverage()).replace('_', '-'),
+                c.suppressedBecause(),
+                // Authored where there is an author, derived from the operands otherwise.
+                // A threshold check declares no doc types — it is about the credit and the
+                // covering schedule, which its operands say and nothing else does.
+                c.docCodes().isEmpty() ? docsIn(rows) : c.docCodes(),
+                findingRef,
                 // The citations were being dropped here. `lc_plan_check.refs` holds them —
                 // UCP600 Art.6, Art.14, Art.29 for the expiry gate — and the card that shows
                 // a check's authority was rendering "no article recorded" for every check in
                 // the system, because this map never carried them.
-                Map.of("severity", nz(c.severity()),
+                Rows.of("severity", nz(c.severity()),
                         "rule", nz(c.name()),
-                        "refs", c.refs() == null ? List.of() : c.refs()));
+                        "refs", c.refs() == null ? List.of() : c.refs(),
+                        // The condition itself, flattened to the rows a screen draws. A check
+                        // whose condition the officer cannot read is a label, not a check —
+                        // and this is the only way a planner-authored exact rule, which
+                        // exists in no dictionary, can be read at all.
+                        "rows", rows));
+    }
+
+    /** The documents a condition reads, in the order it reads them, without repeats. */
+    @SuppressWarnings("unchecked")
+    private List<String> docsIn(List<Map<String, Object>> rows) {
+        List<String> out = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            for (String side : List.of("l", "r")) {
+                if (row.get(side) instanceof Map<?, ?> o
+                        && ((Map<String, Object>) o).get("doc") instanceof String doc
+                        && !doc.isBlank() && !out.contains(doc)) {
+                    out.add(doc);
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * The rows of a stored condition tree, groups flattened away.
+     *
+     * <p>Groups and their connectors matter to the evaluator and not to a reader — a plan
+     * screen showing "group 1 of 2, connector AND" is showing its own data structure. Every
+     * seeded rule is one group; the flattening loses nothing anybody reads.
+     */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> conditionRows(String ruleDef) {
+        if (ruleDef == null || ruleDef.isBlank()) return List.of();
+        try {
+            Object parsed = json.readValue(ruleDef, Object.class);
+            List<Map<String, Object>> out = new ArrayList<>();
+            if (parsed instanceof List<?> groups) {
+                for (Object g : groups) {
+                    if (g instanceof Map<?, ?> group && group.get("rows") instanceof List<?> rows) {
+                        for (Object r : rows) if (r instanceof Map<?, ?> row) out.add((Map<String, Object>) row);
+                    }
+                }
+            }
+            return out;
+        } catch (Exception e) {
+            // A condition that cannot be read costs the officer the working, not the check.
+            return List.of();
+        }
     }
 
     public FindingView finding(ReadRows.Finding f) {
         return new FindingView(
-                f.findingRef(), f.severity(), nz(f.area()),
+                f.findingRef(), f.outcome(), f.outcomeReason(), nz(f.area()),
                 f.areaId(), f.checkId(), nz(f.docCode()),
                 f.page(), f.anchorId(), nz(f.creditAnchorId()),
                 nz(f.title()), nz(f.statement()), nz(f.statementSource()),
@@ -156,23 +225,54 @@ public class CaseAssembler {
         }
     }
 
+    /**
+     * How far the examination has got, and where a run that is not being watched should end.
+     *
+     * <p>Reads the planner's verdict off the case rather than recomputing it. Two answers
+     * come out of it and both are the plan's to give: whether the remaining checks were
+     * deliberately not run, and whether anything on the plan needs a person. A browser
+     * working the second one out for itself would be re-deriving a decision from a copy of
+     * the thing that made it.
+     */
     public RunState runState(CaseRow row, int segmented) {
         String stage = row.stage();
         boolean started = !"intake".equals(stage);
-        boolean finished = List.of("execute", "signoff").contains(stage);
+        boolean ran = List.of("execute", "signoff").contains(stage);
+
+        Map<String, Object> plan = jsonObject(row.planDecision());
+        // Only after the plan itself, and only while the checks it stood down are still
+        // standing down. Once execute has run they have not been skipped, whatever the plan
+        // once decided — the officer pressed the button and changed the answer.
+        boolean stoppedAfterPlan = !ran && !plan.isEmpty() && Boolean.FALSE.equals(plan.get("runRemaining"));
+
+        // A run the plan ended is a run that is over. Without this the workbench would sit on
+        // "Paused · 2 of 3 steps" for a case nothing further is going to happen to, hide the
+        // findings behind an area that will never report itself complete, and offer a report
+        // it does not believe is ready.
+        boolean finished = ran || stoppedAfterPlan;
+
         String error = row.error();
         // Busy means a stage is running right now: the case is parked at neither the
         // officer nor an error. The browser reads it on load to decide whether to open a
         // stream — without it, a workbench opened mid-intake would sit on stale data
         // waiting for an event it never subscribed to.
         boolean busy = !finished && !row.awaitingOfficer() && (error == null || error.isBlank());
-        // A halt is not a pause. `blockedAtGate` is true only while nobody has overridden,
-        // which is the same condition the gate itself tests before halting again — one rule,
-        // read in both places, rather than the screen and the engine each having a view.
         boolean halted = row.halted();
+
         return new RunState(stage, busy && !halted, error, started, finished, segmented,
                 row.nextStage(), row.awaitingOfficer(), halted, row.gateHaltCheckId(),
+                stoppedAfterPlan, stoppedAfterPlan ? nz(plan.get("why")) : null,
+                ran ? 0 : intOf(plan.get("remaining")),
+                intOf(plan.get("humanReview")),
+                // Auto ends at the decision. It stops at the report only when the plan holds
+                // something a person has to settle — the plan answered that when it was made,
+                // and it does not change afterwards.
+                plan.get("destination") == null ? "decision" : String.valueOf(plan.get("destination")),
                 finished ? Areas.ALL.stream().map(CheckArea::id).toList() : List.of());
+    }
+
+    private static int intOf(Object o) {
+        return o instanceof Number n ? n.intValue() : 0;
     }
 
     public Map<String, Object> bundlePage(ReadRows.BundlePage p) {

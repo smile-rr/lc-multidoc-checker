@@ -20,20 +20,37 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Hard checks, run before anything is planned.
+ * Threshold checks, run before anything is planned.
  *
- * <p>A gate is an exact rule whose operands all read documents available before the
- * presentation is examined — the credit and the covering schedule. That eligibility is
+ * <p>A threshold check is an exact rule whose operands all read documents available before
+ * the presentation is examined — the credit and the covering schedule. That eligibility is
  * derived in Governance, not asserted here; this stage runs whatever qualified.
  *
- * <p>The point of running first is money: an expired credit stops the examination before
- * planning and judging, which is where the spend is. The point of stopping is UCP 600
- * art. 16(c) — a refusing bank gives one notice stating every discrepancy, so a refusal on
- * a gate carries that ground alone, and the officer needs to choose it deliberately.
+ * <p>The point of running first is money: knowing the credit expired before the planning and
+ * judging happens is knowing it before the spend does. Under UCP 600 those are art. 6(d)(i)
+ * — presentation on or before the expiry date — and art. 6(a)/(d)(ii), the bank and place the
+ * credit is available with. Art. 14(c)'s twenty-one days applies to every presentation too,
+ * but it needs the on-board date off the transport document, so it correctly does not qualify.
+ *
+ * <p><b>This stage no longer stops anything.</b> It used to return a halt on the first
+ * failure, which parked the case with one move available — override — and the case that
+ * exposed it is the common one: an expired credit whose own {@code :47A:} extends the
+ * presentation period, or an amendment that moved {@code :31D:}. Stopping here meant stopping
+ * before reading the clause that answers the question. Expiry is not a clean comparison
+ * either — art. 29(a) rolls an expiry falling on a day the bank is closed, art. 36 covers
+ * force majeure — which is why {@code INCONCLUSIVE} has always been a real answer here.
+ *
+ * <p>So every threshold check is evaluated, every failure is recorded as a discrepancy, and
+ * the verdicts go to {@code PlanStage}, which reads them <em>next to the credit's own terms</em>
+ * and decides whether the rest of the run is worth doing. The author's own view travels with
+ * each verdict as {@code onFail}; the planner may overrule it for one credit and must say why.
+ * UCP 600 art. 16(c) still governs what a refusal notice may state, and that choice now
+ * belongs to the officer on a screen rather than to this loop returning early.
  */
 @Component
 public class GateStage implements Stage {
@@ -67,7 +84,8 @@ public class GateStage implements Stage {
      *
      * <p>"Check whether the credit has expired, but do not plan anything" is not something
      * anyone wants, and a case parked at "waiting for gate" would be waiting for a request
-     * nobody can make. Running here also puts the halt before the expensive half.
+     * nobody can make. Running here also puts the verdict in the planner's hands before the
+     * expensive half, which is the only reason the order matters.
      */
     @Override
     public Trigger trigger() {
@@ -77,35 +95,34 @@ public class GateStage implements Stage {
     @Override
     public List<Step<StageContext>> steps() {
         return List.of(
-                Step.<StageContext>of("gate", "Running the hard checks", this::runGates));
+                Step.<StageContext>of("gate", "Running the threshold checks", this::runGates));
     }
 
     /**
-     * Every authored hard check, in order, stopping at the first that fails.
+     * Every authored threshold check, in order. All of them, whatever the first one found.
      *
      * <p>One declared step rather than one per gate: which gates exist is the catalogue's
      * answer and changes without a deployment, so a per-gate declaration would make
      * {@link #steps()} depend on data. Each gate's own verdict still lands on the step tape
      * under its check id.
+     *
+     * <p>The loop used to return at the first failure. A refusal notice states <em>every</em>
+     * discrepancy (art. 16(c)), so a second threshold ground hidden behind the first is a
+     * ground that cannot be added to the notice later — which is the failure art. 16(f)
+     * punishes. Evaluating all of them costs nothing: they are comparisons over fields
+     * already in hand.
      */
     private StepResult runGates(StageContext ctx) {
         CaseRow row = cases.find(ctx.caseId()).orElseThrow();
         List<CheckCatalog.CheckCard> gates = catalog.gates();
 
-        // An override is the officer saying "I have seen this ground and I am continuing
-        // anyway". The finding stays — it is still a discrepancy and still belongs in the
-        // notice — but re-halting on every subsequent run would make the override do
-        // nothing, which is how a case becomes impossible to move.
-        if (row.gateOverriddenBy() != null) {
-            return StepResult.skipped("overridden by " + row.gateOverriddenBy()
-                    + " on " + row.gateHaltCheckId());
-        }
         if (gates.isEmpty()) {
-            return StepResult.skipped("no hard checks are authored");
+            return StepResult.skipped("no threshold checks are authored");
         }
 
         LocalDate expiry = row.expiry();
         LocalDate presented = presentationDate(ctx, row);
+        List<Map<String, Object>> verdicts = new ArrayList<>();
 
         for (CheckCatalog.CheckCard gate : gates) {
             // Per gate, under the id it is recorded against. Announcing the group instead
@@ -117,9 +134,13 @@ public class GateStage implements Stage {
                     "id", gate.id(), "origin", Origin.DICTIONARY.name(), "tier", "EXACT",
                     "checkType", gate.checkType(), "gate", true, "citedAs", "practice",
                     "areaId", "gate", "name", gate.title(),
-                    "appliesBecause", "A hard check — it runs before anything is read",
+                    "appliesBecause", "A threshold check — it runs before anything is read",
                     "ruleRef", String.join(", ", gate.refs()),
                     "severity", gate.severity(), "refs", gate.refs(),
+                    // An exact rule over fields already in hand. Same derivation as any
+                    // other, so the plan reads one vocabulary rather than two.
+                    "coverage", "DETERMINISTIC",
+                    "docCodes", gate.docTypes(),
                     // The rule goes on the plan row like any other check's. It was left off,
                     // so the one check that ran first was the one the workbench could not
                     // show the working for.
@@ -138,7 +159,7 @@ public class GateStage implements Stage {
                 String statement = statement(result, expiry, presented);
                 cases.upsertFinding(ctx.caseId(), Rows.of(
                         "id", "gate-" + gate.id(), "checkId", gate.id(),
-                        "severity", "discrepancy", "area", "Time & availability", "areaId", "gate",
+                        "outcome", "DISCREPANT", "area", "Time & availability", "areaId", "gate",
                         "docId", docTypes.scheduleCode(), "title", gate.title(),
                         "statement", statement, "statementSource", "derived",
                         "detail", result.why(),
@@ -151,27 +172,37 @@ public class GateStage implements Stage {
                                 "left", r.left(), "right", r.right(), "why", r.why())).toList(),
                         "creditAnchorId", "tag-31D",
                         "confidence", "HIGH"));
-                log.info("Case {} halted at {}: {}", ctx.caseId(), gate.id(), result.why());
-                // Written down before returning. The gate that stopped the examination is
-                // the one step of the run somebody will certainly come looking for, and it
-                // was the only one that left no row.
-                ctx.recordStep(gate.id(), Map.of("verdict", result.outcome().name(),
-                        "expiry", String.valueOf(expiry), "presented", String.valueOf(presented)));
-                return StepResult.halted(gate.id(), statement);
-            }
-
-            // A gate that could not be settled does not halt. It is a hard check with a
-            // missing operand — the covering schedule was not presented, most often — and
-            // stopping an examination on something nobody could read would be worse than
-            // letting it run and reporting what is missing.
-            if (result.outcome() == RuleEvaluator.Outcome.INCONCLUSIVE) {
-                log.info("Gate {} could not be settled on case {}: {}",
+                log.info("Threshold check {} failed on case {}: {}",
+                        gate.id(), ctx.caseId(), result.why());
+            } else if (result.outcome() == RuleEvaluator.Outcome.INCONCLUSIVE) {
+                // A threshold check with a missing operand — the covering schedule was not
+                // presented, most often. Reported as unsettled rather than passed: a missing
+                // input is not evidence that the presentation was in time.
+                log.info("Threshold check {} could not be settled on case {}: {}",
                         gate.id(), ctx.caseId(), result.why());
             }
+
+            // Every verdict, in the plan's vocabulary rather than the evaluator's. This is
+            // what the planner reads, and it carries the author's own `onFail` so the planner
+            // knows what it is being asked to confirm or overrule rather than inventing a
+            // policy of its own.
+            verdicts.add(Rows.of(
+                    "checkId", gate.id(),
+                    "title", gate.title(),
+                    "outcome", result.outcome().name(),
+                    "why", result.why(),
+                    "onFail", gate.onFail(),
+                    "refs", gate.refs()));
+
             ctx.recordStep(gate.id(), Map.of("verdict", result.outcome().name(),
                     "expiry", String.valueOf(expiry), "presented", String.valueOf(presented)));
         }
-        return StepResult.ok(Map.of("gates", gates.size(), "verdict", "PASS"));
+
+        boolean anyFailed = verdicts.stream().anyMatch(v -> "FAIL".equals(v.get("outcome")));
+        return StepResult.ok(Rows.of(
+                "gates", gates.size(),
+                "verdict", anyFailed ? "FAIL" : "PASS",
+                "results", verdicts));
     }
 
     /**

@@ -89,12 +89,16 @@ public class CaseStore {
                     rs.getString("area_id"), rs.getString("name"), rs.getString("applies_because"),
                     rs.getString("rule_ref"), rs.getString("severity"), strings(rs.getArray("refs")),
                     rs.getString("rule_def"), rs.getString("execution_plan"),
-                    rs.getBoolean("not_covered"), rs.getBoolean("added_by_officer"),
-                    rs.getString("added_by"), rs.getString("status"), rs.getInt("ordinal"));
+                    rs.getBoolean("not_covered"), rs.getBoolean("planned_by_llm"),
+                    rs.getBoolean("added_by_officer"),
+                    rs.getString("added_by"), rs.getString("status"),
+                    rs.getString("coverage"), rs.getString("suppressed_because"),
+                    strings(rs.getArray("doc_codes")), rs.getInt("ordinal"));
 
     private static final org.springframework.jdbc.core.RowMapper<ReadRows.Finding> FINDING =
             (rs, n) -> new ReadRows.Finding(
-                    rs.getString("finding_ref"), rs.getString("severity"), rs.getString("area"),
+                    rs.getString("finding_ref"), rs.getString("outcome"), rs.getString("outcome_reason"),
+                    rs.getString("area"),
                     rs.getString("area_id"), rs.getString("doc_code"), (Integer) rs.getObject("page"),
                     rs.getString("anchor_id"), rs.getString("credit_anchor_id"), rs.getString("title"),
                     rs.getString("statement"), rs.getString("statement_source"), rs.getString("detail"),
@@ -119,11 +123,16 @@ public class CaseStore {
                     rs.getInt("page_count"), (Integer) rs.getObject("reply_due_days"));
 
     private static final org.springframework.jdbc.core.RowMapper<ReadRows.Verdict> VERDICT =
-            (rs, n) -> new ReadRows.Verdict(rs.getString("verdict"), rs.getString("note"));
+            (rs, n) -> new ReadRows.Verdict(rs.getString("status"), rs.getString("note"));
 
-    private static final org.springframework.jdbc.core.RowMapper<ReadRows.Decision> DECISION =
-            (rs, n) -> new ReadRows.Decision(
-                    rs.getString("finding_ref"), rs.getString("disposition"), rs.getString("note"));
+    private static final org.springframework.jdbc.core.RowMapper<ReadRows.Override> OVERRIDE =
+            (rs, n) -> new ReadRows.Override(
+                    rs.getString("finding_ref"), rs.getString("outcome"), rs.getString("note"),
+                    // Who and when come off the action that recorded it, not off the case —
+                    // the mark on the row has to name the person who actually made the call.
+                    rs.getString("officer_id"),
+                    rs.getTimestamp("acted_at") == null ? null
+                            : rs.getTimestamp("acted_at").toInstant().toString());
 
     /** An INT[] column. Postgres hands back an Integer[]; a null column is no pages, not null. */
     private static List<Integer> ints(java.sql.Array a) {
@@ -182,6 +191,7 @@ public class CaseStore {
             rs.getBoolean("gate_halted"),
             rs.getString("gate_halt_check_id"),
             rs.getString("gate_overridden_by"),
+            rs.getString("plan_decision"),
             rs.getString("error"));
 
     private static java.time.LocalDate date(java.sql.Date d) {
@@ -416,6 +426,9 @@ public class CaseStore {
         }
         if (stage.ordinal() <= StageId.PLAN.ordinal()) {
             jdbc.update("DELETE FROM helix_check.lc_plan_check WHERE case_id = ?::uuid AND NOT added_by_officer", caseId);
+            // The verdict goes with the plan it was about. Left behind, a case replanned
+            // after a correction would still be reporting why the previous plan stopped.
+            jdbc.update("UPDATE helix_check.lc_case SET plan_decision = NULL WHERE id = ?::uuid", caseId);
         }
         if (stage.ordinal() <= StageId.EXECUTE.ordinal()) {
             jdbc.update("DELETE FROM helix_check.lc_finding WHERE case_id = ?::uuid AND NOT raised_by_officer", caseId);
@@ -445,7 +458,7 @@ public class CaseStore {
                 """,
                 caseId, f.get("docId"), f.get("label"), f.get("fieldKey"), str(f.get("value")),
                 str(f.get("valueNorm")), f.get("page"), f.get("anchorId"), f.getOrDefault("source", ""),
-                f.get("sourceText"), f.getOrDefault("confidence", "MED"), f.get("flag"),
+                f.get("sourceText"), f.getOrDefault("confidence", "HIGH"), f.get("flag"),
                 toJson(f.get("slotVotes")));
     }
 
@@ -506,11 +519,19 @@ public class CaseStore {
                 INSERT INTO helix_check.lc_plan_check
                     (case_id, check_id, origin, tier, check_type, is_gate, cited_as, area_id,
                      name, applies_because, rule_ref, severity, refs, rule_def, execution_plan,
-                     not_covered, planned_by_llm, added_by_officer, added_by, status, ordinal)
-                VALUES (?::uuid, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?)
+                     not_covered, planned_by_llm, added_by_officer, added_by, status,
+                     coverage, suppressed_because, doc_codes, ordinal)
+                VALUES (?::uuid, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (case_id, check_id) DO UPDATE SET
                     area_id = EXCLUDED.area_id, status = EXCLUDED.status,
-                    rule_def = EXCLUDED.rule_def, execution_plan = EXCLUDED.execution_plan
+                    rule_def = EXCLUDED.rule_def, execution_plan = EXCLUDED.execution_plan,
+                    -- The governing step runs after selection and revises both of these.
+                    -- Left off the update list they were written once and never again, so a
+                    -- suppressed rule kept the reason it was originally planned.
+                    applies_because = EXCLUDED.applies_because,
+                    coverage = EXCLUDED.coverage,
+                    suppressed_because = COALESCE(EXCLUDED.suppressed_because,
+                                                  helix_check.lc_plan_check.suppressed_because)
                 """,
                 caseId, c.get("id"), c.getOrDefault("origin", Origin.DICTIONARY.name()),
                 c.getOrDefault("tier", "JUDGED"), c.get("checkType"),
@@ -520,7 +541,39 @@ public class CaseStore {
                 toJson(c.get("ruleDef")), c.get("executionPlan"),
                 c.getOrDefault("notCovered", false), c.getOrDefault("plannedByLlm", false),
                 c.getOrDefault("addedByOfficer", false), c.get("addedBy"),
-                c.getOrDefault("status", "PLANNED"), c.getOrDefault("ordinal", 0));
+                c.getOrDefault("status", "PLANNED"),
+                c.get("coverage"), c.get("suppressedBecause"),
+                strArray((List<?>) c.get("docCodes")), c.getOrDefault("ordinal", 0));
+    }
+
+    /**
+     * Stands a standing rule down for this credit, naming the clause that did it.
+     *
+     * <p>Its own statement rather than a re-upsert: the planner has one thing to say about a
+     * row selection already wrote, and re-inserting the whole row to say it would mean the
+     * governing step needing every column the selecting step had.
+     */
+    public void suppressPlanCheck(String caseId, String checkId, String because) {
+        jdbc.update("""
+                UPDATE helix_check.lc_plan_check
+                   SET status = 'SKIPPED', suppressed_because = ?, applies_because = ?
+                 WHERE case_id = ?::uuid AND check_id = ?
+                """, because, because, caseId, checkId);
+    }
+
+    /** The planner's verdict for this case — one document, read whole or not at all. */
+    public void savePlanDecision(String caseId, Object decision) {
+        jdbc.update("UPDATE helix_check.lc_case SET plan_decision = ?::jsonb WHERE id = ?::uuid",
+                toJson(decision), caseId);
+    }
+
+    /** How many planned checks nothing but a person can settle. Drives where Auto stops. */
+    public int humanReviewCount(String caseId) {
+        Integer n = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM helix_check.lc_plan_check
+                 WHERE case_id = ?::uuid AND coverage = 'HUMAN' AND status <> 'SKIPPED'
+                """, Integer.class, caseId);
+        return n == null ? 0 : n;
     }
 
     public List<ReadRows.PlanCheck> planChecks(String caseId) {
@@ -539,22 +592,23 @@ public class CaseStore {
     public void upsertFinding(String caseId, Map<String, Object> f) {
         jdbc.update("""
                 INSERT INTO helix_check.lc_finding
-                    (case_id, finding_ref, plan_check_id, severity, area, area_id, doc_code, page,
+                    (case_id, finding_ref, plan_check_id, outcome, outcome_reason, area, area_id, doc_code, page,
                      credit_anchor_id, title, statement, statement_source, detail, expected, quote,
                      quote_source, reason, analysis, comparison, failed_row, trace, confidence,
                      raised_by_officer, raised_by)
                 VALUES (?::uuid, ?,
                         (SELECT id FROM helix_check.lc_plan_check WHERE case_id = ?::uuid AND check_id = ?),
-                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?::jsonb, ?, ?, ?)
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?::jsonb, ?, ?, ?)
                 ON CONFLICT (case_id, finding_ref) DO UPDATE SET
-                    severity = EXCLUDED.severity, title = EXCLUDED.title,
+                    outcome = EXCLUDED.outcome, outcome_reason = EXCLUDED.outcome_reason,
+                    title = EXCLUDED.title,
                     statement = EXCLUDED.statement, detail = EXCLUDED.detail,
                     expected = EXCLUDED.expected, quote = EXCLUDED.quote,
                     reason = EXCLUDED.reason, analysis = EXCLUDED.analysis,
                     comparison = EXCLUDED.comparison, trace = EXCLUDED.trace
                 """,
                 caseId, f.get("id"), caseId, f.get("checkId"),
-                f.getOrDefault("severity", "possible"), f.get("area"), f.get("areaId"),
+                f.getOrDefault("outcome", "DOUBT"), f.get("outcomeReason"), f.get("area"), f.get("areaId"),
                 f.get("docId"), f.get("page"), f.get("creditAnchorId"), f.get("title"),
                 f.get("statement"), f.getOrDefault("statementSource", "derived"), f.get("detail"),
                 f.get("expected"), f.get("quote"), f.get("quoteSource"), f.get("reason"),
@@ -614,10 +668,17 @@ public class CaseStore {
                 officerId == null ? "officer" : officerId, note);
     }
 
-    public List<ReadRows.Decision> decisions(String caseId) {
+    /**
+     * Where the officer overruled the engine. Only those — an absent row means the
+     * engine's own outcome stands, which is the ordinary case and not a gap.
+     */
+    public List<ReadRows.Override> overrides(String caseId) {
         return jdbc.query(
-                "SELECT finding_ref, disposition, note FROM helix_check.v_finding_decision WHERE case_id = ?::uuid",
-                DECISION, caseId);
+                """
+                SELECT finding_ref, outcome, note, officer_id, acted_at
+                  FROM helix_check.v_finding_override WHERE case_id = ?::uuid
+                """,
+                OVERRIDE, caseId);
     }
 
     public Optional<ReadRows.Verdict> verdict(String caseId) {

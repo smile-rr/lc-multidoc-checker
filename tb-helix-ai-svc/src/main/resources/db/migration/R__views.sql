@@ -42,37 +42,53 @@ SELECT c.id,
        CASE WHEN c.reply_due_date IS NULL THEN NULL
             ELSE GREATEST(0, (c.reply_due_date - CURRENT_DATE))
        END AS reply_due_days,
+       c.decision_status,
+       -- The engine's own counts. An officer's override is not applied here: this
+       -- view feeds the case list, which is read before anybody opens the case, and
+       -- resolving overrides per row would make a list query walk the action log.
+       -- The workbench resolves them; the list reports what was found.
        (SELECT COUNT(*) FROM helix_check.lc_finding f
-         WHERE f.case_id = c.id AND f.severity = 'discrepancy')          AS discrepancy_count,
+         WHERE f.case_id = c.id AND f.outcome = 'DISCREPANT')            AS discrepancy_count,
        (SELECT COUNT(*) FROM helix_check.lc_finding f
-         WHERE f.case_id = c.id AND f.severity IN ('possible', 'manual')) AS attention_count,
+         WHERE f.case_id = c.id AND f.outcome = 'DOUBT')                 AS attention_count,
        (SELECT COUNT(*) FROM helix_check.lc_plan_check p
          WHERE p.case_id = c.id AND p.area_id IS NOT NULL)                AS checks_planned
 FROM helix_check.lc_case c;
 
 
 -- ----------------------------------------------------------------------------
--- Latest disposition per finding.
+-- The officer's override per finding, where there is one.
 --
--- An officer who agrees, then parks, then agrees again leaves three rows. The
--- history is the record; this is the current answer.
+-- An officer who clears a discrepancy, reinstates it, then clears it again leaves
+-- three rows. The history is the record; this is the current answer.
+--
+-- **Withdrawing an override is an append, not a delete** — `outcome_override_cleared`
+-- wins if it is the latest row, and `outcome` comes back NULL, which means the
+-- engine's own value stands. Deleting the row instead would lose the fact that
+-- somebody disagreed and then thought better of it, which is exactly the kind of
+-- thing an examination file is for.
 -- ----------------------------------------------------------------------------
-DROP VIEW IF EXISTS helix_check.v_finding_decision CASCADE;
-CREATE VIEW helix_check.v_finding_decision AS
-SELECT DISTINCT ON (a.case_id, a.target)
-       a.case_id,
-       a.target                        AS finding_ref,
-       a.payload ->> 'disposition'     AS disposition,
-       a.note,
-       a.officer_id,
-       a.acted_at
-FROM helix_check.lc_officer_action a
-WHERE a.action = 'disposition'
-ORDER BY a.case_id, a.target, a.acted_at DESC, a.seq DESC;
+DROP VIEW IF EXISTS helix_check.v_finding_override CASCADE;
+CREATE VIEW helix_check.v_finding_override AS
+SELECT case_id, finding_ref, outcome, note, officer_id, acted_at
+FROM (
+    SELECT DISTINCT ON (a.case_id, a.target)
+           a.case_id,
+           a.target                                                     AS finding_ref,
+           CASE WHEN a.action = 'outcome_override'
+                THEN a.payload ->> 'outcome' END                        AS outcome,
+           a.note,
+           a.officer_id,
+           a.acted_at
+    FROM helix_check.lc_officer_action a
+    WHERE a.action IN ('outcome_override', 'outcome_override_cleared')
+    ORDER BY a.case_id, a.target, a.acted_at DESC, a.seq DESC
+) latest
+WHERE outcome IS NOT NULL;
 
 
--- Latest free-text note per finding, kept separate from the disposition so
--- writing a note does not overwrite a decision and vice versa.
+-- Latest free-text note per finding, kept separate from the override so
+-- writing a note does not overwrite a call and vice versa.
 DROP VIEW IF EXISTS helix_check.v_finding_note CASCADE;
 CREATE VIEW helix_check.v_finding_note AS
 SELECT DISTINCT ON (a.case_id, a.target)
@@ -86,11 +102,15 @@ WHERE a.action = 'finding_note'
 ORDER BY a.case_id, a.target, a.acted_at DESC, a.seq DESC;
 
 
--- The case-level sign-off: verdict, covering note, and whether it was submitted.
+-- The case-level sign-off: where the presentation landed, the covering note, and
+-- whether it was submitted.
+--
+-- `status` is what the officer settled on. NULL means nobody overrode the derived
+-- value — which is not stored, because it moves whenever an override does.
 DROP VIEW IF EXISTS helix_check.v_case_verdict CASCADE;
 CREATE VIEW helix_check.v_case_verdict AS
 SELECT c.id AS case_id,
-       v.payload ->> 'verdict' AS verdict,
+       COALESCE(v.payload ->> 'status', c.decision_status) AS status,
        v.officer_id            AS decided_by,
        v.acted_at              AS decided_at,
        n.note                  AS review_note,
@@ -99,7 +119,7 @@ SELECT c.id AS case_id,
 FROM helix_check.lc_case c
 LEFT JOIN LATERAL (
     SELECT * FROM helix_check.lc_officer_action a
-     WHERE a.case_id = c.id AND a.action = 'verdict'
+     WHERE a.case_id = c.id AND a.action = 'decision_status'
      ORDER BY a.acted_at DESC, a.seq DESC LIMIT 1) v ON TRUE
 LEFT JOIN LATERAL (
     SELECT * FROM helix_check.lc_officer_action a

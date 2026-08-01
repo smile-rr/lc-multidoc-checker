@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
 import java.util.List;
+import com.tb.helix.lccheck.persistence.ReadRows;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -83,6 +84,12 @@ public class StageLauncher {
      * <p>Asking for {@link StageId#PLAN} runs the gate first. The gate is a stage in the
      * code and a step on the wire, but not a button: "check whether the credit has expired,
      * but do not plan anything" is not a thing anyone wants.
+     *
+     * <p>A case whose plan decided the rest was not worth running is <b>not</b> blocked here.
+     * It parks at {@code execute} like any other, so the officer who reads the planner's
+     * reason and disagrees presses the same button everybody else presses. That is the whole
+     * escape hatch, and it is deliberately not a special endpoint: an examination the system
+     * declined to finish must never be one the officer cannot finish.
      */
     public void runStage(String caseId, StageId requested, String officerId) {
         CaseRow row = cases.find(caseId)
@@ -94,9 +101,13 @@ public class StageLauncher {
                     "This case is waiting at " + expected + ", not " + requested.key() + ".",
                     "stage_mismatch");
         }
+        // Only a case halted under the old threshold behaviour can still be here. Nothing
+        // writes gate_halted any more — a failed threshold check records its discrepancy and
+        // lets the plan read the credit's own terms, which may be the very thing that answers
+        // it. Kept so a case parked before that change still has its one way out.
         if (row.halted()) {
             throw new ConflictException(
-                    "A hard check stopped this examination. Override it before running anything further.",
+                    "A threshold check stopped this examination. Override it before running anything further.",
                     "gate_halted");
         }
         // Claim before @Async schedules anything. Without this, four POSTs in one
@@ -251,18 +262,37 @@ public class StageLauncher {
     private CaseStatus statusAfter(String caseId, StageId stage) {
         return switch (stage) {
             case INTAKE -> CaseStatus.AWAITING_CHECK;
-            case INTERPRET, GATE, PLAN -> CaseStatus.TO_DECIDE;
+            case INTERPRET -> CaseStatus.TO_DECIDE;
+            // The threshold checks and the plan can both leave a discrepancy on the case now
+            // — a gate no longer halts, it records. Reporting "to decide" over the top of a
+            // presentation already known to be out of time is the case list saying nothing
+            // happened when something did.
+            case GATE, PLAN -> cases.findings(caseId).isEmpty()
+                    ? CaseStatus.TO_DECIDE : CaseStatus.DISCREPANCIES;
             case EXECUTE -> cases.findings(caseId).isEmpty() ? CaseStatus.CLEAN : CaseStatus.DISCREPANCIES;
-            // Only findings the officer agreed to become grounds; none means nothing was
-            // raised, which is a clean presentation rather than one sent on.
-            case SIGNOFF -> agreedCount(caseId) > 0 ? CaseStatus.WITH_AUTHORISER : CaseStatus.CLEAN;
+            // Only findings that stand as discrepancies become grounds; none means nothing
+            // was raised, which is a clean presentation rather than one sent on.
+            case SIGNOFF -> groundCount(caseId) > 0 ? CaseStatus.WITH_AUTHORISER : CaseStatus.CLEAN;
         };
     }
 
-    /** Findings the officer agreed to — the grounds a refusal would stand on. */
-    private long agreedCount(String caseId) {
-        return cases.decisions(caseId).stream()
-                .filter(d -> "agreed".equals(String.valueOf(d.disposition())))
+    /**
+     * The grounds a refusal would stand on: findings that are discrepant once the officer's
+     * calls are applied.
+     *
+     * <p>Both directions count, which is why this resolves rather than reading either side
+     * alone. A discrepancy the officer cleared is not a ground; a doubt they called discrepant
+     * is. Counting {@code lc_finding.outcome} would state the engine's view over the officer's,
+     * and counting overrides alone would miss every discrepancy nobody needed to touch — which
+     * is most of them.
+     */
+    private long groundCount(String caseId) {
+        Map<String, String> overridden = cases.overrides(caseId).stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        ReadRows.Override::findingRef, ReadRows.Override::outcome, (a, b) -> b));
+        return cases.findings(caseId).stream()
+                .map(f -> overridden.getOrDefault(f.findingRef(), f.outcome()))
+                .filter("DISCREPANT"::equals)
                 .count();
     }
 
