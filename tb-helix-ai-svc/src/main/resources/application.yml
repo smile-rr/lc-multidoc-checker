@@ -268,10 +268,36 @@ helix:
       # the next run — right for development. RELEASE reads the pinned snapshot,
       # which is what makes an examination defensible. Switch at cutover.
       pin-mode: ${HELIX_CATALOG_PIN:LIVE}
+    interpret:
+      # How many documents are read at once. Each one is three vision calls over its
+      # own pages — independent of every other document, which is why they fan out.
+      #
+      # The passes WITHIN a document stay sequential and are not affected by this:
+      # they send byte-identical images and ride each other's prefix cache, which
+      # only works if the first has returned. Firing them together would be faster
+      # and cost about three times as much.
+      #
+      # Four, because of what breaks first, and it is not the model:
+      #   heap      — a render loads the whole bundle; N at once is N copies
+      #   provider  — one key, and a 429 costs more than it saves
+      #   db pool   — maximum-pool-size is 10, shared with everything else
+      # Raise it only with all three in view.
+      concurrency: 4
     agent:
       # Hard cap on an agentic rule's tool-calling turns. A per-rule
       # max_iterations may lower this; nothing raises it.
       max-iterations: 3
+    plan:
+      # Reasoning on, for the one call that weighs things against each other rather
+      # than transcribing: a threshold verdict, twenty candidate rules and a page of
+      # the applicant's own conditions, to a decision about what should run.
+      #
+      # Every slot ships enable_thinking:false because a Qwen3-family model that
+      # thinks aloud leaks it into the JSON. This overrides it per call and relies on
+      # LlmText.extractJson to lift the object back out. Turn it off here if a
+      # provider mishandles it — the plan is then a plain structured call and the run
+      # still works, less well.
+      thinking: ${HELIX_PLAN_THINKING:true}
 
   # --- Governance ---------------------------------------------------------
   governance:

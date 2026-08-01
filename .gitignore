@@ -10,7 +10,6 @@ credentials.json
 # IDE
 .vscode/
 .idea/
-.gradle/
 *.iml
 
 # Claude Code
@@ -20,22 +19,31 @@ CLAUDE.md
 # Local docs / analysis notes (not committed)
 docs/key-insights.md
 
-# UI build artifacts
-ui/node_modules/
-ui/dist/
-ui/public/samples/
-
 # macOS
 .DS_Store
 .DS_Store?
 ._*
 
-# Gradle (lc-checker-svc — was lc-checker-api in earlier layout)
-lc-checker-svc/.gradle/
-lc-checker-svc/build/
-lc-checker-svc/out/
-!lc-checker-svc/.gradle/.gitkeep
-!lc-checker-svc/build/.gitkeep
+# ── Build / dependency / runtime artefacts (never commit) ──
+node_modules/
+dist/
+dist-ssr/
+build/
+out/
+.gradle/
+.vite/
+coverage/
+test-results/
+
+# Local runtime data (blobs, derivation cache under HELIX_*_DISK)
+var/
+**/var/
+
+# Service-local blob store (content-addressed; regenerated from uploads)
+tb-helix-ai-svc/var/
+
+# UI sample PDFs / TIFFs (local only; not needed in repo)
+tb-helix-ai-ui/public/samples/
 
 # Large binaries / installers under test/
 test/Ollama.dmg
@@ -47,8 +55,6 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .eggs/
-dist/
-build/
 *.egg
 
 # Docker
@@ -61,15 +67,8 @@ infra/postgres/data/
 *.log
 logs/
 
-# Test output
-test-results/
-coverage/
-
 # Temp files
 *.tmp
 *.swp
 *.swo
 ~
-
-# tb-helix-ai-svc local blob store (content-addressed; regenerated from uploads)
-tb-helix-ai-svc/var/

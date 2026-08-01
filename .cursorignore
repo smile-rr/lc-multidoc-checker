@@ -1,8 +1,11 @@
-# Build outputs
-lc-checker-v2-svc/build/
-lc-checker-v2-svc/.gradle/
-ui/node_modules/
-ui/dist/
+# Build outputs & dependencies
+**/node_modules/
+**/dist/
+**/build/
+**/.gradle/
+**/out/
+**/.vite/
+**/var/
 
 # Logs
 *.log
