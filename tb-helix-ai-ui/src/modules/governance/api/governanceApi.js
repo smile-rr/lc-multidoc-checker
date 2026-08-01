@@ -49,6 +49,11 @@ export const deleteArticle = pick(mock.deleteArticle, http.deleteArticle)
 // --- Comments -------------------------------------------------------------
 export const addComment = pick(mock.addComment, http.addComment)
 
+// --- Model prices (infra book; hosted under Governance for convenience) ----
+export const loadPrices = pick(mock.loadPrices, http.loadPrices)
+export const savePrice = pick(mock.savePrice, http.savePrice)
+export const deletePrice = pick(mock.deletePrice, http.deletePrice)
+
 /**
  * Whether writes actually persist.
  *

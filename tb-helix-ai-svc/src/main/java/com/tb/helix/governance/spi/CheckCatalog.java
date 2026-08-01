@@ -19,7 +19,16 @@ public interface CheckCatalog {
      * One authored check, flattened to what an examination needs.
      *
      * @param tier      EXACT or JUDGED — derived from checkType, not stored twice
-     * @param isGate    the author's assertion that a failure ends the examination
+     * @param isGate    the author's assertion that this may run before anything is read
+     * @param onFail    what a threshold check's failure means: {@code STOP} — nothing in the
+     *                  presentation could change the answer, so the rest of the run is spend
+     *                  on a question already settled — or {@code CONTINUE} — record the
+     *                  discrepancy and keep examining. Only meaningful when {@code isGate}.
+     *                  <p>Split from {@code isGate} because the two were one word doing two
+     *                  jobs. Whether a check <em>can</em> run first is derived from the
+     *                  dictionary and the author cannot assert it; what its failure
+     *                  <em>means</em> is a judgement only the author can make, and this bank
+     *                  will not make it the same way for every threshold check.
      * @param body      plain language with {field} tokens. For a judged check this IS the
      *                  prompt, not a description of one.
      * @param rule      condition tree for an exact check; null for judged
@@ -33,14 +42,25 @@ public interface CheckCatalog {
             String checkType,
             String tier,
             boolean isGate,
+            String onFail,
             String citedAs,
             List<String> refs,
             List<String> fieldRefs,
             List<String> docTypes,
             Object rule) {
 
+        /** {@code STOP} unless the author said otherwise — the safer of the two guesses. */
+        public CheckCard {
+            onFail = "CONTINUE".equalsIgnoreCase(onFail) ? "CONTINUE" : "STOP";
+        }
+
         public boolean exact() {
             return "EXACT".equals(tier);
+        }
+
+        /** Whether failing this one should stop the rest of the examination. */
+        public boolean stopsOnFail() {
+            return "STOP".equals(onFail);
         }
     }
 

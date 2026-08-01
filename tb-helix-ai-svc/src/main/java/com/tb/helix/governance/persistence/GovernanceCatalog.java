@@ -115,6 +115,9 @@ public class GovernanceCatalog implements CheckCatalog {
                 c.get("checkType") == null ? "AGENT" : str(c.get("checkType")),
                 rs.getString("tier"),
                 rs.getBoolean("gate_on"),
+                // Off the document, not the view — nothing derives from it, so it needs no
+                // column of its own and the view stays about eligibility.
+                str(c.get("onFail")),
                 str(c.get("citedAs")),
                 strings(c.get("refs")),
                 strings(c.get("fields")),

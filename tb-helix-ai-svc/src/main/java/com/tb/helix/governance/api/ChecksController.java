@@ -60,18 +60,22 @@ public class ChecksController {
     }
 
     /**
-     * Turning a hard check on or off.
+     * Turning a threshold check on or off, and saying what its failure means.
      *
      * <p>Turning it on is refused when the check cannot run first. Eligibility is derived
      * from the dictionary; a stored flag contradicting the derivation is a lie the run would
      * have to resolve, and it would resolve it by not running the gate at all.
+     *
+     * <p>{@code onFail} is the second half and is never refused: {@code STOP} or
+     * {@code CONTINUE}. It is the author's judgement about what a failure settles, and the
+     * planner may still overrule it for one credit whose own terms bear on the question.
      */
     @PostMapping("/{id}/gate")
     public Map<String, Object> setGate(@PathVariable String id, @RequestBody Map<String, Object> body) {
         boolean on = Boolean.TRUE.equals(body.get("on"));
         Map<String, Object> eligibility = store.gateEligibility(id);
         if (on && !Boolean.TRUE.equals(eligibility.get("eligible"))) return eligibility;
-        store.setGate(id, on);
+        store.setGate(id, on, String.valueOf(body.getOrDefault("onFail", eligibility.get("onFail"))));
         return store.gateEligibility(id);
     }
 }

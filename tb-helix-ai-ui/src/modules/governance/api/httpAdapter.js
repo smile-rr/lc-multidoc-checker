@@ -37,7 +37,8 @@ export const saveCheckRule = (id, rule) => api.patch(`${base}/checks/${encodeURI
  * `{ eligible, why }`. The UI shows the reason on a disabled control; an author
  * who wants a gate needs to know what would make one.
  */
-export const setGate = (id, on) => api.post(`${base}/checks/${encodeURIComponent(id)}/gate`, { on })
+export const setGate = (id, on, onFail) =>
+  api.post(`${base}/checks/${encodeURIComponent(id)}/gate`, { on, onFail })
 
 // --- Agents ---------------------------------------------------------------
 export const saveAgent = (agent) => api.patch(`${base}/agents/${encodeURIComponent(agent.id)}`, agent)
@@ -62,3 +63,11 @@ export const deleteArticle = (id) => api.del(`${base}/library/articles/${encodeU
 
 // --- Comments -------------------------------------------------------------
 export const addComment = (comment) => api.post(`${base}/comments`, comment)
+
+// --- Model prices (infra; not part of the governance catalogue bootstrap) ---
+const pricesBase = '/infra/prices'
+export const loadPrices = () => api.get(pricesBase)
+export const savePrice = (price) =>
+  api.put(`${pricesBase}/${encodeURIComponent(price.family)}`, price)
+export const deletePrice = (family) =>
+  api.del(`${pricesBase}/${encodeURIComponent(family)}`)

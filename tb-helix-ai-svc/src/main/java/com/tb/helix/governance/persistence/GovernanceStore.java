@@ -190,9 +190,19 @@ public class GovernanceStore {
         merge(CHECK, checkId, Map.of("rule", rule));
     }
 
-    /** Whether this check is a hard check. Intent; eligibility is derived separately. */
-    public void setGate(String checkId, boolean on) {
-        merge(CHECK, checkId, Map.of("gate", on));
+    /**
+     * Whether this check runs before anything is read, and what its failure means.
+     *
+     * <p>Intent on both counts; <em>eligibility</em> is derived separately and can veto the
+     * first. {@code onFail} is the author's own judgement and nothing derives it: STOP asserts
+     * that nothing in the presentation could change the answer, so examining on is spend on a
+     * question already settled. CONTINUE says record it and keep reading — which is the right
+     * answer whenever the credit might say something that bears on it.
+     */
+    public void setGate(String checkId, boolean on, String onFail) {
+        merge(CHECK, checkId, Map.of(
+                "gate", on,
+                "onFail", "CONTINUE".equalsIgnoreCase(onFail) ? "CONTINUE" : "STOP"));
     }
 
     /**
@@ -204,7 +214,8 @@ public class GovernanceStore {
      */
     public Map<String, Object> gateEligibility(String checkId) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
-                SELECT gate_eligible, gate_on, has_conditions, check_type, operand_docs
+                SELECT gate_eligible, gate_on, has_conditions, check_type, operand_docs,
+                       body ->> 'onFail' AS on_fail
                   FROM helix_gov.v_check_list WHERE id = ?
                 """, checkId);
         if (rows.isEmpty()) return Map.of("eligible", false, "why", "No such check.");
@@ -214,13 +225,16 @@ public class GovernanceStore {
         return Map.of(
                 "eligible", eligible,
                 "on", Boolean.TRUE.equals(r.get("gate_on")),
+                // Answered whether or not the check is a threshold check, so the console can
+                // show the control in the same paint as the toggle that reveals it.
+                "onFail", "CONTINUE".equalsIgnoreCase(String.valueOf(r.get("on_fail"))) ? "CONTINUE" : "STOP",
                 "why", eligible ? "Every document it reads is available before the presentation."
                         : why(r));
     }
 
     private String why(Map<String, Object> r) {
         if (!"PROGRAMMATIC".equals(r.get("check_type"))) {
-            return "A judged check reads documents; it cannot run before they are read.";
+            return "An agent reads documents; it cannot run before they are read.";
         }
         if (!Boolean.TRUE.equals(r.get("has_conditions"))) {
             return "It has no conditions authored yet, so there is nothing to run.";
