@@ -57,6 +57,12 @@ export default function FloatingPanel({
   width = 620,
   /** Body height in px — the header sits above it. Resizable from any edge or corner. */
   height = 520,
+  /**
+   * Where to appear when nothing has been dragged yet. Used by a panel that opens
+   * from a toolbar button — first open sits under the button; after a drag, the
+   * remembered place wins.
+   */
+  anchor = null,
   children,
 }) {
   const remembered = placed.get(id)
@@ -73,9 +79,9 @@ export default function FloatingPanel({
 
   useEffect(() => { placed.set(id, { pos, size, minimised }) }, [id, pos, size, minimised])
 
-  // Bottom-right by default — out of the way of a workbench that reads
-  // left-to-right, and where a console belongs.
-  const at = pos ?? defaultPos(size.width, size.height)
+  // Remembered drag first; then the caller's anchor (under a button); then the
+  // bottom-right default the run log uses.
+  const at = pos ?? (anchor ? clampPos(anchor, size.width) : defaultPos(size.width, size.height))
 
   const startDrag = useCallback((e) => {
     // Only the header itself, and not the buttons on it.
@@ -314,5 +320,15 @@ function defaultPos(width, height) {
   return {
     left: Math.max(8, window.innerWidth - width - 24),
     top: clamp(window.innerHeight - height - HEADER - 24, 8, Math.max(8, window.innerHeight - 120)),
+  }
+}
+
+/** Keep an anchored panel on screen — under a toolbar button that may sit near
+ *  the right edge. */
+function clampPos(anchor, width) {
+  if (typeof window === 'undefined') return anchor
+  return {
+    left: clamp(anchor.left, 8, Math.max(8, window.innerWidth - width - 8)),
+    top: clamp(anchor.top, 8, Math.max(8, window.innerHeight - 120)),
   }
 }

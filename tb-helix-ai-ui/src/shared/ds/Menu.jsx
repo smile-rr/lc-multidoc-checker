@@ -13,7 +13,7 @@ import { Z } from './z'
 //
 // `trigger` renders inside the same wrapper as the panel, so clicking the
 // trigger is never treated as a click outside.
-export function Menu({ open, onClose, trigger, children, align = 'left', top = 30, width = 280, maxHeight = 280 }) {
+export function Menu({ open, onClose, trigger, children, align = 'left', top = 30, width = 280, maxHeight = 280, drop = 'down' }) {
   const ref = useRef(null)
   useEffect(() => {
     if (!open) return
@@ -31,7 +31,11 @@ export function Menu({ open, onClose, trigger, children, align = 'left', top = 3
         <div
           role="menu"
           style={{
-            position: 'absolute', top, [align]: 0, zIndex: Z.popover,
+            position: 'absolute',
+            // `up` is for a trigger that sits at the foot of a clipped panel — the
+            // raise form inside FloatingPanel — where opening down would be cut off.
+            ...(drop === 'up' ? { bottom: '100%', marginBottom: 4 } : { top }),
+            [align]: 0, zIndex: Z.popover,
             width, maxHeight, overflowY: 'auto',
             background: '#fff', border: '1px solid var(--me-grey-20)', borderRadius: 10,
             boxShadow: '0 12px 30px rgba(27,28,30,.16)', padding: 6,

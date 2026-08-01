@@ -29,7 +29,7 @@ import { outcomeOptions, outcomeMeta } from '../state/outcome'
 // type sizes for one control is three controls to learn, and the chevron that says
 // "this can be changed" was the first thing to get lost at the small end. One size,
 // everywhere, so recognising it once is enough.
-export default function OutcomeSelect({ call, onPick, align = 'left' }) {
+export default function OutcomeSelect({ call, onPick, align = 'left', drop = 'down' }) {
   const size = 12
   const [open, setOpen] = useState(false)
   const options = outcomeOptions(call)
@@ -50,6 +50,7 @@ export default function OutcomeSelect({ call, onPick, align = 'left' }) {
       open={open}
       onClose={() => setOpen(false)}
       align={align}
+      drop={drop}
       width={196}
       top={28}
       trigger={(
