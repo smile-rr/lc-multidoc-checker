@@ -157,6 +157,12 @@ export function summariseRun(steps, completedCount, pageCount) {
     costPerPage: pageCount ? totals.cost / pageCount : 0,
     modelCount: byModel.length,
     byModel,
+    // The fixture path carries its rates on the model roll-up rather than on the
+    // ledger rows, so the same shape is built from there.
+    modelPrices: byModel
+      .filter((m) => m.inPerMillion || m.outPerMillion)
+      .map((m) => ({ modelId: m.modelId, label: m.label, inPerMillion: m.inPerMillion, outPerMillion: m.outPerMillion }))
+      .sort((a, b) => b.outPerMillion - a.outPerMillion),
     rows: steps.map((s, i) => ({
       ...s,
       state: i < completedCount ? 'done' : i === completedCount ? 'running' : 'queued',
@@ -275,16 +281,69 @@ export function summariseLedger(spend = [], pageCount = 0) {
         cost: Number(r.cost) || 0,
         costAvoided: Number(r.costAvoided) || 0,
         fullyCached,
-        // What the row cannot show for itself. That it was cached is said by the ⚡
-        // and by the token cluster beside it, so repeating "cached · $0" here was
-        // the same fact three times; what only this line can say is what the run
-        // would have been charged had the cache been cold.
-        note: fullyCached
-          ? (r.costAvoided ? `would have cost $${Number(r.costAvoided).toFixed(5)}` : null)
-          : (r.cached ? `${r.cached} of ${r.calls} calls from the local cache` : null),
+        // Money kept off the bill — always, not only on a fully-cached step. Partial
+        // hits already show their token cluster; without the dollar they look like
+        // free work that somehow wasn't.
+        note: (() => {
+          const saved = Number(r.costAvoided)
+            ? `saved $${Number(r.costAvoided).toFixed(5)}`
+            : null
+          if (fullyCached) return saved
+          if (!r.cached) return null
+          const hit = `${r.cached} of ${r.calls} from local cache`
+          return saved ? `${hit} · ${saved}` : hit
+        })(),
         state: 'done',
       }
     })
+
+  // Every model this run called, with the rate it was charged at.
+  //
+  // `byModel` was an empty array here — the roll-up existed only on the fixture path,
+  // so against the real ledger the drawer's own Run Detail line named no models at
+  // all. It is rebuilt from the same rows the steps are drawn from, which is the
+  // point: the rate card and the step list cannot disagree, because there is one
+  // source and the arithmetic between them is addition.
+  //
+  // Grouped by **model id and rate**, not by model alone. A banded family charges a
+  // long call more than a short one, so one model can legitimately appear at two
+  // rates in one run; adding them would produce a row whose tokens times whose rate
+  // is not its cost — the exact thing a rate card exists to rule out.
+  const byModelMap = new Map()
+  for (const r of spend) {
+    if (!r.modelId) continue
+    const key = `${r.modelId}/${r.inPerMillion ?? '?'}/${r.outPerMillion ?? '?'}`
+    const at = byModelMap.get(key) ?? {
+      modelId: r.modelId,
+      label: r.label || r.family || r.modelId,
+      vendor: r.vendor || null,
+      tier: r.tier || null,
+      // False for a model the price book has never heard of. Its cost is unknown, not
+      // zero, and the card has to say which — a $0.00/M rate reads as a free model.
+      priced: r.priced !== false,
+      inPerMillion: num(r.inPerMillion),
+      outPerMillion: num(r.outPerMillion),
+      cachedInPerMillion: r.cachedInPerMillion == null ? null : num(r.cachedInPerMillion),
+      bandUpTo: r.bandUpTo ?? null,
+      calls: 0, cached: 0, failed: 0,
+      tokensIn: 0, tokensOut: 0, tokensCachedIn: 0,
+      tokensInAvoided: 0, tokensOutAvoided: 0,
+      cost: 0, costAvoided: 0,
+    }
+    at.calls += r.calls || 0
+    at.cached += r.cached || 0
+    at.failed += r.failed || 0
+    at.tokensIn += r.tokensIn || 0
+    at.tokensOut += r.tokensOut || 0
+    at.tokensCachedIn += r.tokensCached || 0
+    at.tokensInAvoided += r.tokensInAvoided || 0
+    at.tokensOutAvoided += r.tokensOutAvoided || 0
+    at.cost += Number(r.cost) || 0
+    at.costAvoided += Number(r.costAvoided) || 0
+    byModelMap.set(key, at)
+  }
+  // Dearest first — the order anyone asking "why did this cost that" reads it in.
+  const byModel = [...byModelMap.values()].sort((a, b) => b.cost - a.cost)
 
   const sum = (f) => rows.reduce((a, r) => a + f(r), 0)
   const calls = sum((r) => r.calls)
@@ -327,9 +386,37 @@ export function summariseLedger(spend = [], pageCount = 0) {
     pagesRead: pageCount,
     costPerPage: pageCount ? cost / pageCount : 0,
     modelCount: new Set(rows.map((r) => r.model).filter(Boolean)).size,
-    byModel: [],
+    byModel,
+    modelPrices: modelPriceList(spend),
     rows,
   }
+}
+
+/** A rate off the wire, as a number. BigDecimal arrives as a string often enough. */
+const num = (v) => (v == null ? 0 : Number(v))
+
+/**
+ * The price of each model this case called — the book, not the bill.
+ *
+ * <p>One row per model, carrying nothing but its rates. No tokens, no cost, no share:
+ * those belong to a run and this does not. The base rate rather than the length band
+ * that happened to apply, for the same reason — a table of standing prices must not
+ * move because one call in one case crossed a boundary.
+ *
+ * <p>Deduped by model, so a family that priced two bands in one run is still one line.
+ */
+export function modelPriceList(spend = []) {
+  const seen = new Map()
+  for (const r of spend) {
+    if (!r.modelId || r.priced === false || seen.has(r.modelId)) continue
+    seen.set(r.modelId, {
+      modelId: r.modelId,
+      label: r.label || r.family || r.modelId,
+      inPerMillion: num(r.baseInPerMillion ?? r.inPerMillion),
+      outPerMillion: num(r.baseOutPerMillion ?? r.outPerMillion),
+    })
+  }
+  return [...seen.values()].sort((a, b) => b.outPerMillion - a.outPerMillion)
 }
 
 /** Fan-out keys like extract:INV collapse to the declared pipeline step. */

@@ -122,8 +122,12 @@ public class PgModelCallLog implements ModelCallLog {
             // *sum* falls in. Every call here shares one bucket, so the longest of them names
             // the band for all of them.
             long longest = rs.getLong("longest");
-            r.put("cost", prices.of(model).costInBandOf(longest, tin, tout, rs.getLong("tokens_cached")));
-            r.put("costAvoided", prices.of(model).costInBandOf(longest, tinAvoided, toutAvoided, 0));
+            ModelPrices.Price price = prices.of(model);
+            r.put("cost", price.costInBandOf(longest, tin, tout, rs.getLong("tokens_cached")));
+            r.put("costAvoided", price.costInBandOf(longest, tinAvoided, toutAvoided, 0));
+            // The rate this row was actually priced at, so the drawer can show its
+            // working rather than asking to be believed.
+            r.putAll(rateOf(price, longest));
             return r;
         }, caseId);
         return rows;
@@ -187,8 +191,13 @@ public class PgModelCallLog implements ModelCallLog {
             // of its own cases would drift apart the moment a provider started reporting a
             // prompt cache — two numbers for one bill, with nothing to say which was right.
             long longest = rs.getLong("longest");
-            r.put("cost", prices.of(model).costInBandOf(longest, tin, tout, tcached));
-            r.put("costAvoided", prices.of(model).costInBandOf(longest, tinAvoided, toutAvoided, 0));
+            ModelPrices.Price price = prices.of(model);
+            r.put("cost", price.costInBandOf(longest, tin, tout, tcached));
+            r.put("costAvoided", price.costInBandOf(longest, tinAvoided, toutAvoided, 0));
+            // Same shape as spendForCase. Two endpoints that both answer "what did this
+            // model cost" and describe the rate differently is the drift this class keeps
+            // warning about, and the portfolio panel will want the book too.
+            r.putAll(rateOf(price, longest));
             return r;
         }, java.sql.Timestamp.from(since));
 
@@ -240,6 +249,50 @@ public class PgModelCallLog implements ModelCallLog {
         return out;
     }
 
+
+    /**
+     * The rate a group of calls was charged at, as the panel has to print it.
+     *
+     * <p>The <b>band</b> rate, not the family's flat pair. Cost above came from
+     * {@link ModelPrices.Price#costInBandOf}, which picks a rate by input length — so on a
+     * banded family (Qwen's international tables step to roughly four times the base rate
+     * past 256K) the flat pair would not reproduce the figure printed beside it. A reader
+     * who multiplies the tokens by the rate we showed and gets a different number learns
+     * that the panel cannot be checked, which is worse than never having shown a rate.
+     *
+     * <p>{@code priced} rather than a zero rate for a model the book has never heard of.
+     * Zero is a rate, and $0.00/M reads as a free model; an unpriced call is one whose cost
+     * we do not know, and a panel must be able to say so.
+     *
+     * @param bandLength the longest input in the group — the same value that priced it
+     */
+    private static Map<String, Object> rateOf(ModelPrices.Price price, long bandLength) {
+        Map<String, Object> r = new java.util.LinkedHashMap<>();
+        boolean priced = price.family() != null;
+        r.put("priced", priced);
+        r.put("label", price.label());
+        r.put("vendor", price.vendor());
+        r.put("tier", price.tier());
+        if (!priced) return r;
+        // The family's own rate, independent of this run. A price table is a statement
+        // about the book, not about what happened to be called — so it must not shift
+        // because one call in this case crossed a length boundary.
+        r.put("baseInPerMillion", price.in());
+        r.put("baseOutPerMillion", price.out());
+        ModelPrices.Band band = price.bandFor(bandLength);
+        r.put("inPerMillion", band.in());
+        r.put("outPerMillion", band.out());
+        // Null where the vendor has no cache rate — the caller must then say the cached
+        // input was charged at the ordinary input rate, which is what pricing does.
+        r.put("cachedInPerMillion", band.cachedIn());
+        // Only when the family actually has bands, and only when the one that applied is
+        // not the last: an unbounded "up to 2147483647" is an implementation detail, and
+        // printing it beside a rate would invite someone to read it as a real limit.
+        if (!price.bands().isEmpty() && band.upToPromptTokens() != Integer.MAX_VALUE) {
+            r.put("bandUpTo", band.upToPromptTokens());
+        }
+        return r;
+    }
 
     /**
      * A SQL expression that puts each call in the length bucket its band belongs to.

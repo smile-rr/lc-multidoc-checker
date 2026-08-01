@@ -143,17 +143,23 @@ export default function SpendPanel({ spend }) {
             </div>
 
             <Rule />
+            {/* Neither of these is green any more.
+                They were the two brightest things in a cell whose subject is the
+                bill, which put a reader's eye on what was *not* spent — and green
+                is already spoken for twice on this panel (a measure improved, a
+                check passed). A saving is not a success state; it is the quiet
+                half of a number that is already on screen. Ink for the count that
+                was really settled, grey for the money that was never charged. */}
             <Line
               label="Settled Without a Model"
               value={`${spend.freeCardsPerCase} / ${spend.cardsPerCase}`}
-              tone="var(--status-success)"
               tip="Exact rules per case: settled by an expression over extracted fields, with no model call, no tokens and no cost. They give the same answer every time and their cost does not grow with the size of the bundle. The rest are judged rules, which an agent reads — that is the whole of the spend above."
               note={`cards per case settled by comparison — ${percent(spend.freeCardPct)} of the examination, at no cost and identical on every run.`}
             />
             <Line
               label="Kept off the Bill"
               value={usd(spend.costAvoided)}
-              tone="var(--status-success)"
+              tone="var(--me-grey-70)"
               tip="What derivation-cache hits would have cost if the model had been called again. Not provider prompt-cache discounts — those are already netted inside billed rows."
               note={`${percent(spend.cachedInputPct)} of attempts served from cache${b.documentsRead ? ` · ${b.documentsReused} of ${b.documentsRead} documents reused` : ''} — ${usd(spend.costAvoided)} not spent.`}
             />

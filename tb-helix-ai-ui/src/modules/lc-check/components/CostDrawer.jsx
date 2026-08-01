@@ -1,12 +1,25 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import Eyebrow from '@shared/ds/Eyebrow'
 import Drawer from '@shared/ds/Drawer'
 import Badge from '@shared/ds/Badge'
 import Icon from '@shared/ds/Icon'
-import { duration, durationShort, thousands, usd, usdFine, seconds2, percent, plural } from '@shared/lib/format'
+import { ellipsis } from '@shared/ds/text'
+import { usePersistedState } from '@shared/lib/usePersistedState'
+import { durationShort, usdFine, seconds2, percent, plural } from '@shared/lib/format'
 // The same grouping the run log uses. Two formatters for one fact would let the
 // panel and the log disagree about a number they both read off the ledger.
 import { tokens as tok, CACHE } from '../state/runLog.js'
+
+/**
+ * The one hue in this drawer: spend that bought nothing.
+ *
+ * Everything else here is a fact about a bill, and a fact has no good or bad state
+ * to signal — so the panel's hierarchy is carried entirely by size, weight and the
+ * grey ramp. A retried call is different in kind: it was charged for and returned
+ * nothing, and it is the only figure on the panel that asks someone to act. It gets
+ * the colour precisely because nothing around it has one.
+ */
+const WASTED = '#946400'
 
 // Run cost — what the review spent, in time and money, and where it went.
 //
@@ -44,15 +57,17 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
           <Icon name="refresh-cw" size={16} />
         </button>
       ) : null}
+      footer={<ModelPriceStrip prices={cost.modelPrices} />}
     >
       {!started ? (
         <Section name="Not Started">
-          <Empty>Nothing has run on this case yet. Start the review and the cost appears here as each step returns.</Empty>
+          <Empty>Nothing has run on this case yet.</Empty>
         </Section>
       ) : (
         <>
-          {/* Time and money as the two headline figures; tokens beneath them rather
-              than beside them.
+          {/* Money first, then time; tokens beneath both rather than beside them.
+              The drawer is called Run Cost, so the bill leads — it used to sit second,
+              behind a duration, in a panel named after it.
 
               Tokens are not a third metric of the same rank — 38k on GPT-4o and 38k
               on Qwen are an order of magnitude apart in money, so a token tile next
@@ -61,7 +76,13 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
               a figure they think is wrong, and the only place the input/output split
               shows, which matters because output runs 8× input on a flash model. */}
           <Section name="Totals">
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, alignItems: 'end' }}>
+              <Metric
+                label="Charged"
+                value={usdFine(cost.cost)}
+                note={finished ? `${usdFine(cost.costPerPage)} per page` : 'so far'}
+                lead
+              />
               <Metric
                 // "Wall Clock" over the sum of every call's latency was wrong twice:
                 // slots that ran at the same time are counted once each, and the stage's
@@ -71,21 +92,28 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
                 // is where it belongs.
                 label="Model Time"
                 value={seconds2(cost.seconds)}
-                note={`${plural(cost.calls, 'call')}${cost.retries ? ` · ${cost.retries} failed` : ''}`}
-              />
-              <Metric
-                label="Cost"
-                value={usdFine(cost.cost)}
-                note={finished
-                  ? [
-                      `${usdFine(cost.costPerPage)} per page`,
-                      cost.localCachePct ? `${percent(cost.localCachePct)} local cache` : null,
-                      cost.promptCachePct ? `${percent(cost.promptCachePct)} prompt cache` : null,
-                      cost.costAvoided ? `${usdFine(cost.costAvoided)} avoided` : null,
-                    ].filter(Boolean).join(' · ')
-                  : 'so far'}
+                // The only coloured thing in the drawer, and only when it is not zero.
+                // A failed call is money charged for an answer nobody got — the one
+                // figure here that asks someone to do something about it. Everything
+                // else is a fact, and a fact does not need a colour.
+                //
+                // The darker amber, not `--status-warning`: that token is #e8a200,
+                // which is a fill colour. As text on white it sits near 2.2:1 and the
+                // one thing on the panel that has to be read would be the hardest
+                // thing on it to read.
+                note={
+                  <>
+                    {plural(cost.calls, 'call')}
+                    {cost.retries ? (
+                      <span style={{ color: WASTED, fontWeight: 600 }}>
+                        {' · '}{cost.retries} failed, charged anyway
+                      </span>
+                    ) : null}
+                  </>
+                }
               />
             </div>
+            <BillRail cost={cost} />
             <TokenLine cost={cost} />
           </Section>
 
@@ -110,17 +138,15 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
                   the cases list already answers it there. Here it competed with the
                   cut that leads to a decision. */}
           {cost.byKind.length ? (
-            <Section name="Where It Went" note="Read, plan, then the two tiers. Exact rules are free; judged rules are the bill.">
+            <Section name="Where It Went">
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {cost.byKind.map((k) => (
                   <KindRow key={k.key} kind={k} pagesRead={cost.pagesRead} pageCount={pageCount} />
                 ))}
               </div>
               {cost.cardsFree ? (
-                <p style={{ margin: '10px 0 0', fontSize: 11.5, lineHeight: 1.55, color: 'var(--me-grey-70)' }}>
-                  {cost.cardsFree} of {cost.cardsSettled} rules were settled without asking a model
-                  anything — {percent((cost.cardsFree / cost.cardsSettled) * 100)} of the examination,
-                  at no cost and with the same answer every time.
+                <p style={{ margin: '9px 0 0', fontSize: 11, color: 'var(--me-grey-70)' }}>
+                  {cost.cardsFree} of {cost.cardsSettled} rules settled without a model
                 </p>
               ) : null}
             </Section>
@@ -128,7 +154,7 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
 
           {/* Open by default — the audit trail in run order is what most people
               open the drawer for after the totals. Still foldable once read. */}
-          <Section name="By Step" note="Every step of the run, in the order it ran." collapsible defaultOpen count={`${completedCount} of ${stepCount}`}>
+          <Section name="By Step" collapsible defaultOpen count={`${completedCount} of ${stepCount}`}>
             <StepList cost={cost} completedCount={completedCount} />
           </Section>
 
@@ -152,8 +178,11 @@ export default function CostDrawer({ open, onClose, cost, stepCount, completedCo
                 cost.promptCachePct ? `prompt cache ${percent(cost.promptCachePct)}` : null,
               ].filter(Boolean).join(', ')}
             </span>
-            <div style={{ marginTop: 8, fontSize: 12, color: 'var(--me-grey-70)' }}>Charged to the trade-finance AI budget.</div>
           </Section>
+
+          {/* The price table is not here. It is pinned to the base of the drawer, outside
+              this scroll — see the `footer` prop above. The body is one case; a rate is a
+              standing parameter, and scrolling past a case to reach it had it backwards. */}
         </>
       )}
     </Drawer>
@@ -226,7 +255,7 @@ function TokenLine({ cost }) {
 }
 
 /**
- * `in 1,718  out 664`, with a ⚡ and the word `local cache` when these are tokens no
+ * `charged · in 1,718  out 664`, or `local cache · in 300  out 100` for tokens no
  * call was made for.
  *
  * Words rather than arrows: `↓`/`↑` read as either direction depending on whether
@@ -237,15 +266,25 @@ function TokenLine({ cost }) {
  * would quietly mislead about the other: the provider's prompt cache is charged, at
  * about a tenth of the rate. A reader who has learnt that "cache" means free would
  * read a real bill as zero the first time one appears.
+ *
+ * The two clusters are told apart by a **leading word and one step of grey**, where
+ * they used to be told apart by a ⚡ in `--status-success`. The bolt was the loudest
+ * glyph in the icon set, spent on the cluster that costs nothing, next to a billed
+ * cluster in the palest grey on the row — so the eye went to the free half of a
+ * money panel every time. Billed sits a shade darker now, and nothing here is
+ * coloured at all: this drawer reports a bill, and a bill has no good or bad state
+ * to signal.
  */
 function Tokens({ tokensIn, tokensOut, cached, promptCached }) {
-  const ink = cached ? 'var(--status-success)' : 'var(--me-grey-70)'
   return (
     <span
-      title={cached ? CACHE.local.title : 'Tokens sent to and returned by the model'}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: ink, whiteSpace: 'nowrap' }}
+      title={cached ? CACHE.local.title : 'Tokens sent to and returned by the model, and charged for'}
+      style={{
+        display: 'inline-flex', alignItems: 'baseline', gap: 6, whiteSpace: 'nowrap',
+        color: cached ? 'var(--me-grey-70)' : 'var(--me-grey)',
+      }}
     >
-      {cached ? <Icon name="zap" size={11} color="currentColor" /> : null}
+      <span style={{ color: 'var(--me-grey-70)' }}>{cached ? CACHE.local.word : 'charged'} ·</span>
       <span>in {tok(tokensIn ?? 0)}</span>
       {promptCached ? (
         <span title={CACHE.prompt.title} style={{ color: 'var(--me-grey-50)' }}>
@@ -253,17 +292,72 @@ function Tokens({ tokensIn, tokensOut, cached, promptCached }) {
         </span>
       ) : null}
       <span>out {tok(tokensOut ?? 0)}</span>
-      {cached ? <span style={{ opacity: 0.8 }}>{CACHE.local.word}</span> : null}
     </span>
   )
 }
 
-function Metric({ label, value, note }) {
+/**
+ * A headline figure. `lead` makes it the one the eye lands on.
+ *
+ * The hierarchy is carried by size and ink, not by hue — there is no colour anywhere
+ * in this drawer that means "important", because the moment there is, the reader
+ * starts looking for the colour instead of reading the number.
+ */
+function Metric({ label, value, note, lead }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 500, color: 'var(--me-ink)', lineHeight: 1.1 }}>{value}</span>
-      <span style={{ fontSize: 12, color: 'var(--me-ink)' }}>{label}</span>
+      <span style={{
+        fontFamily: 'var(--font-mono)',
+        fontSize: lead ? 28 : 19,
+        fontWeight: lead ? 600 : 400,
+        letterSpacing: lead ? '-0.02em' : 0,
+        color: lead ? 'var(--me-ink)' : 'var(--me-grey)',
+        fontVariantNumeric: 'tabular-nums',
+        lineHeight: 1.1,
+      }}>
+        {value}
+      </span>
+      <span style={{ fontSize: 12, fontWeight: lead ? 600 : 400, color: lead ? 'var(--me-ink)' : 'var(--me-grey)' }}>{label}</span>
       <span style={{ fontSize: 11, color: 'var(--me-grey-70)', lineHeight: 1.4 }}>{note}</span>
+    </div>
+  )
+}
+
+/**
+ * What this run was charged, against what it would have cost cold.
+ *
+ * One hairline, two greys, no legend: the solid part is the bill, the ghost is what
+ * the cache kept off it. The ratio is the whole point, and a ratio is the one thing
+ * a number pair cannot show at a glance — `$0.0041 avoided` beside `$0.0231 charged`
+ * is two figures to divide, this is a length to look at.
+ *
+ * Monochrome deliberately. An earlier drawer painted every avoided cent in
+ * `--status-success` with a ⚡ beside it, which made a mostly-cached run — the normal
+ * run, because that is what a cache is for — read as a field of green congratulation
+ * with the actual bill set in the palest grey on screen. Savings are not a success
+ * state. They are the part of the bar that is not there.
+ *
+ * Absent when nothing was avoided: a bar that is always full says nothing, and one
+ * that appears only when there is a ratio to show is a signal on its own.
+ */
+function BillRail({ cost }) {
+  const avoided = cost.costAvoided ?? 0
+  if (!avoided || !cost.cost) return null
+  const cold = cost.cost + avoided
+  const share = (cost.cost / cold) * 100
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div
+        title={`Charged ${usdFine(cost.cost)} · saved ${usdFine(avoided)} (cold ${usdFine(cold)})`}
+        style={{ display: 'flex', height: 3, borderRadius: 999, overflow: 'hidden', background: 'var(--me-grey-15)', cursor: 'help' }}
+      >
+        <div style={{ width: `${share}%`, background: 'var(--me-ink)' }} />
+      </div>
+      {/* Figures, not a sentence. The rail shows the ratio; this names its two ends. */}
+      <p style={{ margin: '7px 0 0', fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--me-grey-70)' }}>
+        {usdFine(cold)} cold · {usdFine(avoided)} saved
+        {cost.localCachePct ? ` · ${percent(cost.localCachePct)} of calls cached` : ''}
+      </p>
     </div>
   )
 }
@@ -284,8 +378,9 @@ function KindRow({ kind: k, pagesRead, pageCount }) {
         />
       </span>
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {/* No `k.note` here any more. Four rows each carrying a sentence of
+            explanation buried the four numbers they exist to introduce. */}
         <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--me-ink)' }}>{k.label}</span>
-        <span style={{ fontSize: 11, lineHeight: 1.45, color: 'var(--me-grey-70)' }}>{k.note}</span>
         <span style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 12px', fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--me-grey-70)' }}>
           {k.checks ? <span>{plural(k.checks, 'rule')}</span> : null}
           {/* The reading row settles no cards, so its slot says what it did read —
@@ -302,7 +397,14 @@ function KindRow({ kind: k, pagesRead, pageCount }) {
         </span>
       </div>
       <div style={{ textAlign: 'right', whiteSpace: 'nowrap', flexShrink: 0 }}>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: k.free ? 'var(--status-success)' : 'var(--me-ink)' }}>
+        <div style={{
+          fontFamily: 'var(--font-mono)', fontSize: 13, fontVariantNumeric: 'tabular-nums',
+          // The part that cost money is the darker, heavier one. `no model` recedes:
+          // it was green here, which made the free rows the first thing read in a
+          // breakdown of where the money went.
+          fontWeight: k.free ? 400 : 600,
+          color: k.free ? 'var(--me-grey-70)' : 'var(--me-ink)',
+        }}>
           {k.free ? 'no model' : usdFine(k.cost)}
         </div>
         <div style={{ fontSize: 10.5, color: 'var(--me-grey-70)' }}>
@@ -313,13 +415,98 @@ function KindRow({ kind: k, pagesRead, pageCount }) {
   )
 }
 
+/**
+ * Model Price — the standing rate table, pinned to the base of the drawer.
+ *
+ * <p>A price list and nothing else: model, input rate, output rate. No tokens, no cost,
+ * no total. Those belong to the run scrolling above it, and mixing them in was what made
+ * an earlier version read as a second, competing summary of the same case.
+ *
+ * <p>It sits outside the drawer's scroll deliberately. The body answers "what did this
+ * case cost" and can grow without limit; a rate is a system parameter that does not
+ * belong to any case. Pinning it means the figure being questioned and the rate that
+ * produced it are on screen together, however far down the body a reader has gone.
+ *
+ * <p>Open by default, because it is three or four lines and the whole point is that it
+ * is already there. Collapsible for the reader who wants the height back — the state is
+ * remembered, so that is a decision made once rather than every time the drawer opens.
+ */
+function ModelPriceStrip({ prices }) {
+  const [open, setOpen] = usePersistedState('lcCheck.modelPrice', true)
+  if (!prices?.length) return null
+
+  return (
+    <div style={{ borderTop: '1px solid var(--me-grey-20)', background: 'var(--me-grey-08)' }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 7, width: '100%',
+          padding: open ? '8px 22px 6px' : '9px 22px', background: 'none', border: 'none',
+          cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+        }}
+      >
+        <Icon name={open ? 'chevron-down' : 'chevron-up'} size={12} color="var(--me-grey-50)" />
+        <span style={{ fontSize: 10, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--me-grey-70)' }}>
+          Model Price
+        </span>
+        <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--me-grey-50)' }}>
+          per million tokens
+        </span>
+      </button>
+
+      {open ? (
+        <div style={{ padding: '0 22px 12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 62px 62px', gap: '0 10px', alignItems: 'baseline' }}>
+            <span style={PRICE_HEAD} />
+            <span style={{ ...PRICE_HEAD, textAlign: 'right' }}>in</span>
+            <span style={{ ...PRICE_HEAD, textAlign: 'right' }}>out</span>
+            {prices.map((p) => (
+              <Fragment key={p.modelId}>
+                <span style={{ fontSize: 10.5, color: 'var(--me-grey)', padding: '3px 0', minWidth: 0, ...ellipsis }}>
+                  {p.label}
+                </span>
+                <span style={PRICE_CELL}>{perMillion(p.inPerMillion)}</span>
+                <span style={PRICE_CELL}>{perMillion(p.outPerMillion)}</span>
+              </Fragment>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+const PRICE_HEAD = {
+  fontSize: 9, color: 'var(--me-grey-50)', paddingBottom: 3,
+  borderBottom: '1px solid var(--me-grey-20)',
+}
+
+const PRICE_CELL = {
+  fontFamily: 'var(--font-mono)', fontSize: 10.5, fontVariantNumeric: 'tabular-nums',
+  textAlign: 'right', color: 'var(--me-grey-70)', padding: '3px 0',
+}
+
+/**
+ * A rate per million tokens.
+ *
+ * Up to three decimals below a dollar — the cheap end of the book lives there, and a
+ * $0.075 rate shown to two places is $0.08. Two places where the third would be a zero.
+ */
+function perMillion(v) {
+  const n = Number(v ?? 0)
+  if (n >= 1) return `$${n.toFixed(2)}`
+  const three = n.toFixed(3)
+  return `$${three.endsWith('0') ? three.slice(0, -1) : three}`
+}
+
 function StepList({ cost, completedCount }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       {cost.rows.map((r) => {
         const done = r.state === 'done'
         const running = r.state === 'running' && completedCount > 0
-        // Only the derivation cache earns the ⚡ — it means *no model was asked*.
+        // Only the derivation cache counts as free — it means *no model was asked*.
         // `cachePct` is a different thing wearing the same word: the provider's own
         // prompt cache, which discounts a call that still happened. Treating 100%
         // of that as free would report a real bill as zero.
@@ -339,11 +526,10 @@ function StepList({ cost, completedCount }) {
             <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: done ? 'var(--me-ink)' : running ? 'var(--me-blue-deep)' : 'var(--me-grey-50)' }}>
               {r.name}
               <span style={{ marginLeft: 7, fontSize: 11, color: 'var(--me-grey-50)' }}>{r.modelLabel}</span>
-              {cached ? (
-                <span title="Answered from cache — no model was asked" style={{ display: 'inline-flex', marginLeft: 6, verticalAlign: 'middle' }}>
-                  <Icon name="zap" size={12} color="var(--status-success)" />
-                </span>
-              ) : null}
+              {/* No mark here any more. The cost column on the right already says
+                  `cached` in words, and a green ⚡ on every cached row turned the
+                  step list into a column of bolts with the billed rows — the ones
+                  worth looking at — as the only quiet thing on it. */}
               {/* Why a step cost nothing. Without it, a $0.00 row reads as a step
                   that failed to report rather than one that had no model to call. */}
               {r.note ? (
@@ -359,11 +545,35 @@ function StepList({ cost, completedCount }) {
                 </span>
               ) : null}
             </span>
+            {/* The money column, and the inversion this drawer was built on: a row
+                that cost something was `--me-grey-70` while a row that cost nothing
+                was `--status-success`. On a mostly-cached run — the normal run — the
+                only rows with any presence were the free ones.
+
+                Now the charge is ink and the zero recedes. Time keeps its own grey:
+                seconds are not money and should not read as though they were.
+
+                This stays a money column all the way down — a cached row reads `$0`,
+                not `local cache`. The reason it was nothing is already on the row, in
+                the `local cache ·` that opens its token cluster and in the note saying
+                what a cold run would have been charged; putting the word here too
+                said it three times and stopped the column being scannable as one
+                thing. */}
             {done ? (
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: r.cost ? 'var(--me-grey-70)' : 'var(--status-success)', whiteSpace: 'nowrap' }}>
-                {cached
-                  ? '$0'
-                  : (r.cost || r.seconds ? `${seconds2(r.seconds)} · ${usdFine(r.cost)}` : 'no model')}
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                {cached ? (
+                  <span style={{ color: 'var(--me-grey-70)' }}>$0</span>
+                ) : r.cost || r.seconds ? (
+                  <>
+                    <span style={{ color: 'var(--me-grey-50)' }}>{seconds2(r.seconds)}</span>
+                    <span style={{ color: 'var(--me-grey-50)' }}>{'  ·  '}</span>
+                    <span style={{ color: r.cost ? 'var(--me-ink)' : 'var(--me-grey-70)', fontWeight: r.cost ? 600 : 400 }}>
+                      {usdFine(r.cost)}
+                    </span>
+                  </>
+                ) : (
+                  <span style={{ color: 'var(--me-grey-70)' }}>no model</span>
+                )}
               </span>
             ) : (
               <Badge tone={running ? 'blue' : 'neutral'}>{running ? 'running' : 'queued'}</Badge>
