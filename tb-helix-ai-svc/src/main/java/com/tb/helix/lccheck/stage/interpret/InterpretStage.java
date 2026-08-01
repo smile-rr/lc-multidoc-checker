@@ -15,14 +15,15 @@ import com.tb.helix.infra.pipeline.StepResult;
 import com.tb.helix.infra.stream.HelixEvent;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.Rows;
+import com.tb.helix.lccheck.service.DocumentAttestor;
 import com.tb.helix.lccheck.service.DocumentTypes;
+import com.tb.helix.lccheck.service.FactWriter;
 import com.tb.helix.lccheck.service.ModelSpend;
 import com.tb.helix.lccheck.service.ExtractionSpec;
 import com.tb.helix.lccheck.pipeline.*;
 import com.tb.helix.lccheck.pipeline.StageContext;
 import com.tb.helix.lccheck.types.pipeline.StageId;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -33,8 +34,8 @@ import java.util.*;
  * Reading the presentation.
  *
  * <p>Two passes, at deliberately different resolutions, because they are different
- * questions — plus a third, layout markdown dump per document that reuses the same
- * render and is cached separately:
+ * questions — plus two more per document that reuse the same render and are cached
+ * separately:
  *
  * <ul>
  *   <li><b>Segment</b> — "what kind of document is each page?" Answered from layout and
@@ -44,7 +45,15 @@ import java.util.*;
  *   <li><b>Layout markdown</b> — full-page reading as markdown, same pages and render
  *       spec (so PNG L1 hits). Cached as {@code extract.doc.md}; the officer fallback
  *       when structured fields are thin or wrong.
+ *   <li><b>Attest</b> — "what is on the page that is not text?" Signatures, seals,
+ *       initialled corrections, added clausing. Same pages and spec again, cached as
+ *       {@code attest.doc}. Runs only where the dictionary has bound an attestation,
+ *       which is the document types UCP names — so most documents skip it entirely.
  * </ul>
+ *
+ * <p>The three per-document passes send byte-identical images and differ only in the
+ * trailing instruction, which is why the gateway puts images first: the second and third
+ * ride the prefix the first paid for.
  *
  * <p>Running the bulk pass at extraction resolution is the single largest avoidable cost in
  * the system — roughly ten times what the question needs on a long bundle.
@@ -61,12 +70,14 @@ public class InterpretStage implements Stage {
     private final CaseStore cases;
     private final DocumentTypes docTypes;
     private final ExtractionSpec spec;
+    private final FactWriter facts;
+    private final DocumentAttestor attestor;
     private final Prompts prompts;
-    private final ObjectMapper json;
 
     public InterpretStage(PageRenderer renderer, RenderProperties render, LlmGateway models,
                           DerivationCache cache, CaseStore cases, DocumentTypes docTypes,
-                          ExtractionSpec spec, Prompts prompts, ObjectMapper json) {
+                          ExtractionSpec spec, FactWriter facts, DocumentAttestor attestor,
+                          Prompts prompts) {
         this.renderer = renderer;
         this.render = render;
         this.models = models;
@@ -74,8 +85,9 @@ public class InterpretStage implements Stage {
         this.cases = cases;
         this.docTypes = docTypes;
         this.spec = spec;
+        this.facts = facts;
+        this.attestor = attestor;
         this.prompts = prompts;
-        this.json = json;
     }
 
     @Override
@@ -93,8 +105,9 @@ public class InterpretStage implements Stage {
     /**
      * Which page is which document.
      *
-     * <p>Refuses an over-long bundle rather than truncating it: examining the first 300
-     * pages of 400 looks exactly like examining all of them, and that is the worse failure.
+     * <p>Refuses an over-long bundle rather than truncating it: examining the first 150
+     * pages of 200 looks exactly like examining all of them, and that is the worse failure.
+     * Within the ceiling, pages are classified in batches of {@code segment.max-pages}.
      */
     private StepResult runSegment(StageContext ctx) {
         String pdfSha = cases.find(ctx.caseId()).orElseThrow().bundlePdfSha();
@@ -135,72 +148,176 @@ public class InterpretStage implements Stage {
 
     // --- Segmentation -------------------------------------------------------
 
+    /**
+     * Classifies every page, in batches of {@code segment.max-pages}.
+     *
+     * <p>One vision call cannot hold a 100-page bundle. Truncating silently would look
+     * like a full read; so we walk the pages in windows, each keyed and cached on its
+     * own span. The type of the last page of batch <em>n</em> is handed to batch
+     * <em>n+1</em> as continuation context: a bill of lading that starts on page 38
+     * and continues on 41 must stay one BOL, not split into BOL + UNKNOWN at the
+     * batch boundary. After merge, adjacent pages with the same code still collapse
+     * to one document in {@link #writeDocuments}.
+     */
     private Map<Integer, String> segment(StageContext ctx, String pdfSha, int pageCount) {
-        List<Integer> all = new ArrayList<>();
-        for (int i = 1; i <= pageCount; i++) all.add(i);
-
         var spec = render.specFor("segment");
-        // Built per run, not once at class load: the vocabulary is authored, so it can
-        // change between two cases. Hashing the assembled prompt into the key is what makes
-        // that safe — add a document type in the console and the next bundle is re-read
-        // rather than answered from a cache that never heard of it.
-        String prompt = prompts.fill("segment-bundle", Map.of(
-                "docTypes", docTypes.vocabulary(),
-                "unknown", DocumentTypes.UNKNOWN,
-                "pages", pageCount));
+        int batchSize = Math.max(1, spec.maxPages());
+        Map<Integer, String> byPage = new LinkedHashMap<>();
+        boolean anyMiss = false;
+        String vocabulary = docTypes.vocabulary();
 
-        var key = new DerivationKey(CacheOp.SEGMENT_BUNDLE, CacheOp.SEGMENT_BUNDLE_V, pdfSha,
-                "1-" + pageCount, DerivationKey.sha256Hex(prompt), "role:segment", null,
-                spec.asCacheParams());
+        for (int from = 1; from <= pageCount; from += batchSize) {
+            if (ctx.cancelled()) break;
+            int to = Math.min(from + batchSize - 1, pageCount);
+            List<Integer> batch = new ArrayList<>(to - from + 1);
+            for (int p = from; p <= to; p++) batch.add(p);
 
-        var hit = cache.computeIfAbsent(key, Map.class, () -> {
-            List<byte[]> images = renderer.render(pdfSha, all, spec);
-            VisionResult result = models.read(VisionRequest.of(LlmRole.SEGMENT, images, prompt, all));
-            return new DerivationCache.Entry<>(result.fields(), null, null, ModelSpend.of(result.usage(), result.model()));
-        });
+            String prevType = from > 1 ? byPage.get(from - 1) : null;
+            String continuation = continuationNote(from - 1, prevType);
 
-        Map<Integer, String> byPage = readPageMap(hit.value(), pageCount);
-        // Progress while the step is still open, so the UI attaches these to "segment"
-        // rather than dumping them under the stage after extract has already finished.
-        for (int p = 1; p <= pageCount; p++) {
-            ctx.emit(HelixEvent.SEGMENT, Map.of("done", p, "total", pageCount));
+            // Built per batch: vocabulary can change between cases, and the continuation
+            // clause changes with the previous batch's ending — both belong in the key.
+            String prompt = prompts.fill("segment-bundle", Map.of(
+                    "docTypes", vocabulary,
+                    "unknown", DocumentTypes.UNKNOWN,
+                    "pages", batch.size(),
+                    "pageFrom", from,
+                    "pageTo", to,
+                    "continuation", continuation));
+
+            var key = new DerivationKey(CacheOp.SEGMENT_BUNDLE, CacheOp.SEGMENT_BUNDLE_V, pdfSha,
+                    from + "-" + to, DerivationKey.sha256Hex(prompt), "role:segment", null,
+                    spec.asCacheParams());
+
+            var hit = cache.computeIfAbsent(key, Map.class, () -> {
+                List<byte[]> images = renderer.render(pdfSha, batch, spec);
+                VisionResult result = models.read(
+                        VisionRequest.of(LlmRole.SEGMENT, images, prompt, batch));
+                return new DerivationCache.Entry<>(result.fields(), null, null,
+                        ModelSpend.of(result.usage(), result.model()));
+            });
+            if (hit.tier() == com.tb.helix.infra.cache.CacheTier.Level.NONE) anyMiss = true;
+
+            byPage.putAll(readPageMap(hit.value(), from, to, prevType));
+
+            // Real progress as each batch lands — not a fake sweep after the fact.
+            for (int p = from; p <= to; p++) {
+                ctx.emit(HelixEvent.SEGMENT, Map.of("done", p, "total", pageCount));
+            }
         }
 
-        if (hit.tier() != com.tb.helix.infra.cache.CacheTier.Level.NONE) {
-            ctx.recordCachedStep("segment", Map.of("pages", pageCount), null);
+        // Fill any hole the model skipped across the whole bundle.
+        fillGaps(byPage, pageCount, null);
+
+        if (anyMiss) {
+            ctx.recordStep("segment", Map.of("pages", pageCount, "batches",
+                    (pageCount + batchSize - 1) / batchSize));
         } else {
-            ctx.recordStep("segment", Map.of("pages", pageCount));
+            ctx.recordCachedStep("segment", Map.of("pages", pageCount, "batches",
+                    (pageCount + batchSize - 1) / batchSize), null);
         }
-
         return byPage;
     }
 
+    /**
+     * Tells the next batch what the previous one ended on.
+     *
+     * <p>Empty for the first batch. Without this, a multi-page instrument that straddles
+     * the window (pages 38–42 of a BOL, batch split at 40) is often re-opened as a new
+     * document or dropped to UNKNOWN on page 41.
+     */
+    private static String continuationNote(int prevPage, String prevType) {
+        if (prevPage < 1 || prevType == null || prevType.isBlank()
+                || DocumentTypes.UNKNOWN.equals(prevType)) {
+            return "";
+        }
+        return """
+
+                ## Continuation from the previous batch
+
+                Bundle page %d (the page immediately before this batch) was classified as **%s**.
+                If the first page(s) of this batch continue that same instrument — blank back,
+                endorsement, terms, packing detail that belongs with it — keep **%s**.
+                Only change type when this batch clearly starts a different instrument.
+                """.formatted(prevPage, prevType, prevType);
+    }
+
+    /**
+     * Reads one batch's model answer into absolute bundle page numbers.
+     *
+     * @param seedPrev type of the page before {@code from}, used when the first page of
+     *                 the batch is missing or UNKNOWN so a straddling document stays joined
+     */
     @SuppressWarnings("unchecked")
-    private Map<Integer, String> readPageMap(Object value, int pageCount) {
-        Map<Integer, String> out = new LinkedHashMap<>();
+    private Map<Integer, String> readPageMap(Object value, int from, int to, String seedPrev) {
+        Map<Integer, String> raw = new LinkedHashMap<>();
         if (value instanceof Map<?, ?> map) {
             Object pagesNode = map.get("pages");
             if (pagesNode instanceof List<?> list) {
                 for (Object item : list) {
                     if (item instanceof Map<?, ?> m) {
                         Integer page = asInt(m.get("page"));
-                        Object raw = m.get("docType");
-                        String type = raw == null ? "UNKNOWN" : String.valueOf(raw);
-                        if (page != null) out.put(page, docTypes.known(type) ? type : DocumentTypes.UNKNOWN);
+                        Object typeRaw = m.get("docType");
+                        String type = typeRaw == null ? DocumentTypes.UNKNOWN : String.valueOf(typeRaw);
+                        if (page != null) {
+                            raw.put(page, docTypes.known(type) ? type : DocumentTypes.UNKNOWN);
+                        }
                     }
                 }
             }
         }
-        // A page the model skipped is not dropped. Prefer the previous page's type —
-        // the usual miss is a continuation sheet — over inventing UNKNOWN, which the
-        // officer then has to reclassify by hand. Only the first page, or a gap after
-        // an already-unknown page, stays UNKNOWN.
-        for (int p = 1; p <= pageCount; p++) {
-            if (out.containsKey(p)) continue;
-            String prev = p > 1 ? out.get(p - 1) : null;
-            out.put(p, prev != null && !DocumentTypes.UNKNOWN.equals(prev) ? prev : DocumentTypes.UNKNOWN);
+
+        // Some models renumber 1..batchSize even when asked for bundle pages. Detect and
+        // shift rather than writing types onto the wrong half of the presentation.
+        boolean anyAbsolute = raw.keySet().stream().anyMatch(p -> p >= from && p <= to);
+        Map<Integer, String> inRange = new LinkedHashMap<>();
+        if (anyAbsolute) {
+            raw.forEach((p, t) -> {
+                if (p >= from && p <= to) inRange.put(p, t);
+            });
+        } else if (!raw.isEmpty()) {
+            raw.forEach((p, t) -> {
+                int abs = p + from - 1;
+                if (abs >= from && abs <= to) inRange.put(abs, t);
+            });
+        }
+
+        // Boundary stitch: first page of the batch inherits the previous batch's ending
+        // type when the model left it UNKNOWN — the usual miss on a continuation sheet.
+        if (from > 1 && seedPrev != null && !DocumentTypes.UNKNOWN.equals(seedPrev)) {
+            String atStart = inRange.get(from);
+            if (atStart == null || DocumentTypes.UNKNOWN.equals(atStart)) {
+                inRange.put(from, seedPrev);
+            }
+        }
+
+        fillGaps(inRange, to, seedPrev);
+        // Drop anything outside this batch that fillGaps cannot have introduced.
+        Map<Integer, String> out = new LinkedHashMap<>();
+        for (int p = from; p <= to; p++) {
+            String t = inRange.get(p);
+            out.put(p, t != null ? t : DocumentTypes.UNKNOWN);
         }
         return out;
+    }
+
+    /**
+     * Pages the model skipped inherit the previous page's type — continuation is the
+     * usual miss — unless there is no previous (or it was UNKNOWN).
+     */
+    private static void fillGaps(Map<Integer, String> byPage, int lastPage, String seedPrev) {
+        String prev = seedPrev;
+        int first = byPage.isEmpty() ? 1 : byPage.keySet().stream().mapToInt(Integer::intValue).min().orElse(1);
+        for (int p = Math.min(first, 1); p <= lastPage; p++) {
+            if (byPage.containsKey(p)) {
+                prev = byPage.get(p);
+                continue;
+            }
+            if (p < first) continue;
+            String fill = prev != null && !DocumentTypes.UNKNOWN.equals(prev) ? prev : DocumentTypes.UNKNOWN;
+            byPage.put(p, fill);
+            prev = fill;
+        }
     }
 
     private void writeDocuments(StageContext ctx, Map<Integer, String> byPage, int pageCount) {
@@ -263,7 +380,7 @@ public class InterpretStage implements Stage {
                     return new DerivationCache.Entry<>(result.fields(), null, null, ModelSpend.of(result.usage(), result.model()));
                 });
 
-                int offSchema = writeFacts(ctx, code, pages.get(0), hit.value());
+                int offSchema = facts.write(ctx.caseId(), code, pages.get(0), hit.value());
                 read++;
                 // Per document rather than per stage, because a cache hit here is the
                 // difference between four seconds and four minutes and the officer should
@@ -271,9 +388,9 @@ public class InterpretStage implements Stage {
                 Map<String, Object> what = new LinkedHashMap<>(Map.of("pages", pages));
                 if (offSchema > 0) what.put("offSchema", offSchema);
                 if (hit.tier() != com.tb.helix.infra.cache.CacheTier.Level.NONE) {
-                    ctx.recordCachedStep("extract:" + code, what, null);
+                    ctx.recordCachedStep("extract:" + code, what, null, true);
                 } else {
-                    ctx.recordStep("extract:" + code, what);
+                    ctx.recordStep("extract:" + code, what, true);
                 }
             } catch (RuntimeException e) {
                 // One document that could not be read must not lose the other five.
@@ -284,8 +401,45 @@ public class InterpretStage implements Stage {
             // Layout markdown — same pages and render spec (so PNG L1 hits), separate
             // cache op/prompt so a field hit is never mistaken for a layout hit.
             extractLayoutMd(ctx, pdfSha, code, pages, scope, spec);
+
+            // And what is on the pages that is not text, where the dictionary asks for it.
+            attest(ctx, pdfSha, code, pages);
         }
         return read;
+    }
+
+    /**
+     * Signatures, seals and corrections — where the dictionary has bound one.
+     *
+     * <p>Skipped entirely for a document type with no attestation binding, which is most of
+     * them. That is the cost control and it is the dictionary's decision, not this class's:
+     * UCP demands a signature on a transport document and an insurance document, and says
+     * nothing about a packing list, so a twenty-document bundle is three or four looks. An
+     * author who needs a signed packing list adds the binding in the console.
+     *
+     * <p>A document the <em>credit</em> demands a signature on — "certificate of origin
+     * signed and stamped by the chamber of commerce" lives in {@code :46A:}, not in UCP — is
+     * not knowable here, because the requirement cards have not been read yet. That case is
+     * picked up lazily in the examination, against the same cache key.
+     */
+    private void attest(StageContext ctx, String pdfSha, String code, List<Integer> pages) {
+        if (ctx.cancelled() || !attestor.attests(code)) return;
+        ctx.announce("attest:" + code, "Signatures & stamps · " + docTypes.label(code).toLowerCase());
+        try {
+            var result = attestor.attest(ctx.caseId(), pdfSha, code, pages);
+            Map<String, Object> what = new LinkedHashMap<>(Map.of(
+                    "pages", pages, "marks", result.marks()));
+            if (result.offSchema() > 0) what.put("offSchema", result.offSchema());
+            if (result.cached()) {
+                ctx.recordCachedStep("attest:" + code, what, null, true);
+            } else {
+                ctx.recordStep("attest:" + code, what, true);
+            }
+        } catch (RuntimeException e) {
+            // One document whose marks could not be read must not lose the fields that were.
+            log.warn("Attestation failed for {} on case {}: {}", code, ctx.caseId(), e.toString());
+            ctx.recordFailedStep("attest:" + code, e.getMessage());
+        }
     }
 
     /**
@@ -326,9 +480,9 @@ public class InterpretStage implements Stage {
                     "pages", pages,
                     "chars", md == null ? 0 : md.length());
             if (hit.tier() != com.tb.helix.infra.cache.CacheTier.Level.NONE) {
-                ctx.recordCachedStep("extract-md:" + code, what, null);
+                ctx.recordCachedStep("extract-md:" + code, what, null, true);
             } else {
-                ctx.recordStep("extract-md:" + code, what);
+                ctx.recordStep("extract-md:" + code, what, true);
             }
         } catch (RuntimeException e) {
             log.warn("Layout markdown failed for {} on case {}: {}", code, ctx.caseId(), e.toString());
@@ -345,62 +499,6 @@ public class InterpretStage implements Stage {
             return m == null ? null : String.valueOf(m);
         }
         return null;
-    }
-
-    /**
-     * What the document said, keyed the dictionary's way.
-     *
-     * <p>Every reading is folded onto a dictionary key where one exists, so a fact can be
-     * joined to the rule that cites it. What will not fold is kept and marked rather than
-     * dropped: an unauthored field is still evidence, and the mark is how anyone learns the
-     * dictionary is missing something. Before this, the key stored was whatever the model
-     * invented — 105 of them across a handful of cases, against 22 dictionary fields, and
-     * the seven that matched did so by coincidence of capitalisation.
-     */
-    @SuppressWarnings("unchecked")
-    private int writeFacts(StageContext ctx, String docCode, int firstPage, Object value) {
-        if (!(value instanceof Map<?, ?> map)) return 0;
-
-        Map<String, Object> returned = new LinkedHashMap<>();
-        map.forEach((k, v) -> returned.put(String.valueOf(k), v));
-
-        int offSchema = 0;
-        for (var reading : spec.read(docCode, returned).values()) {
-            Object v = reading.value();
-            // A nested object is the model elaborating where a flat value was asked for.
-            // Kept as JSON rather than dropped: an officer can still read it.
-            String text = v instanceof Map || v instanceof List ? toJson(v) : String.valueOf(v);
-            if (text.isBlank()) continue;
-            if (!reading.known()) offSchema++;
-
-            cases.upsertFact(ctx.caseId(), Rows.of(
-                    "docId", docCode,
-                    "label", reading.label(),
-                    "fieldKey", reading.key(),
-                    "value", text,
-                    "valueNorm", text.strip().toUpperCase(),
-                    "page", firstPage,
-                    "source", "p." + firstPage,
-                    // Said plainly on the fact itself. An officer sorting by it sees what the
-                    // dictionary does not yet cover, which is the only way that list is ever
-                    // going to get shorter.
-                    "flag", reading.known() ? null : "Not in the dictionary",
-                    "confidence", "MED"));
-        }
-        return offSchema;
-    }
-
-    private String toJson(Object o) {
-        try {
-            return json.writeValueAsString(o);
-        } catch (Exception e) {
-            return String.valueOf(o);
-        }
-    }
-
-    private static String humanise(String key) {
-        String s = key.replace('_', ' ').strip();
-        return s.isEmpty() ? key : Character.toUpperCase(s.charAt(0)) + s.substring(1);
     }
 
     private static Integer asInt(Object o) {

@@ -3,7 +3,6 @@ package com.tb.helix.lccheck.pipeline;
 import com.tb.helix.infra.error.ConflictException;
 import com.tb.helix.infra.error.NotFoundException;
 import com.tb.helix.infra.pipeline.PipelineEngine;
-import com.tb.helix.infra.pipeline.PipelineEngine;
 import com.tb.helix.infra.pipeline.StepResult;
 import com.tb.helix.infra.stream.EventBus;
 import com.tb.helix.infra.stream.HelixEvent;
@@ -40,6 +39,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>Only intake runs by itself. Every later stage waits at {@code awaiting_officer} until
  * a person asks for it — this is a regulated examination, and a pipeline that ran to
  * completion on upload would be presenting conclusions nobody chose to reach.
+ *
+ * <p><b>One run at a time.</b> {@link CaseStore#tryClaimOfficerRun} / {@link CaseStore#tryClaimRun}
+ * atomically park the case as busy before {@code @Async} schedules anything. A second
+ * POST while the first is in flight gets 409 {@code already_running} instead of a second
+ * full stage writing onto the same event tape.
  *
  * <p><b>Why this is not in infra.</b> The shape is generic and the content is not. Every line
  * that is left is UCP 600 or the bank's: that a halted case needs an override before anything
@@ -95,6 +99,14 @@ public class StageLauncher {
                     "A hard check stopped this examination. Override it before running anything further.",
                     "gate_halted");
         }
+        // Claim before @Async schedules anything. Without this, four POSTs in one
+        // click all saw awaiting_officer still true and each launched a full interpret
+        // onto the same event tape.
+        if (!cases.tryClaimOfficerRun(caseId, requested.key())) {
+            throw new ConflictException(
+                    "This case is already running a stage.",
+                    "already_running");
+        }
 
         cases.recordAction(caseId, "run_stage", requested.key(), Map.of(), officerId, null);
         cancelled.remove(caseId);
@@ -104,6 +116,11 @@ public class StageLauncher {
     /** Reruns a stage, clearing what it invalidates downstream. */
     public void rerunStage(String caseId, StageId stage, String officerId) {
         cases.find(caseId).orElseThrow(() -> new NotFoundException("case", caseId));
+        if (!cases.tryClaimRun(caseId)) {
+            throw new ConflictException(
+                    "This case is already running a stage.",
+                    "already_running");
+        }
         cases.clearFrom(caseId, stage, pipeline.after(stage), docTypes.creditCode());
         cases.patchCase(caseId, Map.of("gate_halted", false));
         cases.recordAction(caseId, "rerun_stage", stage.key(), Map.of(), officerId, null);
@@ -166,6 +183,9 @@ public class StageLauncher {
                 "gate_halted", true,
                 "gate_halt_check_id", String.valueOf(result.haltKey()),
                 "status", CaseStatus.DISCREPANCIES.key()));
+        // Claim set awaiting_officer=false; without releasing, override + continue
+        // could never win tryClaimOfficerRun again.
+        cases.releaseRun(caseId);
         // Carries the stage it halted at, because on a progress panel this is what ends that
         // stage — there is no stage_done after a halt, and a stage with a beginning and no
         // ending reads as one still running.
@@ -177,7 +197,10 @@ public class StageLauncher {
     }
 
     private void fail(String caseId, StageId at, String detail) {
-        cases.patchCase(caseId, Map.of("error", String.valueOf(detail)));
+        cases.patchCase(caseId, Map.of(
+                "error", String.valueOf(detail),
+                "status", CaseStatus.TO_DECIDE.key()));
+        cases.releaseRun(caseId);
         events.publish(HelixEvent.of(caseId, HelixEvent.STAGE_FAILED,
                 Map.of("stage", at.key(), "message", String.valueOf(detail))));
     }

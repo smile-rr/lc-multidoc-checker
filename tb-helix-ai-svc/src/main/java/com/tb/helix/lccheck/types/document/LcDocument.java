@@ -28,6 +28,15 @@ public record LcDocument(
         String meta,
         List<?> lines,
         List<?> marks,
+        /**
+         * Whether the attest pass looked at this document.
+         *
+         * <p>Load-bearing next to an empty {@code marks}: examined-and-clean and
+         * never-examined produce the same empty list and are not the same answer. The first
+         * is evidence; the second means no attestation is bound to this document type, and
+         * the workbench says so rather than showing nothing.
+         */
+        boolean attested,
         /** Layout-preserving markdown of the pages; null until extract.doc.md has run. */
         String layoutMd) {
 }

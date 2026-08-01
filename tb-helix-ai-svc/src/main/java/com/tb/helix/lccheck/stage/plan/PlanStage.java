@@ -145,7 +145,11 @@ public class PlanStage implements Stage {
         if (docs.isBlank() && conditions.isBlank()) return 0;
 
         String prompt = prompts.fill("plan-requirements", Map.of(
-                "documentsRequired", docs, "additionalConditions", conditions));
+                "documentsRequired", docs, "additionalConditions", conditions,
+                // The vocabulary, so a requirement names a document the way the rest of the
+                // system does. Asked for free text, the planner writes "certificate of
+                // origin" and nothing downstream can join it to COO.
+                "docCodes", docTypes.vocabulary()));
         var key = new DerivationKey(CacheOp.PLAN_REQUIREMENTS, CacheOp.PLAN_REQUIREMENTS_V,
                 DerivationKey.sha256Hex(docs + "|" + conditions), "46A+47A",
                 DerivationKey.sha256Hex(prompt), "role:plan", null, Map.of());
@@ -167,7 +171,9 @@ public class PlanStage implements Stage {
         }
 
         int n = 0;
+        Map<String, Set<String>> attest = new LinkedHashMap<>();
         for (Map<String, Object> r : found) {
+            demanded(r, attest);
             String id = "REQ-" + String.format("%02d", n + 1);
             cases.upsertPlanCheck(ctx.caseId(), Rows.of(
                     "id", id, "origin", Origin.CREDIT.name(), "tier", "JUDGED", "checkType", "AGENT",
@@ -182,8 +188,61 @@ public class PlanStage implements Stage {
                     "status", "PLANNED", "ordinal", ordinal + n));
             n++;
         }
-        ctx.recordStep("requirements", Map.of("found", n));
+        // Which documents the credit — not UCP — wants looked at rather than merely read.
+        // Kept on the step rather than on each card because it is one question per case
+        // ("which scans still need a second look"), and the examination asks it once.
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("found", n);
+        // Written even when empty. Absent and empty look identical on the step tape, and
+        // they are different: "the credit demanded nothing beyond UCP" versus "the planner
+        // was not asked". Only one of those is worth investigating.
+        Map<String, Object> byDoc = new LinkedHashMap<>();
+        attest.forEach((doc, props) -> byDoc.put(doc, List.copyOf(props)));
+        result.put("attest", byDoc);
+        ctx.recordStep("requirements", result);
+        log.info("Credit demands attestation on {} document(s) beyond UCP: {}",
+                byDoc.size(), byDoc);
         return n;
+    }
+
+    /**
+     * The attestations one requirement demands, folded onto the documents it names.
+     *
+     * <p>"Certificate of origin signed and stamped by the chamber of commerce" is in
+     * {@code :46A:}; UCP 600 says nothing about whether a certificate of origin is signed,
+     * so no dictionary binding covers it and the reading never looked. This is how that
+     * demand becomes a second look at exactly the one document, and no others.
+     *
+     * <p>An unknown document code is dropped rather than carried. The planner is given the
+     * vocabulary and usually obeys it; the one time it invents a code, a look at a document
+     * that does not exist would be a call that fails rather than a look that finds nothing.
+     */
+    private void demanded(Map<String, Object> requirement, Map<String, Set<String>> into) {
+        List<String> docs = strings(requirement.get("documents"));
+        List<String> props = strings(requirement.get("attestations"));
+        if (docs.isEmpty() || props.isEmpty()) return;
+        for (String doc : docs) {
+            if (!docTypes.known(doc)) {
+                // Logged rather than dropped in silence. A planner that answers "Commercial
+                // invoice" where INV was asked for produces no second look and no complaint,
+                // and the credit's own demand goes unexamined with nothing to show for it.
+                log.warn("Requirement names document '{}', which is not in the vocabulary — "
+                        + "no attestation will be read for it", doc);
+                continue;
+            }
+            into.computeIfAbsent(doc, k -> new LinkedHashSet<>()).addAll(props);
+        }
+    }
+
+    private static List<String> strings(Object value) {
+        if (!(value instanceof List<?> list)) return List.of();
+        List<String> out = new ArrayList<>();
+        for (Object o : list) {
+            if (o == null) continue;
+            String s = String.valueOf(o).strip();
+            if (!s.isEmpty()) out.add(s);
+        }
+        return out;
     }
 
     /**

@@ -74,15 +74,28 @@ public class GovernanceCatalog implements CheckCatalog {
     @Override
     public List<FieldBinding> bindingsFor(String docCode) {
         return jdbc.query("""
-                SELECT field_key, field_name, value_type, doc_code, note, aliases
+                SELECT field_key, field_name, value_type, kind, doc_code, note, aliases
                   FROM helix_gov.v_field_binding
                  WHERE doc_code = ?
                  ORDER BY ordinal, field_key
                 """, (rs, i) -> new FieldBinding(
                         rs.getString("field_key"), rs.getString("field_name"),
-                        rs.getString("value_type"), rs.getString("doc_code"),
+                        rs.getString("value_type"), rs.getString("kind"), rs.getString("doc_code"),
                         rs.getString("note"), array(rs.getArray("aliases"))),
                 docCode);
+    }
+
+    @Override
+    public List<FieldBinding> fieldsOfKind(String kind) {
+        return jdbc.query("""
+                SELECT key, name, value_type
+                  FROM helix_gov.v_field
+                 WHERE COALESCE(body ->> 'kind', 'LC_FIELD') = ?
+                 ORDER BY key
+                """, (rs, i) -> new FieldBinding(
+                        rs.getString("key"), rs.getString("name"),
+                        rs.getString("value_type"), kind, null, null, List.of()),
+                kind);
     }
 
     @Override

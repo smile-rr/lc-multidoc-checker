@@ -85,14 +85,32 @@ public interface CheckCatalog {
      *
      * @param key     the dictionary key — what a fact is stored under and what a rule cites
      * @param name    the label, for prose and for screens
+     * @param kind    which reading answers it. {@code DOC_ATTESTATION} is a property of the
+     *                page — signed, original, initialled — and is settled by looking at the
+     *                page rather than by reading characters off it, so it goes to a
+     *                different pass. Anything else is ordinary extraction.
      * @param note    how to read it on this document, in the author's words. Goes into the
      *                extraction prompt verbatim.
      * @param aliases what this document tends to call it, for folding an open-world reading
      *                back onto the key
      */
-    record FieldBinding(String key, String name, String valueType, String docCode,
+    record FieldBinding(String key, String name, String valueType, String kind, String docCode,
                         String note, List<String> aliases) {
+
+        /** Whether this is read by looking at the page rather than by reading its text. */
+        public boolean attestation() {
+            return ATTESTATION.equals(kind);
+        }
     }
+
+    /**
+     * The {@code kind} that routes a binding to the attest pass.
+     *
+     * <p>Here rather than in lc-check because it is a vocabulary term: the dictionary says
+     * what a field is, and the examination obeys. A constant so the two sides cannot drift
+     * on a spelling.
+     */
+    String ATTESTATION = "DOC_ATTESTATION";
 
     /**
      * Everything the dictionary says is readable from this document.
@@ -102,6 +120,20 @@ public interface CheckCatalog {
      * they were a YAML list and a hand-written template that each named the same fields.
      */
     List<FieldBinding> bindingsFor(String docCode);
+
+    /**
+     * Every dictionary field of one kind, regardless of what it is bound to.
+     *
+     * <p>Exists for the attestation vocabulary. Whether a document is signed, sealed,
+     * corrected, original or endorsed is asked of <em>every</em> document worth looking at —
+     * a binding decides whether to look at all, not whether the answer has a name. Without a
+     * way to resolve those keys outside a binding, an invoice's company chop came back under
+     * a key no rule could cite and marked "not in the dictionary", which is exactly wrong:
+     * the dictionary has the field, this document simply had no binding to it.
+     *
+     * <p>{@code docCode} is null on what comes back — these are fields, not bindings.
+     */
+    List<FieldBinding> fieldsOfKind(String kind);
 
     /**
      * The document vocabulary, in authoring order.

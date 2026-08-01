@@ -167,12 +167,26 @@ SELECT b.id                     AS book_id,
 -- ----------------------------------------------------------------------------
 -- Every (field, document) binding, flattened out of the field documents. This is the
 -- extraction spec: what to read off a document, and how to read it there.
+--
+-- `kind` decides WHICH READING answers the binding, and is therefore not decoration.
+-- DOC_ATTESTATION means the value is a property of the page rather than a string on it —
+-- is it signed, is it an original, is the correction initialled — and those are settled by
+-- the attest pass, not by reading characters. Everything else is ordinary extraction.
+--
+-- Which also makes the binding set the demand model. A document type with no
+-- DOC_ATTESTATION binding gets no attest pass at all, so a packing list in a 100-page
+-- bundle costs nothing, and an author turns the pass on for it by adding a binding in the
+-- console rather than by a code change.
 -- ----------------------------------------------------------------------------
 DROP VIEW IF EXISTS helix_gov.v_field_binding CASCADE;
 CREATE VIEW helix_gov.v_field_binding AS
 SELECT f.key                                        AS field_key,
        f.name                                       AS field_name,
        f.value_type,
+       -- Absent means LC_FIELD, which is what dict_field defaulted to when kind was a
+       -- column. A binding authored before this view existed must not become an
+       -- attestation by omission.
+       COALESCE(f.body ->> 'kind', 'LC_FIELD')      AS kind,
        b ->> 'doc'                                  AS doc_code,
        b ->> 'note'                                 AS note,
        COALESCE(

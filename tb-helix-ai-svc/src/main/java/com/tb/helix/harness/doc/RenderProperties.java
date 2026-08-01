@@ -49,8 +49,8 @@ public record RenderProperties(
 
     public RenderProperties {
         dpi = dpi <= 0 ? 300 : dpi;
-        // A refusal, not a truncation — see PageBudget.
-        maxBundlePages = maxBundlePages <= 0 ? 300 : maxBundlePages;
+        // A refusal, not a truncation — see InterpretStage.runSegment.
+        maxBundlePages = maxBundlePages <= 0 ? 150 : maxBundlePages;
         profiles = profiles == null ? Map.of() : Map.copyOf(profiles);
     }
 

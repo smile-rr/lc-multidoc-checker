@@ -202,8 +202,8 @@ export function runPipelineStep(caseId, stepId, _plan, onEvent) {
   })
 
   api.post(`${base}/cases/${id}/stages/${encodeURIComponent(stepId)}/run`, {}).catch((error) => {
-    // Surfaced as a toast by the client already; the run engine needs to stop
-    // waiting for a step that will never report.
+    // 409 already_running is the service refusing a duplicate trigger — same
+    // outcome as a failed start from the workbench's point of view.
     onEvent({ type: 'stage_failed', stepId, message: error.message })
     unsubscribe()
   })

@@ -49,12 +49,26 @@
  */
 
 /**
- * A signature, stamp or handwritten annotation found on a page.
+ * Something on a page that is not text — read by looking at the document rather than
+ * by reading it. Produced by the attest pass, and only for document types the
+ * dictionary has bound an attestation to.
  * @typedef {object} Mark
- * @property {'signature'|'stamp'|'handwriting'} kind
- * @property {string} text
- * @property {string} source
- * @property {'success'|'warning'|'error'} confidence  Whether it could be read.
+ * @property {string} docId
+ * @property {'signature'|'seal'|'stamp'|'handwriting'|'correction'|'tick'|'strikethrough'|'label'} kind
+ * @property {number|null} page       Bundle page. Selecting the mark turns the viewer to it.
+ * @property {string|null} placement  Where it sits, in words — a scan has no coordinates.
+ * @property {string|null} readsAs    What it reads, verbatim. Null when it cannot be read.
+ * @property {string|null} party      Whose mark it appears to be.
+ * @property {string|null} capacity   'as agent for XYZ Lines, the carrier'. UCP 600
+ *   art. 20(a)(i) is not satisfied by a signature that does not state this.
+ * @property {string|null} medium     handwritten | facsimile | rubber stamp | embossed |
+ *   perforated | electronic | printed. UCP 600 art. 3 accepts all of them.
+ * @property {string|null} authenticates  What this mark exists to authenticate, when it
+ *   does — an initialled correction, a signed on-board notation.
+ * @property {boolean} legible        False when the mark is there and cannot be read.
+ *   With a null readsAs this is the distinction that matters: present-but-unreadable is
+ *   not the same as absent, and only absent is a discrepancy.
+ * @property {'HIGH'|'MED'|'LOW'} confidence
  */
 
 /**
@@ -83,6 +97,9 @@
  * @property {string} meta           Provenance line, e.g. 'scan pages 2-3 of 12 · 300 dpi'.
  * @property {DocLine[]} lines
  * @property {Mark[]} marks
+ * @property {boolean} attested  Whether the attest pass looked at this document. Distinct
+ *   from `marks.length === 0`: examined-and-clean is a conclusion, never-examined means no
+ *   attestation is bound to this document type. The Marks tab renders them differently.
  * @property {string|null} [layoutMd] Layout-preserving markdown of the pages (extract.doc.md).
  */
 

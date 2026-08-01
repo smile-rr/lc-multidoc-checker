@@ -39,6 +39,9 @@ public final class ReadRows {
             boolean lowConfidence,
             String scanNote,
             String layoutMd,
+            /** Whether the attest pass has looked at this document. False is not "clean" —
+             *  it is "not looked at", and the two must not render the same. */
+            boolean attested,
             int ordinal) {
     }
 
@@ -59,6 +62,33 @@ public final class ReadRows {
             String sourceText,
             String confidence,
             String flag) {
+    }
+
+    /**
+     * Something on the page that is not text — a signature, a chop, an initialled correction.
+     *
+     * <p>The evidence behind an attestation fact. {@code legible} false with {@code readsAs}
+     * null is the one combination that carries a whole argument: the mark is there and
+     * cannot be read, which is not the same as its absence and is not a discrepancy.
+     *
+     * @param capacity      'as agent for XYZ Lines, the carrier'. UCP 600 art. 20(a)(i) is
+     *                      not satisfied by a signature that does not say this.
+     * @param authenticates what this mark exists to authenticate, when it does — a
+     *                      correction, an added on-board notation. Null for a mark standing
+     *                      on its own.
+     */
+    public record Mark(
+            String docCode,
+            String kind,
+            Integer page,
+            String placement,
+            String readsAs,
+            String party,
+            String capacity,
+            String medium,
+            String authenticates,
+            boolean legible,
+            String confidence) {
     }
 
     /** {@code helix_check.lc_plan_check} — a check selected for this examination. */

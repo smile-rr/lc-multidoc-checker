@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * What a case is, and what can be done to one.
@@ -65,6 +66,9 @@ public class CaseService {
         String id = resolve(ref);
         CaseRow row = store.find(id).orElseThrow(() -> new NotFoundException("case", ref));
         List<?> creditLines = assembler.creditLines(store, id);
+        // One query, grouped here, rather than one per document in the map below.
+        Map<String, List<ReadRows.Mark>> marks = store.marks(id).stream()
+                .collect(Collectors.groupingBy(ReadRows.Mark::docCode));
 
         return new CaseDetail(
                 row.caseRef(),
@@ -77,7 +81,10 @@ public class CaseService {
                 "/api/v1/lc-check/cases/" + ref + "/bundle.pdf",
                 row.pageCount(),
                 assembler.runState(row, store.bundlePages(id).size()),
-                store.documents(id).stream().map(d -> assembler.document(d, creditLines)).toList(),
+                store.documents(id).stream()
+                        .map(d -> assembler.document(d, creditLines,
+                                marks.getOrDefault(d.docCode(), List.of())))
+                        .toList(),
                 store.bundlePages(id).stream().map(assembler::bundlePage).toList(),
                 store.facts(id).stream().map(assembler::fact).toList(),
                 Areas.ALL,

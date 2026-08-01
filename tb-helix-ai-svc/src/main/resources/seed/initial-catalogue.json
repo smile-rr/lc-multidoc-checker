@@ -109,6 +109,35 @@
       "description": "Free text conditions added by the applicant or issuing bank."
     },
     {
+      "key": "adverse_clausing",
+      "name": "Adverse clausing",
+      "kind": "DOC_ATTESTATION",
+      "valueType": "STRING",
+      "description": "A clause expressly declaring a defective condition of the goods or packaging, per UCP 600 art. 27. Omitted entirely where the document is clean, because the rule that reads it tests for absence.",
+      "bindings": [
+        {
+          "doc": "BOL",
+          "note": "UCP 600 art. 27. Copy the clause verbatim — 'three cartons torn', 'drums leaking'. Added stamps and manuscript notes only. Pre-printed exculpatory wording ('said to contain', 'shipper's load and count') is NOT adverse clausing. OMIT THIS FIELD ENTIRELY when the document is clean; do not answer 'none' or 'null'.",
+          "ordinal": 10
+        },
+        {
+          "doc": "AWB",
+          "note": "UCP 600 art. 27. As for the bill of lading — added clauses only. Omit entirely when clean.",
+          "ordinal": 10
+        },
+        {
+          "doc": "MTD",
+          "note": "UCP 600 art. 27. Added clauses only. Omit entirely when clean.",
+          "ordinal": 10
+        },
+        {
+          "doc": "CPB",
+          "note": "UCP 600 art. 27. Added clauses only. Omit entirely when clean.",
+          "ordinal": 10
+        }
+      ]
+    },
+    {
       "key": "applicant_name",
       "name": "Applicant name",
       "bindings": [
@@ -155,6 +184,74 @@
       ],
       "valueType": "STRING",
       "description": "The party in whose favour the credit is issued."
+    },
+    {
+      "key": "corrections_authenticated",
+      "name": "Corrections authenticated",
+      "kind": "DOC_ATTESTATION",
+      "valueType": "STRING",
+      "description": "Whether every correction appears authenticated by the issuer, per ISBP 821 section A. YES, NO, or NA where there is nothing to authenticate.",
+      "bindings": [
+        {
+          "doc": "BOL",
+          "note": "ISBP 821 §A. Depends on corrections_present: answer NA whenever corrections_present is NO — there is nothing to authenticate, and NO would be read as an unauthenticated correction. Answer YES only if every correction carries the issuer's initials or stamp, NO if any does not.",
+          "ordinal": 9
+        },
+        {
+          "doc": "AWB",
+          "note": "ISBP 821 §A. Depends on corrections_present: answer NA whenever corrections_present is NO — there is nothing to authenticate, and NO would be read as an unauthenticated correction. Answer YES only if every correction carries the issuer's initials or stamp, NO if any does not.",
+          "ordinal": 9
+        },
+        {
+          "doc": "INS",
+          "note": "ISBP 821 §A. Depends on corrections_present: answer NA whenever corrections_present is NO — there is nothing to authenticate, and NO would be read as an unauthenticated correction. Answer YES only if every correction carries the issuer's initials or stamp, NO if any does not.",
+          "ordinal": 9
+        },
+        {
+          "doc": "COO",
+          "note": "ISBP 821 §A. Depends on corrections_present: answer NA whenever corrections_present is NO — there is nothing to authenticate, and NO would be read as an unauthenticated correction. Answer YES only if every correction carries the issuer's initials or stamp, NO if any does not. A legalised or certified document's corrections must be authenticated by whoever legalised or certified it.",
+          "ordinal": 9
+        },
+        {
+          "doc": "BOE",
+          "note": "ISBP 821 §A. Depends on corrections_present: answer NA whenever corrections_present is NO — there is nothing to authenticate, and NO would be read as an unauthenticated correction. Answer YES only if every correction carries the issuer's initials or stamp, NO if any does not.",
+          "ordinal": 9
+        }
+      ]
+    },
+    {
+      "key": "corrections_present",
+      "name": "Corrections present",
+      "kind": "DOC_ATTESTATION",
+      "valueType": "BOOLEAN",
+      "description": "Whether any value on the document has been corrected, overwritten or struck through.",
+      "bindings": [
+        {
+          "doc": "BOL",
+          "note": "Any altered date, quantity, party or port. Pre-printed form text is not a correction.",
+          "ordinal": 8
+        },
+        {
+          "doc": "AWB",
+          "note": "Any altered date, quantity, party or airport.",
+          "ordinal": 8
+        },
+        {
+          "doc": "INS",
+          "note": "Any altered amount, date or party.",
+          "ordinal": 8
+        },
+        {
+          "doc": "COO",
+          "note": "Any altered country, quantity or party.",
+          "ordinal": 8
+        },
+        {
+          "doc": "BOE",
+          "note": "Any altered amount, tenor or drawee.",
+          "ordinal": 8
+        }
+      ]
     },
     {
       "key": "cover_date",
@@ -257,6 +354,30 @@
       "description": "The party the draft is drawn on."
     },
     {
+      "key": "endorsement_present",
+      "name": "Endorsement present",
+      "kind": "DOC_ATTESTATION",
+      "valueType": "BOOLEAN",
+      "description": "Whether the document carries an endorsement, usually on the reverse — a to-order bill of lading, or an insurance document payable to order.",
+      "bindings": [
+        {
+          "doc": "BOL",
+          "note": "Check the reverse. A bill consigned 'to order' needs an endorsement; one consigned to a named party does not.",
+          "ordinal": 13
+        },
+        {
+          "doc": "INS",
+          "note": "UCP 600 art. 28. An insurance document payable to order must be endorsed, usually in blank.",
+          "ordinal": 13
+        },
+        {
+          "doc": "BOE",
+          "note": "Check the reverse for the drawer's endorsement.",
+          "ordinal": 13
+        }
+      ]
+    },
+    {
       "key": "expiry_date",
       "name": "Expiry date",
       "bindings": [
@@ -271,6 +392,30 @@
       ],
       "valueType": "DATE",
       "description": "The last date documents may be presented under the credit."
+    },
+    {
+      "key": "freight_notation",
+      "name": "Freight notation",
+      "kind": "DOC_ATTESTATION",
+      "valueType": "STRING",
+      "description": "Whether freight is marked prepaid or collect, per UCP 600 art. 26(b). Usually a stamp or a ticked box rather than typed text.",
+      "bindings": [
+        {
+          "doc": "BOL",
+          "note": "UCP 600 art. 26(b). One of: prepaid, collect, none. Read the stamp or the ticked box, not the printed labels of both options.",
+          "ordinal": 12
+        },
+        {
+          "doc": "AWB",
+          "note": "One of: prepaid, collect, none.",
+          "ordinal": 12
+        },
+        {
+          "doc": "MTD",
+          "note": "One of: prepaid, collect, none.",
+          "ordinal": 12
+        }
+      ]
     },
     {
       "key": "goods_description",
@@ -345,6 +490,54 @@
       "description": "The last date shipment may be effected."
     },
     {
+      "key": "legalisation_present",
+      "name": "Legalisation or visa",
+      "kind": "DOC_ATTESTATION",
+      "valueType": "BOOLEAN",
+      "description": "Whether a consular, embassy or chamber-of-commerce legalisation stamp appears on the document.",
+      "bindings": [
+        {
+          "doc": "COO",
+          "note": "A chamber of commerce, consular or embassy stamp legalising the certificate.",
+          "ordinal": 14
+        },
+        {
+          "doc": "INSP",
+          "note": "A consular or authority stamp legalising the certificate.",
+          "ordinal": 14
+        }
+      ]
+    },
+    {
+      "key": "legibility",
+      "name": "Legibility",
+      "kind": "DOC_ATTESTATION",
+      "valueType": "STRING",
+      "description": "How readable the scan is: clear, partial or poor. Present so that a thin extraction can be explained by the scan rather than read as an absent value.",
+      "bindings": [
+        {
+          "doc": "BOL",
+          "note": "One of: clear, partial, poor. 'partial' when some region could not be read; name it in the marks.",
+          "ordinal": 16
+        },
+        {
+          "doc": "INS",
+          "note": "One of: clear, partial, poor.",
+          "ordinal": 16
+        },
+        {
+          "doc": "BOE",
+          "note": "One of: clear, partial, poor.",
+          "ordinal": 16
+        },
+        {
+          "doc": "COO",
+          "note": "One of: clear, partial, poor.",
+          "ordinal": 16
+        }
+      ]
+    },
+    {
       "key": "on_board_date",
       "name": "On-board date",
       "bindings": [
@@ -359,6 +552,103 @@
       ],
       "valueType": "DATE",
       "description": "The date the goods were actually shipped."
+    },
+    {
+      "key": "on_board_notation_type",
+      "name": "On-board notation",
+      "kind": "DOC_ATTESTATION",
+      "valueType": "STRING",
+      "description": "Whether the shipped-on-board wording is pre-printed on the form or was added as a dated notation, per UCP 600 art. 20(a)(ii). The two date shipment differently.",
+      "bindings": [
+        {
+          "doc": "BOL",
+          "note": "UCP 600 art. 20(a)(ii). One of: preprinted, added, none. 'added' means a separate dated on-board notation was stamped or written on; that date is the shipment date, not the issue date.",
+          "ordinal": 11
+        },
+        {
+          "doc": "MTD",
+          "note": "One of: preprinted, added, none.",
+          "ordinal": 11
+        },
+        {
+          "doc": "CPB",
+          "note": "One of: preprinted, added, none.",
+          "ordinal": 11
+        }
+      ]
+    },
+    {
+      "key": "original_marking",
+      "name": "Original or copy",
+      "kind": "DOC_ATTESTATION",
+      "valueType": "STRING",
+      "description": "What the document says it is, per UCP 600 art. 17: original, duplicate, triplicate, copy, or none where nothing is marked.",
+      "bindings": [
+        {
+          "doc": "INV",
+          "note": "UCP 600 art. 17. One of: original, duplicate, triplicate, copy, none. An apparently original signature, mark, stamp or label makes it original even where the word is absent.",
+          "ordinal": 6
+        },
+        {
+          "doc": "BOL",
+          "note": "UCP 600 art. 17. One of: original, duplicate, triplicate, copy, none.",
+          "ordinal": 6
+        },
+        {
+          "doc": "AWB",
+          "note": "One of: original, duplicate, triplicate, copy, none. The shipper's original is the one to look at.",
+          "ordinal": 6
+        },
+        {
+          "doc": "MTD",
+          "note": "One of: original, duplicate, triplicate, copy, none.",
+          "ordinal": 6
+        },
+        {
+          "doc": "CPB",
+          "note": "One of: original, duplicate, triplicate, copy, none.",
+          "ordinal": 6
+        },
+        {
+          "doc": "INS",
+          "note": "One of: original, duplicate, triplicate, copy, none. UCP 600 art. 28(b): where the document says it was issued in more than one original, all must be presented.",
+          "ordinal": 6
+        },
+        {
+          "doc": "COO",
+          "note": "One of: original, duplicate, triplicate, copy, none.",
+          "ordinal": 6
+        }
+      ]
+    },
+    {
+      "key": "originals_issued",
+      "name": "Originals issued",
+      "kind": "DOC_ATTESTATION",
+      "valueType": "INTEGER",
+      "description": "How many originals the document itself states were issued — the '3/3' or 'full set of three originals' on a transport document.",
+      "bindings": [
+        {
+          "doc": "BOL",
+          "note": "UCP 600 art. 20(a)(iv). The number stated in 'number of originals' or a '3/3' notation. Null if the document does not say.",
+          "ordinal": 7
+        },
+        {
+          "doc": "MTD",
+          "note": "The number of originals stated on the face.",
+          "ordinal": 7
+        },
+        {
+          "doc": "CPB",
+          "note": "The number of originals stated on the face.",
+          "ordinal": 7
+        },
+        {
+          "doc": "INS",
+          "note": "UCP 600 art. 28(b). The number of originals the insurance document says were issued.",
+          "ordinal": 7
+        }
+      ]
     },
     {
       "key": "place_of_expiry",
@@ -439,6 +729,225 @@
       ],
       "valueType": "INTEGER",
       "description": "Days after shipment within which documents must be presented."
+    },
+    {
+      "key": "presentation_stamp_date",
+      "name": "Receipt stamp date",
+      "kind": "DOC_ATTESTATION",
+      "valueType": "DATE",
+      "description": "The date on the presenting bank's receipt stamp. This is the presentation date UCP 600 art. 14(c) is counted against, and it is a stamp rather than typed text.",
+      "bindings": [
+        {
+          "doc": "CS",
+          "note": "The date inside the bank's receipt chop, not any typed date on the letter. ISO form where the stamp is unambiguous.",
+          "ordinal": 15
+        }
+      ]
+    },
+    {
+      "key": "seal_present",
+      "name": "Seal or chop present",
+      "kind": "DOC_ATTESTATION",
+      "valueType": "BOOLEAN",
+      "description": "Whether an official seal, company chop or embossed stamp appears on the document, distinct from a signature.",
+      "bindings": [
+        {
+          "doc": "COO",
+          "note": "The chamber of commerce or issuing authority's seal.",
+          "ordinal": 5
+        },
+        {
+          "doc": "INSP",
+          "note": "The inspecting body's seal or chop.",
+          "ordinal": 5
+        },
+        {
+          "doc": "BC",
+          "note": "The beneficiary's company chop, where one is used instead of or beside a signature.",
+          "ordinal": 5
+        },
+        {
+          "doc": "WC",
+          "note": "The beneficiary's company chop.",
+          "ordinal": 5
+        },
+        {
+          "doc": "CS",
+          "note": "The presenting bank's receipt chop.",
+          "ordinal": 5
+        }
+      ]
+    },
+    {
+      "key": "signature_medium",
+      "name": "Signature medium",
+      "kind": "DOC_ATTESTATION",
+      "valueType": "STRING",
+      "description": "How the document was signed: handwritten, facsimile, rubber stamp, embossed, perforated, electronic or printed. Evidence rather than a test — UCP 600 art. 3 accepts all of them.",
+      "bindings": [
+        {
+          "doc": "BOL",
+          "note": "One of: handwritten, facsimile, rubber stamp, embossed, perforated, electronic, printed.",
+          "ordinal": 2
+        },
+        {
+          "doc": "AWB",
+          "note": "One of: handwritten, facsimile, rubber stamp, embossed, perforated, electronic, printed.",
+          "ordinal": 2
+        },
+        {
+          "doc": "INS",
+          "note": "One of: handwritten, facsimile, rubber stamp, embossed, perforated, electronic, printed.",
+          "ordinal": 2
+        },
+        {
+          "doc": "BOE",
+          "note": "One of: handwritten, facsimile, rubber stamp, embossed, perforated, electronic, printed.",
+          "ordinal": 2
+        }
+      ]
+    },
+    {
+      "key": "signed",
+      "name": "Signed",
+      "kind": "DOC_ATTESTATION",
+      "valueType": "BOOLEAN",
+      "description": "Whether the document carries a signature in any of the forms UCP 600 art. 3 accepts — handwriting, facsimile, perforation, stamp, symbol, or electronic authentication.",
+      "bindings": [
+        {
+          "doc": "BOL",
+          "note": "UCP 600 art. 20(a)(i). YES if signed in any form art. 3 accepts. A printed carrier chop counts.",
+          "ordinal": 1
+        },
+        {
+          "doc": "AWB",
+          "note": "UCP 600 art. 23(a)(i). YES if signed in any form art. 3 accepts.",
+          "ordinal": 1
+        },
+        {
+          "doc": "MTD",
+          "note": "UCP 600 art. 19(a)(i). YES if signed in any form art. 3 accepts.",
+          "ordinal": 1
+        },
+        {
+          "doc": "CPB",
+          "note": "UCP 600 art. 22(a)(i). Signed by the master, owner, charterer or a named agent.",
+          "ordinal": 1
+        },
+        {
+          "doc": "TD",
+          "note": "Signed in any form art. 3 accepts.",
+          "ordinal": 1
+        },
+        {
+          "doc": "INS",
+          "note": "UCP 600 art. 28(a). Signed by an insurance company, underwriter or their agent or proxy.",
+          "ordinal": 1
+        },
+        {
+          "doc": "BOE",
+          "note": "Signed by the drawer on the face of the draft.",
+          "ordinal": 1
+        },
+        {
+          "doc": "COO",
+          "note": "Signed by the issuer named on the certificate.",
+          "ordinal": 1
+        },
+        {
+          "doc": "BC",
+          "note": "Signed by the beneficiary — it is the beneficiary's own statement.",
+          "ordinal": 1
+        },
+        {
+          "doc": "WC",
+          "note": "Signed by the beneficiary.",
+          "ordinal": 1
+        },
+        {
+          "doc": "INSP",
+          "note": "Signed by the inspecting party.",
+          "ordinal": 1
+        }
+      ]
+    },
+    {
+      "key": "signed_by",
+      "name": "Signed by",
+      "kind": "DOC_ATTESTATION",
+      "valueType": "STRING",
+      "description": "The name appearing with the signature, as printed. Null where a signature is present but its owner cannot be read.",
+      "bindings": [
+        {
+          "doc": "BOL",
+          "note": "The name printed with or beneath the signature. Null if present but illegible — that is not the same as unsigned.",
+          "ordinal": 3
+        },
+        {
+          "doc": "AWB",
+          "note": "The name printed with or beneath the signature.",
+          "ordinal": 3
+        },
+        {
+          "doc": "MTD",
+          "note": "The name printed with or beneath the signature.",
+          "ordinal": 3
+        },
+        {
+          "doc": "CPB",
+          "note": "The name printed with or beneath the signature.",
+          "ordinal": 3
+        },
+        {
+          "doc": "INS",
+          "note": "The insurer, underwriter or agent named with the signature.",
+          "ordinal": 3
+        },
+        {
+          "doc": "COO",
+          "note": "The issuing body named with the signature — a chamber of commerce, a ministry.",
+          "ordinal": 3
+        },
+        {
+          "doc": "INSP",
+          "note": "The inspecting party named with the signature.",
+          "ordinal": 3
+        }
+      ]
+    },
+    {
+      "key": "signed_capacity",
+      "name": "Signing capacity",
+      "kind": "DOC_ATTESTATION",
+      "valueType": "STRING",
+      "description": "The capacity the signature was given in, and for an agent the party it acted for. UCP 600 art. 20(a)(i) is not satisfied by a signature that does not state this.",
+      "bindings": [
+        {
+          "doc": "BOL",
+          "note": "UCP 600 art. 20(a)(i). Copy the capacity as printed: 'as carrier', 'as agent for XYZ Lines, the carrier', 'as master'. Null when the signature names a company and no capacity — that absence is the finding.",
+          "ordinal": 4
+        },
+        {
+          "doc": "AWB",
+          "note": "UCP 600 art. 23(a)(i). 'as carrier' or 'as agent for the carrier <name>'. Null when no capacity is stated.",
+          "ordinal": 4
+        },
+        {
+          "doc": "MTD",
+          "note": "UCP 600 art. 19(a)(i). Capacity as printed, or null.",
+          "ordinal": 4
+        },
+        {
+          "doc": "CPB",
+          "note": "UCP 600 art. 22(a)(i). 'as master', 'as owner', 'as charterer', or as agent for a named one of those.",
+          "ordinal": 4
+        },
+        {
+          "doc": "INS",
+          "note": "'as insurer', 'as underwriter', 'as agent for <insurer>'. UCP 600 art. 28(a).",
+          "ordinal": 4
+        }
+      ]
     },
     {
       "key": "tolerance_percent",
@@ -940,6 +1449,50 @@
       "suggestion": "Add a condition confirming the insurance is assignable or endorsed in blank."
     },
     {
+      "id": "CLEAN-27",
+      "title": "Transport document is clean",
+      "body": "",
+      "domain": "Transport",
+      "severity": "CRITICAL",
+      "checkType": "PROGRAMMATIC",
+      "citedAs": "practice",
+      "refs": [
+        "UCP600 Art.27",
+        "UCP600 Art.26"
+      ],
+      "docs": [
+        "BOL"
+      ],
+      "fields": [
+        "adverse_clausing"
+      ],
+      "rule": {
+        "scope": "Any presentation including a bill of lading",
+        "groups": [
+          {
+            "id": "g1",
+            "logic": "all",
+            "rows": [
+              {
+                "id": "r1",
+                "op": "absent",
+                "tol": "",
+                "l": {
+                  "doc": "BOL",
+                  "field": "adverse_clausing"
+                },
+                "r": {
+                  "literal": ""
+                }
+              }
+            ]
+          }
+        ],
+        "message": "The bill of lading carries a clause declaring the goods or packaging defective."
+      },
+      "suggestion": "UCP 600 art. 26 makes 'shipper's load and count' and 'said to contain' acceptable, and the reading is instructed not to record them here. If one appears in a finding, the extraction is wrong, not the document."
+    },
+    {
       "id": "COND-47A",
       "body": "Read {Additional conditions} one condition at a time — numbered items or sentences — and decide what, if anything, evidences each.\n\n- A condition naming a document and something it must show: check that document carries the wording demanded.\n- A condition fixing a value — credit number, incoterm, vessel, port — compare it with the field on the documents.\n- A condition naming the issuer of a document: check the document was issued by that party.\n- A condition setting timing: count from the shipment date, in calendar days unless it says banking days.\n- A condition naming no document and no data point is non-documentary. Disregard it for the discrepancy list and report it to the checker as a note.\n\nWhere a condition repeats something the credit already requires elsewhere, raise it once, not twice.",
       "docs": [
@@ -957,6 +1510,50 @@
       "severity": "MAJOR",
       "checkType": "AGENTIC",
       "suggestion": "Split non-documentary conditions into their own assertion so they are reported as notes."
+    },
+    {
+      "id": "CORR-A7",
+      "title": "Corrections are authenticated",
+      "body": "",
+      "domain": "Documents required",
+      "severity": "MAJOR",
+      "checkType": "PROGRAMMATIC",
+      "citedAs": "practice",
+      "refs": [
+        "ISBP821 A.corrections"
+      ],
+      "docs": [
+        "BOL"
+      ],
+      "fields": [
+        "corrections_present",
+        "corrections_authenticated"
+      ],
+      "rule": {
+        "scope": "A bill of lading carrying a correction",
+        "groups": [
+          {
+            "id": "g1",
+            "logic": "all",
+            "rows": [
+              {
+                "id": "r1",
+                "op": "oneof",
+                "tol": "",
+                "l": {
+                  "doc": "BOL",
+                  "field": "corrections_authenticated"
+                },
+                "r": {
+                  "literal": "YES, NA"
+                }
+              }
+            ]
+          }
+        ],
+        "message": "A correction on the bill of lading is not authenticated by its issuer."
+      },
+      "suggestion": "ISBP 821 exempts corrections on documents issued by the beneficiary, other than a draft — which is why the invoice and the beneficiary's certificates are not operands. The certificate of origin and the insurance document want the same check; copy this one per document rather than adding rows to it, so an unpresented document does not turn the whole check inconclusive."
     },
     {
       "id": "DATE-31D",
@@ -1094,6 +1691,49 @@
       "suggestion": "Add an assertion for legalisation wording — three recent cases turned on it."
     },
     {
+      "id": "ORIG-17",
+      "title": "An original was presented",
+      "body": "",
+      "domain": "Documents required",
+      "severity": "MAJOR",
+      "checkType": "PROGRAMMATIC",
+      "citedAs": "practice",
+      "refs": [
+        "UCP600 Art.17"
+      ],
+      "docs": [
+        "INV"
+      ],
+      "fields": [
+        "original_marking"
+      ],
+      "rule": {
+        "scope": "Every presentation with a commercial invoice",
+        "groups": [
+          {
+            "id": "g1",
+            "logic": "all",
+            "rows": [
+              {
+                "id": "r1",
+                "op": "oneof",
+                "tol": "",
+                "l": {
+                  "doc": "INV",
+                  "field": "original_marking"
+                },
+                "r": {
+                  "literal": "original, none"
+                }
+              }
+            ]
+          }
+        ],
+        "message": "The invoice presented appears to be a copy rather than an original."
+      },
+      "suggestion": "'none' passes on purpose: UCP 600 art. 17(b) makes a document original by its apparently original signature, stamp or label, so an unmarked invoice on the issuer's stationery is an original. Only an explicit COPY or DUPLICATE marking fails."
+    },
+    {
       "id": "PARTY-FC04",
       "body": "When any party, vessel or port on the documents appears on a sanctions or restricted-party list, hold the presentation and escalate before honouring.\n\nFields to look at: {Beneficiary name}, {Applicant name}, {Port of loading}, {Port of discharge}\n\n- If any named party matches a restricted-party list: hold and escalate.\n- If a vessel or port is subject to restrictions: hold and escalate.",
       "docs": [
@@ -1157,6 +1797,64 @@
       "severity": "CRITICAL",
       "checkType": "AGENT",
       "suggestion": "Add a condition for credits available by mixed payment (part sight, part deferred) — confirm each portion matches its own draft."
+    },
+    {
+      "id": "SIGN-20",
+      "title": "Transport document signed, with capacity",
+      "body": "",
+      "domain": "Transport",
+      "severity": "CRITICAL",
+      "checkType": "PROGRAMMATIC",
+      "citedAs": "practice",
+      "refs": [
+        "UCP600 Art.20",
+        "UCP600 Art.3",
+        "ISBP821 A.signatures"
+      ],
+      "docs": [
+        "BOL"
+      ],
+      "fields": [
+        "signed",
+        "signed_capacity"
+      ],
+      "rule": {
+        "scope": "Any presentation including a bill of lading",
+        "groups": [
+          {
+            "id": "g1",
+            "logic": "all",
+            "rows": [
+              {
+                "id": "r1",
+                "op": "eq",
+                "tol": "",
+                "l": {
+                  "doc": "BOL",
+                  "field": "signed"
+                },
+                "r": {
+                  "literal": "YES"
+                }
+              },
+              {
+                "id": "r2",
+                "op": "present",
+                "tol": "",
+                "l": {
+                  "doc": "BOL",
+                  "field": "signed_capacity"
+                },
+                "r": {
+                  "literal": ""
+                }
+              }
+            ]
+          }
+        ],
+        "message": "The bill of lading is unsigned, or the signature does not state the capacity it was given in."
+      },
+      "suggestion": "A signature naming a company but no capacity — 'ABC Shipping' with no 'as carrier' or 'as agent for' — is the common form of this. UCP 600 art. 3 makes a printed chop a signature, so do not raise this merely because nothing was handwritten."
     },
     {
       "id": "TRANS-20",
@@ -1348,7 +2046,7 @@
         {
           "aid": "UCP600-Art-20",
           "code": "UCP600 Art.20",
-          "read": "A bill of lading, however named, identifies the carrier and is signed correctly, shows the goods loaded on board a named vessel at the stated port of loading, and is the sole original or the full set issued.",
+          "read": "A bill of lading, however named, must indicate the name of the carrier and be signed by the carrier or a named agent for the carrier, or by the master or a named agent for the master. Any signature by an agent must indicate whether it signed for the carrier or for the master. It must indicate that the goods have been shipped on board a named vessel at the port of loading stated in the credit, either by pre-printed wording or by an on-board notation giving the date of shipment. It must be the sole original, or where issued in more than one original, the full set as indicated on the bill of lading.",
           "title": "Bill of lading",
           "ordinal": 3,
           "summary": "Requirements for a bill of lading."
@@ -1356,7 +2054,7 @@
         {
           "aid": "UCP600-Art-28",
           "code": "UCP600 Art.28",
-          "read": "The insurance document is issued and signed by an insurer or agent, is dated no later than shipment unless it shows cover effective from shipment, is in the currency of the credit, and covers at least 110% of the CIF or CIP value.",
+          "read": "An insurance document must appear to be issued and signed by an insurance company, an underwriter or their agents or proxies. Any signature by an agent or proxy must indicate whether it signed for the insurance company or the underwriter. Where the document indicates it was issued in more than one original, all originals must be presented. Cover notes are not accepted. Cover must be dated no later than shipment unless it shows cover effective from shipment, be in the currency of the credit, and be for at least 110% of the CIF or CIP value.",
           "title": "Insurance document and coverage",
           "ordinal": 4,
           "summary": "Insurance documents and the level of cover."
@@ -1384,6 +2082,42 @@
           "title": "Transferable credits",
           "ordinal": 7,
           "summary": "Transferable credits."
+        },
+        {
+          "aid": "UCP600-Art-3",
+          "code": "UCP600 Art.3",
+          "title": "Interpretations",
+          "section": "General",
+          "summary": "What counts as a signature, and what 'on or about' and similar wordings mean.",
+          "read": "A document may be signed by handwriting, facsimile signature, perforated signature, stamp, symbol or any other mechanical or electronic method of authentication. A requirement for a document to be legalised, visaed or certified is satisfied by any signature, mark, stamp or label on it that appears to satisfy that requirement.",
+          "ordinal": 8
+        },
+        {
+          "aid": "UCP600-Art-17",
+          "code": "UCP600 Art.17",
+          "title": "Original documents and copies",
+          "section": "Documents",
+          "summary": "At least one original of every stipulated document must be presented.",
+          "read": "At least one original of each document stipulated in the credit must be presented. A document bearing an apparently original signature, mark, stamp or label of its issuer is treated as an original unless it says otherwise. Unless a document indicates otherwise, a bank accepts it as original if it appears written, typed, perforated or stamped by the issuer's hand, appears on the issuer's original stationery, or states that it is original.",
+          "ordinal": 9
+        },
+        {
+          "aid": "UCP600-Art-26",
+          "code": "UCP600 Art.26",
+          "title": "On deck, shipper's load and count, freight",
+          "section": "Transport",
+          "summary": "Freight prepaid or collect, and clauses disclaiming the carrier's knowledge.",
+          "read": "A transport document must not indicate that the goods are or will be loaded on deck. A clause stating that the goods may be loaded on deck is acceptable. A transport document bearing a clause such as 'shipper's load and count' or 'said by shipper to contain' is acceptable. A transport document may bear a reference, by stamp or otherwise, to charges additional to the freight.",
+          "ordinal": 10
+        },
+        {
+          "aid": "UCP600-Art-27",
+          "code": "UCP600 Art.27",
+          "title": "Clean transport document",
+          "section": "Transport",
+          "summary": "No clause expressly declaring a defective condition of goods or packaging.",
+          "read": "A bank will only accept a clean transport document. A clean transport document is one bearing no clause or notation expressly declaring a defective condition of the goods or their packaging. The word 'clean' need not appear on the document, even if the credit has a requirement for that transport document to be 'clean on board'.",
+          "ordinal": 11
         }
       ],
       "subtitle": null
@@ -1409,6 +2143,24 @@
           "title": "Transport document practice",
           "ordinal": 9,
           "summary": "Practice specific to transport documents."
+        },
+        {
+          "aid": "ISBP821-A-signatures",
+          "code": "ISBP821 A.signatures",
+          "title": "Signatures",
+          "section": "General principles",
+          "summary": "A signature need not be handwritten, and a signing capacity must be stated where required.",
+          "read": "A document may be signed by handwriting, facsimile signature, perforated signature, stamp, symbol or any mechanical or electronic method of authentication. A requirement for a document to be signed is satisfied by any of these. Where a document is signed by a person acting for a named party, the capacity in which it is signed must appear on the document when the applicable article or the credit requires it. A signature on a company's letterhead is taken to be that company's signature unless the document indicates otherwise.",
+          "ordinal": 2
+        },
+        {
+          "aid": "ISBP821-A-corrections",
+          "code": "ISBP821 A.corrections",
+          "title": "Corrections and alterations",
+          "section": "General principles",
+          "summary": "A correction on a document not issued by the beneficiary must appear authenticated.",
+          "read": "Corrections and alterations of information or data in a document, other than in a document issued by the beneficiary, must appear to be authenticated by the party who issued the document or by a party authorised by it. Corrections in a document that has been legalised, visaed or certified must appear to be authenticated by the party that legalised, visaed or certified it. Corrections in a document issued by the beneficiary, other than a draft, need not be authenticated.",
+          "ordinal": 3
         }
       ],
       "subtitle": null

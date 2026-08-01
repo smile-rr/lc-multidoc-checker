@@ -50,6 +50,20 @@ export default function InterpretScreen() {
   const facts = data.facts.filter((f) => f.docId === shownDoc.id)
   const shownPages = pageList(shownDoc.pages, shownDoc.pageRange)
 
+  // Live extract ticks win while interpret is running. Inventing "done" from
+  // leftover facts mid-run is what made every row jump to a check the moment
+  // documents landed — before extract:CODE events had a chance to show a spinner.
+  const docExtract = useMemo(() => {
+    const live = run.docExtract ?? {}
+    const out = { ...live }
+    if (run.activeStage === 'interpret') return out
+    for (const d of data.documents) {
+      if (d.role !== 'presented' || out[d.id]) continue
+      if (data.facts.some((f) => f.docId === d.id) || d.layoutMd) out[d.id] = 'done'
+    }
+    return out
+  }, [run.docExtract, run.activeStage, data.documents, data.facts])
+
   const selectDoc = (id) => {
     setSelectedId(id)
     setHoverAnchor(null)
@@ -72,6 +86,7 @@ export default function InterpretScreen() {
             segmented={run.segmented}
             segmentTotal={run.segmentTotal}
             segmentNote={run.started ? 'Finding where each document starts and ends…' : 'The presentation is split when the review runs.'}
+            docExtract={docExtract}
           />
         </div>
 
@@ -132,11 +147,15 @@ export default function InterpretScreen() {
             meta={isCredit ? 'parsed by SWIFT tag' : `read from ${shownPages.text}`}
             metaTitle={isCredit ? undefined : shownPages.title}
             facts={facts}
+            marks={isCredit ? [] : (shownDoc.marks ?? [])}
+            attested={!isCredit && !!shownDoc.attested}
             layoutMd={isCredit ? null : shownDoc.layoutMd}
+            isCredit={isCredit}
             hoverAnchor={hoverAnchor}
             onHoverAnchor={setHoverAnchor}
             activePage={isCredit ? null : page}
             onPickFact={onPickFact}
+            onPickPage={setPage}
           />
         </div>
       </div>

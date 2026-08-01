@@ -2,6 +2,34 @@ import { createContext, useContext, useReducer, useEffect, useRef, useCallback, 
 import * as api from '../api/lcCheckApi'
 import { STAGES, RUN_STAGES, runStagesFrom, stageAfter, doneThroughStage, needsAction } from './severity'
 
+/**
+ * Maps extract / extract-md step events onto a doc-rail mark.
+ *
+ * Two states only: working (spinner) while any pass is in flight for that doc,
+ * done when layout finishes (or fields fail). The parent fan-out `extract`
+ * parks every presented doc as working so the rail lights up as soon as
+ * reading begins — even before documents have reloaded from segment.
+ *
+ * @returns {{ code: string, status: 'working'|'done'|'failed' } | null}
+ */
+function extractMark(step, type, status) {
+  if (step === 'extract' && type === 'step_started') {
+    return { code: '*', status: 'working' }
+  }
+  const m = /^(extract(?:-md)?):(.+)$/.exec(step || '')
+  if (!m) return null
+  const [, kind, code] = m
+  if (type === 'step_started') {
+    return { code, status: 'working' }
+  }
+  if (type === 'step_finished') {
+    if (status && String(status).toUpperCase() === 'FAILED') return { code, status: 'failed' }
+    // Fields done → still working (layout follows). Layout done → complete.
+    return { code, status: kind === 'extract-md' ? 'done' : 'working' }
+  }
+  return null
+}
+
 // ===========================================================================
 // One case's working state.
 //
@@ -47,6 +75,14 @@ const initial = {
     /** How many documents the read step has carved out of the bundle so far. */
     segmented: 0,
     segmentTotal: 6,
+    /**
+     * Per-document extract progress during interpret.
+     * Keys are doc codes (INV, BOL, …); values are working | done | failed.
+     * Cleared when a new interpret starts.
+     */
+    docExtract: {},
+    /** True once the extract fan-out has announced itself (parent or per-doc). */
+    extractStarted: false,
     /** Areas fully returned, in completion order. */
     completedAreaIds: [],
     /** The area currently being examined, if any. */
@@ -180,6 +216,19 @@ function reducer(state, action) {
           // must not find it live and try the next stage.
           live: halted ? false : action.merge ? state.run.live : false,
           following: action.merge ? state.run.following : true,
+          // Docs often land on the refresh that follows segment — after the parent
+          // extract step has already announced. Fill any gaps as working so the rail
+          // does not sit blank until the first extract:CODE event.
+          docExtract: (() => {
+            if (!action.merge || state.run.activeStage !== 'interpret' || !state.run.extractStarted) {
+              return state.run.docExtract
+            }
+            const next = { ...state.run.docExtract }
+            for (const d of action.data.documents ?? []) {
+              if (d.role === 'presented' && !next[d.id]) next[d.id] = 'working'
+            }
+            return next
+          })(),
         },
       }
     }
@@ -216,7 +265,7 @@ function reducer(state, action) {
     case 'run_started':
       return {
         ...state,
-        run: { ...state.run, started: true, finished: false, done: [], activeStage: null, segmented: 0, completedAreaIds: [], activeAreaId: null, live: true, following: true, failure: null },
+        run: { ...state.run, started: true, finished: false, done: [], activeStage: null, segmented: 0, docExtract: {}, extractStarted: false, completedAreaIds: [], activeAreaId: null, live: true, following: true, failure: null },
       }
     case 'resume_run':
       // Pick up a parked case without wiping `done` — run_started is only for a cold start.
@@ -231,7 +280,48 @@ function reducer(state, action) {
     case 'run_mode':
       return { ...state, run: { ...state.run, mode: action.mode } }
     case 'stage_started':
-      return { ...state, run: { ...state.run, activeStage: action.stageId } }
+      return {
+        ...state,
+        run: {
+          ...state.run,
+          activeStage: action.stageId,
+          // Fresh extract markers only when interpret starts — other stages
+          // leave the last read's ticks alone so the rail still says what was done.
+          docExtract: action.stageId === 'interpret' ? {} : state.run.docExtract,
+          extractStarted: action.stageId === 'interpret' ? false : state.run.extractStarted,
+        },
+      }
+    case 'doc_extract': {
+      const { code, status } = action
+      if (!code || !status) return state
+      // Parent extract step: park every presented doc as working so the rail shows
+      // progress is under way, then each extract:CODE keeps/flips its own row.
+      if (code === '*') {
+        const docs = state.data?.documents ?? []
+        const next = { ...state.run.docExtract }
+        let changed = false
+        for (const d of docs) {
+          if (d.role !== 'presented' || next[d.id]) continue
+          next[d.id] = status
+          changed = true
+        }
+        return {
+          ...state,
+          run: {
+            ...state.run,
+            extractStarted: true,
+            docExtract: changed ? next : state.run.docExtract,
+          },
+        }
+      }
+      if (state.run.docExtract[code] === status) {
+        return state.run.extractStarted ? state : { ...state, run: { ...state.run, extractStarted: true } }
+      }
+      return {
+        ...state,
+        run: { ...state.run, extractStarted: true, docExtract: { ...state.run.docExtract, [code]: status } },
+      }
+    }
     case 'stage_done': {
       // The run is finished when it is out of stages — nothing separately decides
       // that, so the two can never disagree.
@@ -315,6 +405,11 @@ export function CaseProvider({ caseId, children }) {
   const [state, dispatch] = useReducer(reducer, initial)
   const unsubscribe = useRef(null)
   const toastTimer = useRef(null)
+  // Synchronous latch against double-clicks / auto-effect races. React state
+  // (`activeStage`) only flips after a render; two clicks in the same tick both
+  // saw it null and both POSTed — which is how one interpret became four on the
+  // wire. The service now 409s duplicates; this stops the duplicate request.
+  const startGate = useRef(false)
 
   // `merge` keeps the run's own state — this is a refetch during a run, not a
   // fresh open. Ref rather than state so the stream handler below can call it
@@ -336,6 +431,9 @@ export function CaseProvider({ caseId, children }) {
       .catch((error) => { if (alive) dispatch({ type: 'load_failed', error: error.message }) })
     return () => { alive = false }
   }, [caseId])
+
+  // A new case must not inherit a latch left closed by the previous one's run.
+  useEffect(() => { startGate.current = false }, [caseId])
 
   // The pipeline itself — which stages an officer may start, and in what order.
   // Fetched per workbench rather than held globally because it is small, cached by
@@ -359,15 +457,20 @@ export function CaseProvider({ caseId, children }) {
   //
   // Opened while the service says it is busy and closed when it stops, so a case
   // that is simply sitting there holds no connection.
+  //
+  // Same extract / segment handling as startStep: a workbench opened mid-interpret
+  // must still light the rail marks, not only the activity label.
   const busy = state.run.busy
   useEffect(() => {
     if (!busy) return undefined
     return api.watchCase(caseId, (event) => {
       if (event.type === 'step_started' || event.type === 'step_finished') {
         dispatch({ type: 'activity', label: event.label })
-        // The event says something landed; the case endpoint says what. One
-        // description of a case, so the two cannot drift.
+        const mark = extractMark(event.step, event.type, event.status)
+        if (mark) dispatch({ type: 'doc_extract', code: mark.code, status: mark.status })
         if (event.refresh) reload(true)
+      } else if (event.type === 'segment') {
+        dispatch({ type: 'segmented', done: event.done, total: event.total })
       } else if (event.type === 'stage_failed') {
         dispatch({ type: 'stage_failed', message: event.message })
       } else if (event.type === 'awaiting_officer' || event.type === 'gate_halted') {
@@ -401,23 +504,34 @@ export function CaseProvider({ caseId, children }) {
   // difference is who calls it.
   const startStep = useCallback(
     (stepId) => {
-      const areas = state.data?.areas ?? []
+      const snap = stateRef.current.run
+      if (startGate.current || snap.activeStage || snap.busy) return
+      const areas = stateRef.current.data?.areas ?? []
       if (!areas.length) return
+      startGate.current = true
       unsubscribe.current?.()
       dispatch({ type: 'stage_started', stageId: stepId })
-      const segmentTotal = state.data?.totalPages ?? 6
+      const segmentTotal = stateRef.current.data?.totalPages ?? 6
       unsubscribe.current = api.runPipelineStep(caseId, stepId, { areas, segmentTotal }, (event) => {
         if (event.type === 'step_started' || event.type === 'step_finished') {
           // What the stage is doing right now, in its own words. The area bars say
           // how far along; this says which step it is actually on.
           dispatch({ type: 'activity', label: event.label })
+          const mark = extractMark(event.step, event.type, event.status)
+          if (mark) dispatch({ type: 'doc_extract', code: mark.code, status: mark.status })
           if (event.refresh) reload(true)
         } else if (event.type === 'stage_failed') {
+          startGate.current = false
           dispatch({ type: 'stage_failed', message: event.message })
+        } else if (event.type === 'gate_halted') {
+          startGate.current = false
+          dispatch({ type: 'activity_ended' })
+          reload(true)
         } else if (event.type === 'segment') dispatch({ type: 'segmented', done: event.done, total: event.total })
         else if (event.type === 'area_started') dispatch({ type: 'area_started', areaId: event.areaId })
         else if (event.type === 'area_done') dispatch({ type: 'area_done', areaId: event.areaId })
         else if (event.type === 'stage_done') {
+          startGate.current = false
           dispatch({ type: 'activity_ended' })
           dispatch({ type: 'stage_done', stageId: event.stage, areaIds: areas.map((a) => a.id) })
           // A step produced rows — documents, facts, checks, findings — and the event
@@ -432,18 +546,19 @@ export function CaseProvider({ caseId, children }) {
         }
       })
     },
-    [caseId, state.data, flash, reload],
+    [caseId, flash, reload],
   )
 
   /** The officer asking for the next step — the first press also starts the run. */
   const runNext = useCallback(() => {
-    if (state.run.activeStage) return
-    const next = stageAfter(state.run.done, state.runStages ?? RUN_STAGES)
+    const snap = stateRef.current.run
+    if (startGate.current || snap.activeStage || snap.busy) return
+    const next = stageAfter(snap.done, stateRef.current.runStages ?? RUN_STAGES)
     if (!next) return
-    if (!state.run.started) dispatch({ type: 'run_started' })
-    else if (!state.run.live) dispatch({ type: 'resume_run' })
+    if (!snap.started) dispatch({ type: 'run_started' })
+    else if (!snap.live) dispatch({ type: 'resume_run' })
     startStep(next.id)
-  }, [state.run.activeStage, state.run.done, state.run.started, state.run.live, state.runStages, startStep])
+  }, [startStep])
 
   /**
    * The officer accepts the gate's ground and lets the examination continue.

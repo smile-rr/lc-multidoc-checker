@@ -139,13 +139,18 @@ export async function getEvents() {
     e(33000, 'segment', { done: 3, total: 6 }),
     e(35200, 'segment', { done: 6, total: 6 }),
     e(35400, 'step_finished', { stage: 'interpret', step: 'segment', label: '6 documents found', status: 'OK', ms: 4300, refresh: true }),
-    e(35500, 'step_started', { stage: 'interpret', step: 'extract', label: 'Reading the commercial invoice' }),
-    e(48800, 'step_finished', { stage: 'interpret', step: 'extract', label: '21 fields read', status: 'OK', ms: 13300, refresh: true }),
-    e(48900, 'step_started', { stage: 'interpret', step: 'extract', label: 'Reading the bill of lading' }),
-    e(49100, 'cache_hit', { stage: 'interpret', step: 'extract' }),
-    e(49300, 'step_finished', { stage: 'interpret', step: 'extract', label: '27 fields read', status: 'OK', ms: 400, refresh: true }),
-    e(49400, 'stage_done', { stage: 'interpret', ms: 18400 }),
-    e(49420, 'awaiting_officer', { stage: 'interpret', next: 'plan' }),
+    e(35500, 'step_started', { stage: 'interpret', step: 'extract', label: 'Reading each document' }),
+    e(35600, 'step_started', { stage: 'interpret', step: 'extract:INV', label: 'Reading the commercial invoice' }),
+    e(48800, 'step_finished', { stage: 'interpret', step: 'extract:INV', label: '21 fields read', status: 'OK', ms: 13200, refresh: true }),
+    e(48850, 'step_started', { stage: 'interpret', step: 'extract-md:INV', label: 'Layout text · commercial invoice' }),
+    e(52000, 'step_finished', { stage: 'interpret', step: 'extract-md:INV', label: 'Layout ready', status: 'OK', ms: 3150, refresh: true }),
+    e(52100, 'step_started', { stage: 'interpret', step: 'extract:BOL', label: 'Reading the bill of lading' }),
+    e(52300, 'cache_hit', { stage: 'interpret', step: 'extract:BOL' }),
+    e(52500, 'step_finished', { stage: 'interpret', step: 'extract:BOL', label: '27 fields read', status: 'OK', ms: 400, refresh: true }),
+    e(52550, 'step_started', { stage: 'interpret', step: 'extract-md:BOL', label: 'Layout text · bill of lading' }),
+    e(52800, 'step_finished', { stage: 'interpret', step: 'extract-md:BOL', label: 'Layout ready', status: 'OK', ms: 250, refresh: true }),
+    e(52900, 'stage_done', { stage: 'interpret', ms: 21900 }),
+    e(52920, 'awaiting_officer', { stage: 'interpret', next: 'plan' }),
 
     e(96000, 'stage_started', { stage: 'gate' }),
     e(96100, 'step_started', { stage: 'gate', step: 'gate', label: 'Running 1 hard check' }),
@@ -314,10 +319,48 @@ export function runPipelineStep(caseId, stepId, { areas = [], segmentTotal = 6 }
   const PLAN_MS = 900
 
   if (stepId === 'interpret') {
+    // Segment first — skeletons until the refresh lands documents — then one
+    // extract:CODE / extract-md:CODE pair per presented doc so the rail marks move.
     for (let i = 1; i <= segmentTotal; i += 1) {
       at(i * SEGMENT_EVERY, () => onEvent({ type: 'segment', done: i, total: segmentTotal }))
     }
-    done(segmentTotal * SEGMENT_EVERY + 160)
+    const afterSegment = segmentTotal * SEGMENT_EVERY + 160
+    at(afterSegment, () => {
+      onEvent({
+        type: 'step_finished',
+        stage: 'interpret',
+        step: 'segment',
+        label: `${segmentTotal} pages sorted`,
+        status: 'OK',
+        ms: afterSegment,
+        refresh: true,
+      })
+    })
+    at(afterSegment + 40, () => {
+      onEvent({ type: 'step_started', stage: 'interpret', step: 'extract', label: 'Reading each document' })
+    })
+    const docs = ['INV', 'BOL', 'PKL', 'BOE', 'BC', 'WC'].slice(0, Math.max(1, Math.min(6, Math.ceil(segmentTotal / 1))))
+    const PER_DOC = 900
+    docs.forEach((code, i) => {
+      const t0 = afterSegment + 80 + i * PER_DOC
+      at(t0, () => onEvent({
+        type: 'step_started', stage: 'interpret', step: `extract:${code}`,
+        label: `Reading ${code}`,
+      }))
+      at(t0 + 400, () => onEvent({
+        type: 'step_finished', stage: 'interpret', step: `extract:${code}`,
+        label: `Fields read · ${code}`, status: 'OK', ms: 400, refresh: true,
+      }))
+      at(t0 + 420, () => onEvent({
+        type: 'step_started', stage: 'interpret', step: `extract-md:${code}`,
+        label: `Layout text · ${code}`,
+      }))
+      at(t0 + 750, () => onEvent({
+        type: 'step_finished', stage: 'interpret', step: `extract-md:${code}`,
+        label: `Layout ready · ${code}`, status: 'OK', ms: 330, refresh: true,
+      }))
+    })
+    done(afterSegment + 80 + docs.length * PER_DOC + 100)
   } else if (stepId === 'plan') {
     done(PLAN_MS)
   } else if (stepId === 'execute') {

@@ -61,7 +61,8 @@ public class CaseStore {
                     rs.getString("abbr"), rs.getString("icon"), rs.getString("file_name"),
                     rs.getString("reference"), ints(rs.getArray("pages")),
                     rs.getString("extraction_mode"), rs.getBoolean("low_confidence"),
-                    rs.getString("scan_note"), rs.getString("layout_md"), rs.getInt("ordinal"));
+                    rs.getString("scan_note"), rs.getString("layout_md"),
+                    rs.getObject("attested_at") != null, rs.getInt("ordinal"));
 
     private static final org.springframework.jdbc.core.RowMapper<ReadRows.BundlePage> BUNDLE_PAGE =
             (rs, n) -> new ReadRows.BundlePage(
@@ -73,6 +74,13 @@ public class CaseStore {
                     rs.getString("value"), rs.getString("value_norm"), (Integer) rs.getObject("page"),
                     rs.getString("anchor_id"), rs.getString("source"), rs.getString("source_text"),
                     rs.getString("confidence"), rs.getString("flag"));
+
+    private static final org.springframework.jdbc.core.RowMapper<ReadRows.Mark> MARK =
+            (rs, n) -> new ReadRows.Mark(
+                    rs.getString("doc_code"), rs.getString("kind"), (Integer) rs.getObject("page"),
+                    rs.getString("placement"), rs.getString("reads_as"), rs.getString("party"),
+                    rs.getString("capacity"), rs.getString("medium"), rs.getString("authenticates"),
+                    rs.getBoolean("legible"), rs.getString("confidence"));
 
     private static final org.springframework.jdbc.core.RowMapper<ReadRows.PlanCheck> PLAN_CHECK =
             (rs, n) -> new ReadRows.PlanCheck(
@@ -215,6 +223,62 @@ public class CaseStore {
                 """, stage.key(), next == null ? null : next.key(), awaiting, stage.key(), caseId);
     }
 
+    /**
+     * Atomically claims the case for an officer-asked stage run.
+     *
+     * <p>Only one caller can win: the row must still be parked
+     * ({@code awaiting_officer}) at exactly this {@code next_stage}. A second POST
+     * while the first is in flight sees zero rows updated and must not launch.
+     * That is what stopped four parallel interprets writing one event tape.
+     *
+     * @return {@code true} if this caller now owns the run
+     */
+    public boolean tryClaimOfficerRun(String caseId, String nextStage) {
+        int n = jdbc.update("""
+                UPDATE helix_check.lc_case
+                   SET awaiting_officer = false,
+                       status = 'running',
+                       error = NULL
+                 WHERE id = ?::uuid
+                   AND awaiting_officer = true
+                   AND next_stage = ?
+                """, caseId, nextStage);
+        return n == 1;
+    }
+
+    /**
+     * Claims the case for a rerun — any idle case, regardless of which stage it
+     * was waiting at.
+     *
+     * <p>{@code status <> 'running'} is the lock. A rerun clears downstream rows
+     * first; this then refuses if another run already holds the case.
+     */
+    public boolean tryClaimRun(String caseId) {
+        int n = jdbc.update("""
+                UPDATE helix_check.lc_case
+                   SET awaiting_officer = false,
+                       status = 'running',
+                       error = NULL
+                 WHERE id = ?::uuid
+                   AND status IS DISTINCT FROM 'running'
+                """, caseId);
+        return n == 1;
+    }
+
+    /**
+     * Hands the case back after a claim that will not call {@link #setStage}.
+     *
+     * <p>Halt and failure paths used to leave {@code awaiting_officer = false} forever
+     * once claiming existed, so a retry could never win {@link #tryClaimOfficerRun}.
+     */
+    public void releaseRun(String caseId) {
+        jdbc.update("""
+                UPDATE helix_check.lc_case
+                   SET awaiting_officer = true
+                 WHERE id = ?::uuid
+                """, caseId);
+    }
+
     // --- Documents ----------------------------------------------------------
 
     public void upsertDocument(String caseId, String docCode, Map<String, Object> doc) {
@@ -244,6 +308,20 @@ public class CaseStore {
                    SET layout_md = ?
                  WHERE case_id = ?::uuid AND doc_code = ?
                 """, layoutMd, caseId, docCode);
+    }
+
+    /**
+     * Records that this document has been looked at for marks.
+     *
+     * <p>Separate from the marks themselves because a clean document produces none, and
+     * "examined and clean" must not read as "never examined" — see V17.
+     */
+    public void setDocumentAttested(String caseId, String docCode) {
+        jdbc.update("""
+                UPDATE helix_check.lc_document
+                   SET attested_at = NOW()
+                 WHERE case_id = ?::uuid AND doc_code = ?
+                """, caseId, docCode);
     }
 
     public List<ReadRows.Document> documents(String caseId) {
@@ -323,6 +401,19 @@ public class CaseStore {
                      WHERE case_id = ?::uuid AND role = 'presented'
                     """, caseId);
         }
+        if (stage.ordinal() <= StageId.INTERPRET.ordinal()) {
+            // Marks belong wholly to the reading. Unlike facts there is no half of them that
+            // intake produced, so there is nothing here to keep — and leaving them would
+            // show the officer signatures from a reading that has been undone.
+            jdbc.update("DELETE FROM helix_check.lc_mark WHERE case_id = ?::uuid", caseId);
+            // And the record that they were looked for. Leaving it would tell the officer a
+            // document had been examined and found clean, when the reading it belonged to
+            // has been undone.
+            jdbc.update("""
+                    UPDATE helix_check.lc_document SET attested_at = NULL
+                     WHERE case_id = ?::uuid AND role = 'presented'
+                    """, caseId);
+        }
         if (stage.ordinal() <= StageId.PLAN.ordinal()) {
             jdbc.update("DELETE FROM helix_check.lc_plan_check WHERE case_id = ?::uuid AND NOT added_by_officer", caseId);
         }
@@ -365,6 +456,48 @@ public class CaseStore {
                   FROM helix_check.lc_fact WHERE case_id = ?::uuid ORDER BY doc_code, label
                 """, FACT, caseId);
     }
+
+    // --- Marks --------------------------------------------------------------
+
+    /**
+     * Replaces everything found on one document.
+     *
+     * <p>Replace rather than upsert, because a mark has no stable natural key — its
+     * placement is model-authored prose and moves between runs, so an upsert would
+     * accumulate near-duplicates every time a document was re-read. The pair is one
+     * transaction's worth of work and nothing else writes this table.
+     */
+    public void replaceMarks(String caseId, String docCode, List<Map<String, Object>> marks) {
+        jdbc.update("DELETE FROM helix_check.lc_mark WHERE case_id = ?::uuid AND doc_code = ?",
+                caseId, docCode);
+        int ordinal = 0;
+        for (Map<String, Object> m : marks) {
+            jdbc.update("""
+                    INSERT INTO helix_check.lc_mark
+                        (case_id, doc_code, kind, page, placement, reads_as, party, capacity,
+                         medium, authenticates, legible, confidence, ordinal)
+                    VALUES (?::uuid, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    caseId, docCode, m.get("kind"), m.get("page"), m.get("placement"),
+                    m.get("readsAs"), m.get("party"), m.get("capacity"), m.get("medium"),
+                    m.get("authenticates"), !Boolean.FALSE.equals(m.get("legible")),
+                    m.getOrDefault("confidence", "MED"), ordinal++);
+        }
+    }
+
+    public List<ReadRows.Mark> marks(String caseId) {
+        return jdbc.query("""
+                SELECT doc_code, kind, page, placement, reads_as, party, capacity, medium,
+                       authenticates, legible, confidence
+                  FROM helix_check.lc_mark WHERE case_id = ?::uuid ORDER BY doc_code, ordinal
+                """, MARK, caseId);
+    }
+
+    // There is deliberately no hasMarks(caseId, docCode). It reads like "has this document
+    // been attested yet" and is not: a genuinely unsigned, unstamped document attests to
+    // zero marks, so the predicate is false for a document that has been fully read. The
+    // lazy pass dedupes on the derivation cache instead, where a second look at the same
+    // pages is a hit and costs nothing.
 
     // --- Plan ---------------------------------------------------------------
 

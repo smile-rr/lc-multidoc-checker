@@ -65,7 +65,12 @@ public class CaseAssembler {
                 nz(r.tenor()), nz(r.goods()));
     }
 
-    public LcDocument document(ReadRows.Document d, List<?> creditLines) {
+    /**
+     * @param marks what the attest pass found on this document, already filtered to it. The
+     *              credit gets none by construction: it arrives as a wire message and has no
+     *              page to carry a signature.
+     */
+    public LcDocument document(ReadRows.Document d, List<?> creditLines, List<ReadRows.Mark> marks) {
         List<Integer> pages = d.pages();
         boolean isCredit = "credit".equals(d.role());
         return new LcDocument(
@@ -77,13 +82,21 @@ public class CaseAssembler {
                 nz(d.docTypeLabel()),
                 pages.isEmpty() ? "" : "bundle pages " + String.join(", ", pages.stream().map(String::valueOf).toList()),
                 isCredit ? creditLines : List.of(),
-                List.of(),
+                isCredit ? List.of() : marks.stream().map(CaseAssembler::mark).toList(),
+                d.attested(),
                 d.layoutMd());
+    }
+
+    private static MarkView mark(ReadRows.Mark m) {
+        return new MarkView(
+                m.docCode(), m.kind(), m.page(), m.placement(), m.readsAs(),
+                m.party(), m.capacity(), m.medium(), m.authenticates(),
+                m.legible(), nz(m.confidence()));
     }
 
     public FactView fact(ReadRows.Fact f) {
         return new FactView(
-                f.docCode(), f.anchorId(), f.page(),
+                f.docCode(), f.anchorId(), f.page(), f.fieldKey(),
                 f.label(), nz(f.value()), nz(f.source()),
                 f.sourceText(), nz(f.confidence()), f.flag());
     }

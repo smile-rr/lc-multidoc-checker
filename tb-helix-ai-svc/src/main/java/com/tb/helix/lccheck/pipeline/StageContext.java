@@ -79,9 +79,18 @@ public final class StageContext implements StepJournal {
      *                needs its output queried should be writing to a table instead.
      */
     public void recordStep(String stepKey, Map<String, Object> result) {
+        recordStep(stepKey, result, false);
+    }
+
+    /**
+     * @param refresh whether the browser should refetch the case — true when this
+     *                step wrote facts or layout the officer can see without waiting
+     *                for the parent fan-out to finish
+     */
+    public void recordStep(String stepKey, Map<String, Object> result, boolean refresh) {
         store.recordStep(caseId, stage.key(), stepKey, "OK", result, null, false, null);
         closedByStage.add(stepKey);
-        finished(stepKey, null, "OK", 0, false);
+        finished(stepKey, null, "OK", 0, refresh);
     }
 
     /**
@@ -94,9 +103,14 @@ public final class StageContext implements StepJournal {
      * less well, from the layer that should know least about how an answer was obtained.
      */
     public void recordCachedStep(String stepKey, Map<String, Object> result, String derivationKey) {
+        recordCachedStep(stepKey, result, derivationKey, false);
+    }
+
+    public void recordCachedStep(String stepKey, Map<String, Object> result, String derivationKey,
+                                 boolean refresh) {
         store.recordStep(caseId, stage.key(), stepKey, "OK", result, null, true, derivationKey);
         closedByStage.add(stepKey);
-        finished(stepKey, null, "OK", 0, false);
+        finished(stepKey, null, "OK", 0, refresh);
     }
 
     /** Records a step that could not be done, and why. */

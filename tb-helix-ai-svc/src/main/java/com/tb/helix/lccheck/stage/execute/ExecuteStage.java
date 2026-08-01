@@ -16,6 +16,7 @@ import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.rule.RuleEvaluator;
+import com.tb.helix.lccheck.service.DocumentAttestor;
 import com.tb.helix.lccheck.service.DocumentTypes;
 import com.tb.helix.lccheck.pipeline.*;
 import com.tb.helix.lccheck.pipeline.StageContext;
@@ -49,18 +50,20 @@ public class ExecuteStage implements Stage {
     private final CaseStore cases;
     private final DocumentTypes docTypes;
     private final RuleEvaluator rules;
+    private final DocumentAttestor attestor;
     private final Prompts prompts;
     private final LlmGateway models;
     private final DerivationCache cache;
     private final ObjectMapper json;
 
     public ExecuteStage(CheckCatalog catalog, CaseStore cases, DocumentTypes docTypes,
-                        RuleEvaluator rules, LlmGateway models, DerivationCache cache,
-                        Prompts prompts, ObjectMapper json) {
+                        RuleEvaluator rules, DocumentAttestor attestor, LlmGateway models,
+                        DerivationCache cache, Prompts prompts, ObjectMapper json) {
         this.catalog = catalog;
         this.cases = cases;
         this.docTypes = docTypes;
         this.rules = rules;
+        this.attestor = attestor;
         this.prompts = prompts;
         this.models = models;
         this.cache = cache;
@@ -75,8 +78,71 @@ public class ExecuteStage implements Stage {
     @Override
     public List<Step<StageContext>> steps() {
         return List.of(
+                Step.<StageContext>of("attest", "Looking again where the credit asks", this::attestOnDemand),
                 Step.<StageContext>of("facts", "Assembling what the documents say", this::assembleFacts),
                 Step.<StageContext>of("checks", "Running the planned checks", this::runChecks));
+    }
+
+    /**
+     * A second look at the documents the credit — not UCP — asked to be executed a certain way.
+     *
+     * <p>The reading attests what the dictionary binds, which is what UCP demands on its own:
+     * a transport document signed with capacity, an insurance document signed by an insurer.
+     * It cannot attest what <em>this</em> credit demands, because {@code :46A:} and
+     * {@code :47A:} have not been read at that point. "Certificate of origin signed and
+     * stamped by the chamber of commerce" is that case, and it is common.
+     *
+     * <p>Runs before the fact sheet is assembled, so what it finds is in front of every check
+     * rather than one stage late. A document the reading already attested produces the same
+     * derivation key here, so it is a cache hit and not a second bill.
+     */
+    @SuppressWarnings("unchecked")
+    private StepResult attestOnDemand(StageContext ctx) {
+        Map<String, Object> planned = cases.stepResult(ctx.caseId(), StageId.PLAN.key(), "requirements")
+                .orElse(Map.of());
+        if (!(planned.get("attest") instanceof Map<?, ?> demand) || demand.isEmpty()) {
+            return StepResult.ok(Map.of("documents", 0));
+        }
+
+        String pdfSha = cases.find(ctx.caseId()).orElseThrow().bundlePdfSha();
+        if (pdfSha == null) return StepResult.ok(Map.of("documents", 0));
+
+        // Only documents actually presented. A credit demanding a signed inspection
+        // certificate that nobody presented is a missing-document discrepancy, raised by the
+        // check that looks for it — not a reason to render pages that are not there.
+        Map<String, List<Integer>> pages = new LinkedHashMap<>();
+        for (var p : cases.bundlePages(ctx.caseId())) {
+            if (demand.containsKey(p.docCode())) {
+                pages.computeIfAbsent(p.docCode(), k -> new ArrayList<>()).add(p.pageNo());
+            }
+        }
+
+        int looked = 0;
+        for (var entry : pages.entrySet()) {
+            if (ctx.cancelled()) break;
+            String code = entry.getKey();
+            List<Integer> docPages = entry.getValue().stream().sorted().toList();
+            ctx.announce("attest:" + code, "The credit asks about the "
+                    + docTypes.label(code).toLowerCase());
+            try {
+                var result = attestor.attest(ctx.caseId(), pdfSha, code, docPages);
+                looked++;
+                Map<String, Object> what = new LinkedHashMap<>(Map.of(
+                        "pages", docPages, "marks", result.marks(),
+                        "because", String.valueOf(demand.get(code))));
+                if (result.cached()) {
+                    ctx.recordCachedStep("attest:" + code, what, null, true);
+                } else {
+                    ctx.recordStep("attest:" + code, what, true);
+                }
+            } catch (RuntimeException e) {
+                // One document that could not be looked at must not stop the examination.
+                log.warn("On-demand attestation failed for {} on case {}: {}",
+                        code, ctx.caseId(), e.toString());
+                ctx.recordFailedStep("attest:" + code, e.getMessage());
+            }
+        }
+        return StepResult.ok(Map.of("documents", looked));
     }
 
     /**
@@ -354,7 +420,46 @@ public class ExecuteStage implements Stage {
             if (f.page() != null) sb.append("   [p.").append(f.page()).append(']');
             sb.append('\n');
         }
+
+        appendMarks(sb, ctx);
         return sb.toString();
+    }
+
+    /**
+     * What is on the documents that is not text.
+     *
+     * <p>The attestation <em>values</em> are already above, among the facts, because that is
+     * what an exact rule joins on. This is the evidence behind them, and a judged check needs
+     * it: "the bill of lading is unsigned" and "the bill of lading carries an illegible
+     * signature" are settled the same way by a boolean and differently by an examiner.
+     *
+     * <p>Named as marks rather than folded into the fact list because a document has several
+     * and a fact has one value. Flattening them into facts would have collided on the key.
+     */
+    private void appendMarks(StringBuilder sb, StageContext ctx) {
+        List<ReadRows.Mark> marks = cases.marks(ctx.caseId());
+        if (marks.isEmpty()) return;
+
+        sb.append("\nSIGNATURES, SEALS AND MARKS\n");
+        sb.append("  Read from the page rather than from its text. A mark recorded as "
+                + "illegible is present and unreadable, which is not the same as absent.\n");
+        String current = null;
+        for (ReadRows.Mark m : marks) {
+            if (!m.docCode().equals(current)) {
+                sb.append("  ").append(docTypes.label(m.docCode()))
+                        .append(" (").append(m.docCode()).append(")\n");
+                current = m.docCode();
+            }
+            sb.append("    ").append(m.kind());
+            if (m.medium() != null) sb.append(", ").append(m.medium());
+            sb.append(": ").append(m.legible() && m.readsAs() != null ? m.readsAs() : "[illegible]");
+            if (m.party() != null) sb.append("   party: ").append(m.party());
+            if (m.capacity() != null) sb.append("   capacity: ").append(m.capacity());
+            if (m.authenticates() != null) sb.append("   authenticates: ").append(m.authenticates());
+            if (m.placement() != null) sb.append("   (").append(m.placement()).append(')');
+            if (m.page() != null) sb.append("   [p.").append(m.page()).append(']');
+            sb.append('\n');
+        }
     }
 
     private String firstDoc(Map<String, Object> v) {

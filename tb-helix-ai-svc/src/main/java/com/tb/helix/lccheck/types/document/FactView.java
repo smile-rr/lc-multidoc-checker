@@ -14,6 +14,14 @@ public record FactView(
         String docId,
         String anchorId,
         Integer page,
+        /**
+         * The dictionary key, when the reading folded onto one.
+         *
+         * <p>The workbench already read this — the Source pane emits {@code key} from it, and
+         * the presence strip groups by it — but nothing ever sent it, so it was undefined on
+         * every fact. Null for a reading the dictionary does not cover.
+         */
+        String fieldKey,
         String label,
         String value,
         String source,

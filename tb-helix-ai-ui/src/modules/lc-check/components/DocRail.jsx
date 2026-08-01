@@ -1,17 +1,24 @@
 import { cardSurface } from '@shared/ds/Card'
 import Eyebrow from '@shared/ds/Eyebrow'
+import Icon from '@shared/ds/Icon'
+import Spinner from '@shared/ds/Spinner'
 import { pageList } from '@shared/lib/format'
 
 // The document rail: the credit at the top, then whatever intake carved out of
 // the bundle. Rows appear as segmentation finds them, with skeletons standing in
 // for the rest — the officer sees the work happening rather than a spinner.
 //
-// Typography does the work of separating the two facts in a row. The document
-// type is what the officer navigates by, so it is sans, near-black and slightly
-// heavier; the reference and page range are supporting detail, so they are
-// monospace, smaller and grey. Before, both were near enough the same size that
-// the type disappeared into its own metadata.
-export default function DocRail({ documents, selectedId, onSelect, segmented, segmentTotal, segmentNote }) {
+// During extract, each presented row shows a trailing mark: spinner while that
+// document is being read, check when it is done.
+export default function DocRail({
+  documents,
+  selectedId,
+  onSelect,
+  segmented,
+  segmentTotal,
+  segmentNote,
+  docExtract = {},
+}) {
   const credit = documents.filter((d) => d.role === 'credit')
   // Unidentified last — leftovers after the documents the officer can work.
   // Backend ordinal usually already does this; sorting here covers older cases.
@@ -19,8 +26,19 @@ export default function DocRail({ documents, selectedId, onSelect, segmented, se
     .filter((d) => d.role === 'presented')
     .slice()
     .sort((a, b) => Number(a.id === 'UNKNOWN') - Number(b.id === 'UNKNOWN'))
-  const found = presented.slice(0, segmented)
-  const pending = Math.max(0, segmentTotal - segmented)
+
+  // Once documents have landed, list them all and drive progress from extract
+  // status. The page-count slice was a stand-in before the rail knew about
+  // extract; keeping it only for the empty-rail skeleton phase.
+  const listed = presented.length > 0 ? presented : presented.slice(0, segmented)
+  const pending = presented.length > 0 ? 0 : Math.max(0, segmentTotal - segmented)
+  const doneCount = listed.filter((d) => docExtract[d.id] === 'done').length
+  const extracting = listed.some((d) => docExtract[d.id] === 'working')
+  const presentedCount = extracting || doneCount
+    ? `${doneCount} of ${listed.length} read`
+    : presented.length > 0
+      ? `${listed.length}`
+      : `${segmented} of ${segmentTotal}`
 
   return (
     <div style={{ ...cardSurface(12), boxShadow: 'none', overflow: 'hidden' }}>
@@ -30,8 +48,8 @@ export default function DocRail({ documents, selectedId, onSelect, segmented, se
         ))}
       </Group>
 
-      <Group label="Presented Documents" count={`${segmented} of ${segmentTotal}`}>
-        {found.map((d) => {
+      <Group label="Presented Documents" count={presentedCount}>
+        {listed.map((d) => {
           const pages = pageList(d.pages, d.pageRange)
           const sub = d.reference ? `${pages.text} · ${d.reference}` : pages.text
           return (
@@ -42,6 +60,7 @@ export default function DocRail({ documents, selectedId, onSelect, segmented, se
               subTitle={pages.title}
               on={d.id === selectedId}
               onClick={() => onSelect(d.id)}
+              extract={docExtract[d.id]}
             />
           )
         })}
@@ -74,7 +93,7 @@ function Group({ label, count, children }) {
   )
 }
 
-function Row({ doc, sub, subTitle, on, onClick }) {
+function Row({ doc, sub, subTitle, on, onClick, extract }) {
   return (
     <button
       onClick={onClick}
@@ -112,7 +131,6 @@ function Row({ doc, sub, subTitle, on, onClick }) {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
-        {/* What you navigate by: sans, near-black, a touch heavier. */}
         <span
           style={{
             fontFamily: 'var(--font-sans)',
@@ -128,7 +146,6 @@ function Row({ doc, sub, subTitle, on, onClick }) {
         >
           {doc.docType}
         </span>
-        {/* Supporting detail: mono, smaller, grey. title = full page list when truncated. */}
         <span
           title={subTitle || undefined}
           style={{
@@ -145,7 +162,9 @@ function Row({ doc, sub, subTitle, on, onClick }) {
         </span>
       </div>
 
-      {doc.lowConfidence ? (
+      <ExtractMark status={extract} />
+
+      {doc.lowConfidence && !extract ? (
         <span
           title="Part of this document was hard to read"
           style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--status-warning)', flex: '0 0 6px' }}
@@ -153,4 +172,30 @@ function Row({ doc, sub, subTitle, on, onClick }) {
       ) : null}
     </button>
   )
+}
+
+function ExtractMark({ status }) {
+  if (!status) return null
+  if (status === 'working') {
+    return (
+      <span title="Reading…" style={{ display: 'inline-flex', flexShrink: 0 }}>
+        <Spinner size={12} />
+      </span>
+    )
+  }
+  if (status === 'done') {
+    return (
+      <span title="Extracted" style={{ display: 'inline-flex', flexShrink: 0 }}>
+        <Icon name="check" size={14} color="var(--status-success, #1F7A00)" />
+      </span>
+    )
+  }
+  if (status === 'failed') {
+    return (
+      <span title="Could not read" style={{ display: 'inline-flex', flexShrink: 0 }}>
+        <Icon name="triangle-alert" size={13} color="var(--status-error, #B3261E)" />
+      </span>
+    )
+  }
+  return null
 }
