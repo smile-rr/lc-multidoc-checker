@@ -1,9 +1,13 @@
-# Repository
+# weekend-notes
 
-This repository's default branch is intentionally empty.
+Just dumping a few personal notes and half-finished snippets here so I don't lose them.
 
-Active work lives on other branches. Clone a specific branch if you have access:
+Nothing useful. Probably outdated. Feel free to ignore.
 
-```bash
-git clone -b <branch-name> <repo-url>
-```
+## stuff
+
+- grocery list ideas
+- random shell one-liners I keep forgetting
+- maybe a tiny script for renaming photos later
+
+If something looks broken, it is. I am not maintaining this.
