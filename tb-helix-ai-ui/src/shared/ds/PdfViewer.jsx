@@ -19,8 +19,10 @@ import {
 //
 // One: the worker is bundled by Vite rather than fetched from unpkg, so the
 // version can never drift from the pdfjs-dist we resolve and the workbench works
-// with no internet. If this is ever served behind a proxy that rewrites .mjs,
-// revisit this line, not the component.
+// with no internet. react-pdf pins an *exact* pdfjs-dist (today 4.8.69) — keep
+// package.json on that same exact version, never `^`, or the API and worker
+// disagree. If this is ever served behind a proxy that rewrites .mjs, revisit
+// this line, not the component.
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
 
 // Two: pages render continuously in one scroll container rather than one at a
