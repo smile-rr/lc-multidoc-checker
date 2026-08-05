@@ -93,6 +93,21 @@ answer.
 
 - `ExecuteStage.factSheet()`
 
+### A4b — the examiner learns what the exact pass settled
+
+A one-line-per-check summary of the exact pass's outcomes, in the **shared** block. Outcomes only —
+id, subject, `DISCREPANT | CLEAN | COULD NOT BE ANSWERED` and the gap where there is one — not the
+working.
+
+*Why:* both passes run in one step with exact first, and the fact sheet carries neither. An
+examiner can therefore write *"the invoice value is within the credit"* onto the record beside a
+comparison that settled the opposite, and both reach the officer as findings of equal standing. The
+`could not be answered` lines earn the block on their own: that is exactly what an examiner should
+know before forming a view.
+
+- `ExecuteStage.runChecks()` — the settled results are already in hand when the remits are built;
+  `factSheet()` gains the block
+
 ### A5 — remit-scoped layout markdown
 
 A new `THE DOCUMENTS IN YOUR REMIT` block, **below** the A1 boundary, carrying
@@ -104,6 +119,13 @@ wording check needs the wording, and folding it into fields is exactly what dest
 exists because the reverse of a bill of lading is the largest markdown in a typical bundle and
 answers nothing; the truncation is stated because silent truncation reads as *"you have been shown
 the whole document"*.
+
+**The placement rule matters as much as the block.** A document needed by **more than one** remit
+goes in the *shared* tier and is sent once; a document only one remit needs goes in that remit's
+own block. Computed before any call is issued. Grouping by doctype instead — the obvious
+alternative — is wrong twice: a doctype group cannot hold a cross-document check (`XD-14` is
+literally *"documents do not conflict with each other"*), and every call would open with a
+different document, so nothing would be shared past the instruction.
 
 - `ExecuteStage.java`, `CaseStore` (read `layout_md` by doc code), `application.yml`
   (`helix.check.execute.markdown`, `helix.check.execute.markdown-chars`), `prompts/examine-checks.st`

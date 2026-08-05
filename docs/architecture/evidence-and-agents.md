@@ -11,12 +11,12 @@ How many model calls the examination makes, what each is given, and why.
 
 ## 1. Why this document
 
-The examination makes three kinds of call that reason rather than read — **requirements**,
-**govern**, and the judged **examiners** — plus the exact pass, which makes none. Each receives
-whatever the stage that wrote it happened to have in hand, and the omissions are not decisions.
-They are oversights that have never been looked at together.
+The examination makes three kinds of call that reason rather than read — the **requirement agent**,
+the **plan agent** and the judged **examiners** — plus the exact pass, which makes none. Each
+receives whatever the stage that wrote it happened to have in hand, and the omissions are not
+decisions. They are oversights that have never been looked at together.
 
-Four are worth naming before anything else:
+Six are worth naming before anything else:
 
 - The **layout markdown** — a full, page-ordered transcription of every presented document,
   produced by a model call we already pay for and stored in `lc_document.layout_md` — is read by
@@ -31,6 +31,14 @@ Four are worth naming before anything else:
   shipment"* is not a second requirement, it is **the same requirement with a different number**.
   Today the standing rule is planned, a `REQ-47A.n` card is minted beside it, and the only verb
   that can reconcile them — `suppress` — raises a *third* artefact. §6.
+- **The plan agent does not plan.** It is shown the standing checks as *titles* and its verbs only
+  delete or halt, so it cannot say *"this rule applies, on different terms"*. Every credit-specific
+  variation therefore survives to the run, fails, and reaches an officer as a manual override that
+  the plan should have made. §5.0.1.
+- **An examiner does not know what the exact pass already settled.** Both run in one step, exact
+  first, and the fact sheet carries neither its outcomes nor its gaps — so a model can write *"the
+  invoice value is within the credit"* onto the record beside a comparison that settled the
+  opposite. §5.4.
 
 ---
 
@@ -164,16 +172,49 @@ The split follows the card's own provenance, and is enforceable:
 
 ## 5. The agents
 
-### 5.0 How many, and why not more
+### 5.0 How many, what they are called, and why not more
 
 **Four kinds of reasoning call, and the fourth writes rather than decides.**
 
-| # | agent | calls per case | its act |
-|---|---|---|---|
-| 1 | **requirements** | 1 (a tool loop) | reads the credit's demands out of 46A/47A and compiles what it can |
-| 2 | **govern** | 1 (reasoning on) | reconciles the standing plan against this credit's own words |
-| 3 | **examiners** | one per remit | answer the judged checks that fall in their domain |
-| 4 | **narrate** | 1, after the officer signs | drafts the advice from the discrepancies a person confirmed |
+| # | agent | step key | calls per case | its act |
+|---|---|---|---|---|
+| 1 | **requirement agent** | `requirements` | 1 (a tool loop) | reads the credit's demands out of 46A/47A and compiles what it can |
+| 2 | **plan agent** | `govern` | 1 (reasoning on) | decides the plan: which standing rules run, on whose terms |
+| 3 | **examiners** | `checks` | one per remit | answer the judged checks in their domain |
+| 4 | **narrator** | `signoff` | 1, after the officer signs | drafts the advice from the discrepancies a person confirmed |
+
+> **On the names.** *govern* is what the step key says and *plan agent* is what it is; the prose
+> here uses the agent name and the tables carry the key, because renaming a step key rewrites
+> `lc_run_step` rows, the step tape and every `stepResult(PLAN, …)` lookup for a word. The stage is
+> already called `plan`, so `plan/plan` would be its own confusion — the key stays `govern`.
+
+### 5.0.1 Does the plan agent actually plan?
+
+Today, no — and that is the gap behind *"so a manual override will always happen"*.
+
+```
+select        no model   every standing rule whose doc-type trigger is met  →  PLANNED
+requirements  model      reads 46A/47A                                      →  REQ cards
+plan agent    model      given a LIST of both                               →  suppress · veto
+```
+
+The plan agent is handed **titles**, and its only verbs delete or halt. It cannot say *"this rule
+applies, on different terms"* — so every credit-specific variation survives to the run, fails, and
+lands on an officer as a manual override. The override is not the officer catching a subtlety; it
+is the plan agent having had no way to say what it could see.
+
+**The fix is not more planning, it is more vocabulary.** Two changes, and the act becomes real:
+
+| | today | after |
+|---|---|---|
+| what it sees | id, title, tier, citation | **the conditions too** (`ConditionPrinter`, §6.5) |
+| what it may do | `suppress`, `gateOverride`, `runRemaining`, `humanReview` | **+ `supersede`**, row-level (§6) |
+
+`select` stays mechanical, and deliberately: trigger-matching is free, deterministic and
+reproducible, and a model re-deriving it would make the plan differ between two runs of one case.
+**Every check is *shown* to the plan agent; none requires it to act.** Silence means *runs as
+authored*, which is the safe default and costs nothing — the plan agent's job is the exceptions,
+and its act is to **vary**, not merely to veto.
 
 Three principles decided the count, and each rejects an agent that looked reasonable.
 
@@ -209,9 +250,9 @@ flowchart TD
   GATE["gate<br/><i>no model</i>"]
 
   subgraph PLAN["plan"]
-    SEL["select<br/><i>no model</i>"]
-    REQ["1 · requirements<br/><i>PLAN · tool loop</i>"]
-    GOV["2 · govern<br/><i>PLAN · reasoning on</i>"]
+    SEL["select<br/><i>no model · trigger match</i>"]
+    REQ["1 · requirement agent<br/><i>PLAN · tool loop</i>"]
+    GOV["2 · plan agent<br/><i>step key: govern · reasoning on</i>"]
     SEL --> REQ --> GOV
   end
 
@@ -223,7 +264,7 @@ flowchart TD
 
   subgraph SIGN["signoff"]
     OFF{{"the officer decides"}}
-    NAR["4 · narrate<br/><i>NARRATE · drafts the advice</i>"]
+    NAR["4 · narrator<br/><i>NARRATE · drafts the advice</i>"]
     OFF --> NAR
   end
 
@@ -236,8 +277,11 @@ flowchart TD
   CR -. "credit terms" .-> GOV
   EX -. "fact availability<br/><b>keys, never values</b>" .-> REQ
   EX -. "fact availability" .-> GOV
+  SEL -. "<b>the conditions</b>, not just titles" .-> GOV
+  REQ -. "requirement cards" .-> GOV
   EX -. "facts" .-> XA
   EX -. "facts + marks + markdown" .-> XJ
+  XA -. "<b>what it already settled</b>" .-> XJ
 
   classDef add fill:#E6F0E6,stroke:#1F7A00,color:#1F7A00
   classDef human fill:#E8EEF7,stroke:#1F4E88,color:#1F4E88
@@ -245,7 +289,7 @@ flowchart TD
   class OFF human
 ```
 
-### 5.1 `requirements` — reading what the credit demands
+### 5.1 The requirement agent — reading what the credit demands
 
 **Its question:** what does this credit require, and which requirements can be settled by comparison
 rather than by reading?
@@ -269,7 +313,7 @@ volatile digest, so adding availability means two presentations with different e
 stop sharing a cached plan. That is correct — they *should* get different plans — but the hit rate
 will fall, and it will read as a cost regression unless the step's completion note says so.
 
-### 5.2 `govern` — deciding what is worth running
+### 5.2 The plan agent — deciding the plan
 
 **Its question:** given this credit and this presentation, which of these checks should actually
 run, and what must a person be asked?
@@ -306,12 +350,85 @@ Nothing is added here. What is needed here is **fidelity**, not more evidence �
 | **add** | **the layout markdown of the documents this examiner's checks name**, placed **after** the shared fact sheet | already paid for, page-ordered, and the only place a table survives intact (§9.1). A wording check — *does the invoice's goods description correspond with the credit's* — needs the wording, and folding it into fields is precisely what destroyed it |
 | not this round | page images | §10 |
 
+| **add** | **what the exact pass already settled** — check id, subject, outcome | see below |
+
 **Scoping and the cap.** Markdown is included only for documents named by this remit's checks, and
 is capped per document with the truncation **stated in the block**. The reverse of a bill of lading
 is the reason. Silent truncation would read as *"you have been shown the whole document"*, which is
 the one thing evidence must never do.
 
-### 5.5 `narrate` — drafting the advice
+#### The examiner does not know what the exact pass concluded
+
+Both passes run inside one step and **exact runs first** — but `factSheet()` is the credit, the
+facts and the marks, and nothing else. So an examiner can write *"the invoice value is within the
+credit"* onto the record while `AMT-18` has already settled that it is not, and both statements
+reach the officer as findings of equal standing.
+
+A one-line-per-check summary of the settled outcomes goes in the **shared** block, where it is
+byte-identical for every examiner and costs the prefix nothing:
+
+```
+ALREADY SETTLED BY COMPARISON
+  AMT-18    invoice value against the credit amount        DISCREPANT
+  SIGN-20   transport document signed, with capacity       CLEAN
+  TRANS-20  on-board date against latest shipment          COULD NOT BE ANSWERED — on_board_date not read
+```
+
+Outcomes only, not the working: an examiner is being told what is already answered so it does not
+answer it again, not being invited to review it. The third line is the one that earns the block —
+*"nothing settled this"* is exactly what an examiner should be told before it forms a view.
+
+#### Grouping: by remit, not by document type
+
+Grouping by doctype is the obvious idea and it is wrong twice.
+
+- **It cannot express the work.** UCP examination is inherently cross-document — *does the
+  invoice's goods description correspond with the credit's*, *does the B/L consignee match*. The
+  seeded `XD-14` is literally *"Documents do not conflict with each other"*. A group scoped to one
+  document cannot hold a check that reads two.
+- **It is worse for the cache, not better.** A prefix cache rewards a common **leading** run. With
+  remit grouping, blocks 1–2 — the instruction and the whole fact sheet — are identical across
+  every call, and that is the large shared prefix the first-group-alone design exists to warm. With
+  doctype grouping every call opens with a different document, so nothing is shared past the
+  instruction.
+
+What doctype grouping was reaching for is real, though: two remits that both name the bill of
+lading each carry its markdown. The fix is not a different grouping but a **placement rule**:
+
+> **A document's markdown goes in the shared block when more than one remit needs it, and in the
+> remit's own block when only one does.**
+
+Computable before any call is made, it maximises the identical prefix and sends nothing twice.
+
+**No sessions.** Reusing context by keeping a conversation open would make the answer depend on
+call order and defeat the derivation cache, which is content-addressed on purpose — a case must
+re-run to the same answer. The prefix cache already gives the saving, without state.
+
+#### Tools and expressions: not for the examiner
+
+The standing rule is *tools go to the planner, not the run*, because the examination already holds
+the facts and a round trip to fetch what we are holding is two completions for no new information.
+
+**Emitting an expression is a different proposal and deserves its own answer**: a model doing
+arithmetic in prose is unreliable, and an expression it emitted would be evaluated exactly and
+reach the officer as a `ComparisonView` — an opinion converted into evidence. That is genuinely
+attractive, and it is still **deferred**, for three reasons:
+
+1. **If the examiner can compile it, the planner should have.** The check is judged *because*
+   nothing compiled it. The durable fix is the planner compiling more (Stage C), which fixes it for
+   every future case rather than for this call.
+2. **It costs the cost story.** One call per examiner is the whole design; a tool loop makes it
+   several, and `max-iterations` treats a spent budget as **no answer** — so a loop can turn a
+   cheap answer into none.
+3. **`CheckType` already anticipates it** — `AGENT_TOOL` and `AGENTIC` are authored intents the run
+   ignores. The shape exists; wiring it is a decision to take once, deliberately, not a side effect
+   of adding a calculator.
+
+If it is ever built, the narrow form is the right one: **not `fetch`, but `evaluate` — an
+expression over the facts already in the prompt**, returning a comparison row rather than a
+sentence. Reaching for data is what the fact sheet is for; deriving from it is the gap.
+
+### 5.5 The narrator — drafting the advice
 
 **New, and the answer to *"do we need a last agent to review and finalize?"*: yes to the writing,
 no to the reviewing.**
@@ -559,14 +676,20 @@ The answer to *how does it merge* is an ordering, and the ordering is a cost dec
 style one.
 
 ```
-┌─ the prefix the first group warms, and every later group rides ─────┐
-│  1  HOW TO ANSWER              stable     examine-checks.st         │
-│  2  THE PRESENTATION           shared     byte-identical per case   │
-└─────────────────────────────────────────────────────────────────────┘
-   3  THE DOCUMENTS IN YOUR REMIT   per-remit   ← the new block
-   4  YOUR REMIT                    per-remit
-   5  THE CHECKS                    per-remit
+┌─ the prefix the first group warms, and every later group rides ─────────────┐
+│  1  HOW TO ANSWER                    stable   examine-checks.st             │
+│  2  THE PRESENTATION                 shared   facts · marks · credit terms  │
+│  3  ALREADY SETTLED BY COMPARISON    shared   the exact pass's outcomes     │
+│  4  DOCUMENTS MORE THAN ONE REMIT NEEDS   shared   hoisted markdown         │
+└─────────────────────────────────────────────────────────────────────────────┘
+   5  THE DOCUMENTS IN YOUR REMIT      per-remit   markdown only this remit needs
+   6  YOUR REMIT                       per-remit
+   7  THE CHECKS                       per-remit
 ```
+
+Blocks 2–4 are **shared**: the same bytes on every examiner call about this case, and different for
+the next case. Block 4 is the placement rule from §5.4 — a document needed by two remits is hoisted
+above the boundary and sent once, instead of appearing in two per-remit blocks and matching neither.
 
 `execute` runs the **first group alone** and fans the rest out behind it, precisely because a
 provider only holds a prefix once a call carrying it has returned. That warming works only while
@@ -614,18 +737,22 @@ flowchart LR
   class I no
 ```
 
-| | credit terms | fact availability | fact values | marks | markdown | images | findings |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **requirements** | ✅ *widen* | ➕ | ❌ | ❌ | ❌ | ❌ | — |
-| **govern** | ✅ | ➕ | ❌ | ❌ | ❌ | ❌ | — |
-| **exact pass** | ✅ | — | ✅ | ❌ | ❌ | ❌ | — |
-| **judged examiners** | ✅ | — | ✅ ➕ *signals* | ✅ | ➕ *remit-scoped* | ❌ §10 | — |
-| **narrate** | ✅ *identifying only* | ❌ | ❌ | ❌ | ❌ | ❌ | ➕ *confirmed only* |
+| | credit terms | fact availability | fact values | marks | markdown | images | the conditions | settled outcomes | findings |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **requirement agent** | ✅ *widen* | ➕ | ❌ | ❌ | ❌ | ❌ | ❌ | — | — |
+| **plan agent** | ✅ | ➕ | ❌ | ❌ | ❌ | ❌ | ➕ | — | — |
+| **exact pass** | ✅ | — | ✅ | ❌ | ❌ | ❌ | ✅ | — | — |
+| **examiners** | ✅ | — | ✅ ➕ *signals* | ✅ | ➕ *remit-scoped* | ❌ §10 | ❌ | ➕ | — |
+| **narrator** | ✅ *identifying only* | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | — | ➕ *confirmed only* |
 
-`narrate` is the only agent given findings, and it is given **nothing else about the presentation**
-— because it is not examining. A drafter that could reach the facts could reach a ground nobody
-signed, and a ground in the notice that is not in the findings is the one defect a refusal cannot
-survive.
+Three rows in that table are the whole of this document's change to the plan and the run:
+
+- **the plan agent gets the conditions**, so it can vary a rule instead of only deleting it
+- **the examiners get the settled outcomes**, so two halves of one examination stop contradicting
+  each other on the record
+- **the narrator gets the findings and nothing else about the presentation**, because it is not
+  examining. A drafter that could reach the facts could reach a ground nobody signed, and a ground
+  in the notice that is not in the findings is the one defect a refusal cannot survive.
 
 ---
 
