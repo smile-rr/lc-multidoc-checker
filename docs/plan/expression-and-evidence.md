@@ -3,11 +3,23 @@
 The ordered implementation of
 [`docs/architecture/evidence-and-agents.md`](../architecture/evidence-and-agents.md).
 
-Three stages, in dependency order. Every step compiles clean, passes `./gradlew test` (compile + the
+Four stages, in dependency order. Every step compiles clean, passes `./gradlew test` (compile + the
 ArchUnit boundary rules + `MigrationTest`) and `npm run smoke`, and leaves the system working.
 
 **Start at Stage A.** It is the design document's own subject, it needs no migration and no new
 language, and every step is independently revertable.
+
+| stage | what | why in this order |
+|---|---|---|
+| **A** | the evidence reaches the agents | no schema change, no new vocabulary, immediately useful |
+| **D** | `supersede`, and the `narrate` drafter | plan-time merge removes duplicates before anything is paid to run twice |
+| **B** | fact fidelity | prerequisite for trusting any exact check |
+| **C** | the condition language | needs B1; benefits from A2's availability block for its rejection messages |
+
+> **Progress.** A1 is done — `PromptContext` has a `shared` tier and `ExecuteStage`'s fact sheet is
+> on it; the rendered order is unchanged so no cache entry was invalidated. A2 is part-done:
+> `PlanStage.availability()` exists and is wired into both plan calls, and
+> `plan-requirements.st` documents it; `plan-govern.st` still needs the matching paragraph.
 
 ---
 
@@ -102,6 +114,72 @@ Run `test/cases/01-widgets-singapore/lc-amended.txt` through to `execute`; confi
 that the shared prefix is byte-identical across examiner groups and that the first group still runs
 alone; and compare the plan's requirement cards before and after A2 for conditions naming fields
 nothing extracted.
+
+---
+
+## Stage D — the plan-time merge, and the drafter
+
+Design §6 and §5.5. No new agent on the plan side: `govern` already holds both lists and already
+reasons — it lacked a verb, and a verb is cheaper than a call.
+
+### D1 — `supersede` in `govern`'s vocabulary
+
+`govern` returns a new `supersede` array beside `suppress`: `{checkId, byRequirement, because,
+quote}`. The standing rule's card survives and takes the credit's compiled condition **for the one
+row that matches**; the requirement card is recorded merged and does not run.
+
+*Why the standing card survives:* the citation (`refs` / `citedAs`), the examiner remit (judged
+checks group on the standing card's domain; a credit card short-circuits to a synthetic one), and
+the cross-case identity all live on it. A refusal must cite art. 14(c) as varied, not `:47A:` item 3.
+
+**A supersession transfers a subject, not a condition** — so the row's fate depends on whether the
+credit's version compiled, and all three outcomes are safe:
+
+| the requirement | the standing row | verified by | card raised |
+|---|---|---|---|
+| compiled, left operand matches a row | replaced by the credit's condition | the operands | no |
+| compiled, no row matches | refused, nothing changes | the operands | yes, both cards |
+| judged (did not compile) | stood down, and recorded as such | nothing mechanical | **yes** |
+
+The third row is the one that matters most: without it, a 47A clause that failed to compile leaves
+the standing row running on terms the credit replaced — a discrepancy on a ground the credit
+excused, raised confidently, beside a judged card asking a person the same question.
+
+**Three things this depends on, in order:**
+
+1. **`ConditionPrinter` first.** `govern` is told only `TRANS-20 — Bill of lading on-board notation
+   [exact, cites UCP600 Art.20]` — no condition. It cannot match a 30-day presentation clause to
+   that title except by guessing. `describeChecks` must render each exact check's operands, which
+   is the Stage C printer. **Pull it out of Stage C and land it here.**
+2. **The merge is per row, and the code decides which row** by matching the requirement's compiled
+   condition against the standing check's rows on operand identity. No operand match → the
+   supersession is refused and both cards go to a person. The model proposes; the operands verify.
+3. **Split `TRANS-20`.** It carries four subjects (shipment date, loading port, discharge port,
+   presentation period) and its fourth row cites art. 20 while being art. 14(c). A catalogue fix,
+   not a code one — but a card holding four subjects also writes one finding for four different
+   failures, so it is worth doing before the merge machinery is tested against it.
+
+Refused, not resolved by precedence: a `byRequirement` that did not compile to an exact condition;
+two requirements claiming one rule; a `checkId` in both `suppress` and `supersede`.
+
+- `PlanStage.govern()`, `describeChecks()` and `settle()`, `prompts/plan-govern.st`
+- `governance/types/ConditionPrinter` (from Stage C)
+- `lc_plan_check` — the merged status and the pointer, plus the replaced row kept beside the
+  replacing one so the variation is visible. One migration.
+- the plan screen and Review: the merged card shows both rows and the 47A quote
+- `seed/initial-catalogue.json` — split `TRANS-20`
+
+### D2 — `narrate`, the drafter
+
+`LlmRole.NARRATE` is already in the enum and already mapped to `llm-1` in `application.yml`, and is
+called from nowhere. `SignoffStage` concatenates strings.
+
+Given the **confirmed** discrepancies and the credit's identifying terms — and nothing else about
+the presentation — it drafts the notice. It runs after the officer's decisions, may not add, drop
+or change a ground, and the officer signs the draft. The grounds in the draft and the grounds in
+the findings must correspond one to one, and that is checkable in code rather than trusted.
+
+- `SignoffStage`, a new `prompts/advice-narrate.st`
 
 ---
 
