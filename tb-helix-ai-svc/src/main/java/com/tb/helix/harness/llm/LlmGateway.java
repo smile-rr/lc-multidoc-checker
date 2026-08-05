@@ -67,6 +67,39 @@ public interface LlmGateway {
      * exhausted the result says so and carries the tool calls made so far, rather than
      * continuing or inventing a conclusion. An unbounded agent loop against a paid API
      * is an unbounded bill.
+     *
+     * <p>Every tool a model asks for in one turn is run, and all of the results are handed
+     * back in the <em>next</em> completion — one iteration, however many tools. Running
+     * them a round trip apart would spend the budget on transport instead of on thinking.
      */
     ToolResult loop(ToolRequest request);
+
+    /**
+     * Who would answer this role right now, as one stable string.
+     *
+     * <p><b>For the derivation cache, and it exists because the cache was lying.</b> Callers
+     * build a {@link com.tb.helix.infra.cache.DerivationKey} <em>before</em> any request is
+     * assembled — that is the whole point, so a hit costs neither the render nor the call —
+     * and at that moment the caller knows its prompt and its input but not which model the
+     * role resolves to. Every call site therefore wrote the role's own name into the key's
+     * {@code modelId}, and the key's promise that "the same model name at two providers is
+     * two models" was not kept by anything: changing {@code helix.models.vlm-1.model} in
+     * {@code .env}, or pointing a slot at another provider, left every stored answer looking
+     * valid and every subsequent run served conclusions the new model never reached.
+     *
+     * <p>So the gateway answers it, because the gateway is what resolves it. Cheap — a map
+     * lookup over configuration, no I/O — which is what lets it sit in front of the cache
+     * rather than behind it.
+     *
+     * <p>It names the <b>backend</b> as well as the model and the endpoint. A role moved from
+     * one backend to another is the same model at the same provider reached through different
+     * code that assembles the request differently, and answers computed by the old assembly
+     * must not be served for the new one. Consensus slots all appear, in configured order:
+     * dropping a slot changes what a read is worth and must change the key.
+     *
+     * @return e.g. {@code chat-completions/qwen3-vl-plus@dashscope.aliyuncs.com}, and for an
+     *         unconfigured role {@code unresolved/<role>} — which keys consistently, so a run
+     *         with no model configured cannot poison entries a working one wrote
+     */
+    String identity(LlmRole role);
 }

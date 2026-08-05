@@ -33,9 +33,23 @@ public record LlmProperties(Models models, Map<String, List<String>> roles) {
         }
     }
 
+    /** What {@link Slot#backend()} means when a slot does not say. */
+    public static final String DEFAULT_BACKEND = "chat-completions";
+
     /**
      * One provider endpoint.
      *
+     * @param backend     which {@code ModelBackend} owns this slot, by its {@code name()}.
+     *                    Defaults to {@value #DEFAULT_BACKEND}, so every slot written before
+     *                    there was a second backend keeps the one it always had. <b>A slot
+     *                    belongs to exactly one backend</b> — backends claim by this field
+     *                    rather than by "can I handle this?", because two backends both able
+     *                    to serve an OpenAI-shaped endpoint would otherwise both claim it and
+     *                    which one answered would come down to bean order.
+     * @param provider    which model implementation the named backend should build for this
+     *                    slot — {@code openai} or {@code anthropic} for the Spring AI backend.
+     *                    Ignored by {@code chat-completions}, which speaks one wire format by
+     *                    definition.
      * @param temperature zero for anything cacheable, always. A cached answer from a
      *                    sampling call is a lie about repeatability, and the cache cannot
      *                    tell the difference.
@@ -46,6 +60,8 @@ public record LlmProperties(Models models, Map<String, List<String>> roles) {
      */
     public record Slot(
             boolean enabled,
+            String backend,
+            String provider,
             String baseUrl,
             String apiKey,
             String model,
@@ -57,6 +73,8 @@ public record LlmProperties(Models models, Map<String, List<String>> roles) {
             Map<String, Object> extraBody) {
 
         public Slot {
+            backend = backend == null || backend.isBlank() ? DEFAULT_BACKEND : backend.trim();
+            provider = provider == null || provider.isBlank() ? null : provider.trim().toLowerCase();
             temperature = temperature == null ? 0.0 : temperature;
             maxTokens = maxTokens == null ? 4096 : maxTokens;
             connectTimeout = connectTimeout == null ? Duration.ofSeconds(10) : connectTimeout;
@@ -66,6 +84,11 @@ public record LlmProperties(Models models, Map<String, List<String>> roles) {
 
         public boolean usable() {
             return enabled && apiKey != null && !apiKey.isBlank() && model != null && !model.isBlank();
+        }
+
+        /** Whether the backend of this name should build a client for this slot. */
+        public boolean ownedBy(String backendName) {
+            return backend.equalsIgnoreCase(backendName);
         }
     }
 

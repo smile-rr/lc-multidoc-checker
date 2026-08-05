@@ -1,4 +1,4 @@
-package com.tb.helix.harness.llm.chatcompletions;
+package com.tb.helix.harness.llm.backend.chatcompletions;
 
 import com.tb.helix.harness.llm.LlmProperties;
 import com.tb.helix.harness.llm.backend.Completion;
@@ -43,6 +43,11 @@ public class ChatCompletionsBackend implements ModelBackend {
 
     public ChatCompletionsBackend(LlmProperties props, ObjectMapper json) {
         props.allSlots().forEach((name, slot) -> {
+            // Claimed by name, not by capability. This backend could serve any OpenAI-shaped
+            // endpoint and so could the Spring AI one, so "can I handle this?" would have
+            // both of them answering yes for the same slot and the winner would be whichever
+            // bean Spring happened to register first.
+            if (!slot.ownedBy(name())) return;
             if (slot.usable()) {
                 clients.put(name, new ChatCompletionsClient(name, slot, json));
                 handles.put(name, new ModelHandle(name, slot.model(), slot.baseUrl(),
@@ -84,10 +89,11 @@ public class ChatCompletionsBackend implements ModelBackend {
         var response = client.complete(messages, exchange.maxTokens(), exchange.jsonOutput(),
                 toolSchemas, exchange.hints());
 
-        return new Completion(response.content(),
+        return new Completion(response.content(), response.reasoning(),
                 response.toolCalls() == null ? List.of() : response.toolCalls(),
                 response.raw(), response.promptTokens(), response.completionTokens(),
-                response.cachedPromptTokens(), response.latencyMs());
+                response.cachedPromptTokens(), response.cacheWriteTokens(),
+                response.reasoningTokens(), response.latencyMs());
     }
 
     // --- Turns to messages ---------------------------------------------------

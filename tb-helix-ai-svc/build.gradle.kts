@@ -7,13 +7,16 @@
 //
 // Deliberately absent, and they should stay absent:
 //
-//   spring-ai-*            One OpenAI-compatible gateway serves text and vision
-//                          alike (infra/model). v2 used Spring AI for text and a
-//                          RestClient for vision, then bypassed Spring AI's tool
-//                          execution anyway — two HTTP stacks for one job.
 //   software.amazon.awssdk Blobs live on disk behind core.blob.BlobStore. An S3
 //                          adapter is a second implementation of that port, not
 //                          a dependency of the service.
+//
+// `spring-ai-*` was on that list and is not any more. The old entry read: "One
+// OpenAI-compatible gateway serves text and vision alike. v2 used Spring AI for text and
+// a RestClient for vision, then bypassed Spring AI's tool execution anyway — two HTTP
+// stacks for one job." Every word of that is still true of v2, and none of it is an
+// argument against where Spring AI sits now: below ModelBackend, as one backend among
+// others, running no loop of its own. See the dependency block for the full reasoning.
 
 plugins {
     java
@@ -71,6 +74,39 @@ dependencies {
     // regex — and what the fields *mean* is read by a model, so a parser that models the
     // whole SRU field catalogue would be carried for nothing. pw-swift-core was declared
     // here and never imported.
+
+    // --- A second model backend, behind harness.llm.backend.ModelBackend -----
+    //
+    // This is the one dependency in the file whose absence used to be a stated design
+    // decision, so the reversal is worth writing down.
+    //
+    // What changed is not the argument — one /chat/completions adapter really does serve
+    // every OpenAI-shaped provider, and it still does; ChatCompletionsBackend stays and
+    // still answers every configured role. What changed is the providers worth reaching.
+    // Anthropic, Bedrock and Vertex are not OpenAI-shaped, and writing a wire adapter per
+    // vendor means chasing each one's JSON field names for cache and reasoning counts for
+    // ever. That is the wheel worth not rebuilding.
+    //
+    // The v2 mistake is not being repeated, because the seam is in a different place. v2
+    // used a framework as its gateway and then bypassed the framework's tool execution to
+    // get a turn budget back. Here Spring AI sits *below* ModelBackend: it does one
+    // exchange and returns a completion, and the ledger, the consensus, the tool loop and
+    // its budget stay in StandardLlmGateway where no backend can forget them.
+    //
+    // Version and module set are both deliberate:
+    //   1.1.x    the line that runs on Spring Boot 3.5. Spring AI 2.0 requires Boot 4.0/4.1,
+    //            Framework 7 and Jakarta EE 11 — a whole-service migration, and a separate
+    //            decision. 1.1.7 is >= 1.1.3, which is where CVE-2026-22729/22730 were fixed.
+    //   core     NOT spring-ai-starter-*. The starters autoconfigure ChatModel beans from
+    //            spring.ai.* properties, which would put a second configuration surface
+    //            beside helix.models.* for the same question. SpringAiBackend builds its
+    //            models by hand, per slot, from helix.models.* like every other slot.
+    //   no store No vector store, and both CVEs above are in vector-store filter expression
+    //            converters. Nothing here embeds or retrieves; not depending on it is the
+    //            cheapest possible mitigation.
+    implementation(platform("org.springframework.ai:spring-ai-bom:1.1.7"))
+    implementation("org.springframework.ai:spring-ai-openai")
+    implementation("org.springframework.ai:spring-ai-anthropic")
 
     // --- Exact rules (SpEL over extracted facts) -----------------------------
     implementation("org.springframework:spring-expression")

@@ -1,4 +1,4 @@
-package com.tb.helix.harness.llm.chatcompletions;
+package com.tb.helix.harness.llm.backend.chatcompletions;
 
 import com.tb.helix.harness.llm.LlmProperties;
 import com.tb.helix.harness.llm.LlmText;
@@ -193,15 +193,27 @@ class ChatCompletionsClient {
     /**
      * The parts of a completion anything here cares about.
      *
+     * @param reasoning          the model's own account of how it reached the answer, from
+     *                           whichever field this provider puts it in. Never folded into
+     *                           {@code content}: a caller parsing JSON out of the content must
+     *                           not have to step over prose first, which is the whole reason
+     *                           {@code enable_thinking:false} is set on every slot.
      * @param cachedPromptTokens how many of {@code promptTokens} the provider served from its
      *                           own prompt cache. Billed, at roughly a tenth of the input rate
      *                           — which makes it a different thing from our derivation cache,
      *                           where no call happens and nothing is billed at all. Both get
      *                           called "cache" in conversation and they must not be added
      *                           together anywhere.
+     * @param cacheWriteTokens   how many were written into that cache and billed at a premium.
+     *                           Zero on the OpenAI-shaped providers, which fold the write into
+     *                           the ordinary input count; the field exists because Anthropic
+     *                           and Bedrock do not, and this record is what a second backend
+     *                           has to fill in too.
+     * @param reasoningTokens    how many of {@code completionTokens} went on thinking.
      */
-    record Response(String content, List<ToolCall> toolCalls, String raw,
+    record Response(String content, String reasoning, List<ToolCall> toolCalls, String raw,
                     Integer promptTokens, Integer completionTokens, Integer cachedPromptTokens,
+                    Integer cacheWriteTokens, Integer reasoningTokens,
                     int latencyMs) {
     }
 
@@ -226,19 +238,53 @@ class ChatCompletionsClient {
             // rather than unknown — a provider with no prompt cache reports nothing.
             JsonNode cached = usage.path("prompt_tokens_details").path("cached_tokens");
             if (!cached.isInt()) cached = usage.path("cached_tokens");
+
+            // Written into the cache rather than read from it, where the provider separates
+            // them. The OpenAI shape does not and reports zero, which is honest for it: its
+            // write is billed as ordinary input and is already inside prompt_tokens.
+            JsonNode cacheWrite = usage.path("prompt_tokens_details").path("cache_write_tokens");
+            if (!cacheWrite.isInt()) cacheWrite = usage.path("cache_creation_input_tokens");
+
             return new Response(
                     LlmText.clean(content),
+                    reasoningOf(message),
                     calls,
                     raw,
                     usage.hasNonNull("prompt_tokens") ? usage.get("prompt_tokens").asInt() : null,
                     usage.hasNonNull("completion_tokens") ? usage.get("completion_tokens").asInt() : null,
                     cached.isInt() ? cached.asInt() : 0,
+                    cacheWrite.isInt() ? cacheWrite.asInt() : 0,
+                    intAt(usage, "completion_tokens_details", "reasoning_tokens"),
                     latencyMs);
 
         } catch (Exception e) {
             throw new IllegalStateException(
                     "Could not read a response from " + name + ": " + abbreviate(raw), e);
         }
+    }
+
+    /**
+     * The reasoning block, from wherever this provider files it.
+     *
+     * <p>Three spellings and no standard: DashScope and DeepSeek use
+     * {@code reasoning_content}, some OpenAI-compatible gateways use {@code reasoning}, and
+     * a few carry {@code thinking}. Checked in that order and the first non-blank wins.
+     *
+     * <p>Returns null rather than empty. A blank reasoning block and no reasoning block are
+     * the same fact — the model did not tell us how it got there — and storing "" would put
+     * an empty panel in front of an officer as if there were something to read.
+     */
+    private static String reasoningOf(JsonNode message) {
+        for (String field : new String[]{"reasoning_content", "reasoning", "thinking"}) {
+            String value = message.path(field).asText(null);
+            if (value != null && !value.isBlank()) return value.strip();
+        }
+        return null;
+    }
+
+    private static Integer intAt(JsonNode parent, String object, String field) {
+        JsonNode node = parent.path(object).path(field);
+        return node.isInt() ? node.asInt() : 0;
     }
 
     private static String abbreviate(String s) {

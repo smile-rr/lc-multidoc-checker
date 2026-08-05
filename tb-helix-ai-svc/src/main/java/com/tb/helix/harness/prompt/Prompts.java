@@ -1,4 +1,4 @@
-package com.tb.helix.infra.prompt;
+package com.tb.helix.harness.prompt;
 
 import java.util.Map;
 

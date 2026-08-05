@@ -27,16 +27,25 @@ public interface ModelCallLog {
     /**
      * One attempt.
      *
-     * @param caseId    which examination, when the caller is inside one — null is allowed
-     *                  and means the call was made outside a case, not that it did not happen
-     * @param slot      which configured slot answered, so two slots on the same model can be
-     *                  told apart when one of them is the slow one
+     * @param caseId             which examination, when the caller is inside one — null is
+     *                           allowed and means the call was made outside a case, not that it
+     *                           did not happen
+     * @param slot               which configured slot answered, so two slots on the same model
+     *                           can be told apart when one of them is the slow one
+     * @param promptTokens       the whole input, <b>inclusive</b> of the two figures below.
+     *                           They are a breakdown of it, never an addition to it — summing
+     *                           the three is how an input gets billed twice
+     * @param cachedPromptTokens the part of it the provider served from its prompt cache
+     * @param cacheWriteTokens   the part it wrote into that cache, where that is billed apart
+     * @param completionTokens   the whole output, inclusive of {@code reasoningTokens}
+     * @param reasoningTokens    the part of the output that was thinking rather than answering
      */
     record Call(
             String caseId, String stage, String step,
             String role, String slot, String modelId, String provider,
             Kind kind, Status status, int attempt,
             long promptTokens, long completionTokens, long cachedPromptTokens,
+            long cacheWriteTokens, long reasoningTokens,
             Integer latencyMs, String derivationKey, String error) {
     }
 

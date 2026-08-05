@@ -42,6 +42,7 @@ const blank = () => ({
   inPerMillion: '0',
   outPerMillion: '0',
   cachedInPerMillion: '',
+  cacheWritePerMillion: '',
   patterns: '',
   note: '',
   quotedOn: new Date().toISOString().slice(0, 10),
@@ -58,6 +59,7 @@ const fromApi = (row) => ({
   inPerMillion: num(row.inPerMillion),
   outPerMillion: num(row.outPerMillion),
   cachedInPerMillion: row.cachedInPerMillion == null ? '' : num(row.cachedInPerMillion),
+  cacheWritePerMillion: row.cacheWritePerMillion == null ? '' : num(row.cacheWritePerMillion),
   patterns: Array.isArray(row.patterns) ? row.patterns.join(', ') : (row.patterns || ''),
   note: row.note ?? '',
   quotedOn: row.quotedOn ?? '',
@@ -75,6 +77,10 @@ const toApi = (row) => ({
   inPerMillion: Number(row.inPerMillion) || 0,
   outPerMillion: Number(row.outPerMillion) || 0,
   cachedInPerMillion: row.cachedInPerMillion === '' ? null : Number(row.cachedInPerMillion),
+  // Empty stays null, never 0. Null says this vendor does not price a cache write apart, so
+  // a write costs the ordinary input rate; 0 would say writing to its cache is free, which
+  // is true of no vendor and would under-report the first call of every prefix.
+  cacheWritePerMillion: row.cacheWritePerMillion === '' ? null : Number(row.cacheWritePerMillion),
   patterns: row.patterns.split(/[,\n]/).map((s) => s.trim()).filter(Boolean),
   note: row.note.trim() || null,
   quotedOn: row.quotedOn || null,
@@ -387,6 +393,10 @@ export default function Prices({ requestConfirm }) {
                 <RateChip label="In" value={rate(row.inPerMillion)} />
                 <RateChip label="Out" value={rate(row.outPerMillion)} />
                 <RateChip label="Cached" value={row.cachedInPerMillion === '' ? '—' : rate(row.cachedInPerMillion)} />
+                {/* Dearer than In where it is set at all — a cache write is what the cheap
+                    cached reads are bought with. Em-dash where the vendor does not price it
+                    apart, which is every family in the book today. */}
+                <RateChip label="Cache write" value={row.cacheWritePerMillion === '' ? '—' : rate(row.cacheWritePerMillion)} />
               </div>
               {row.quotedOn && (
                 <div style={{ fontSize: 12, color: 'var(--me-grey)', borderTop: '1px solid var(--me-grey-08)', paddingTop: 10 }}>
@@ -468,6 +478,9 @@ function DetailForm({ row, busy, error, onPatch, onSave, onDelete, onClearError 
         </Field>
         <Field label="Cached in / M">
           <TextField mono value={row.cachedInPerMillion} onChange={(e) => onPatch({ cachedInPerMillion: e.target.value })} placeholder="—" />
+        </Field>
+        <Field label="Cache write / M">
+          <TextField mono value={row.cacheWritePerMillion} onChange={(e) => onPatch({ cacheWritePerMillion: e.target.value })} placeholder="—" />
         </Field>
         <Field label="Quoted on">
           <TextField mono value={row.quotedOn} onChange={(e) => onPatch({ quotedOn: e.target.value })} placeholder="YYYY-MM-DD" />

@@ -10,7 +10,7 @@ import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
 import com.tb.helix.infra.pipeline.FanOut;
 import com.tb.helix.infra.pipeline.Step;
-import com.tb.helix.infra.prompt.Prompts;
+import com.tb.helix.harness.prompt.Prompts;
 import com.tb.helix.infra.pipeline.StepResult;
 import com.tb.helix.infra.stream.HelixEvent;
 import com.tb.helix.lccheck.persistence.CaseRow;
@@ -617,7 +617,7 @@ public class ExecuteStage implements Stage {
 
         var key = new DerivationKey(CacheOp.JUDGE_AGENT, CacheOp.JUDGE_AGENT_V, factDigest,
                 (remit.agent() == null ? UNCLAIMED : remit.agent().id()) + ":" + String.join(",", ids),
-                prompt.digest(), "role:judge", null, Map.of());
+                prompt.digest(), models.identity(LlmRole.JUDGE), null, Map.of());
 
         var hit = cache.computeIfAbsent(key, Map.class, () -> {
             var result = models.complete(TextRequest.json(

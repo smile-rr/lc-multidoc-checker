@@ -268,7 +268,9 @@ SSE through `infra/stream` + `CaseController`.
 
 ## Backend conventions
 
-- JDK 21, Spring Boot 3.5. **No Spring AI, no JPA, no SpEL evaluation.**
+- JDK 21, Spring Boot 3.5. **No JPA, no SpEL evaluation.** Spring AI 1.1.x is on the
+  classpath but only as one `ModelBackend` (`harness/llm/backend/springai/`) — it is not the
+  gateway, it runs no tool loop, and an ArchUnit rule keeps it out of everything else.
 - Four layers, downward only: `infra` → `harness` → `governance` + `lccheck` → `app`.
   `lccheck` sees `governance.types` and `governance.spi` and nothing else. 14 ArchUnit rules
   enforce it; `./gradlew test` fails the build on a violation.

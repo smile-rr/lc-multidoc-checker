@@ -204,7 +204,14 @@ public class LayeredCache implements DerivationCache {
                 key.op(), null, model, null,
                 ModelCallLog.Kind.TEXT, ModelCallLog.Status.CACHED, 1,
                 s == null ? 0 : s.promptTokens(), s == null ? 0 : s.completionTokens(),
-                0, 0, key.hash(), null));
+                // No provider was called, so none of the three provider-side breakdowns
+                // happened. A derivation hit reports what the original call *would* have
+                // cost as tokensIn/tokensOut so the log can price what was avoided; it must
+                // not also claim a prompt-cache read or a reasoning spend, neither of which
+                // this run made. Cached at our layer and cached at theirs are different
+                // events and are never added together.
+                0, 0, 0,
+                0, key.hash(), null));
     }
 
     private void remember(String hash, String modelId, Integer in, Integer out) {

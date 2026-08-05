@@ -71,6 +71,7 @@ public class PricesController {
         m.put("inPerMillion", p.in());
         m.put("outPerMillion", p.out());
         m.put("cachedInPerMillion", p.cachedIn());
+        m.put("cacheWritePerMillion", p.cacheWrite());
         m.put("patterns", p.patterns());
         m.put("note", p.note());
         m.put("quotedOn", p.quotedOn() == null ? null : p.quotedOn().toString());
@@ -80,6 +81,7 @@ public class PricesController {
             band.put("inPerMillion", b.in());
             band.put("outPerMillion", b.out());
             band.put("cachedInPerMillion", b.cachedIn());
+            band.put("cacheWritePerMillion", b.cacheWrite());
             return band;
         }).toList());
         return m;
@@ -110,12 +112,25 @@ public class PricesController {
                         ((Number) b.get("upToPromptTokens")).intValue(),
                         decimal(b.get("inPerMillion")),
                         decimal(b.get("outPerMillion")),
-                        b.get("cachedInPerMillion") == null || "".equals(b.get("cachedInPerMillion"))
-                                ? null : decimal(b.get("cachedInPerMillion"))));
+                        optionalRate(b.get("cachedInPerMillion")),
+                        optionalRate(b.get("cacheWritePerMillion"))));
             }
         }
         return new ModelPrices.Price(family, label, vendor, tier, in, out, cached,
+                optionalRate(body.get("cacheWritePerMillion")),
                 List.copyOf(bands), List.copyOf(patterns), note, quotedOn);
+    }
+
+    /**
+     * A rate the console may legitimately leave unset.
+     *
+     * <p>Null and zero are different answers and the form cannot be allowed to blur them: null
+     * means this vendor does not price that kind of token apart, so it is charged at the
+     * ordinary input rate; zero is a rate, and $0.00/M reads as free. An empty field is the
+     * console's way of saying "not priced apart", so it maps to null and not to zero.
+     */
+    private static BigDecimal optionalRate(Object value) {
+        return value == null || "".equals(value) ? null : decimal(value);
     }
 
     private static String str(Object o) {

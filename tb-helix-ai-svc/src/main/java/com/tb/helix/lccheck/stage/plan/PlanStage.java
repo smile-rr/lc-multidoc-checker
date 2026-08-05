@@ -10,7 +10,7 @@ import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
 import com.tb.helix.infra.pipeline.Step;
-import com.tb.helix.infra.prompt.Prompts;
+import com.tb.helix.harness.prompt.Prompts;
 import com.tb.helix.infra.pipeline.StepResult;
 import com.tb.helix.lccheck.persistence.CaseRow;
 import com.tb.helix.lccheck.persistence.CaseStore;
@@ -78,6 +78,15 @@ public class PlanStage implements Stage {
     private static final Logger log = LoggerFactory.getLogger(PlanStage.class);
 
     private static final String GOVERN = "govern";
+
+    /**
+     * Where the governing model's own working is kept, on the verdict and then on the record.
+     *
+     * <p>Underscored because it shares a map with keys the model authored — {@code suppress},
+     * {@code why}, {@code gateOverride} — and this one is ours. A model emitting the same key
+     * would simply have it overwritten by the reasoning it actually produced.
+     */
+    private static final String REASONING = "_reasoning";
 
     private final CheckCatalog catalog;
     private final CaseStore cases;
@@ -221,7 +230,7 @@ public class PlanStage implements Stage {
                 .varying("FIELD 47A — ADDITIONAL CONDITIONS", conditions);
 
         var key = new DerivationKey(CacheOp.PLAN_REQUIREMENTS, CacheOp.PLAN_REQUIREMENTS_V,
-                prompt.volatileDigest(), "46A+47A", prompt.digest(), "role:plan", null, Map.of());
+                prompt.volatileDigest(), "46A+47A", prompt.digest(), models.identity(LlmRole.PLAN), null, Map.of());
 
         List<Map<String, Object>> found;
         try {
@@ -369,7 +378,7 @@ public class PlanStage implements Stage {
             return settle(ctx, decision(gates, true,
                     "No threshold check reported anything and the credit states no additional "
                             + "conditions, so the plan stands as selected.",
-                    List.of(), null));
+                    List.of(), null, null));
         }
 
         PromptContext prompt = PromptContext.create()
@@ -382,7 +391,7 @@ public class PlanStage implements Stage {
                 .varying("REQUIREMENTS READ FROM THIS CREDIT", describeChecks(plan, true));
 
         var key = new DerivationKey(CacheOp.PLAN_GOVERN, CacheOp.PLAN_GOVERN_V,
-                prompt.volatileDigest(), "plan", prompt.digest(), "role:plan", null,
+                prompt.volatileDigest(), "plan", prompt.digest(), models.identity(LlmRole.PLAN), null,
                 Map.of("thinking", thinking));
 
         Map<String, Object> verdict;
@@ -392,7 +401,21 @@ public class PlanStage implements Stage {
                 var result = models.complete(thinking
                         ? TextRequest.thinking(LlmRole.PLAN, system, prompt.render())
                         : TextRequest.json(LlmRole.PLAN, system, prompt.render()));
-                return new DerivationCache.Entry<>(parse(result.content()), null,
+                Map<String, Object> answer = new LinkedHashMap<>(parse(result.content()));
+                // The working behind the verdict, kept beside it.
+                //
+                // This is the one call in the system that reasons on purpose, and it is also
+                // the one that may stand a reviewed rule down. `why` is what the model chose
+                // to tell the officer; this is how it got there, and the two are not the same
+                // evidence. Until now it was parsed off the response and dropped, so a
+                // suppression could be defended only by the sentence the model wrote to
+                // justify itself.
+                //
+                // Inside the cached value rather than beside it, so a cache hit carries the
+                // reasoning too — an entry that had the verdict and not the working would
+                // make the record depend on whether this credit had been seen before.
+                if (result.reasoning() != null) answer.put(REASONING, result.reasoning());
+                return new DerivationCache.Entry<>(answer, null,
                         result.rawResponse(), ModelSpend.of(result.usage(), result.model()));
             });
             verdict = asMap(hit.value());
@@ -408,7 +431,7 @@ public class PlanStage implements Stage {
             return settle(ctx, decision(gates, true,
                     "The plan could not be weighed against this credit — " + e.getMessage()
                             + " — so every selected check runs.",
-                    List.of(), null));
+                    List.of(), null, null));
         }
 
         return settle(ctx, apply(ctx, gates, verdict));
@@ -464,7 +487,8 @@ public class PlanStage implements Stage {
         Map<String, Object> override = asMap(verdict.get("gateOverride"));
         boolean runRemaining = decideRunRemaining(gates, verdict, override);
         return decision(gates, runRemaining,
-                nz(str(verdict.get("why"))), suppressed, override.isEmpty() ? null : override);
+                nz(str(verdict.get("why"))), suppressed, override.isEmpty() ? null : override,
+                str(verdict.get(REASONING)));
     }
 
     /**
@@ -492,16 +516,21 @@ public class PlanStage implements Stage {
     /** The record of what was decided, in the shape the case column and the workbench read. */
     private Map<String, Object> decision(List<Map<String, Object>> gates, boolean runRemaining,
                                          String why, List<Map<String, Object>> suppressed,
-                                         Map<String, Object> override) {
+                                         Map<String, Object> override, String reasoning) {
         boolean failed = gates.stream().anyMatch(g -> "FAIL".equals(g.get("outcome")));
-        return Rows.of(
+        Map<String, Object> d = new LinkedHashMap<>(Rows.of(
                 "gateVerdict", gates.isEmpty() ? "NONE" : failed ? "FAIL" : "PASS",
                 "gateCheckIds", gates.stream()
                         .filter(g -> "FAIL".equals(g.get("outcome"))).map(g -> g.get("checkId")).toList(),
                 "runRemaining", runRemaining,
                 "why", why,
                 "suppressed", suppressed,
-                "gateOverride", override);
+                "gateOverride", override));
+        // Only when there is one. The two paths that decide without asking a model — nothing
+        // to weigh, and the model could not be reached — have no working to show, and an
+        // empty key would invite a reader to wonder what was lost.
+        if (reasoning != null && !reasoning.isBlank()) d.put("reasoning", reasoning);
+        return d;
     }
 
     /**

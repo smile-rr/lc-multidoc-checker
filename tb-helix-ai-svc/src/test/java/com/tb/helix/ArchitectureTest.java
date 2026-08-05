@@ -122,6 +122,30 @@ class ArchitectureTest {
     }
 
     @Test
+    @DisplayName("Spring AI stays inside its own backend package")
+    void springAiStaysInsideItsBackend() {
+        // The containment that makes a framework safe to depend on.
+        //
+        // Spring AI is one ModelBackend among others: it does one exchange and returns one
+        // completion, and the ledger, the vision consensus, the tool loop and its hard budget
+        // stay above it in StandardLlmGateway. That is only true while nothing else can see
+        // it. The moment a stage imports a ChatClient — or the gateway starts taking a
+        // ChatResponse — the framework has become the architecture, which is exactly how the
+        // predecessor ended up bypassing its own framework to get a turn budget back.
+        //
+        // It is also what bounds the risk of depending on a library whose OSS support has
+        // ended: removing it again is a directory and a line of YAML, and this rule is what
+        // guarantees the claim rather than merely asserting it.
+        noClasses()
+                .that().resideOutsideOfPackage("com.tb.helix.harness.llm.backend.springai..")
+                .should().dependOnClassesThat().resideInAnyPackage("org.springframework.ai..")
+                .because("Spring AI is an implementation of ModelBackend, not a dependency of "
+                        + "the system; everything above that seam speaks LlmGateway")
+                .allowEmptyShould(true)
+                .check(classes);
+    }
+
+    @Test
     @DisplayName("domain talks to ports, not to beans")
     void domainTalksToPortsNotBeans() {
         // With interfaces beside their implementations, the folder no longer says which is
@@ -357,7 +381,17 @@ class ArchitectureTest {
                 // at all — it reads green.
                 "com.tb.helix.lccheck.types", "com.tb.helix.lccheck.api.dto",
                 "com.tb.helix.lccheck.persistence", "com.tb.helix.lccheck.stage",
-                "com.tb.helix.governance.types", "com.tb.helix.governance.spi" }) {
+                "com.tb.helix.governance.types", "com.tb.helix.governance.spi",
+                // The containment rule for Spring AI names this package and nothing else
+                // did, so a rename or a typo would have left that rule matching no classes
+                // and passing green — a framework quietly free to be imported anywhere,
+                // reported as enforced. This is the exact failure this test exists for.
+                "com.tb.helix.harness.llm.backend.springai",
+                // Moved here from infra, which is defined as knowing nothing about models,
+                // while Prompts opens "The text we send to models". It was also half a
+                // capability split across a layer: this loads the prompt, harness/llm/text
+                // assembles it, and the assembled text is what the derivation key hashes.
+                "com.tb.helix.harness.prompt" }) {
             long count = classes.stream().filter(c -> c.getPackageName().startsWith(pkg)).count();
             org.assertj.core.api.Assertions.assertThat(count)
                     .as("package %s holds no classes — either it is unwritten, or the package "

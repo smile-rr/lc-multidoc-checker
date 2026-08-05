@@ -25,7 +25,7 @@
    ┌──────────┴───────────────┬─────────────────────────┐
    ▼                          ▼                         ▼
 ChatCompletionsBackend    (your SDK backend)      (your gateway backend)
-harness/llm/chatcompletions/
+harness/llm/backend/chatcompletions/
 ```
 
 `ModelBackend` is deliberately the *narrowest* thing that can still be called a model
@@ -361,6 +361,6 @@ That is where the vendor-neutrality lives: in the ports, not in a package's name
 
 1. `harness/llm/backend/package-info.java` — the four obligations, in the source.
 2. `harness/llm/backend/ModelBackend.java` — the two methods.
-3. `harness/llm/chatcompletions/ChatCompletionsBackend.java` — the worked example, ~150 lines.
+3. `harness/llm/backend/chatcompletions/ChatCompletionsBackend.java` — the worked example, ~150 lines.
 4. `harness/llm/StandardLlmGateway.java` — what you are inheriting, so you know not to rebuild it.
 5. This document, for the parts that are decisions rather than code.

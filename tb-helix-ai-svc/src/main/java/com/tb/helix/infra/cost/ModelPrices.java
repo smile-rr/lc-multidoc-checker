@@ -44,8 +44,16 @@ public class ModelPrices {
      * One rate, and the input length up to which it applies.
      *
      * @param upToPromptTokens inclusive upper bound on the input that selects this band
+     * @param cachedIn         what input served from the provider's prompt cache costs. Null
+     *                         where the vendor has no cache rate, and then a cached token is
+     *                         charged at {@code in} — never at zero
+     * @param cacheWrite       what input <em>written into</em> that cache costs, which is
+     *                         dearer than ordinary input where it is priced apart at all.
+     *                         Null means this vendor does not separate it, and a write is
+     *                         charged at {@code in}
      */
-    public record Band(int upToPromptTokens, BigDecimal in, BigDecimal out, BigDecimal cachedIn) {
+    public record Band(int upToPromptTokens, BigDecimal in, BigDecimal out,
+                       BigDecimal cachedIn, BigDecimal cacheWrite) {
     }
 
     /**
@@ -56,7 +64,7 @@ public class ModelPrices {
      */
     public record Price(
             String family, String label, String vendor, String tier,
-            BigDecimal in, BigDecimal out, BigDecimal cachedIn,
+            BigDecimal in, BigDecimal out, BigDecimal cachedIn, BigDecimal cacheWrite,
             List<Band> bands, List<String> patterns,
             String note, LocalDate quotedOn) {
 
@@ -82,7 +90,7 @@ public class ModelPrices {
             }
             if (fits != null) return fits;
             if (widest != null) return widest;
-            return new Band(Integer.MAX_VALUE, in, out, cachedIn);
+            return new Band(Integer.MAX_VALUE, in, out, cachedIn, cacheWrite);
         }
 
         /**
@@ -108,11 +116,33 @@ public class ModelPrices {
          */
         public BigDecimal costInBandOf(long bandLength, long promptTokens,
                                        long completionTokens, long cachedPromptTokens) {
+            return costInBandOf(bandLength, promptTokens, completionTokens, cachedPromptTokens, 0);
+        }
+
+        /**
+         * The same, with the part of the input that was <em>written</em> into the provider's
+         * prompt cache priced at its own rate.
+         *
+         * <p>Three slices of one number, and the arithmetic only works because they are
+         * slices: {@code cachedPromptTokens} and {@code cacheWriteTokens} are both already
+         * inside {@code promptTokens}, so what is left after taking both out is what the
+         * provider read afresh. Adding them to the input instead of subtracting them from it
+         * bills the same tokens twice, and the total would still look plausible.
+         *
+         * <p>A write is dearer than ordinary input, not cheaper — roughly 1.25× where it is
+         * priced apart. Pricing it at the cache <em>read</em> rate by mistake would make the
+         * call that establishes a prefix look like the calls that ride it, which is the one
+         * comparison the images-before-instruction ordering has to be judged on.
+         */
+        public BigDecimal costInBandOf(long bandLength, long promptTokens, long completionTokens,
+                                       long cachedPromptTokens, long cacheWriteTokens) {
             Band band = bandFor(bandLength);
-            long fresh = Math.max(0, promptTokens - cachedPromptTokens);
-            BigDecimal cacheRate = band.cachedIn() == null ? band.in() : band.cachedIn();
+            long fresh = Math.max(0, promptTokens - cachedPromptTokens - cacheWriteTokens);
+            BigDecimal readRate = band.cachedIn() == null ? band.in() : band.cachedIn();
+            BigDecimal writeRate = band.cacheWrite() == null ? band.in() : band.cacheWrite();
             return band.in().multiply(BigDecimal.valueOf(fresh))
-                    .add(cacheRate.multiply(BigDecimal.valueOf(cachedPromptTokens)))
+                    .add(readRate.multiply(BigDecimal.valueOf(cachedPromptTokens)))
+                    .add(writeRate.multiply(BigDecimal.valueOf(cacheWriteTokens)))
                     .add(band.out().multiply(BigDecimal.valueOf(completionTokens)))
                     .divide(PER, 6, RoundingMode.HALF_UP);
         }
@@ -121,7 +151,7 @@ public class ModelPrices {
     /** The family a model id resolves to when the book has never heard of it. */
     public static final Price UNKNOWN = new Price(
             null, "Unpriced", "unknown", "none",
-            BigDecimal.ZERO, BigDecimal.ZERO, null, List.of(), List.of(),
+            BigDecimal.ZERO, BigDecimal.ZERO, null, null, List.of(), List.of(),
             null, null);
 
     private final JdbcTemplate jdbc;
@@ -139,7 +169,8 @@ public class ModelPrices {
             java.util.Map<String, List<Band>> bands = new java.util.HashMap<>();
             jdbc.query("""
                     SELECT family, up_to_prompt_tokens,
-                           in_per_million, out_per_million, cached_in_per_million
+                           in_per_million, out_per_million, cached_in_per_million,
+                           cache_write_per_million
                       FROM helix_infra.model_price_band
                      ORDER BY family, up_to_prompt_tokens
                     """, rs -> {
@@ -147,12 +178,14 @@ public class ModelPrices {
                         .add(new Band(rs.getInt("up_to_prompt_tokens"),
                                 rs.getBigDecimal("in_per_million"),
                                 rs.getBigDecimal("out_per_million"),
-                                rs.getBigDecimal("cached_in_per_million")));
+                                rs.getBigDecimal("cached_in_per_million"),
+                                rs.getBigDecimal("cache_write_per_million")));
             });
 
             List<Price> rows = jdbc.query("""
                     SELECT family, label, vendor, tier,
                            in_per_million, out_per_million, cached_in_per_million,
+                           cache_write_per_million,
                            match_patterns, note, quoted_on
                       FROM helix_infra.model_price
                     """, (rs, i) -> new Price(
@@ -160,6 +193,7 @@ public class ModelPrices {
                     rs.getString("tier"),
                     rs.getBigDecimal("in_per_million"), rs.getBigDecimal("out_per_million"),
                     rs.getBigDecimal("cached_in_per_million"),
+                    rs.getBigDecimal("cache_write_per_million"),
                     bands.getOrDefault(rs.getString("family"), List.of()),
                     patterns(rs.getArray("match_patterns")),
                     rs.getString("note"),
@@ -190,21 +224,23 @@ public class ModelPrices {
                 INSERT INTO helix_infra.model_price
                     (family, label, vendor, tier,
                      in_per_million, out_per_million, cached_in_per_million,
+                     cache_write_per_million,
                      match_patterns, note, quoted_on)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (family) DO UPDATE SET
-                    label                 = EXCLUDED.label,
-                    vendor                = EXCLUDED.vendor,
-                    tier                  = EXCLUDED.tier,
-                    in_per_million        = EXCLUDED.in_per_million,
-                    out_per_million       = EXCLUDED.out_per_million,
-                    cached_in_per_million = EXCLUDED.cached_in_per_million,
-                    match_patterns        = EXCLUDED.match_patterns,
-                    note                  = EXCLUDED.note,
-                    quoted_on             = EXCLUDED.quoted_on
+                    label                   = EXCLUDED.label,
+                    vendor                  = EXCLUDED.vendor,
+                    tier                    = EXCLUDED.tier,
+                    in_per_million          = EXCLUDED.in_per_million,
+                    out_per_million         = EXCLUDED.out_per_million,
+                    cached_in_per_million   = EXCLUDED.cached_in_per_million,
+                    cache_write_per_million = EXCLUDED.cache_write_per_million,
+                    match_patterns          = EXCLUDED.match_patterns,
+                    note                    = EXCLUDED.note,
+                    quoted_on               = EXCLUDED.quoted_on
                 """,
                 price.family(), price.label(), price.vendor(), price.tier(),
-                price.in(), price.out(), price.cachedIn(),
+                price.in(), price.out(), price.cachedIn(), price.cacheWrite(),
                 price.patterns().toArray(String[]::new),
                 price.note(),
                 price.quotedOn() == null ? Date.valueOf(LocalDate.now()) : Date.valueOf(price.quotedOn()));
@@ -214,10 +250,12 @@ public class ModelPrices {
             jdbc.update("""
                     INSERT INTO helix_infra.model_price_band
                         (family, up_to_prompt_tokens,
-                         in_per_million, out_per_million, cached_in_per_million)
-                    VALUES (?, ?, ?, ?, ?)
+                         in_per_million, out_per_million, cached_in_per_million,
+                         cache_write_per_million)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
-                    price.family(), b.upToPromptTokens(), b.in(), b.out(), b.cachedIn());
+                    price.family(), b.upToPromptTokens(), b.in(), b.out(), b.cachedIn(),
+                    b.cacheWrite());
         }
         refresh();
     }

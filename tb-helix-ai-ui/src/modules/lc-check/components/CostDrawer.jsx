@@ -8,7 +8,7 @@ import { usePersistedState } from '@shared/lib/usePersistedState'
 import { durationShort, usdFine, seconds2, percent, plural } from '@shared/lib/format'
 // The same grouping the run log uses. Two formatters for one fact would let the
 // panel and the log disagree about a number they both read off the ledger.
-import { tokens as tok, CACHE } from '../state/runLog.js'
+import { tokens as tok, CACHE, REASONING } from '../state/runLog.js'
 
 /**
  * The one hue in this drawer: spend that bought nothing.
@@ -246,7 +246,8 @@ function TokenLine({ cost }) {
   if (!billed && !avoided) return null
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 14px', marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--me-grey-08)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
-      <Tokens tokensIn={cost.tokensIn} tokensOut={cost.tokensOut} promptCached={cost.tokensCachedIn} />
+      <Tokens tokensIn={cost.tokensIn} tokensOut={cost.tokensOut} promptCached={cost.tokensCachedIn}
+        cacheWrite={cost.tokensCacheWrite} reasoning={cost.tokensReasoning} />
       {avoided ? (
         <Tokens tokensIn={cost.tokensInAvoided} tokensOut={cost.tokensOutAvoided} cached />
       ) : null}
@@ -275,7 +276,7 @@ function TokenLine({ cost }) {
  * coloured at all: this drawer reports a bill, and a bill has no good or bad state
  * to signal.
  */
-function Tokens({ tokensIn, tokensOut, cached, promptCached }) {
+function Tokens({ tokensIn, tokensOut, cached, promptCached, cacheWrite, reasoning }) {
   return (
     <span
       title={cached ? CACHE.local.title : 'Tokens sent to and returned by the model, and charged for'}
@@ -291,7 +292,24 @@ function Tokens({ tokensIn, tokensOut, cached, promptCached }) {
           ({tok(promptCached)} {CACHE.prompt.word})
         </span>
       ) : null}
+      {/*
+        Deliberately NOT in the muted grey the prompt-cache figure wears. That grey means
+        "this part was cheaper"; a cache write is the part that was dearer, and dressing the
+        two the same would read as one saving reported twice. Ordinary ink, no hue — this
+        drawer reports a bill, and money spent on purpose is not a warning.
+      */}
+      {cacheWrite ? (
+        <span title={CACHE.written.title}>
+          ({tok(cacheWrite)} {CACHE.written.word})
+        </span>
+      ) : null}
       <span>out {tok(tokensOut ?? 0)}</span>
+      {/* Inside the output figure it follows, like the prompt cache is inside the input. */}
+      {reasoning ? (
+        <span title={REASONING.title} style={{ color: 'var(--me-grey-50)' }}>
+          ({tok(reasoning)} {REASONING.word})
+        </span>
+      ) : null}
     </span>
   )
 }
@@ -540,7 +558,8 @@ function StepList({ cost, completedCount }) {
                   counts are what tell them apart. */}
               {done && (r.tokensIn || r.tokensOut || avoided) ? (
                 <span style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 12px', marginTop: 2, fontFamily: 'var(--font-mono)', fontSize: 10.5 }}>
-                  {r.tokensIn || r.tokensOut ? <Tokens tokensIn={r.tokensIn} tokensOut={r.tokensOut} promptCached={r.tokensCachedIn} /> : null}
+                  {r.tokensIn || r.tokensOut ? <Tokens tokensIn={r.tokensIn} tokensOut={r.tokensOut} promptCached={r.tokensCachedIn}
+                                      cacheWrite={r.tokensCacheWrite} reasoning={r.tokensReasoning} /> : null}
                   {avoided ? <Tokens tokensIn={r.tokensInAvoided} tokensOut={r.tokensOutAvoided} cached /> : null}
                 </span>
               ) : null}

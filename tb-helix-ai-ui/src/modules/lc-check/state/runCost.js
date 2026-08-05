@@ -208,6 +208,8 @@ export function summariseLedger(spend = [], pageCount = 0) {
       tokensIn: 0,
       tokensOut: 0,
       tokensCachedIn: 0,
+      tokensCacheWrite: 0,
+      tokensReasoning: 0,
       tokensInAvoided: 0,
       tokensOutAvoided: 0,
       ms: 0,
@@ -222,6 +224,8 @@ export function summariseLedger(spend = [], pageCount = 0) {
     at.tokensIn += r.tokensIn || 0
     at.tokensOut += r.tokensOut || 0
     at.tokensCachedIn += r.tokensCached || 0
+    at.tokensCacheWrite += r.tokensCacheWrite || 0
+    at.tokensReasoning += r.tokensReasoning || 0
     at.tokensInAvoided += r.tokensInAvoided || 0
     at.tokensOutAvoided += r.tokensOutAvoided || 0
     at.ms += r.ms || 0
@@ -270,6 +274,14 @@ export function summariseLedger(spend = [], pageCount = 0) {
         // the prefix and charged those tokens at about a tenth of the rate. Shown
         // inside the input figure it discounts, never added to it.
         tokensCachedIn: r.tokensCachedIn || 0,
+        // The other side of that trade, and the only "cache" figure that costs more:
+        // input written into the provider's cache, billed at a premium. Also inside
+        // tokensIn — the reads above are what it buys.
+        tokensCacheWrite: r.tokensCacheWrite || 0,
+        // Inside tokensOut, not beside it. Billed at the output rate, so this moves no
+        // total; it is what makes "why did the plan cost four times the extraction"
+        // answerable rather than a shrug.
+        tokensReasoning: r.tokensReasoning || 0,
         // Kept apart from the billed pair rather than added to it. A cache hit's
         // tokens are what the original call reported, so summing the two would
         // report work this run never did — and would make a fully cached step,
@@ -324,9 +336,13 @@ export function summariseLedger(spend = [], pageCount = 0) {
       inPerMillion: num(r.inPerMillion),
       outPerMillion: num(r.outPerMillion),
       cachedInPerMillion: r.cachedInPerMillion == null ? null : num(r.cachedInPerMillion),
+      // Null where the vendor does not price a cache write apart, and then a write costs
+      // the ordinary input rate. Never zero — zero is a rate, and free is not what this is.
+      cacheWritePerMillion: r.cacheWritePerMillion == null ? null : num(r.cacheWritePerMillion),
       bandUpTo: r.bandUpTo ?? null,
       calls: 0, cached: 0, failed: 0,
       tokensIn: 0, tokensOut: 0, tokensCachedIn: 0,
+      tokensCacheWrite: 0, tokensReasoning: 0,
       tokensInAvoided: 0, tokensOutAvoided: 0,
       cost: 0, costAvoided: 0,
     }
@@ -336,6 +352,8 @@ export function summariseLedger(spend = [], pageCount = 0) {
     at.tokensIn += r.tokensIn || 0
     at.tokensOut += r.tokensOut || 0
     at.tokensCachedIn += r.tokensCached || 0
+    at.tokensCacheWrite += r.tokensCacheWrite || 0
+    at.tokensReasoning += r.tokensReasoning || 0
     at.tokensInAvoided += r.tokensInAvoided || 0
     at.tokensOutAvoided += r.tokensOutAvoided || 0
     at.cost += Number(r.cost) || 0
@@ -365,6 +383,8 @@ export function summariseLedger(spend = [], pageCount = 0) {
     tokensOut: sum((r) => r.tokensOut),
     tokens: sum((r) => r.tokensIn + r.tokensOut),
     tokensCachedIn: sum((r) => r.tokensCachedIn),
+    tokensCacheWrite: sum((r) => r.tokensCacheWrite),
+    tokensReasoning: sum((r) => r.tokensReasoning),
     tokensInAvoided: sum((r) => r.tokensInAvoided),
     tokensOutAvoided: sum((r) => r.tokensOutAvoided),
     retries: sum((r) => r.retries),

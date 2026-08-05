@@ -1,4 +1,4 @@
-package com.tb.helix.infra.prompt;
+package com.tb.helix.harness.prompt;
 
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;

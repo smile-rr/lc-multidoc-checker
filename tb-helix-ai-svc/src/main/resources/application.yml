@@ -185,6 +185,39 @@ helix:
   # --- Models -------------------------------------------------------------
   # Slots are numbered and uniform; a provider switch is base-url + api-key.
   models:
+    # Every slot names the backend that owns it. Absent means `chat-completions`, which is
+    # what every slot here has always been, so nothing below needs the line.
+    #
+    # `spring-ai` is the second backend (harness/llm/springai). It exists to reach providers
+    # that are not OpenAI-shaped — Anthropic, and Bedrock or Vertex when they are added —
+    # without writing and then maintaining a wire adapter per vendor. A slot on it also names
+    # `provider: openai | anthropic`, which chooses the ChatModel to build.
+    #
+    # Three things to know before moving a role onto it:
+    #
+    #   1. It refuses images, deliberately and loudly. Spring AI's UserMessage carries text
+    #      and media separately, so images-before-instruction cannot be expressed — and the
+    #      wrong order roughly triples the interpret bill while reporting nothing. segment,
+    #      extract and transcribe stay on chat-completions.
+    #   2. extra-body has nowhere to go: its options are typed. A slot needing
+    #      enable_thinking:false — every Qwen-family model — belongs on chat-completions.
+    #      The backend logs any hint it could not apply rather than dropping it silently.
+    #   3. Moving a role changes its derivation-cache identity (backend/model@host is part of
+    #      the key), so the first run after a switch recomputes rather than serving answers
+    #      the other backend produced. That is the point, not a cost to avoid.
+    #
+    # An A/B is therefore a slot, not a branch: point llm-2 at the same model and endpoint as
+    # llm-1 with backend: spring-ai, move one role to it, and compare the two in the ledger.
+    #
+    #   llm-3:
+    #     enabled: false
+    #     backend: spring-ai
+    #     provider: anthropic
+    #     base-url: ${LLM_3_BASE_URL:https://api.anthropic.com}
+    #     api-key: ${LLM_3_API_KEY:}
+    #     model: ${LLM_3_MODEL:claude-sonnet-4-5}
+    #     temperature: 0
+    #     max-tokens: 8192
     text:
       llm-1:
         enabled: true
@@ -264,6 +297,21 @@ helix:
     plan:       [llm-1]
     judge:      [llm-1]
     narrate:    [llm-1]
+
+  # --- The gateway itself, not any one provider ---------------------------
+  llm:
+    # How many tools from ONE model turn are run at once.
+    #
+    # Not a turn budget and not related to one — helix.check.plan.max-turns bounds how many
+    # completions a conversation may take, and this bounds how long a single turn takes to
+    # answer. A model that asks for six conditions to be checked gets one round trip either
+    # way; the only question is whether the six compilations happen one after another inside
+    # it. They are independent by construction, so they do not have to.
+    #
+    # Four rather than more because a tool handler here is CPU-bound local work — RuleCompiler
+    # against the dictionary — not a network call, and the thing being overlapped is
+    # milliseconds of it. Raising this buys nothing once the handlers outnumber the cores.
+    tool-concurrency: 4
 
   # --- lc-check -----------------------------------------------------------
   check:

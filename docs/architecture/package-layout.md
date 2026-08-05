@@ -73,11 +73,38 @@ governance/
 ├── spi/            CheckCatalog — what governance offers other modules (see §4)
 └── types/          Severity, Tier, CheckType, CitedAs, DocType — the shared kernel
 
-harness/            doc/ · llm/ (+ text, vision, tool, chatcompletions)
-infra/              blob/ · cache/ · config/ · error/ · pipeline/ · stream/
+harness/            doc/ · prompt/ · llm/ (+ text, vision, tool, backend/{chatcompletions,springai})
+infra/              blob/ · cache/ · config/ · cost/ · error/ · pipeline/ · stream/
                     pipeline/ is the domain-neutral step engine — Step, StepResult,
                     StepPhase, StepJournal, PipelineEngine. Flat, as infra always is.
 ```
+
+### Two placements that were argued and settled
+
+**`prompt/` is harness, not infra.** It began in `infra/prompt`, where `Prompts` opened its own
+javadoc with *"The text we send to models."* — model knowledge in the layer defined as having none.
+It was also **half a capability**: this side loads the `.st` file, `harness/llm/text/PromptContext`
+assembles it, and the assembled text is what `DerivationKey` hashes. One concern should not
+straddle a layer boundary. That `ClasspathPrompts` reads bytes off the classpath does not make it
+infra, any more than PDFBox reading a file makes `PdfBoxPageRenderer` infra.
+
+**`cost/` stays in infra, and the layer line overstates the case.** By the strict wording above —
+infra *"knows nothing about models"* — `ModelCallLog` and `ModelPrices` look misplaced: they carry
+model ids, token counts and per-million rates. They are staying, for two reasons that outrank the
+wording:
+
+- **A ledger is rows.** `helix_infra.model_call` and `helix_infra.model_price` are in the infra
+  schema deliberately — `V12` says so in a comment, and adds that this schema *"must not know what
+  an examination is"*, which is the constraint that actually matters. A table whose columns mention
+  models is still a table, not a capability.
+- **`infra/cache/LayeredCache` writes through it.** A derivation hit records a `CACHED` row so the
+  panel can price what was avoided, and the cache is unambiguously infra. Moving the ledger up
+  would make infra depend on harness and break the one rule the whole layout exists to enforce.
+  The alternative — every `computeIfAbsent` caller recording its own row — is the duplication
+  `ModelSpend` was written to remove.
+
+`CallScope` stays for the same reason twice over: `infra/pipeline/FanOut` binds it, and three
+nullable strings are as domain-neutral as a type gets.
 
 Interfaces sit **beside** their implementations. There is no `impl/` package and there will not be
 one: `Fluff` and `FluffImpl` in mirrored trees tells a reader nothing and costs them a jump. What

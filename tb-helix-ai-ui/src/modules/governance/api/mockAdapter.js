@@ -74,21 +74,21 @@ export const addComment = (comment) => accept(comment)
 let mockPrices = [
   {
     family: 'qwen-flash', label: 'Qwen Flash', vendor: 'alibaba', tier: 'economy',
-    inPerMillion: 0.25, outPerMillion: 1.5, cachedInPerMillion: null,
+    inPerMillion: 0.25, outPerMillion: 1.5, cachedInPerMillion: null, cacheWritePerMillion: null,
     patterns: ['qwen3.7-flash', 'qwen-flash', 'qwen3.7-vl-flash', 'qwen-vl-flash'],
     note: 'Text and vision flash ids share this family.', quotedOn: '2026-07-31',
     bands: [],
   },
   {
     family: 'qwen-plus', label: 'Qwen Plus', vendor: 'alibaba', tier: 'balanced',
-    inPerMillion: 0.4, outPerMillion: 1.6, cachedInPerMillion: null,
+    inPerMillion: 0.4, outPerMillion: 1.6, cachedInPerMillion: null, cacheWritePerMillion: null,
     patterns: ['qwen3.7-plus', 'qwen-plus', 'qwen-vl-plus'],
     note: null, quotedOn: '2026-07-31',
     bands: [],
   },
   {
     family: 'deepseek-flash', label: 'DeepSeek Flash', vendor: 'deepseek', tier: 'economy',
-    inPerMillion: 0.14, outPerMillion: 0.28, cachedInPerMillion: 0.0028,
+    inPerMillion: 0.14, outPerMillion: 0.28, cachedInPerMillion: 0.0028, cacheWritePerMillion: null,
     patterns: ['deepseek-v4-flash', 'deepseek-chat'], note: null, quotedOn: '2026-07-31',
     bands: [],
   },

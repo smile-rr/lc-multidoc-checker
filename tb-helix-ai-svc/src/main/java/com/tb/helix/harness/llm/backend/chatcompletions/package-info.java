@@ -22,4 +22,4 @@
  * <p>That is where the vendor-neutrality lives — in the ports, not in this package's name.
  * A package called {@code openai} suggested otherwise, which is why it is gone.
  */
-package com.tb.helix.harness.llm.chatcompletions;
+package com.tb.helix.harness.llm.backend.chatcompletions;

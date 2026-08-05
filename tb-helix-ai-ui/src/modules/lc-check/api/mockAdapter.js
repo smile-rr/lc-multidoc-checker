@@ -198,6 +198,22 @@ export async function getSpend() {
     { stage: 'interpret', step: 'segment', modelId: 'qwen3.7-flash', family: 'qwen-flash', role: 'segment',
       kind: 'VISION', calls: 1, cached: 1, failed: 0, tokensIn: 0, tokensOut: 0, tokensCached: 0, ms: 0, cost: 0,
       firstAt: '2025-01-28T10:00:10.000Z' },
+    // Reads two and three over the same pages: the images were byte-identical, so the
+    // provider served most of the input from its own prompt cache. `tokensCached` is a part
+    // of `tokensIn` and never an addition to it — the drawer prints it inside the input
+    // figure it discounts, which is the only reading that matches the invoice.
+    { stage: 'interpret', step: 'extract', modelId: 'qwen3.7-flash', family: 'qwen-flash', role: 'extract',
+      kind: 'VISION', calls: 3, cached: 0, failed: 0, tokensIn: 41280, tokensOut: 2140,
+      tokensCached: 26400, tokensCacheWrite: 13200, tokensReasoning: 0, ms: 18400, cost: 0.008912,
+      firstAt: '2025-01-28T10:00:22.000Z' },
+    // The governing call, and the only one that reasons on purpose. Most of what it
+    // produced was thinking rather than answer — which is the whole reason the count is
+    // here: it is inside `tokensOut` and billed at the output rate, so it moves no total
+    // and explains a step that otherwise looks inexplicably dear for one call.
+    { stage: 'plan', step: 'govern', modelId: 'qwen3.7-plus', family: 'qwen-plus', role: 'plan',
+      kind: 'TEXT', calls: 1, cached: 0, failed: 0, tokensIn: 6820, tokensOut: 3960,
+      tokensCached: 0, tokensCacheWrite: 0, tokensReasoning: 3110, ms: 12300, cost: 0.009064,
+      firstAt: '2025-01-28T10:01:04.000Z' },
   ]
 }
 

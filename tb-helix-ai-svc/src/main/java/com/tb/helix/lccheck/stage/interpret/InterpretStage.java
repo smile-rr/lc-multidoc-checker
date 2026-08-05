@@ -13,7 +13,7 @@ import com.tb.helix.infra.cache.DerivationKey;
 import com.tb.helix.infra.cost.CallScope;
 import com.tb.helix.infra.pipeline.FanOut;
 import com.tb.helix.infra.pipeline.Step;
-import com.tb.helix.infra.prompt.Prompts;
+import com.tb.helix.harness.prompt.Prompts;
 import com.tb.helix.infra.pipeline.StepResult;
 import com.tb.helix.infra.stream.HelixEvent;
 import com.tb.helix.lccheck.persistence.CaseStore;
@@ -217,7 +217,7 @@ public class InterpretStage implements Stage {
                     "continuation", continuation));
 
             var key = new DerivationKey(CacheOp.SEGMENT_BUNDLE, CacheOp.SEGMENT_BUNDLE_V, pdfSha,
-                    from + "-" + to, DerivationKey.sha256Hex(prompt), "role:segment", null,
+                    from + "-" + to, DerivationKey.sha256Hex(prompt), models.identity(LlmRole.SEGMENT), null,
                     spec.asCacheParams());
 
             var hit = cache.computeIfAbsent(key, Map.class, () -> {
@@ -456,7 +456,7 @@ public class InterpretStage implements Stage {
         ctx.announce(stepKey, "Reading the " + docTypes.label(code).toLowerCase());
 
         var key = new DerivationKey(CacheOp.EXTRACT_DOC, CacheOp.EXTRACT_DOC_V, pdfSha, scope,
-                DerivationKey.sha256Hex(prompt), "role:extract", null, spec.asCacheParams());
+                DerivationKey.sha256Hex(prompt), models.identity(LlmRole.EXTRACT), null, spec.asCacheParams());
 
         // Narrowed to the key this pass announces and records under. The stage bound
         // `extract` — the declared step — which was precise enough while documents were read
@@ -547,7 +547,7 @@ public class InterpretStage implements Stage {
         ctx.announce(stepKey, "Layout text · " + docTypes.label(code).toLowerCase());
 
         var key = new DerivationKey(CacheOp.EXTRACT_DOC_MD, CacheOp.EXTRACT_DOC_MD_V, pdfSha, scope,
-                DerivationKey.sha256Hex(prompt), "role:extract.md", null, spec.asCacheParams());
+                DerivationKey.sha256Hex(prompt), models.identity(LlmRole.EXTRACT), null, spec.asCacheParams());
 
         CallScope.bind(CallScope.current().atStep(stepKey), () -> {
             try {

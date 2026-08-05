@@ -10,7 +10,7 @@ import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
 import com.tb.helix.infra.error.DocumentException;
-import com.tb.helix.infra.prompt.Prompts;
+import com.tb.helix.harness.prompt.Prompts;
 import com.tb.helix.lccheck.service.ModelSpend;
 
 import org.slf4j.Logger;
@@ -73,7 +73,7 @@ public class CreditScanTranscriber {
         String prompt = prompts.get("credit-transcribe");
         var key = new DerivationKey(CacheOp.TRANSCRIBE_CREDIT, CacheOp.TRANSCRIBE_CREDIT_V,
                 pdfSha, "pages:1-" + take,
-                DerivationKey.sha256Hex(prompt), "role:transcribe", null,
+                DerivationKey.sha256Hex(prompt), models.identity(LlmRole.TRANSCRIBE), null,
                 spec.asCacheParams());
 
         var hit = cache.computeIfAbsent(key, String.class, () -> {

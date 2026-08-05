@@ -11,7 +11,7 @@ import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.CacheTier;
 import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
-import com.tb.helix.infra.prompt.Prompts;
+import com.tb.helix.harness.prompt.Prompts;
 import com.tb.helix.lccheck.persistence.CaseStore;
 
 import org.springframework.stereotype.Component;
@@ -132,7 +132,7 @@ public class DocumentAttestor {
         String prompt = prompt(docCode);
 
         var key = new DerivationKey(CacheOp.ATTEST_DOC, CacheOp.ATTEST_DOC_V, pdfSha, scope,
-                DerivationKey.sha256Hex(prompt), "role:attest", null, renderSpec.asCacheParams());
+                DerivationKey.sha256Hex(prompt), models.identity(LlmRole.EXTRACT), null, renderSpec.asCacheParams());
 
         var hit = cache.computeIfAbsent(key, Map.class, () -> {
             List<byte[]> images = renderer.render(pdfSha, pages, renderSpec);

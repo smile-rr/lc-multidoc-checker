@@ -19,12 +19,14 @@ import com.tb.helix.harness.llm.vision.VisionResult;
 import com.tb.helix.infra.cost.CallScope;
 import com.tb.helix.infra.cost.ModelCallLog;
 import com.tb.helix.infra.error.LlmException;
+import com.tb.helix.infra.pipeline.FanOut;
 import com.tb.helix.infra.stream.EventBus;
 import com.tb.helix.infra.stream.HelixEvent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -80,6 +82,7 @@ public class StandardLlmGateway implements LlmGateway {
     private final ObjectMapper json;
     private final ModelCallLog calls;
     private final EventBus events;
+    private final int toolConcurrency;
     private final ExecutorService slotPool = Executors.newVirtualThreadPerTaskExecutor();
 
     /** A handle and the backend that owns it. Resolved per call; nothing is cached. */
@@ -88,13 +91,15 @@ public class StandardLlmGateway implements LlmGateway {
 
     public StandardLlmGateway(List<ModelBackend> backends, LlmProperties props,
                               RenderProperties render, ObjectMapper json,
-                              ModelCallLog calls, EventBus events) {
+                              ModelCallLog calls, EventBus events,
+                              @Value("${helix.llm.tool-concurrency:4}") int toolConcurrency) {
         this.backends = List.copyOf(backends);
         this.props = props;
         this.render = render;
         this.json = json;
         this.calls = calls;
         this.events = events;
+        this.toolConcurrency = toolConcurrency;
 
         log.info("Model backends: {}", backends.stream().map(ModelBackend::name).toList());
         props.roles().forEach((role, names) -> {
@@ -129,18 +134,16 @@ public class StandardLlmGateway implements LlmGateway {
             Completion response = bound.backend().call(bound.handle(), exchange);
 
             record(bound, request.role(), ModelCallLog.Kind.TEXT, ModelCallLog.Status.OK,
-                    response.promptTokens(), response.completionTokens(), response.cachedPromptTokens(),
-                    response.latencyMs(), null, null);
+                    response, response.latencyMs(), null, null);
 
-            return new TextResult(response.text(), response.raw(), bound.handle().model(),
-                    new TokenUsage(response.promptTokens(), response.completionTokens(),
-                            response.latencyMs(), false));
+            return new TextResult(response.text(), response.reasoning(), response.raw(),
+                    bound.handle().model(), usageOf(response));
 
         } catch (RuntimeException e) {
             // A failure costs latency and no tokens, so it leaves no trace in a token
             // ledger — and it is the row somebody looking into a slow run wants first.
             record(bound, request.role(), ModelCallLog.Kind.TEXT, statusOf(e),
-                    0, 0, 0, (int) (System.currentTimeMillis() - began), e.getMessage(), null);
+                    null, (int) (System.currentTimeMillis() - began), e.getMessage(), null);
             throw e;
         }
     }
@@ -229,23 +232,28 @@ public class StandardLlmGateway implements LlmGateway {
 
             Map<String, Object> fields = parseFields(response.text());
             record(bound, request.role(), ModelCallLog.Kind.VISION, ModelCallLog.Status.OK,
-                    response.promptTokens(), response.completionTokens(), response.cachedPromptTokens(),
-                    response.latencyMs(), null, request);
+                    response, response.latencyMs(), null, request);
 
             return new VisionResult.SlotResult(bound.handle().id(), bound.handle().model(), fields,
-                    response.raw(), false, null,
-                    new TokenUsage(response.promptTokens(), response.completionTokens(),
-                            response.latencyMs(), false));
+                    response.raw(), false, null, usageOf(response));
 
         } catch (RuntimeException e) {
             log.warn("Vision slot {} failed: {}", bound.handle().id(), e.toString());
             // Per slot, not per read. Three slots where one always times out is a fact about
             // that slot, and a read recorded as a single success would hide it completely.
+            int ms = (int) (System.currentTimeMillis() - began);
             record(bound, request.role(), ModelCallLog.Kind.VISION, statusOf(e),
-                    0, 0, 0, (int) (System.currentTimeMillis() - began), e.getMessage(), request);
+                    null, ms, e.getMessage(), request);
             return new VisionResult.SlotResult(bound.handle().id(), bound.handle().model(), Map.of(),
-                    null, true, e.getMessage(), new TokenUsage(0, 0, 0, false));
+                    null, true, e.getMessage(), TokenUsage.none(ms));
         }
+    }
+
+    /** What a completion consumed, in the shape the run's cost record wants. */
+    private static TokenUsage usageOf(Completion response) {
+        return new TokenUsage(response.promptTokens(), response.completionTokens(),
+                response.cachedPromptTokens(), response.cacheWriteTokens(),
+                response.reasoningTokens(), response.latencyMs(), false);
     }
 
     /**
@@ -260,13 +268,22 @@ public class StandardLlmGateway implements LlmGateway {
      * stays readable. Everything an officer clicks for — dpi, long-edge, page bytes,
      * temperature — sits under {@code detail}.
      *
-     * @param vision the request when this was a vision call; null for text
+     * @param response what came back, or <b>null when nothing did</b> — a failed or timed-out
+     *                 attempt, which is recorded with zeroes across the board because it
+     *                 consumed no tokens and is still a row somebody needs
+     * @param vision   the request when this was a vision call; null for text
      */
     private void record(Bound bound, LlmRole role, ModelCallLog.Kind kind,
-                        ModelCallLog.Status status, Integer in, Integer out, Integer cachedIn,
+                        ModelCallLog.Status status, Completion response,
                         Integer ms, String error, VisionRequest vision) {
         var scope = CallScope.current();
         ModelHandle handle = bound.handle();
+
+        int in = response == null ? 0 : or0(response.promptTokens());
+        int out = response == null ? 0 : or0(response.completionTokens());
+        int cachedIn = response == null ? 0 : or0(response.cachedPromptTokens());
+        int cacheWrite = response == null ? 0 : or0(response.cacheWriteTokens());
+        int reasoning = response == null ? 0 : or0(response.reasoningTokens());
 
         // On the tape as well as in the ledger. The ledger answers "what did this run
         // spend"; the tape answers "what was it doing at 17:26:14", and a five-second gap
@@ -280,11 +297,15 @@ public class StandardLlmGateway implements LlmGateway {
             e.put("role", role == null ? null : role.name().toLowerCase());
             e.put("kind", kind.name());
             e.put("status", status.name());
-            e.put("tokensIn", in == null ? 0 : in);
-            e.put("tokensOut", out == null ? 0 : out);
+            e.put("tokensIn", in);
+            e.put("tokensOut", out);
             // Only when there was one. A zero here would read as "the prompt cache
-            // missed", which is a claim about a provider that may not have one.
-            if (cachedIn != null && cachedIn > 0) e.put("tokensCachedIn", cachedIn);
+            // missed", which is a claim about a provider that may not have one. Same
+            // reasoning for the other two: absent is "this provider does not report it",
+            // and a run log full of zeroes teaches a reader to stop looking.
+            if (cachedIn > 0) e.put("tokensCachedIn", cachedIn);
+            if (cacheWrite > 0) e.put("tokensCacheWrite", cacheWrite);
+            if (reasoning > 0) e.put("tokensReasoning", reasoning);
             e.put("ms", ms == null ? 0 : ms);
             Map<String, Object> detail = callDetail(bound, kind, vision);
             if (!detail.isEmpty()) e.put("detail", detail);
@@ -297,7 +318,7 @@ public class StandardLlmGateway implements LlmGateway {
                 role == null ? null : role.name().toLowerCase(),
                 handle.id(), handle.model(), bound.backend().name(),
                 kind, status, 1,
-                in == null ? 0 : in, out == null ? 0 : out, cachedIn == null ? 0 : cachedIn,
+                in, out, cachedIn, cacheWrite, reasoning,
                 ms, null, error));
     }
 
@@ -371,7 +392,8 @@ public class StandardLlmGateway implements LlmGateway {
         turns.add(Turn.ask(request.user()));
 
         List<ToolSpec.Call> made = new ArrayList<>();
-        int promptTokens = 0, completionTokens = 0, latency = 0;
+        int promptTokens = 0, completionTokens = 0, cachedIn = 0, cacheWrite = 0,
+                reasoningTokens = 0, latency = 0;
 
         // One iteration is one completion. The budget is enforced here and nowhere else,
         // so there is exactly one place an unbounded agent loop could come from — and a
@@ -379,22 +401,62 @@ public class StandardLlmGateway implements LlmGateway {
         for (int i = 1; i <= request.maxIterations(); i++) {
             Exchange exchange = new Exchange(request.role(), List.copyOf(turns), request.tools(),
                     false, null, request.overrides());
-            Completion response = bound.backend().call(bound.handle(), exchange);
-            promptTokens += or0(response.promptTokens());
-            completionTokens += or0(response.completionTokens());
-            latency += response.latencyMs();
-            record(bound, request.role(), ModelCallLog.Kind.TOOL, ModelCallLog.Status.OK,
-                    response.promptTokens(), response.completionTokens(),
-                    response.cachedPromptTokens(), response.latencyMs(), null, null);
 
-            if (!response.wantsTools()) {
-                return new ToolResult(response.text(), made, i, false, bound.handle().model(),
-                        new TokenUsage(promptTokens, completionTokens, latency, false));
+            long began = System.currentTimeMillis();
+            Completion response;
+            try {
+                response = bound.backend().call(bound.handle(), exchange);
+            } catch (RuntimeException e) {
+                // The other two paths have always done this and this one never did, so a
+                // JUDGE call that timed out mid-conversation cost wall clock and left no
+                // row at all — invisible in the ledger and invisible on the run log, which
+                // is the one combination that makes a slow run undiagnosable.
+                record(bound, request.role(), ModelCallLog.Kind.TOOL, statusOf(e),
+                        null, (int) (System.currentTimeMillis() - began), e.getMessage(), null);
+                throw e;
             }
 
+            promptTokens += or0(response.promptTokens());
+            completionTokens += or0(response.completionTokens());
+            cachedIn += or0(response.cachedPromptTokens());
+            cacheWrite += or0(response.cacheWriteTokens());
+            reasoningTokens += or0(response.reasoningTokens());
+            latency += response.latencyMs();
+            record(bound, request.role(), ModelCallLog.Kind.TOOL, ModelCallLog.Status.OK,
+                    response, response.latencyMs(), null, null);
+
+            TokenUsage usage = new TokenUsage(promptTokens, completionTokens, cachedIn,
+                    cacheWrite, reasoningTokens, latency, false);
+
+            if (!response.wantsTools()) {
+                return new ToolResult(response.text(), made, i, false, bound.handle().model(), usage);
+            }
+
+            // Every tool the model asked for in this one turn, run at once, then all of
+            // their results handed back in the *next* single completion — which is what the
+            // wire format has always meant by parallel tool calls and what the turn budget
+            // counts. Running them one per round trip would spend the budget on transport.
+            //
+            // Concurrent because they are independent by construction: a ToolSpec handler
+            // answers a question, and two answers cannot depend on the order they were
+            // asked in without the tool having hidden state, which is a bug in the tool.
+            // The planner drafting six conditions used to mean six sequential compilations
+            // inside one already-slow call.
+            //
+            // Order is preserved by FanOut, and it has to be: a tool result turn is matched
+            // to its call by id, and `made` is the audit trail a conclusion is defended on.
             turns.add(new Turn.Assistant(response.text(), response.toolCalls()));
-            for (ToolCall call : response.toolCalls()) {
-                String result = invoke(byName, call);
+            List<ToolCall> calls = response.toolCalls();
+            List<String> results = FanOut.over(calls, toolConcurrency,
+                    call -> invoke(byName, call));
+
+            for (int c = 0; c < calls.size(); c++) {
+                ToolCall call = calls.get(c);
+                // FanOut contributes null only for a failure its own net caught — invoke()
+                // already turns a handler's exception into text the model can read, so a
+                // null here is something rarer, and the model still has to be told.
+                String result = results.get(c) == null
+                        ? "Tool " + call.name() + " could not be run." : results.get(c);
                 made.add(new ToolSpec.Call(call.name(), argsOf(call), result));
                 turns.add(new Turn.ToolResult(call.id(), call.name(), result));
             }
@@ -405,7 +467,8 @@ public class StandardLlmGateway implements LlmGateway {
         log.warn("Tool loop for role {} exhausted its {} iteration budget after {} tool call(s)",
                 request.role(), request.maxIterations(), made.size());
         return new ToolResult(null, made, request.maxIterations(), true, bound.handle().model(),
-                new TokenUsage(promptTokens, completionTokens, latency, false));
+                new TokenUsage(promptTokens, completionTokens, cachedIn, cacheWrite,
+                        reasoningTokens, latency, false));
     }
 
     private String invoke(Map<String, ToolSpec> byName, ToolCall call) {
@@ -457,6 +520,41 @@ public class StandardLlmGateway implements LlmGateway {
 
     private Bound first(LlmRole role) {
         return resolve(role).get(0);
+    }
+
+    @Override
+    public String identity(LlmRole role) {
+        List<Bound> bound;
+        try {
+            bound = resolve(role);
+        } catch (LlmException e) {
+            // Not a failure here. A caller asking who would answer is building a cache key,
+            // and it will meet the real failure a moment later when it asks for an answer.
+            // Throwing now would turn "no model configured" into an exception from the cache
+            // layer, which is the wrong place to read that news.
+            return "unresolved/" + role.name().toLowerCase();
+        }
+        return bound.stream()
+                .map(b -> b.backend().name() + "/" + b.handle().model() + host(b.handle().endpoint()))
+                .collect(java.util.stream.Collectors.joining("+"));
+    }
+
+    /**
+     * The host of an endpoint, which is the part that identifies the provider.
+     *
+     * <p>Host and not the whole URL: a path or a query that differs between two otherwise
+     * identical deployments would split the cache for no reason, and the thing being asked is
+     * "whose model is this", which the host answers. Empty for an in-process backend, which
+     * has no provider to be distinguished from.
+     */
+    private static String host(String endpoint) {
+        if (endpoint == null || endpoint.isBlank()) return "";
+        try {
+            String h = java.net.URI.create(endpoint).getHost();
+            return h == null ? "" : "@" + h;
+        } catch (IllegalArgumentException e) {
+            return "@" + endpoint;
+        }
     }
 
     private static int or0(Integer i) {
@@ -515,15 +613,18 @@ public class StandardLlmGateway implements LlmGateway {
         }
 
         private static TokenUsage sumUsage(List<VisionResult.SlotResult> all) {
-            int in = 0, out = 0, ms = 0;
+            int in = 0, out = 0, cachedIn = 0, cacheWrite = 0, reasoning = 0, ms = 0;
             for (var r : all) {
                 if (r.usage() == null) continue;
                 in += or0(r.usage().promptTokens());
                 out += or0(r.usage().completionTokens());
+                cachedIn += or0(r.usage().cachedPromptTokens());
+                cacheWrite += or0(r.usage().cacheWriteTokens());
+                reasoning += or0(r.usage().reasoningTokens());
                 // Slots run concurrently, so wall clock is the slowest, not the sum.
                 ms = Math.max(ms, or0(r.usage().latencyMs()));
             }
-            return new TokenUsage(in, out, ms, false);
+            return new TokenUsage(in, out, cachedIn, cacheWrite, reasoning, ms, false);
         }
     }
 }

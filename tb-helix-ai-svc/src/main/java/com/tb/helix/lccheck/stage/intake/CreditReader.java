@@ -6,7 +6,7 @@ import com.tb.helix.harness.llm.text.TextRequest;
 import com.tb.helix.infra.cache.CacheOp;
 import com.tb.helix.infra.cache.DerivationCache;
 import com.tb.helix.infra.cache.DerivationKey;
-import com.tb.helix.infra.prompt.Prompts;
+import com.tb.helix.harness.prompt.Prompts;
 import com.tb.helix.lccheck.service.DocumentTypes;
 import com.tb.helix.lccheck.service.ModelSpend;
 import com.tb.helix.lccheck.service.ExtractionSpec;
@@ -82,7 +82,7 @@ public class CreditReader {
                 // The prompt is assembled from the dictionary, so its hash carries the
                 // bindings: change a read note in the console and the credit is read again
                 // rather than answered from a cache that used the old instruction.
-                DerivationKey.sha256Hex(prompt), "role:read_text", null, Map.of());
+                DerivationKey.sha256Hex(prompt), models.identity(LlmRole.READ_TEXT), null, Map.of());
 
         try {
             var hit = cache.computeIfAbsent(key, Map.class, () -> {

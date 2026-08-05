@@ -401,6 +401,25 @@ export const tokens = (n) => (n == null ? '' : Number(n).toLocaleString('en-US')
 export const CACHE = {
   local: { word: 'local cache', title: 'Answered from the local cache — no model was asked, nothing was billed' },
   prompt: { word: 'prompt cache', title: "The provider's own prompt cache — these input tokens were billed at a reduced rate" },
+  // The third thing called "cache", and the only one that costs *more*. Writing a prefix
+  // into a provider's cache is billed at a premium — around 1.25x input on the vendors that
+  // price it apart — and it is what the cheap reads above are bought with. Worded as an
+  // action rather than a state for that reason: "cached" would put it alongside the saving
+  // it paid for, which is the one reading that makes a bill look smaller than it is.
+  written: { word: 'written to cache', title: "Input written into the provider's prompt cache — billed at a premium, and what the reduced-rate reads are bought with" },
+}
+
+/**
+ * Output the model spent thinking rather than answering.
+ *
+ * <p>Not a cache concept, but it belongs beside them: it is the other figure that is part
+ * of a headline count rather than an addition to it. Reasoning tokens are inside the output
+ * total and billed at the output rate, so a panel that added them would report the run as
+ * larger than the invoice.
+ */
+export const REASONING = {
+  word: 'thinking',
+  title: 'Part of the output the model spent reasoning before it answered — already inside the output count, billed at the output rate',
 }
 
 /** Is anything still in flight? Drives whether the panel ticks. */

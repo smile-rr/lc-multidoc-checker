@@ -36,13 +36,15 @@ public class PgModelCallLog implements ModelCallLog {
                     INSERT INTO helix_infra.model_call
                         (case_id, stage, step, role, slot, model_id, provider, kind,
                          status, attempt, prompt_tokens, completion_tokens, cached_prompt_tokens,
+                         cache_write_tokens, reasoning_tokens,
                          latency_ms, derivation_key, error)
-                    VALUES (?::uuid, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?::uuid, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     call.caseId(), call.stage(), call.step(), call.role(), call.slot(),
                     call.modelId(), call.provider(),
                     call.kind().name(), call.status().name(), call.attempt(),
                     call.promptTokens(), call.completionTokens(), call.cachedPromptTokens(),
+                    call.cacheWriteTokens(), call.reasoningTokens(),
                     call.latencyMs(), call.derivationKey(), trim(call.error()));
         } catch (RuntimeException e) {
             log.debug("Model call not recorded ({} {}): {}", call.role(), call.modelId(), e.toString());
@@ -70,6 +72,10 @@ public class PgModelCallLog implements ModelCallLog {
                            FILTER (WHERE status = 'OK'), 0)            AS tokens_out,
                        COALESCE(SUM(cached_prompt_tokens)
                            FILTER (WHERE status = 'OK'), 0)            AS tokens_cached,
+                       COALESCE(SUM(cache_write_tokens)
+                           FILTER (WHERE status = 'OK'), 0)            AS tokens_cache_write,
+                       COALESCE(SUM(reasoning_tokens)
+                           FILTER (WHERE status = 'OK'), 0)            AS tokens_reasoning,
                        -- Avoided: derivation-cache hits carry what the original call reported.
                        COALESCE(SUM(prompt_tokens)
                            FILTER (WHERE status = 'CACHED'), 0)        AS tokens_in_avoided,
@@ -112,6 +118,10 @@ public class PgModelCallLog implements ModelCallLog {
             r.put("tokensIn", tin);
             r.put("tokensOut", tout);
             r.put("tokensCached", rs.getLong("tokens_cached"));
+            // Breakdowns of tokensIn and tokensOut, not additions to them. A panel that
+            // stacks all four as segments of one bar draws a run twice its real size.
+            r.put("tokensCacheWrite", rs.getLong("tokens_cache_write"));
+            r.put("tokensReasoning", rs.getLong("tokens_reasoning"));
             r.put("tokensInAvoided", tinAvoided);
             r.put("tokensOutAvoided", toutAvoided);
             r.put("ms", rs.getLong("ms"));
@@ -123,7 +133,8 @@ public class PgModelCallLog implements ModelCallLog {
             // the band for all of them.
             long longest = rs.getLong("longest");
             ModelPrices.Price price = prices.of(model);
-            r.put("cost", price.costInBandOf(longest, tin, tout, rs.getLong("tokens_cached")));
+            r.put("cost", price.costInBandOf(longest, tin, tout,
+                    rs.getLong("tokens_cached"), rs.getLong("tokens_cache_write")));
             r.put("costAvoided", price.costInBandOf(longest, tinAvoided, toutAvoided, 0));
             // The rate this row was actually priced at, so the drawer can show its
             // working rather than asking to be believed.
@@ -154,6 +165,10 @@ public class PgModelCallLog implements ModelCallLog {
                            FILTER (WHERE status = 'OK'), 0)                   AS tokens_out,
                        COALESCE(SUM(cached_prompt_tokens)
                            FILTER (WHERE status = 'OK'), 0)                   AS tokens_cached,
+                       COALESCE(SUM(cache_write_tokens)
+                           FILTER (WHERE status = 'OK'), 0)                   AS tokens_cache_write,
+                       COALESCE(SUM(reasoning_tokens)
+                           FILTER (WHERE status = 'OK'), 0)                   AS tokens_reasoning,
                        COALESCE(SUM(prompt_tokens)
                            FILTER (WHERE status = 'CACHED'), 0)               AS tokens_in_avoided,
                        COALESCE(SUM(completion_tokens)
@@ -180,9 +195,14 @@ public class PgModelCallLog implements ModelCallLog {
             r.put("cached", rs.getLong("cached"));
             r.put("failed", rs.getLong("failed"));
             r.put("cases", rs.getLong("cases"));
+            long tcacheWrite = rs.getLong("tokens_cache_write");
             r.put("tokensIn", tin);
             r.put("tokensOut", tout);
             r.put("tokensCachedIn", tcached);
+            // Both are breakdowns — tokensCacheWrite is inside tokensIn, tokensReasoning is
+            // inside tokensOut. Neither is a fifth quantity to add to a total.
+            r.put("tokensCacheWrite", tcacheWrite);
+            r.put("tokensReasoning", rs.getLong("tokens_reasoning"));
             r.put("tokensInAvoided", tinAvoided);
             r.put("tokensOutAvoided", toutAvoided);
             r.put("seconds", rs.getLong("ms") / 1000.0);
@@ -192,7 +212,7 @@ public class PgModelCallLog implements ModelCallLog {
             // prompt cache — two numbers for one bill, with nothing to say which was right.
             long longest = rs.getLong("longest");
             ModelPrices.Price price = prices.of(model);
-            r.put("cost", price.costInBandOf(longest, tin, tout, tcached));
+            r.put("cost", price.costInBandOf(longest, tin, tout, tcached, tcacheWrite));
             r.put("costAvoided", price.costInBandOf(longest, tinAvoided, toutAvoided, 0));
             // Same shape as spendForCase. Two endpoints that both answer "what did this
             // model cost" and describe the rate differently is the drift this class keeps
@@ -285,6 +305,10 @@ public class PgModelCallLog implements ModelCallLog {
         // Null where the vendor has no cache rate — the caller must then say the cached
         // input was charged at the ordinary input rate, which is what pricing does.
         r.put("cachedInPerMillion", band.cachedIn());
+        // Likewise null where writes are not priced apart. Dearer than input where it is
+        // not null, so a panel that renders it beside the cache read rate must not imply
+        // the two are the same kind of saving — one of them is what the saving costs.
+        r.put("cacheWritePerMillion", band.cacheWrite());
         // Only when the family actually has bands, and only when the one that applied is
         // not the last: an unbounded "up to 2147483647" is an implementation detail, and
         // printing it beside a rate would invite someone to read it as a real limit.
