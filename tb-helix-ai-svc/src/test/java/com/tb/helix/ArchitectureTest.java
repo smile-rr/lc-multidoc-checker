@@ -146,6 +146,30 @@ class ArchitectureTest {
     }
 
     @Test
+    @DisplayName("SpEL stays inside its own engine package")
+    void spelStaysInsideItsEngine() {
+        // The same containment as Spring AI's, for a sharper reason.
+        //
+        // Spring's expression language reaches static methods, constructors and the bean
+        // factory unless something stops it — T(java.lang.Runtime).getRuntime().exec(…) is
+        // the textbook remote code execution, and these expressions are written by models.
+        // What stops it is one whitelist over one parser in one package. A second
+        // SpelExpressionParser anywhere else would be a second place to get that right, and
+        // a StandardEvaluationContext anywhere else would be the hole itself.
+        //
+        // The engine is domain-neutral on purpose, so a rule, a console simulator and an
+        // agent tool all reach it through ExpressionEngine rather than each parsing for
+        // themselves.
+        noClasses()
+                .that().resideOutsideOfPackage("com.tb.helix.harness.expr..")
+                .should().dependOnClassesThat().resideInAnyPackage("org.springframework.expression..")
+                .because("an expression parser is safe only while exactly one package can "
+                        + "reach it; everything above that seam speaks ExpressionEngine")
+                .allowEmptyShould(true)
+                .check(classes);
+    }
+
+    @Test
     @DisplayName("domain talks to ports, not to beans")
     void domainTalksToPortsNotBeans() {
         // With interfaces beside their implementations, the folder no longer says which is
@@ -387,6 +411,14 @@ class ArchitectureTest {
                 // and passing green — a framework quietly free to be imported anywhere,
                 // reported as enforced. This is the exact failure this test exists for.
                 "com.tb.helix.harness.llm.backend.springai",
+                // Named by the SpEL containment rule, and nothing else names it. Misspelt,
+                // that rule would match no classes and pass green — reporting an expression
+                // parser as contained while it is free to be constructed anywhere.
+                "com.tb.helix.harness.expr",
+                // The dictionary half of checking an expression. Its own package because the
+                // two halves move at different speeds: the grammar changes with the engine,
+                // the dictionary whenever somebody binds a field.
+                "com.tb.helix.governance.expression",
                 // Moved here from infra, which is defined as knowing nothing about models,
                 // while Prompts opens "The text we send to models". It was also half a
                 // capability split across a layer: this loads the prompt, harness/llm/text

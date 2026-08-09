@@ -60,7 +60,27 @@ export function adopt(conditions) {
   if (Array.isArray(ops) && ops.length) served = ops
   const fns = conditions?.functions
   if (Array.isArray(fns) && fns.length) servedFunctions = fns
+  // The other language a condition may be written in. Held beside the operators and on the
+  // same terms: the browser highlights and completes what it is given, and never restates
+  // the vocabulary — the editor offering a name nothing reads is how that typo gets written.
+  if (conditions?.expression) servedExpression = conditions.expression
 }
+
+let servedExpression = null
+
+/** Every {DOCUMENT.field} a condition may read. Empty until the catalogue has loaded. */
+export const expressionReads = () => servedExpression?.reads ?? []
+
+/** The verbs, with their arity and what each is for. */
+export const expressionVerbs = () => servedExpression?.verbs ?? []
+
+/**
+ * The language as prose — the SAME string a model writing conditions is given.
+ *
+ * One text rather than a help page beside a prompt: two descriptions of one language drift,
+ * and the author and the planner then disagree about what is allowed.
+ */
+export const expressionGrammar = () => servedExpression?.grammar ?? ''
 
 export const operators = () => served ?? FALLBACK
 

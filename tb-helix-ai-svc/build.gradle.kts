@@ -108,7 +108,20 @@ dependencies {
     implementation("org.springframework.ai:spring-ai-openai")
     implementation("org.springframework.ai:spring-ai-anthropic")
 
-    // --- Exact rules (SpEL over extracted facts) -----------------------------
+    // --- The expression engine, harness/expr ---------------------------------
+    //
+    // Declared here since before there was a use for it, with a comment describing a design
+    // that never happened. There is one now, and it is narrower than the comment implied.
+    //
+    // Spring parses and Spring evaluates, but it decides neither what may appear in an
+    // expression nor what to do when a value is missing — its answers to both are wrong
+    // here. It reaches static methods and the bean factory unless stopped (a condition is
+    // written by a MODEL), and its comparator ranks null below every value, so an unread
+    // date would settle a comparison confidently and wrongly. So: an allow list over the
+    // parsed tree, SimpleEvaluationContext only, never the standard one, compilation off,
+    // and the and/or above the leaves evaluated in Java over three values instead of two.
+    //
+    // `spelStaysInsideItsEngine` in ArchitectureTest makes the containment a build failure.
     implementation("org.springframework:spring-expression")
 
     // --- YAML content assets (refs, field pool, doc registry, seeds) ---------

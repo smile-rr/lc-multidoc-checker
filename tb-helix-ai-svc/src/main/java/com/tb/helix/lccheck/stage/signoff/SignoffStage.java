@@ -30,9 +30,11 @@ import java.util.Map;
 public class SignoffStage implements Stage {
 
     private final CaseStore cases;
+    private final AdviceNarrator narrator;
 
-    public SignoffStage(CaseStore cases) {
+    public SignoffStage(CaseStore cases, AdviceNarrator narrator) {
         this.cases = cases;
+        this.narrator = narrator;
     }
 
     @Override
@@ -67,18 +69,27 @@ public class SignoffStage implements Stage {
                 .filter(f -> "DISCREPANT".equals(overridden.getOrDefault(f.findingRef(), f.outcome())))
                 .toList();
 
-        String mt734 = mt734(row, grounds);
+        Map<String, String> drafted = narrator.wordFor(ctx.caseId(), row, grounds);
+        String mt734 = mt734(row, grounds, drafted);
         cases.patchCase(ctx.caseId(), Map.of(
                 "completed_at", java.sql.Timestamp.from(java.time.Instant.now())));
 
         return StepResult.ok(Map.of(
                 "grounds", grounds.size(),
+                "drafted", drafted.size(),
                 "mt734", mt734,
                 "status", cases.verdict(ctx.caseId()).map(ReadRows.Verdict::status)
                         .orElse(grounds.isEmpty() ? "CLEAN" : "DISCREPANT")));
     }
 
-    private String mt734(CaseRow c, List<ReadRows.Finding> grounds) {
+    /**
+     * @param drafted the narrator's wording, by finding ref. Consulted, never iterated — the
+     *                notice is assembled from {@code grounds}, so a ref the model invented is
+     *                simply never looked up and one it omitted falls back to the finding's own
+     *                statement. That is what makes "it may not add or drop a ground"
+     *                structural rather than something to check afterwards.
+     */
+    private String mt734(CaseRow c, List<ReadRows.Finding> grounds, Map<String, String> drafted) {
         StringBuilder sb = new StringBuilder();
         sb.append(":20:").append(nz(c.caseRef())).append('\n');
         sb.append(":21:").append(nz(c.creditRef())).append('\n');
@@ -93,9 +104,13 @@ public class SignoffStage implements Stage {
             sb.append('\n');
             int n = 1;
             for (ReadRows.Finding g : grounds) {
-                sb.append(n++).append(". ")
-                  .append(g.statement() == null ? String.valueOf(g.title()).toUpperCase() : g.statement())
-                  .append('\n');
+                String word = drafted.get(g.findingRef());
+                if (word == null || word.isBlank()) {
+                    word = g.statement() == null
+                            ? String.valueOf(g.title()).toUpperCase()
+                            : g.statement();
+                }
+                sb.append(n++).append(". ").append(word).append('\n');
             }
         }
         // The disposal instruction is a required part of a refusal under art. 16(c)(iii).

@@ -66,6 +66,19 @@ export function hydrateSeed(seed, data) {
     (data.checks ?? [])
       .filter((c) => c.rule)
       .map((c) => {
+        // An expression is not a tree and must survive untouched. Flattened into the shape
+        // below it loses its conditions entirely — the card opens on the blank template and
+        // the next save writes that blank back over a working check.
+        //
+        // The test is every shape an expression has ever been stored in, not the current
+        // one. It has already been wrong twice by naming only the shape of the day: a rule
+        // written as a WHEN/THEN table carries `source`, and the two older forms carry
+        // `clauses` and `when`. All three are still readable by the service, so all three
+        // have to reach it.
+        if (c.rule.source !== undefined || c.rule.clauses !== undefined
+            || c.rule.when !== undefined) {
+          return [c.id, c.rule]
+        }
         const groups = c.rule.groups ?? []
         const first = groups[0] ?? {}
         return [c.id, {

@@ -40,6 +40,21 @@ export const saveCheckRule = (id, rule) => api.patch(`${base}/checks/${encodeURI
 export const setGate = (id, on, onFail) =>
   api.post(`${base}/checks/${encodeURIComponent(id)}/gate`, { on, onFail })
 
+/**
+ * Runs a condition against values the author typed, and answers with the working.
+ *
+ * Nothing is stored and no check is named — this is the author trying something out.
+ * The service compiles it, refuses anything unsafe or ungrammatical, checks every
+ * name against the dictionary, and returns a row per comparison. The browser never
+ * decides any of that: a second opinion about what an expression may contain is a
+ * second place for the allow list to be wrong.
+ */
+// The whole table, so the answer is what the CHECK would report rather than what one branch
+// came to — a branch that did not match is not a fault, and only the service knows which one
+// decided.
+export const tryExpression = (source, values) =>
+  api.post(`${base}/checks/expression:try`, { source, values })
+
 // --- Agents ---------------------------------------------------------------
 export const saveAgent = (agent) => api.patch(`${base}/agents/${encodeURIComponent(agent.id)}`, agent)
 export const createAgent = (agent) => api.post(`${base}/agents`, agent)

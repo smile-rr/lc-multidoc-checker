@@ -257,7 +257,7 @@
       "bindings": [
         {
           "doc": "LC",
-          "note": "Tag 31D — first six digits, YYMMDD"
+          "note": "Tag 31D — first six digits, YYMMDD. Report eight: 20241231."
         },
         {
           "doc": "CS",
@@ -323,7 +323,7 @@
       "bindings": [
         {
           "doc": "LC",
-          "note": "Tag 31C, YYMMDD."
+          "note": "Tag 31C, YYMMDD. Report eight: 20241231."
         }
       ],
       "valueType": "DATE",
@@ -512,7 +512,7 @@
       "bindings": [
         {
           "doc": "CS",
-          "note": "The date inside the bank's receipt chop, not any typed date on the letter. ISO form where the stamp is unambiguous.",
+          "note": "The date inside the bank's receipt chop, not any typed date on the letter. Eight digits, YYYYMMDD, where the stamp is unambiguous.",
           "ordinal": 15
         }
       ]
@@ -940,7 +940,50 @@
   ],
   "checks": [
     {
-      "id": "AMT-18",
+      "id": "A0001",
+      "body": "Read {Additional conditions} one condition at a time — numbered items or sentences — and decide what, if anything, evidences each.\n\n- A condition naming a document and something it must show: check that document carries the wording demanded.\n- A condition fixing a value — credit number, incoterm, vessel, port — compare it with the field on the documents.\n- A condition naming the issuer of a document: check the document was issued by that party.\n- A condition setting timing: count from the shipment date, in calendar days unless it says banking days.\n- A condition naming no document and no data point is non-documentary. Disregard it for the discrepancy list and report it to the checker as a note.\n\nWhere a condition repeats something the credit already requires elsewhere, raise it once, not twice.",
+      "docs": [
+        "LC"
+      ],
+      "refs": [
+        "ISBP821 A"
+      ],
+      "title": "Additional conditions are satisfied",
+      "domain": "Additional conditions",
+      "fields": [
+        "additional_conditions"
+      ],
+      "citedAs": "practice",
+      "severity": "MAJOR",
+      "checkType": "AGENTIC",
+      "suggestion": "Split non-documentary conditions into their own assertion so they are reported as notes."
+    },
+    {
+      "id": "A0002",
+      "body": "Read the goods description and the named parties across the credit, the invoice and the bill of lading, and decide whether they can all be true of one shipment.\n\nThe standard is UCP 600 art. 14(d): data need not be identical, but must not conflict.\n\n- Goods. The invoice description must correspond with the credit (art. 18(c)). A more specific description on the invoice — a model number, a grade, a pack size — corresponds and does not conflict. A transport document may describe the goods in general terms, and general terms that are consistent with the credit do not conflict. What conflicts is goods that cannot be the same goods.\n- Parties. A difference in legal form or punctuation is not a conflict: ACME TRADING CO., LTD. and Acme Trading Company Limited are one company. A different company is a conflict.\n- Addresses. The party's address need not match, but the country must not differ from what the credit states (art. 14(j)).\n\nRaise one finding per conflict, naming both documents and quoting both readings. Where the two merely differ without conflicting, say so and raise nothing — a difference that matters to nobody is not a discrepancy.",
+      "refs": [
+        "UCP600 Art.14",
+        "UCP600 Art.18"
+      ],
+      "title": "Documents do not conflict with each other",
+      "domain": "Goods & pricing",
+      "citedAs": "practice",
+      "severity": "CRITICAL",
+      "checkType": "AGENT",
+      "suggestion": "Was authored as a comparison over four rows, three of which used an operator that is a judgement. The catalogue now derives that and files it here; the wording above is what those rows were reaching for.",
+      "docs": [
+        "INV",
+        "LC",
+        "BOL"
+      ],
+      "fields": [
+        "goods_description",
+        "beneficiary_name",
+        "applicant_name"
+      ]
+    },
+    {
+      "id": "C0001",
       "body": "",
       "refs": [
         "UCP600 Art.18"
@@ -995,7 +1038,7 @@
       ]
     },
     {
-      "id": "AVAIL-41A",
+      "id": "C0002",
       "body": "",
       "docs": [
         "LC",
@@ -1056,26 +1099,7 @@
       }
     },
     {
-      "id": "COND-47A",
-      "body": "Read {Additional conditions} one condition at a time — numbered items or sentences — and decide what, if anything, evidences each.\n\n- A condition naming a document and something it must show: check that document carries the wording demanded.\n- A condition fixing a value — credit number, incoterm, vessel, port — compare it with the field on the documents.\n- A condition naming the issuer of a document: check the document was issued by that party.\n- A condition setting timing: count from the shipment date, in calendar days unless it says banking days.\n- A condition naming no document and no data point is non-documentary. Disregard it for the discrepancy list and report it to the checker as a note.\n\nWhere a condition repeats something the credit already requires elsewhere, raise it once, not twice.",
-      "docs": [
-        "LC"
-      ],
-      "refs": [
-        "ISBP821 A"
-      ],
-      "title": "Additional conditions are satisfied",
-      "domain": "Additional conditions",
-      "fields": [
-        "additional_conditions"
-      ],
-      "citedAs": "practice",
-      "severity": "MAJOR",
-      "checkType": "AGENTIC",
-      "suggestion": "Split non-documentary conditions into their own assertion so they are reported as notes."
-    },
-    {
-      "id": "CORR-A7",
+      "id": "C0003",
       "title": "Corrections are authenticated",
       "body": "",
       "domain": "Documents required",
@@ -1119,57 +1143,7 @@
       "suggestion": "ISBP 821 exempts corrections on documents issued by the beneficiary, other than a draft — which is why the invoice and the beneficiary's certificates are not operands. The certificate of origin and the insurance document want the same check; copy this one per document rather than adding rows to it, so an unpresented document does not turn the whole check inconclusive."
     },
     {
-      "id": "DATE-31D",
-      "body": "",
-      "docs": [
-        "LC",
-        "CS"
-      ],
-      "gate": true,
-      "refs": [
-        "UCP600 Art.6",
-        "UCP600 Art.14",
-        "UCP600 Art.29"
-      ],
-      "rule": {
-        "scope": "Every presentation",
-        "groups": [
-          {
-            "id": "g1",
-            "logic": "all",
-            "rows": [
-              {
-                "id": "r1",
-                "op": "d_lte",
-                "tol": "",
-                "l": {
-                  "doc": "CS",
-                  "field": "presentation_date"
-                },
-                "r": {
-                  "doc": "LC",
-                  "field": "expiry_date"
-                }
-              }
-            ]
-          }
-        ],
-        "message": "Documents were presented after the credit expired."
-      },
-      "title": "Presented before the credit expired",
-      "domain": "Time & availability",
-      "fields": [
-        "expiry_date",
-        "presentation_date"
-      ],
-      "citedAs": "practice",
-      "severity": "CRITICAL",
-      "checkType": "PROGRAMMATIC",
-      "suggestion": "Runs before anything is read. Art. 29(a) rolls an expiry falling on a day the bank is closed, and 47A can extend the presentation period — which is why a failure here records a discrepancy and lets the plan read the credit rather than ending the examination itself.",
-      "onFail": "STOP"
-    },
-    {
-      "id": "SIGN-20",
+      "id": "C0004",
       "title": "Transport document signed, with capacity",
       "body": "",
       "domain": "Transport",
@@ -1227,8 +1201,12 @@
       "suggestion": "A signature naming a company but no capacity — 'ABC Shipping' with no 'as carrier' or 'as agent for' — is the common form of this. UCP 600 art. 3 makes a printed chop a signature, so do not raise this merely because nothing was handwritten."
     },
     {
-      "id": "TRANS-20",
+      "id": "C0005",
       "body": "",
+      "docs": [
+        "BOL",
+        "LC"
+      ],
       "refs": [
         "UCP600 Art.20"
       ],
@@ -1241,96 +1219,128 @@
               {
                 "l": {
                   "doc": "BOL",
-                  "field": "on_board_date"
+                  "field": "port_of_loading"
                 },
                 "r": {
                   "doc": "LC",
-                  "field": "latest_shipment_date"
+                  "field": "port_of_loading"
                 },
                 "id": "r1",
-                "op": "d_lte",
+                "op": "eq",
                 "tol": ""
               },
               {
                 "l": {
                   "doc": "BOL",
-                  "field": "port_of_loading"
+                  "field": "port_of_discharge"
                 },
                 "r": {
                   "doc": "LC",
-                  "field": "port_of_loading"
+                  "field": "port_of_discharge"
                 },
                 "id": "r2",
                 "op": "eq",
                 "tol": ""
-              },
-              {
-                "l": {
-                  "doc": "BOL",
-                  "field": "port_of_discharge"
-                },
-                "r": {
-                  "doc": "LC",
-                  "field": "port_of_discharge"
-                },
-                "id": "r3",
-                "op": "eq",
-                "tol": ""
-              },
-              {
-                "l": {
-                  "doc": "CS",
-                  "field": "presentation_date"
-                },
-                "r": {
-                  "doc": "BOL",
-                  "field": "on_board_date"
-                },
-                "id": "r4",
-                "op": "d_within",
-                "tol": "21 calendar days"
               }
             ],
             "logic": "all"
           }
         ],
-        "message": "The bill of lading conflicts with the shipment terms of the credit."
+        "message": "The bill of lading's ports do not agree with the credit."
       },
-      "title": "Bill of lading on-board notation",
+      "title": "Bill of lading ports agree with the credit",
       "domain": "Transport",
+      "fields": [
+        "port_of_loading",
+        "port_of_discharge"
+      ],
       "citedAs": "practice",
       "severity": "CRITICAL",
       "checkType": "PROGRAMMATIC",
-      "suggestion": "Add a condition for charter-party bills of lading, which are examined differently.",
-      "docs": [
-        "BOL",
-        "LC",
-        "CS"
-      ]
+      "suggestion": "Held four subjects at once. The shipment date moved to SHIP-44C and the twenty-one day presentation period to PRES-14C — the latter was cited as art. 20 here, which does not govern it. Still to add: charter-party bills of lading, which are examined under art. 22."
     },
     {
-      "id": "XD-14",
-      "body": "Read the goods description and the named parties across the credit, the invoice and the bill of lading, and decide whether they can all be true of one shipment.\n\nThe standard is UCP 600 art. 14(d): data need not be identical, but must not conflict.\n\n- Goods. The invoice description must correspond with the credit (art. 18(c)). A more specific description on the invoice — a model number, a grade, a pack size — corresponds and does not conflict. A transport document may describe the goods in general terms, and general terms that are consistent with the credit do not conflict. What conflicts is goods that cannot be the same goods.\n- Parties. A difference in legal form or punctuation is not a conflict: ACME TRADING CO., LTD. and Acme Trading Company Limited are one company. A different company is a conflict.\n- Addresses. The party's address need not match, but the country must not differ from what the credit states (art. 14(j)).\n\nRaise one finding per conflict, naming both documents and quoting both readings. Where the two merely differ without conflicting, say so and raise nothing — a difference that matters to nobody is not a discrepancy.",
-      "refs": [
-        "UCP600 Art.14",
-        "UCP600 Art.18"
+      "id": "E0001",
+      "body": "",
+      "docs": [
+        "LC",
+        "CS"
       ],
-      "title": "Documents do not conflict with each other",
-      "domain": "Goods & pricing",
+      "gate": true,
+      "refs": [
+        "UCP600 Art.6",
+        "UCP600 Art.29"
+      ],
+      "rule": {
+        "v": 3,
+        "scope": "Every presentation",
+        "source": "WHEN {CS.presentation_date} <= {LC.expiry_date}  THEN \"clean\"\nELSE \"discrepancy\""
+      },
+      "title": "Presented before the credit expired",
+      "domain": "Time & availability",
+      "fields": [
+        "expiry_date",
+        "presentation_date"
+      ],
+      "onFail": "STOP",
       "citedAs": "practice",
       "severity": "CRITICAL",
-      "checkType": "AGENT",
-      "suggestion": "Was authored as a comparison over four rows, three of which used an operator that is a judgement. The catalogue now derives that and files it here; the wording above is what those rows were reaching for.",
+      "checkType": "EXPRESSION",
+      "suggestion": "Expiry is expiry. UCP 600 art. 6(d)(i): documents must be presented on or before the expiry date, and art. 6(d)(ii) makes the place for presentation that of the bank with which the credit is available — so the covering schedule's date IS the counter date, and there is no transit to allow for. Nothing here is a matter of degree.\n\nThe one thing that can overturn a failure is art. 29(a): where the expiry date falls on a day the bank at the place for presentation is closed, the last day rolls to the first following banking day. We hold no banking calendar for that place, so a presentation one or two days past an expiry that fell on a weekend or holiday may still be compliant — check the calendar before refusing, and note that art. 29(b) requires the covering schedule to state that the presentation was made within the extended period.\n\nWHERE the documents were presented is a different question and belongs to C0002 (Presented where the credit is available). It reads place_of_presentation; note that available_with is the METHOD — sight, acceptance, negotiation, deferred payment — and never the bank."
+    },
+    {
+      "id": "E0002",
+      "body": "",
       "docs": [
-        "INV",
-        "LC",
-        "BOL"
+        "BOL",
+        "LC"
       ],
+      "refs": [
+        "UCP600 Art.20"
+      ],
+      "rule": {
+        "v": 3,
+        "scope": "When a transport document is presented",
+        "source": "WHEN {BOL.on_board_date} <= {LC.latest_shipment_date}  THEN \"clean\"\nELSE \"discrepancy\""
+      },
+      "title": "Shipment not later than the credit allows",
+      "domain": "Transport",
       "fields": [
-        "goods_description",
-        "beneficiary_name",
-        "applicant_name"
-      ]
+        "on_board_date",
+        "latest_shipment_date"
+      ],
+      "citedAs": "practice",
+      "severity": "CRITICAL",
+      "checkType": "EXPRESSION",
+      "suggestion": "The on-board date is the date of shipment (art. 20(a)(ii)); where the bill carries a separate on-board notation it is that date, not the issuance date, that this reads. Cannot be a threshold check: the bill of lading has to be read before there is anything to compare."
+    },
+    {
+      "id": "E0003",
+      "body": "",
+      "docs": [
+        "BOL",
+        "CS",
+        "LC"
+      ],
+      "refs": [
+        "UCP600 Art.14"
+      ],
+      "rule": {
+        "v": 3,
+        "scope": "When a transport document is presented",
+        "source": "WHEN #absent({LC.presentation_period})\n     and #daysBetween({BOL.on_board_date}, {CS.presentation_date}) <= 21   THEN \"clean\"\nWHEN #present({LC.presentation_period})\n     and #atMost(#daysBetween({BOL.on_board_date}, {CS.presentation_date}),\n                 {LC.presentation_period}, 0)                              THEN \"clean\"\nELSE \"discrepancy\""
+      },
+      "title": "Presented within the presentation period",
+      "domain": "Time & availability",
+      "fields": [
+        "on_board_date",
+        "presentation_date",
+        "presentation_period"
+      ],
+      "citedAs": "practice",
+      "severity": "CRITICAL",
+      "checkType": "EXPRESSION",
+      "suggestion": "Twenty-one calendar days after the date of shipment unless the credit states its own period, which is why the condition has two branches keyed on whether presentation_period was read. Expiry is NOT tested here — art. 14(c) also requires presentation before expiry, and DATE-31D is where that is answered, so a presentation that is both late and expired is two grounds and not one ground counted twice."
     }
   ],
   "books": [

@@ -11,9 +11,12 @@
 import { focusItem } from '@shared/lib/useNewItemFocus'
 import { isBlank, allPresent } from '@shared/ds/TextField'
 import seed from './data/seed.json'
-import { operatorGroups, operatorLabel, operatorUnary, operatorLiteralRight, operatorUsesTol, describeOperand, ANY_DOCUMENT } from '@shared/lib/operators'
+import { operatorGroups, operatorLabel, operatorUnary, operatorLiteralRight, operatorUsesTol, describeOperand, ANY_DOCUMENT, expressionReads, expressionVerbs, expressionGrammar } from '@shared/lib/operators'
 import { hydrateSeed } from './api/hydrate'
 import * as gov from './api/governanceApi'
+// The simulator answers from the service. Under the mock source there is nothing to ask,
+// and offering a button that cannot work is worse than not offering one.
+import { isApi } from '@shared/lib/dataSource.js'
 
 // Fills `seed` in place from the service, before anything below reads it.
 //
@@ -38,7 +41,7 @@ export function loadCatalog(data) {
 // operands against the dictionary, its comment count from the comments. Storing a
 // copy would freeze an answer that goes stale the moment anything else moves.
 const DERIVED = new Set([
-  'tier', 'gateEligible', 'gateOn', 'hasConditions', 'operandDocs', 'commentCount',
+  'tier', 'gateEligible', 'gateOn', 'hasConditions', 'operandDocs', 'commentCount', 'language',
   'usedByChecks', 'boundFields',
 ])
 
@@ -161,6 +164,7 @@ export const TIERS = {
 export const CARD_TYPES = {
   exact: { label: 'Comparison', icon: 'equal', color: 'var(--me-blue-deep)', bg: 'var(--me-blue-20)', hint: 'Two extracted values read against each other. Same answer every time, no model.' },
   judged: { label: 'Agent', icon: 'sparkles', color: '#1F7A00', bg: 'var(--me-green-20)', hint: 'An agent reads the presentation and forms a view. Read the view before you rely on it.' },
+  expression: { label: 'Expression', icon: 'braces', color: 'var(--me-navy)', bg: 'rgba(44,58,135,.10)', hint: 'The same determinism as a comparison, written as one line a person can read. No model.' },
 }
 export const checkTypeOf = (c) => (c && TIERS[c.checkType] ? c.checkType : 'AGENT')
 
@@ -180,9 +184,33 @@ export const checkTypeOf = (c) => (c && TIERS[c.checkType] ? c.checkType : 'AGEN
  * Local derivation survives only as the fallback for mock mode, where there is no service
  * to ask.
  */
-export const typeOf = (c) => (c && (c.tier === 'EXACT' || c.tier === 'exact') ? 'exact'
+export const typeOf = (c) => (c && c.language === 'EXPRESSION' ? 'expression'
+  : c && (c.tier === 'EXACT' || c.tier === 'exact') ? 'exact'
   : c && (c.tier === 'JUDGED' || c.tier === 'judged') ? 'judged'
   : TIERS[checkTypeOf(c)].tier)
+
+/**
+ * Which body to draw — which is not quite the tier.
+ *
+ * A tree whose condition asks for a judgement is JUDGED and still has a tree to edit, so
+ * the console shows it the comparison body. That is what `hasConditions` is doing here, and
+ * it predates the third kind. An expression is asked FIRST because it also has conditions,
+ * and answering "exact" for one would draw a form over a rule that has no rows.
+ */
+export const kindOf = (c, hasConditions) => (c && c.language === 'EXPRESSION' ? 'expression'
+  : hasConditions ? 'exact' : typeOf(c))
+
+/** Comparison or Expression: settled without a model, whichever way it was written. */
+export const isComparison = (kind) => kind === 'exact' || kind === 'expression'
+
+/**
+ * The three kinds, in the order an author should consider them.
+ *
+ * Comparison and Expression settle the same way — no model, same answer every time — and
+ * both are offered because they are genuinely different to write, not because one is a
+ * migration of the other. A form is easier to start; a line of text says more.
+ */
+export const authorableKinds = () => ['exact', 'expression', 'judged']
 
 // ---- Rule-card vocabulary --------------------------------------------------
 // Not held here. The service owns it — an enum in `governance.types`, served with
@@ -198,12 +226,36 @@ const opLabel = (op) => operatorLabel(op)
 
 // A block joins the one above it with AND or OR (`connector`); the first block
 // has nothing to join to, so it carries none.
+// An expression rule is one box of text — a WHEN/THEN/ELSE table. Nothing about its shape
+// is modelled here: the browser holds the source and the service parses it, because a second
+// parser would be a second opinion about what a table means, and the wrong one is whichever
+// nobody was looking at.
+const exprBlank = () => ({
+  v: 3, scope: 'Every presentation',
+  source: 'WHEN  THEN "clean"\nELSE "discrepancy"',
+})
+
+const isExprRule = (r) => !!r && (r.source !== undefined || r.clauses !== undefined || r.when !== undefined)
+
+// Rules stored before the table existed still open. A graded ladder becomes the branches it
+// always was; a bare condition becomes the one-line table it always meant.
+const toTable = (r) => {
+  if (r.source !== undefined) return { v: 3, scope: r.scope, message: r.message || '', source: r.source }
+  const lines = r.clauses
+    ? r.clauses.map((c) => `WHEN ${c.when}  THEN "clean"`)
+    : [`WHEN ${r.when || ''}  THEN "clean"`]
+  return { v: 3, scope: r.scope, message: r.message || '', source: `${lines.join('\n')}\nELSE "discrepancy"` }
+}
+
 const ruleBlank = () => ({ scope: 'Every presentation', message: '', groups: [{ id: 'g1', logic: 'all', rows: [{ id: 'r1', l: {}, r: {}, op: 'eq', tol: '' }] }] })
 
 // Seeds are stored flat (one block of rows); the editor works in bracketed
 // blocks. Normalise on read so both shapes render the same.
 const normaliseRule = (raw) => {
   if (!raw) return ruleBlank()
+  // An expression is not a tree and must not be wrapped into one — a group with no rows
+  // would draw a form over a rule that has none.
+  if (isExprRule(raw)) return toTable(raw)
   if (raw.groups) return raw
   return { scope: raw.scope, message: raw.message, groups: [{ id: 'g1', logic: raw.logic || 'all', rows: raw.rows || [] }] }
 }
@@ -324,6 +376,15 @@ export const initialState = {
   importOpen: false, importStage: 'upload', importItems: [], importName: '', books: null, activeBookId: null, libSearch: '', tocCollapsed: {}, artEditingId: null, libAddOpen: false,
   dictTab: 'fields', dictView: 'list', dictSearch: '', dictDetail: null, dictFields: null, dictDocs: null, dictDocPickerId: null,
   rules: {}, operandOpen: null, typeFilter: 'all', newMenuOpen: false,
+  // What an author typed into the "try it" boxes, and what came back. Per check and per
+  // session: these are not the rule and are never stored — a value somebody used to
+  // understand a condition is not evidence about any case.
+  simValues: {}, simResult: {}, simOpen: {}, simBusy: {},
+  // The Simulator page's own condition. It shares the state above under one reserved key,
+  // because a condition being tried is a condition being tried whether or not it is
+  // anybody's rule yet — and two copies of "what came back" is how the page and the card
+  // come to disagree about the same expression.
+  simSource: null,
   // The item created by the last "new …" click. Cancel on it means "don't
   // create it" rather than "undo my typing", so it is tracked separately from
   // the edit snapshot.
@@ -593,7 +654,7 @@ export function deriveVals(state, setState) {
   const beforeReadingDocs = () => new Set((S.dictDocs ?? seedDocTypes()).filter((d) => d.beforeReading).map((d) => d.key))
 
   function gateEligibility(c) {
-    const kind = hasConditions(c) ? 'exact' : typeOf(c)
+    const kind = kindOf(c, hasConditions(c))
     if (kind !== 'exact') return { ok: false, why: 'Only a comparison can run first — an agent cannot read documents before they are read.' }
     const rule = ruleOf(c.id)
     const rows = (rule.groups ?? []).flatMap((g) => g.rows ?? [])
@@ -614,6 +675,121 @@ export function deriveVals(state, setState) {
   // data is fixed, and this makes the same mistake impossible to make silently —
   // conditions that exist are conditions that get edited.
   const hasConditions = (c) => !!(c && (S.rules[c.id] || RULE_SEEDS[c.id]))
+  // ---- Trying a condition out ----------------------------------------------
+  //
+  // The service compiles it, refuses anything unsafe, checks every name against the
+  // dictionary and answers with a row per comparison. None of that is repeated here — a
+  // second opinion about what an expression may contain is a second place to be wrong,
+  // and the wrong one is the one nobody notices.
+
+  /** The names in a condition, scanned locally so the boxes appear as you type. */
+  const localNames = (source) => {
+    const out = []
+    const re = /\{\s*([A-Za-z*][A-Za-z0-9_*]*(?:\.[A-Za-z0-9_]+)*)\s*\}/g
+    let m
+    while ((m = re.exec(String(source || ''))) !== null) if (!out.includes(m[1])) out.push(m[1])
+    return out
+  }
+
+  /** What the dictionary says this is, so the box says what to type into it. */
+  const hintFor = (name) => {
+    const r = expressionReads().find((x) => x.name === name)
+    const t = (r?.valueType || '').toUpperCase()
+    if (t === 'DATE') return '20250418'
+    if (t === 'AMOUNT' || t === 'INTEGER') return '60000.00'
+    return 'leave empty for “not read”'
+  }
+
+  const runExpression = (id, source, values) => {
+    setState((st) => ({ simBusy: { ...st.simBusy, [id]: true } }))
+    gov.tryExpression(source, values)
+      .then((r) => setState((st) => ({
+        simBusy: { ...st.simBusy, [id]: false },
+        simResult: { ...st.simResult, [id]: {
+          // What the check would report, walked by the service. Deriving it here from the
+          // per-rung verdicts would be a second opinion about what a graded check means.
+          outcome: r.ok ? r.outcome : null,
+          decidedBy: r.decidedBy ?? null,
+          unsettled: !!r.unsettled,
+          rungs: r.rungs || [],
+          reads: r.reads || [],
+          problems: r.problems || [],
+        } },
+      })))
+      .catch(() => setState((st) => ({
+        simBusy: { ...st.simBusy, [id]: false },
+        simResult: { ...st.simResult, [id]: { problems: ['The service could not be reached.'], reads: [], rungs: [] } },
+      })))
+  }
+
+  /**
+   * The Simulator page: a condition nobody has saved, tried against values nobody read.
+   *
+   * The card's panel can only try the rule it is attached to, which is the wrong shape for
+   * the two things this is actually for — working out how to write a condition before there
+   * is a check to hang it on, and reproducing what a stored one did on a presentation that
+   * surprised somebody. Both want the expression itself to be an input.
+   *
+   * It runs through the same `runExpression` and renders through the same component as the
+   * card, under the reserved key below. Two paths to one answer is how a page and a card
+   * come to disagree about the same expression.
+   */
+  const SIM_KEY = '__simulator'
+
+  const simulatorVM = () => {
+    const source = S.simSource ?? exprBlank().source
+    const result = S.simResult[SIM_KEY] || null
+    const names = result?.reads?.length ? result.reads : localNames(source)
+    const typed = S.simValues[SIM_KEY] || {}
+
+    return {
+      source,
+      onChange: (v) => setState({ simSource: v }),
+      reads: expressionReads(),
+      verbs: expressionVerbs(),
+      grammar: expressionGrammar(),
+      // Every stored table, so a saved check can be reproduced rather than retyped —
+      // retyping it is how the thing under test stops being the thing that ran.
+      samples: allChecks()
+        .filter((c) => typeOf(c) === 'expression')
+        .map((c) => {
+          const rule = normaliseRule(S.rules[c.id] || RULE_SEEDS[c.id] || exprBlank())
+          return { id: c.id, title: valueOf(c, 'title'), source: rule.source || '' }
+        })
+        .filter((x) => x.source),
+      onLoad: (src) => setState({ simSource: src, simResult: { ...S.simResult, [SIM_KEY]: null } }),
+      sim: {
+        available: isApi,
+        open: true,
+        onToggle: () => {},
+        busy: !!S.simBusy[SIM_KEY],
+        reads: names.map((n) => ({
+          name: n,
+          label: (expressionReads().find((r) => r.name === n) || {}).label,
+          hint: hintFor(n),
+          value: typed[n] ?? '',
+          onChange: (ev) => setState((st) => ({
+            simValues: { ...st.simValues, [SIM_KEY]: { ...(st.simValues[SIM_KEY] || {}), [n]: ev.target.value } },
+          })),
+        })),
+        outcome: result?.outcome || null,
+          // One answer. `decidedBy` is the branch that matched, or null when the table fell
+          // through — and a table stopped by a value nobody read is neither, so it says so.
+          decided: (() => {
+            if (!result?.outcome) return null
+            const at = result.unsettled
+              ? `stopped at WHEN ${(result.rungs || []).length} — a value it reads was not given`
+              : result.decidedBy == null ? 'no condition matched, so ELSE'
+              : `WHEN ${result.decidedBy + 1} matched`
+            const r = (result.rungs || [])[result.decidedBy ?? (result.rungs || []).length - 1]
+            return { at, reading: r?.reading || '' }
+          })(),
+        problems: result?.problems || [],
+        onRun: () => runExpression(SIM_KEY, source, S.simValues[SIM_KEY] || {}),
+      },
+    }
+  }
+
   const setRule = (id, fn) => setState((s) => ({ rules: { ...s.rules, [id]: fn(normaliseRule(s.rules[id] || RULE_SEEDS[id])) } }))
   const mapGroups = (rule, gid, fn) => ({ ...rule, groups: rule.groups.map((g) => (g.id === gid ? fn(g) : g)) })
   // Which fields a rule reads — so the dictionary can tell how often a field is
@@ -727,15 +903,23 @@ export function deriveVals(state, setState) {
     setState((s) => {
       const id = 'GEN-' + String(s.newSeq + 90).padStart(2, '0')
       const isExact = kind === 'exact'
+      const isExpr = kind === 'expression'
       const nc = {
-        id, checkType: isExact ? 'PROGRAMMATIC' : 'AGENT', domain: 'Uncategorised', cases: 0,
-        title: isExact ? 'New exact rule' : 'New judged rule',
+        id, domain: 'Uncategorised', cases: 0,
+        checkType: isExpr ? 'EXPRESSION' : isExact ? 'PROGRAMMATIC' : 'AGENT',
+        // `language` is normally the service's answer, read off v_check_list. A card that
+        // has not been saved yet has no row there, so it carries its own until it does —
+        // otherwise a new expression check draws the tree form for its first edit.
+        language: isExpr ? 'EXPRESSION' : 'TREE',
+        title: isExpr ? 'New condition' : isExact ? 'New exact rule' : 'New judged rule',
         severity: 'MAJOR', refs: [],
-        suggestion: isExact
+        suggestion: isExpr
+          ? 'Write what must be TRUE. Try it against some values before you save it.'
+          : isExact
           ? 'Fill in both sides of the first condition so the rule has something to compare.'
           : 'Add a requirement or two so the assistant has something to read against.',
-        body: isExact ? '' : 'Say what must be true, one requirement per dash line.\n\n- ',
-        timeline: [{ color: 'var(--me-blue)', label: 'Created', date: 'just now', detail: 'New ' + CARD_TYPES[isExact ? 'exact' : 'judged'].label.toLowerCase() + ' rule card.' }],
+        body: isExact || isExpr ? '' : 'Say what must be true, one requirement per dash line.\n\n- ',
+        timeline: [{ color: 'var(--me-blue)', label: 'Created', date: 'just now', detail: 'New ' + CARD_TYPES[kind].label.toLowerCase() + ' rule card.' }],
       }
       // Adding respects the view you are in.
       //
@@ -753,6 +937,7 @@ export function deriveVals(state, setState) {
           : {}),
       }
       if (isExact) patch.rules = { ...s.rules, [id]: ruleBlank() }
+      if (isExpr) patch.rules = { ...s.rules, [id]: exprBlank() }
       return patch
     })
 
@@ -772,7 +957,7 @@ export function deriveVals(state, setState) {
     // Which kind of card this is decides what the middle of it holds, and it is
     // read before the snapshot below so Cancel can put the rule back too.
     // `hasConditions` wins over the declared tier — see the guard above.
-    const kind = hasConditions(c) ? 'exact' : typeOf(c)
+    const kind = kindOf(c, hasConditions(c))
     const isExact = kind === 'exact'
     const rule = isExact ? ruleOf(c.id) : null
     const gate = gateEligibility(c)
@@ -842,6 +1027,65 @@ export function deriveVals(state, setState) {
     const showFieldRows = !isExact
     const patchRule = (fn) => { setRule(c.id, fn); startEdit() }
     const issues = editing ? checkIssues({ title, body }, rule, isExact) : []
+
+    /**
+     * Everything the expression body needs, and nothing the tree body does.
+     *
+     * The `reads` list and the verbs come from the service, never from here: an editor
+     * completing a name nothing reads is how that typo gets written in the first place.
+     */
+    const expressionVM = (chk) => {
+      const stored = normaliseRule(S.rules[chk.id] || RULE_SEEDS[chk.id] || exprBlank())
+      const rule = isExprRule(stored) ? stored : exprBlank()
+      const write = (patch) => { setState((st) => ({ rules: { ...st.rules, [chk.id]: { ...rule, ...patch } } })); startEdit() }
+
+      const result = S.simResult[chk.id] || null
+      // The names come from the SERVICE's reading of the table once it has been run, and
+      // from a local scan before that — so the boxes appear as you type rather than only
+      // after the first run.
+      const names = result?.reads?.length ? result.reads : localNames(rule.source)
+      const typed = S.simValues[chk.id] || {}
+
+      return {
+        source: rule.source || '',
+        onChange: (v) => write({ source: v }),
+        missing: editing && isBlank(rule.source),
+        reads: expressionReads(),
+        verbs: expressionVerbs(),
+        grammar: expressionGrammar(),
+        sim: {
+          available: isApi,
+          open: !!S.simOpen[chk.id],
+          onToggle: () => setState((st) => ({ simOpen: { ...st.simOpen, [chk.id]: !st.simOpen[chk.id] } })),
+          busy: !!S.simBusy[chk.id],
+          reads: names.map((n) => ({
+            name: n,
+            label: (expressionReads().find((r) => r.name === n) || {}).label,
+            hint: hintFor(n),
+            value: typed[n] ?? '',
+            onChange: (ev) => setState((st) => ({
+              simValues: { ...st.simValues, [chk.id]: { ...(st.simValues[chk.id] || {}), [n]: ev.target.value } },
+            })),
+          })),
+          // What the CHECK would report. Not any one branch's true or false — the first
+          // branch that matches decides, and a branch that did not match is not a fault.
+          outcome: result?.outcome || null,
+          // One answer. `decidedBy` is the branch that matched, or null when the table fell
+          // through — and a table stopped by a value nobody read is neither, so it says so.
+          decided: (() => {
+            if (!result?.outcome) return null
+            const at = result.unsettled
+              ? `stopped at WHEN ${(result.rungs || []).length} — a value it reads was not given`
+              : result.decidedBy == null ? 'no condition matched, so ELSE'
+              : `WHEN ${result.decidedBy + 1} matched`
+            const r = (result.rungs || [])[result.decidedBy ?? (result.rungs || []).length - 1]
+            return { at, reading: r?.reading || '' }
+          })(),
+          problems: result?.problems || [],
+          onRun: () => runExpression(chk.id, rule.source, S.simValues[chk.id] || {}),
+        },
+      }
+    }
 
     const operandVM = (gid, r, side) => {
       const o = (side === 'l' ? r.l : r.r) || {}
@@ -946,7 +1190,8 @@ export function deriveVals(state, setState) {
 
     return {
       id: c.id, title, body, bodySegments: hl(body), dictFields: dictFieldList.map((f) => ({ name: f.name, docs: fieldDocHint(f.key) })), severity,
-      kind, isExact, isJudged: !isExact,
+      kind, isExact, isJudged: kind === 'judged', isExpression: kind === 'expression',
+      expr: kind === 'expression' ? expressionVM(c) : null,
       // Hard check. `gateOn` is the stored intent narrowed by what is possible, so a
       // rule that stops being eligible (an operand moved to a presented document)
       // stops being a gate rather than silently claiming to run first.
@@ -1008,7 +1253,7 @@ export function deriveVals(state, setState) {
       onToggleHelp: (e) => { if (e && e.stopPropagation) e.stopPropagation(); setState((s) => ({ helpOpenId: s.helpOpenId === c.id ? null : c.id })) },
       casesLabel: c.cases + (c.cases === 1 ? ' linked case' : ' linked cases'),
       commentCount: cc.length, hasComments: cc.length > 0,
-      editing, showBody: showBody && !isExact, expanded, showPreview: compactMode && !expanded && !editing, preview: isExact ? rule.message || rule.scope || '' : preview,
+      editing, showBody: showBody && kind === 'judged', expanded, showPreview: compactMode && !expanded && !editing, preview: isExact ? rule.message || rule.scope || '' : preview,
       showExpand: compactMode, expandIcon: expanded ? 'chevron-up' : 'chevron-down',
       onToggleExpand: () => setState((s) => ({ expandedIds: { ...s.expandedIds, [c.id]: !s.expandedIds[c.id] } })),
       cardBorder: editing ? 'var(--me-blue-20)' : 'var(--me-grey-15)',
@@ -1280,7 +1525,7 @@ export function deriveVals(state, setState) {
   }
   const exportMd = allChecks().map((c) => {
     const t = valueOf(c, 'title'); const sv = valueOf(c, 'severity') || 'MAJOR'; const rf = (valueOf(c, 'refs') || []).join(', ')
-    const kind = hasConditions(c) ? 'exact' : typeOf(c)
+    const kind = kindOf(c, hasConditions(c))
     const bd = kind === 'exact' ? ruleMd(c) : valueOf(c, 'body') || ''
     return `${CARD_TYPES[kind].label.toUpperCase()} RULE: ${c.id} — ${t}\nSeverity: ${sv}\n\n${bd}${rf ? '\n\nReference: ' + rf : ''}`
   }).join('\n\n---\n\n')
@@ -1589,6 +1834,7 @@ export function deriveVals(state, setState) {
   return {
     isChecks: section === 'checks' && !checkDetail, isCheckDetail: !!checkDetail, checkDetail,
     isAgentsList: section === 'agents' && view === 'list' && !checkDetail, isAgentDetail: section === 'agents' && view === 'detail' && !checkDetail, isLibrary: section === 'library' && !checkDetail, isDictionary: section === 'dictionary' && !checkDetail, isPrices: section === 'prices' && !checkDetail,
+    isSimulator: section === 'simulator' && !checkDetail, simulator: simulatorVM(),
     goAgents: () => confirmLeave(() => setState({ section: 'agents', view: 'list', panel: null, activeCheckId: null, dictDetail: null })),
     goChecks: () => confirmLeave(() => setState({ section: 'checks', panel: null, activeCheckId: null, dictDetail: null })),
     goLibrary: () => confirmLeave(() => setState({ section: 'library', panel: null, activeCheckId: null, dictDetail: null })),
@@ -1680,7 +1926,7 @@ export function deriveVals(state, setState) {
     newMenuOpen: S.newMenuOpen,
     toggleNewMenu: () => setState((s) => ({ newMenuOpen: !s.newMenuOpen })),
     closeNewMenu: () => setState({ newMenuOpen: false }),
-    newTypes: ['exact', 'judged'].map((t) => ({
+    newTypes: authorableKinds().map((t) => ({
       id: t, label: CARD_TYPES[t].label + ' rule', desc: CARD_TYPES[t].hint,
       icon: CARD_TYPES[t].icon, color: CARD_TYPES[t].color, bg: CARD_TYPES[t].bg,
       onPick: guard(() => newCheck(t)),

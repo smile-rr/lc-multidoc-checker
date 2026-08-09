@@ -18,6 +18,7 @@ import com.tb.helix.lccheck.pipeline.Stage;
 import com.tb.helix.lccheck.pipeline.StageContext;
 import com.tb.helix.lccheck.service.DocumentTypes;
 import com.tb.helix.lccheck.service.ExtractionSpec;
+import com.tb.helix.lccheck.service.FactWriter;
 import com.tb.helix.lccheck.types.CaseStatus;
 import com.tb.helix.lccheck.types.pipeline.StageId;
 
@@ -305,7 +306,7 @@ public class IntakeStage implements Stage {
                     // is the credit as issued; "#3 MT707" is an amendment, and an examiner
                     // reading a term that moved wants to know that without being told twice.
                     "source", from == null ? "the credit" : String.valueOf(from),
-                    "flag", fact.known() ? null : "Not in the dictionary",
+                    "flag", fact.known() ? null : FactWriter.OFF_DICTIONARY,
                     "confidence", "HIGH"));
         }
     }

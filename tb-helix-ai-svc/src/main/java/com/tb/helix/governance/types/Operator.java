@@ -55,12 +55,19 @@ public enum Operator {
     N_EQ("n_eq", "equals (amount)", Group.AMOUNT, "amounts are equal"),
     LTE("lte", "is at most", Group.AMOUNT, "the left amount is at most the right", true),
     GTE("gte", "is at least", Group.AMOUNT, "the left amount is at least the right"),
+    // Strictly, and they were missing. "At most" is not "less than", and a rule about a
+    // shipment LATER than the latest shipment date could not be written down at all — it had
+    // to be spelled as the negation of `d_lte`, which the tree language has no way to say.
+    LT("lt", "is less than", Group.AMOUNT, "the left amount is strictly less than the right"),
+    GT("gt", "is more than", Group.AMOUNT, "the left amount is strictly more than the right"),
     WITHIN_PCT("within_pct", "is within tolerance of", Group.AMOUNT,
             "the left amount is within tol percent of the right", true),
 
     // --- Dates --------------------------------------------------------------
     D_LTE("d_lte", "is on or before", Group.DATE, "the left date is on or before the right"),
     D_GTE("d_gte", "is on or after", Group.DATE, "the left date is on or after the right"),
+    D_LT("d_lt", "is before", Group.DATE, "the left date is strictly before the right"),
+    D_GT("d_gt", "is after", Group.DATE, "the left date is strictly after the right"),
     D_EQ("d_eq", "is the same date as", Group.DATE, "the dates are the same day"),
     D_WITHIN("d_within", "is within", Group.DATE,
             "the left date is within tol days of the right", true),

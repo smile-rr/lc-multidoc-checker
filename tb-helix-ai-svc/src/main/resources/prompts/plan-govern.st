@@ -1,12 +1,23 @@
-Below is a plan assembled for one presentation: the threshold checks that have already
-run, the credit's terms and its own text, the standing rules selected for it, and the
-requirements read out of fields 46A and 47A.
+Below is a plan assembled for one presentation: what this presentation actually
+yielded, the threshold checks that have already run, the credit's terms and its own
+text, the standing rules selected for it, and the requirements read out of fields 46A
+and 47A.
+
+"WHAT WAS ACTUALLY READ FROM THIS PRESENTATION" lists field keys — never values —
+because you are deciding what is worth running, not settling anything. Use it for one
+judgement: a check whose comparison reads a field listed under "not read", or names a
+document listed "not presented", cannot be answered by running it. That is a reason to
+raise it for a person, and it is not on its own a reason to suppress it — the credit
+still demands it, and an officer looking at the pages may well settle it.
 
 Answer with JSON and nothing else:
 
 {
   "suppress": [
     {"checkId": "...", "because": "...", "quote": "..."}
+  ],
+  "supersede": [
+    {"checkId": "...", "byRequirement": "REQ-47A.n", "because": "...", "quote": "..."}
   ],
   "gateOverride": {"checkId": "...", "to": "CONTINUE", "because": "...", "quote": "..."},
   "runRemaining": true,
@@ -28,6 +39,35 @@ Each suppression raises a card for the officer to confirm, so this is never quie
 never final. That is the reason it is safe to do at all — and not a reason to do it
 more freely. Leave the list empty when the credit says nothing bearing on any rule,
 which is the usual answer.
+
+
+supersede
+
+The credit restated a standing rule on its own terms. This is not the same as
+suppressing it: nothing was excused, and the rule still applies — on the credit's
+number rather than the rulebook's.
+
+UCP 600 art. 14(c) allows 21 calendar days for presentation. A credit saying
+"documents may be presented within 30 days after the date of shipment" has not added a
+requirement, it has changed the number in one that already exists. Left alone, the
+standing rule runs at 21 days and raises a discrepancy this credit does not have,
+while the requirement card raises the same subject a second time.
+
+`checkId` is the standing rule, from the list below. `byRequirement` is the
+requirement card read out of this credit that restates it — it must be one that
+compiled to a comparison, because a card with no comparison has nothing to put in the
+rule's place. `quote` is the credit's own words, and it is required: an officer has to
+be able to check the variation against the credit.
+
+You do not say WHICH comparison it replaces. The standing rules below are listed with
+the comparisons they make, and the one that constrains the same thing is found from
+those — a rule with four comparisons keeps the other three.
+
+Use it only where the two are about the same thing. A clause that adds a demand the
+rulebook does not make is a requirement card in its own right, not a supersession; a
+clause that excuses a rule is `suppress`. Where you are unsure which of the three it
+is, do nothing: both cards then reach the officer, which is worse than one and much
+better than the wrong one.
 
 
 gateOverride

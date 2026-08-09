@@ -29,6 +29,35 @@ import java.util.Map;
 @Component
 public class FactWriter {
 
+    /**
+     * The flag on a reading the extractor found but the dictionary never asked for.
+     *
+     * <p>A constant because three places now depend on the exact string — this writer, the
+     * credit's own fact writer, and the examiner's fact sheet, which must mark such a reading
+     * so a judge can tell an invented field from an authored one. Spelled out in three files,
+     * it would drift and the marking would silently stop.
+     */
+    public static final String OFF_DICTIONARY = "Not in the dictionary";
+
+    /**
+     * The flag on a reading that arrived as a list or an object where one value was asked for.
+     *
+     * <p>The extraction prompt asks for a flat map, {@code ExtractionSpec} keeps one value per
+     * key, and {@code lc_fact} is unique on {@code (case, document, label)} — so a bill of
+     * lading with two loading ports has nowhere to put the second, and what is stored is the
+     * JSON of both in one cell.
+     *
+     * <p>Comparing that is worse than not comparing it. {@code "SHANGHAI"} against
+     * {@code '["SHANGHAI","NINGBO"]'} is not equal, so the rule reports a discrepancy that
+     * does not exist and is indistinguishable from one that does. Flagged here, the evaluator
+     * answers <b>could not be settled</b> instead, which is true and sends it to a person.
+     *
+     * <p>This is a floor, not the fix. Representing repetition properly needs the prompt to
+     * ask for an array, {@code lc_fact} to carry an ordinal, and the condition language to
+     * gain set semantics — see {@code docs/architecture/evidence-and-agents.md} §9.1.
+     */
+    public static final String MULTI_VALUED = "More than one value was read for this field";
+
     private final CaseStore cases;
     private final ExtractionSpec spec;
     private final ObjectMapper json;
@@ -77,7 +106,8 @@ public class FactWriter {
             Object v = reading.value();
             // A nested object is the model elaborating where a flat value was asked for.
             // Kept as JSON rather than dropped: an officer can still read it.
-            String text = v instanceof Map || v instanceof List ? toJson(v) : String.valueOf(v);
+            boolean many = v instanceof Map || v instanceof List;
+            String text = many ? toJson(v) : String.valueOf(v);
             if (text.isBlank()) continue;
             if (!reading.known()) offSchema++;
 
@@ -94,8 +124,14 @@ public class FactWriter {
                     // going to get shorter. A contradiction wins over that note: it is the
                     // more urgent of the two, and a key that contradicts itself is in the
                     // dictionary by definition.
-                    "flag", flags.getOrDefault(reading.key(),
-                            reading.known() ? null : "Not in the dictionary"),
+                    // A serialised value beats both notes, because it is the only one that
+                    // changes an answer rather than describing it: a rule comparing
+                    // "SHANGHAI" against '["SHANGHAI","NINGBO"]' does not find a difference
+                    // in the goods, it finds a difference in our storage, and reports it as a
+                    // discrepancy indistinguishable from a real one.
+                    "flag", many ? MULTI_VALUED
+                            : flags.getOrDefault(reading.key(),
+                                    reading.known() ? null : OFF_DICTIONARY),
                     // Quiet default. Real uncertainty is LOW (or a future model
                     // grade); MED on every row was indistinguishable from silence.
                     "confidence", "HIGH"));

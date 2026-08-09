@@ -67,29 +67,81 @@ export const CONCERNS = {
   USER: 'Added by an officer on a single case',
 }
 
+// ===========================================================================
+// THE AUTHORED SCHEME: <KIND><NNNN>
+//
+// The catalogue's own checks are numbered by the kind of thing they are:
+//
+//     A0001   an agent check      — an examiner reads and answers
+//     C0001   a comparison        — the tree editor, rows of operands
+//     E0001   an expression       — a condition written as text
+//
+// This is a different trade from the concern-anchor form below, and worth being
+// explicit about which one it makes. `DATE-31D` is self-describing: it says both
+// "a date check" and "the one that reads tag 31D". `E0001` says neither. What it
+// buys is a rulebook that sorts by kind, is short enough to say aloud on a call,
+// and never has to be renegotiated when a check's subject broadens — TRANS-20
+// held four subjects for its whole life and its id claimed one.
+//
+// TWO THINGS THAT FOLLOW, AND ARE NOT NEGOTIABLE
+//
+//   · The letter is what the check was when it was written, and it is never
+//     rewritten. A check that gains a judgement operator becomes JUDGED and
+//     still keeps its `C`. An id on a refusal notice from two years ago has to
+//     resolve, and the kind is served — `tier` and `language` — so nothing has
+//     to read it out of the id anyway.
+//   · The planner's namespace is unaffected. What separates authored ids from
+//     planner-minted ones is the CLAUSE SUFFIX, not the prefix: an authored id
+//     never carries a dot and `REQ-46A.1` always does. Both schemes below hold
+//     that line.
+//
+// The concern-anchor form remains valid and is still what the planner mints, so
+// both parse. Neither is being migrated to the other.
+// ===========================================================================
+
 // 2–6 letters: `XD` (cross-document) is a legitimate two-letter concern, and the
 // pattern rejecting it was the pattern being wrong, not the id.
 const PATTERN = /^([A-Z]{2,6})-([A-Z0-9]{1,6})(?:\.(\d{1,2}))?$/
+
+/** The authored kind-and-number form. */
+const KIND_PATTERN = /^([ACE])(\d{3,5})$/
+
+export const KINDS = {
+  A: 'Agent — an examiner reads the documents and answers',
+  C: 'Comparison — rows of operands, built in the form',
+  E: 'Expression — a condition written as text',
+}
 
 /**
  * @param {string} id
  * @returns {{ concern: string, anchor: string, clause: number|null, concernLabel: string }|null}
  */
 export function parseCheckId(id) {
-  const m = PATTERN.exec(String(id ?? ''))
+  const text = String(id ?? '')
+  const k = KIND_PATTERN.exec(text)
+  if (k) {
+    const [, kind, seq] = k
+    // `anchor` is the number so a caller that only wanted "the part after the prefix" still
+    // gets it; `clause` is null, which is what keeps this an AUTHORED id.
+    return { concern: kind, anchor: seq, clause: null, kind, concernLabel: KINDS[kind] }
+  }
+  const m = PATTERN.exec(text)
   if (!m) return null
   const [, concern, anchor, clause] = m
   return {
     concern,
     anchor,
     clause: clause ? Number(clause) : null,
+    kind: null,
     concernLabel: CONCERNS[concern] ?? 'Unknown concern',
   }
 }
 
-export const isValidCheckId = (id) => PATTERN.test(String(id ?? ''))
+export const isValidCheckId = (id) =>
+  KIND_PATTERN.test(String(id ?? '')) || PATTERN.test(String(id ?? ''))
 
-export function formatCheckId({ concern, anchor, clause }) {
+export function formatCheckId({ concern, anchor, clause, kind }) {
+  if (kind) return `${kind}${anchor}`
   return `${concern}-${anchor}${clause ? `.${clause}` : ''}`
 }
 

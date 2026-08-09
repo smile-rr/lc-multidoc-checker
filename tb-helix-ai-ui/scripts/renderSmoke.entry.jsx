@@ -16,6 +16,8 @@ import CaseHeader from '@modules/lc-check/components/CaseHeader'
 import CostDrawer from '@modules/lc-check/components/CostDrawer'
 import AskDrawer from '@modules/lc-check/components/AskDrawer'
 import RunLogPanel from '@modules/lc-check/components/RunLogPanel'
+import CheckDetail from '@modules/governance/sections/CheckDetail'
+import { initialState, deriveVals } from '@modules/governance/store'
 
 const ROUTES = [
   '/',
@@ -25,6 +27,7 @@ const ROUTES = [
   '/governance/agents',
   '/governance/dictionary',
   '/governance/library',
+  '/governance/simulator',
   '/governance/prices',
   '/nonsense',
 ]
@@ -181,6 +184,23 @@ function stageCases(value, tag) {
   ]
 }
 
+/**
+ * A governance check, opened.
+ *
+ * Check detail is reached by state rather than by URL, so no route renders a check's BODY —
+ * the routes above draw the list and stop. That left the three card bodies (comparison,
+ * agent, expression) with no render coverage at all, which is where the most conditional
+ * markup in the module lives. `E0001` is the graded expiry check: two conditions, two
+ * different verdicts, and the only fixture that exercises the ladder editor.
+ */
+function openCheck(id) {
+  let state = { ...initialState, section: 'checks', activeCheckId: id }
+  const setState = (partial) => {
+    state = { ...state, ...(typeof partial === 'function' ? partial(state) : partial) }
+  }
+  return deriveVals(state, setState)
+}
+
 export function run() {
   const results = []
 
@@ -194,6 +214,21 @@ export function run() {
       results.push({ name: `route ${path}`, ok: true, bytes: html.length })
     } catch (err) {
       results.push({ name: `route ${path}`, ok: false, error: `${err.message}\n${(err.stack || '').split('\n').slice(1, 5).join('\n')}` })
+    }
+  }
+
+  for (const [name, id] of [['governance expression card', 'E0001'],
+                            ['governance comparison card', 'AVAIL-41A'],
+                            ['governance agent card', 'XD-14']]) {
+    try {
+      const html = renderToString(
+        <StaticRouter location="/governance/checks">
+          <CheckDetail v={openCheck(id)} />
+        </StaticRouter>,
+      )
+      results.push({ name, ok: true, bytes: html.length })
+    } catch (err) {
+      results.push({ name, ok: false, error: `${err.message}\n${(err.stack || '').split('\n').slice(1, 5).join('\n')}` })
     }
   }
 

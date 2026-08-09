@@ -1,6 +1,8 @@
 package com.tb.helix.governance.seed;
 
 import com.tb.helix.governance.persistence.GovernanceStore;
+import com.tb.helix.governance.spi.ExpressionRules;
+import com.tb.helix.governance.types.ExpressionRule;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -13,6 +15,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -56,14 +59,17 @@ public class GovernanceSeeder implements ApplicationRunner {
     };
 
     private final GovernanceStore store;
+    private final ExpressionRules expressions;
     private final ObjectMapper json;
     private final ResourceLoader resources;
     private final String resource;
 
-    public GovernanceSeeder(GovernanceStore store, ObjectMapper json, ResourceLoader resources,
+    public GovernanceSeeder(GovernanceStore store, ExpressionRules expressions,
+                            ObjectMapper json, ResourceLoader resources,
                             @Value("${helix.governance.seed.resource:classpath:seed/initial-catalogue.json}")
                             String resource) {
         this.store = store;
+        this.expressions = expressions;
         this.json = json;
         this.resources = resources;
         this.resource = resource;
@@ -85,7 +91,7 @@ public class GovernanceSeeder implements ApplicationRunner {
             rows(seed, "docTypes").forEach(store::saveDocType);
             rows(seed, "fields").forEach(store::saveField);
             rows(seed, "agents").forEach(store::saveAgent);
-            rows(seed, "checks").forEach(store::saveCheck);
+            rows(seed, "checks").forEach(this::seedCheck);
             rows(seed, "books").forEach(store::saveBook);
 
             log.info("Seeded the governance catalogue from {}", resource);
@@ -94,6 +100,50 @@ public class GovernanceSeeder implements ApplicationRunner {
             // that starts empty and says so.
             log.error("Governance seeding failed — starting with an empty catalogue", e);
         }
+    }
+
+    /**
+     * A check, and the facet its condition needs if that condition is an expression.
+     *
+     * <p>The one thing a seed entry cannot be "literally a check you could have POSTed"
+     * about. A tree's operands are readable in SQL, so the views derive everything from the
+     * stored document; an expression's are text, and what it reads is recovered by compiling
+     * it. {@code POST /checks/{id}/rule} does that in the same breath as the save — and a
+     * seeder that only wrote the document would leave the check drawing as having <em>no
+     * conditions</em>: never planned, never run, never gated, and indistinguishable on screen
+     * from a check somebody had not finished authoring.
+     *
+     * <p>A seeded condition that will not compile is logged and the check is still written,
+     * for the reason the whole method is wrapped in a try: a service that will not start
+     * because one seeded rule has a typo is worse than one that starts and says which.
+     */
+    private void seedCheck(Map<String, Object> check) {
+        store.saveCheck(check);
+
+        @SuppressWarnings("unchecked")
+        ExpressionRule table = check.get("rule") instanceof Map<?, ?> m
+                ? ExpressionRule.of((Map<String, Object>) m) : null;
+        if (table == null) return;
+
+        String id = String.valueOf(check.get("id"));
+        List<String> problems = new ArrayList<>(table.problems());
+        boolean judgement = false;
+        List<Map<String, String>> reads = new ArrayList<>();
+        for (String source : table.sources()) {
+            ExpressionRules.Checked checked = expressions.check(source);
+            problems.addAll(checked.problems());
+            judgement |= checked.judgement();
+            checked.reads().stream()
+                    .<Map<String, String>>map(r -> Map.of("doc", r.doc(), "field", r.field()))
+                    .filter(r -> !reads.contains(r))
+                    .forEach(reads::add);
+        }
+        if (!problems.isEmpty()) {
+            log.error("Seeded check {} has a condition that will not compile, so it is stored "
+                    + "without one: {}", id, problems);
+            return;
+        }
+        store.saveFacet(id, "EXPRESSION", judgement, reads);
     }
 
     private List<Map<String, Object>> rows(JsonNode seed, String name) {

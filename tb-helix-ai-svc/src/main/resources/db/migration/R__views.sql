@@ -258,6 +258,16 @@ checks AS (
            ) AS has_judgement_op
       FROM helix_gov.document c WHERE c.kind = 'check'
 ),
+-- What SQL cannot read off the check itself. An expression has no groups and no rows, so
+-- every derivation below that walks `$.rule.groups[*]` finds nothing for one — see V29.
+facet AS (
+    SELECT f.check_id, f.language, f.judgement,
+           COALESCE(array_agg(DISTINCT r ->> 'doc') FILTER (WHERE r ->> 'doc' IS NOT NULL), '{}') AS docs,
+           COUNT(*) FILTER (WHERE r IS NOT NULL) AS read_count
+      FROM helix_gov.check_facet f
+      LEFT JOIN LATERAL jsonb_array_elements(f.reads) r ON TRUE
+     GROUP BY f.check_id, f.language, f.judgement
+),
 operands AS (
     SELECT c.id,
            COALESCE(array_agg(DISTINCT d) FILTER (WHERE d IS NOT NULL), '{}') AS docs,
@@ -277,11 +287,13 @@ SELECT c.id,
        -- Stored intent narrowed by possibility, exactly like gate_on below. An author
        -- may type PROGRAMMATIC over a condition that asks for a judgement; they cannot
        -- make it one.
-       CASE WHEN c.check_type = 'PROGRAMMATIC' AND NOT c.has_judgement_op
+       CASE WHEN c.check_type IN ('PROGRAMMATIC', 'EXPRESSION')
+             AND NOT (c.has_judgement_op OR COALESCE(f.judgement, FALSE))
             THEN 'EXACT' ELSE 'JUDGED' END                        AS tier,
-       c.has_judgement_op,
-       o.docs                                                     AS operand_docs,
-       (o.row_count > 0)                                          AS has_conditions,
+       (c.has_judgement_op OR COALESCE(f.judgement, FALSE))       AS has_judgement_op,
+       (o.docs || COALESCE(f.docs, '{}'))                         AS operand_docs,
+       (o.row_count > 0 OR COALESCE(f.read_count, 0) > 0)         AS has_conditions,
+       COALESCE(f.language, 'TREE')                               AS language,
        -- AN AGENT CHECK CAN NEVER BE A THRESHOLD CHECK.
        --
        -- A gate runs before anything has been read, to decide whether reading is worth
@@ -289,17 +301,21 @@ SELECT c.id,
        -- the gate exists to save — and it does it on the least evidence, since nothing
        -- has been read yet. This tested the DECLARED check_type, so a check typed
        -- PROGRAMMATIC over a `same_party` row qualified: an agent rule, gating.
-       (c.check_type = 'PROGRAMMATIC' AND NOT c.has_judgement_op AND o.row_count > 0
-        AND o.docs <@ pre.codes)                                  AS gate_eligible,
-       (c.is_gate AND c.check_type = 'PROGRAMMATIC' AND NOT c.has_judgement_op
-        AND o.row_count > 0
-        AND o.docs <@ pre.codes)                                  AS gate_on,
+       (c.check_type IN ('PROGRAMMATIC', 'EXPRESSION')
+        AND NOT (c.has_judgement_op OR COALESCE(f.judgement, FALSE))
+        AND (o.row_count > 0 OR COALESCE(f.read_count, 0) > 0)
+        AND (o.docs || COALESCE(f.docs, '{}')) <@ pre.codes)      AS gate_eligible,
+       (c.is_gate AND c.check_type IN ('PROGRAMMATIC', 'EXPRESSION')
+        AND NOT (c.has_judgement_op OR COALESCE(f.judgement, FALSE))
+        AND (o.row_count > 0 OR COALESCE(f.read_count, 0) > 0)
+        AND (o.docs || COALESCE(f.docs, '{}')) <@ pre.codes)      AS gate_on,
        (SELECT COUNT(*) FROM helix_gov.comment m
          WHERE m.target_kind = 'CHECK' AND m.target_id = c.id)    AS comment_count,
        c.updated_at
   FROM checks c
   CROSS JOIN pre
-  JOIN operands o ON o.id = c.id;
+  JOIN operands o ON o.id = c.id
+  LEFT JOIN facet f ON f.check_id = c.id;
 
 -- ----------------------------------------------------------------------------
 -- A reference to something that is not there.
@@ -348,7 +364,21 @@ SELECT 'check_operand_field', o.id, o.doc, o.field
   ) o
  WHERE EXISTS (SELECT 1 FROM helix_gov.v_doc_type t WHERE t.code = o.doc)
    AND NOT EXISTS (SELECT 1 FROM helix_gov.v_field_binding b
-                    WHERE b.doc_code = o.doc AND b.field_key = o.field);
+                    WHERE b.doc_code = o.doc AND b.field_key = o.field)
+UNION ALL
+-- The same mistake, in the language SQL cannot read.
+--
+-- {BOL.port_of_lading} parses perfectly and is a typo, exactly as a tree operand naming an
+-- unbound field is. The compiler refuses to STORE one — but a field can be unbound later,
+-- and a check that was correct when it was written becomes unanswerable without anybody
+-- touching it. That is precisely what this view is for, and leaving the new language out of
+-- it would give it a blind spot from its first day.
+SELECT 'check_expression_field', f.check_id, r ->> 'doc', r ->> 'field'
+  FROM helix_gov.check_facet f, LATERAL jsonb_array_elements(f.reads) r
+ WHERE r ->> 'doc' <> '*'
+   AND EXISTS (SELECT 1 FROM helix_gov.v_doc_type t WHERE t.code = r ->> 'doc')
+   AND NOT EXISTS (SELECT 1 FROM helix_gov.v_field_binding b
+                    WHERE b.doc_code = r ->> 'doc' AND b.field_key = r ->> 'field');
 
 -- ----------------------------------------------------------------------------
 -- Usage counts, for the console's "in use by" chips.

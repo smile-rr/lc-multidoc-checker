@@ -383,7 +383,7 @@
       "bindings": [
         {
           "doc": "LC",
-          "note": "Tag 31D — first six digits, YYMMDD"
+          "note": "Tag 31D — first six digits, YYMMDD. Report eight: 20241231."
         },
         {
           "doc": "CS",
@@ -471,7 +471,7 @@
       "bindings": [
         {
           "doc": "LC",
-          "note": "Tag 31C, YYMMDD."
+          "note": "Tag 31C, YYMMDD. Report eight: 20241231."
         }
       ],
       "valueType": "DATE",
@@ -739,7 +739,7 @@
       "bindings": [
         {
           "doc": "CS",
-          "note": "The date inside the bank's receipt chop, not any typed date on the letter. ISO form where the stamp is unambiguous.",
+          "note": "The date inside the bank's receipt chop, not any typed date on the letter. Eight digits, YYYYMMDD, where the stamp is unambiguous.",
           "ordinal": 15
         }
       ]

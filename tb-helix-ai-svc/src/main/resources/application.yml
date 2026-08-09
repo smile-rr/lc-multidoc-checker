@@ -360,6 +360,46 @@ helix:
       # asked what it remembers; one given the article is being asked to read. Costs
       # a few hundred tokens per group, per case.
       anchors: true
+      # Whether an examiner is given the full layout reading of the documents its
+      # checks name, beside the fields lifted out of them.
+      #
+      # It is already paid for: interpret reads every document three times from the
+      # same render, and the second pass is this markdown. Until now nothing but the
+      # browser read it. It is the only place a table survives — a packing list's item
+      # lines fold into one fact cell — and the only place a goods description arrives
+      # as wording rather than as a field, which is what "corresponds" is asked about.
+      #
+      # Placement, not grouping, handles the duplication: a document more than one
+      # remit needs is hoisted into the SHARED prefix and sent once; one only a single
+      # remit needs sits in that remit's own block, below the prefix boundary. Putting
+      # a per-remit block above it would give every call a different opening and turn
+      # the first-group-alone warming above into latency spent for nothing.
+      markdown: true
+      # Per document, and the cut is STATED in the block rather than silent.
+      #
+      # The reverse of a bill of lading is three thousand words of carrier's standard
+      # conditions: the largest reading in a typical bundle, and it answers nothing. A
+      # silent truncation would read as "you have been shown the whole document",
+      # which is the one thing evidence must never do.
+      markdown-chars: 6000
+    signoff:
+      # Whether the refusal advice's wording is drafted, or assembled from the stored
+      # statements as it always was.
+      #
+      # The one model call that runs AFTER a person has decided, and the only one that
+      # writes rather than concludes. It is given the confirmed grounds and the
+      # credit's identifying terms — never the facts, the documents or the working,
+      # because a drafter that could reach the evidence could reach a ground nobody
+      # signed.
+      #
+      # It cannot add or drop a ground, and that is structural rather than a rule in
+      # the prompt: it returns wording BY finding ref and the notice is assembled from
+      # the grounds, so an invented ref is never looked up and an omitted one falls
+      # back. Art. 16(c) gives one notice; art. 16(f) makes an omission final.
+      #
+      # Off, the advice reads exactly as it did before — which is also what happens on
+      # any failure, because a notice has a deadline and must be able to go out.
+      narrate: true
     agent:
       # Hard cap on an agentic rule's tool-calling turns. A per-rule
       # max_iterations may lower this; nothing raises it.

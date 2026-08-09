@@ -29,6 +29,16 @@ import java.util.Map;
  * @param suppressedBecause the clause of <em>this</em> credit that stood a standing rule
  *                   down, when one did. Null for every other kind of skip — which is what
  *                   makes the two distinguishable, since both are a check that did not run.
+ * @param variedBy   the requirement card read out of THIS credit whose comparison replaced
+ *                   one of this check's rows, when one did — the credit restating a standing
+ *                   rule on its own terms rather than excusing it. Distinct from
+ *                   {@code suppressedBecause} because the check still runs.
+ * @param variedQuote the credit's own words for that variation, so an officer can check it
+ *                   against the credit rather than against a model's account of it.
+ * @param variedFrom the comparison this check made before the credit varied it, rendered.
+ *                   A variation an officer cannot see is a variation nobody agreed to.
+ * @param mergedInto set on a requirement card folded into a standing check: it ran, under
+ *                   that id. Not the same as skipped, which is a card that did not run.
  * @param docCodes   which documents this check looks at. Empty means the presentation as a
  *                   whole, which is an answer rather than a gap.
  * @param findingId  what it produced, once it has run. Null before that, and null for a
@@ -55,6 +65,10 @@ public record PlanCheckView(
         String executionPlan,
         String coverage,
         String suppressedBecause,
+        String variedBy,
+        String variedQuote,
+        String variedFrom,
+        String mergedInto,
         List<String> docCodes,
         String findingId,
         Map<String, Object> spec) {

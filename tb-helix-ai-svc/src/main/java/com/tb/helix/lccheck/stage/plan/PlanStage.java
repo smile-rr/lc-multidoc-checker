@@ -1,6 +1,7 @@
 package com.tb.helix.lccheck.stage.plan;
 
 import com.tb.helix.governance.spi.CheckCatalog;
+import com.tb.helix.governance.types.ConditionTree;
 import com.tb.helix.harness.llm.LlmGateway;
 import com.tb.helix.harness.llm.LlmRole;
 import com.tb.helix.harness.llm.text.PromptContext;
@@ -226,6 +227,12 @@ public class PlanStage implements Stage {
                 .stable("FIELDS THAT CAN BE COMPARED, BY DOCUMENT", rules.vocabulary())
                 .stable("OPERATORS A CONDITION MAY USE", rules.operators())
                 .stable("VALUES A CONDITION MAY WORK OUT", rules.functions())
+                // What we hold, before what the credit asks for: a condition is only worth
+                // compiling against a field this presentation actually yielded.
+                .varying("WHAT WAS ACTUALLY READ FROM THIS PRESENTATION", availability(ctx))
+                // 47A leans on tags it does not restate. Given only the two blocks, the reader
+                // guesses at "within the validity of the credit" or drops the clause.
+                .varying("WHAT ELSE THE CREDIT STATES", otherCreditTerms(credit))
                 .varying("FIELD 46A — DOCUMENTS REQUIRED", docs)
                 .varying("FIELD 47A — ADDITIONAL CONDITIONS", conditions);
 
@@ -378,11 +385,16 @@ public class PlanStage implements Stage {
             return settle(ctx, decision(gates, true,
                     "No threshold check reported anything and the credit states no additional "
                             + "conditions, so the plan stands as selected.",
-                    List.of(), null, null));
+                    List.of(), List.of(), null, null));
         }
 
         PromptContext prompt = PromptContext.create()
                 .stable("HOW TO DECIDE", prompts.get("plan-govern"))
+                // Whether a check is worth running is partly whether it can be answered at
+                // all: one whose operands read fields nothing extracted will cost a call to
+                // return INCONCLUSIVE. This is the only step that can stand it down, and the
+                // only one that raises the card which makes standing it down safe.
+                .varying("WHAT WAS ACTUALLY READ FROM THIS PRESENTATION", availability(ctx))
                 .varying("THRESHOLD CHECKS ALREADY RUN", describe(gates))
                 .varying("THE CREDIT", creditTerms(row))
                 .varying("FIELD 46A — DOCUMENTS REQUIRED", required)
@@ -431,22 +443,168 @@ public class PlanStage implements Stage {
             return settle(ctx, decision(gates, true,
                     "The plan could not be weighed against this credit — " + e.getMessage()
                             + " — so every selected check runs.",
-                    List.of(), null, null));
+                    List.of(), List.of(), null, null));
         }
 
         return settle(ctx, apply(ctx, gates, verdict));
     }
 
     /** Carries out what the planner decided, and returns the record of it. */
+    /**
+     * The credit restated a standing rule on its own terms, so that rule runs on them.
+     *
+     * <p><b>The model proposes; the operands decide.</b> The verdict names a pair — a standing
+     * check and a requirement card read out of this credit — and says why, in the credit's own
+     * words. What it does not do is name a row, because a standing check is not one subject:
+     * the seeded {@code TRANS-20} carries four comparisons and a clause about the presentation
+     * period varies exactly one of them. Superseding the card would discard three that are
+     * still right.
+     *
+     * <p>So the row is found here, by matching the <b>left operand</b> — the thing the row
+     * constrains. Not both sides: the right side is the yardstick, and varying the yardstick is
+     * precisely what a credit is entitled to do. "The presentation period runs from the date of
+     * issue rather than the on-board date" changes the right operand and is still the same
+     * subject; requiring both to match would refuse the case this exists for.
+     *
+     * <p>That works because a row's left operand is unique within its check — true of every
+     * check in both catalogues, and not luck: a row is a constraint on one thing, and the thing
+     * it constrains is its left operand.
+     *
+     * <p>No match, no supersession. The claim is refused and both cards stay as they were,
+     * because guessing which clause governs which comparison is exactly the judgement that is
+     * not ours.
+     */
+    private List<Map<String, Object>> supersede(StageContext ctx, Map<String, Object> verdict,
+                                                Set<String> known) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        List<Map<String, Object>> asked = readList(verdict, "supersede");
+        if (asked.isEmpty()) return out;
+
+        Map<String, ReadRows.PlanCheck> plan = new LinkedHashMap<>();
+        for (ReadRows.PlanCheck c : cases.planChecks(ctx.caseId())) plan.put(c.checkId(), c);
+
+        Set<String> takenRows = new LinkedHashSet<>();
+        for (Map<String, Object> s : asked) {
+            String checkId = str(s.get("checkId"));
+            String reqId = str(s.get("byRequirement"));
+            String quote = str(s.get("quote"));
+            String because = str(s.get("because"));
+
+            ReadRows.PlanCheck standing = checkId == null ? null : plan.get(checkId);
+            ReadRows.PlanCheck credit = reqId == null ? null : plan.get(reqId);
+            if (standing == null || credit == null || !known.contains(checkId)) {
+                log.warn("Plan asked to supersede {} by {} on case {}, and one of them is not "
+                        + "in the plan", checkId, reqId, ctx.caseId());
+                continue;
+            }
+
+            ConditionTree from = ConditionTree.parse(standing.ruleDef()).tree();
+            ConditionTree by = ConditionTree.parse(credit.ruleDef()).tree();
+            if (from == null || by == null) {
+                // A judged standing check has no rows, so there is no subject to transfer and
+                // nothing to verify. A judged requirement has no operands to verify WITH, and
+                // accepting it would trade a determinate comparison for an opinion reported
+                // under the article's citation. `suppress` is the verb for both.
+                log.info("Refused to supersede {} by {} on case {}: {} has no condition to "
+                        + "match on", checkId, reqId, ctx.caseId(), from == null ? checkId : reqId);
+                continue;
+            }
+
+            ConditionTree.Row replacement = firstRow(by);
+            ConditionTree.Row target = replacement == null ? null : rowOn(from, subject(replacement));
+            if (target == null) {
+                log.info("Refused to supersede {} by {} on case {}: no row of {} constrains {}",
+                        checkId, reqId, ctx.caseId(), checkId,
+                        replacement == null ? "anything" : subject(replacement));
+                continue;
+            }
+            // One row, one supersession — not one rule. A single 47A clause may legitimately
+            // vary rows in two different checks, and refusing that would refuse a correct
+            // reading. Two requirements claiming ONE row is the reading nobody should act on.
+            if (!takenRows.add(checkId + "/" + subject(replacement))) {
+                log.warn("Two requirements claim the same row of {} on case {} — the second, "
+                        + "{}, is refused", checkId, ctx.caseId(), reqId);
+                continue;
+            }
+
+            String why = nz(standing.ruleRef()) + ", as varied by this credit"
+                    + (because == null ? "" : ": " + because)
+                    + (quote == null ? "" : " — " + quote);
+            cases.supersedePlanCheck(ctx.caseId(), checkId,
+                    replace(from, target, replacement).toMap(),
+                    ConditionTree.rowToMap(target), reqId, quote, why);
+
+            log.info("{} on case {} now runs on this credit's terms, varied by {}",
+                    checkId, ctx.caseId(), reqId);
+            out.add(Rows.of("checkId", checkId, "byRequirement", reqId,
+                    "because", because, "quote", quote,
+                    "was", ConditionTree.describeRow(target),
+                    "now", ConditionTree.describeRow(replacement)));
+        }
+        return out;
+    }
+
+    /** What a row constrains: the left operand, as {@code "BOL.on_board_date"}. */
+    private static String subject(ConditionTree.Row row) {
+        return row.left().describe();
+    }
+
+    /** The condition's first comparison — a requirement card compiles to exactly one. */
+    private static ConditionTree.Row firstRow(ConditionTree t) {
+        for (ConditionTree.Group g : t.groups()) {
+            for (ConditionTree.Row r : g.rows()) return r;
+        }
+        return null;
+    }
+
+    /** The row of this check that constrains the same thing, or null if none does. */
+    private static ConditionTree.Row rowOn(ConditionTree t, String subject) {
+        for (ConditionTree.Group g : t.groups()) {
+            for (ConditionTree.Row r : g.rows()) {
+                if (subject.equals(subject(r))) return r;
+            }
+        }
+        return null;
+    }
+
+    /** The tree with one row swapped, keeping the replaced row's id so the evidence lines up. */
+    private static ConditionTree replace(ConditionTree t, ConditionTree.Row target,
+                                         ConditionTree.Row with) {
+        List<ConditionTree.Group> groups = new ArrayList<>();
+        for (ConditionTree.Group g : t.groups()) {
+            List<ConditionTree.Row> rows = new ArrayList<>();
+            for (ConditionTree.Row r : g.rows()) {
+                rows.add(r == target
+                        ? new ConditionTree.Row(target.id(), with.op(), with.left(), with.right(), with.tol())
+                        : r);
+            }
+            groups.add(new ConditionTree.Group(g.id(), g.any(), g.connector(), rows));
+        }
+        return new ConditionTree(t.version(), t.scope(), t.message(), groups);
+    }
+
     private Map<String, Object> apply(StageContext ctx, List<Map<String, Object>> gates,
                                       Map<String, Object> verdict) {
         Set<String> known = cases.planChecks(ctx.caseId()).stream()
                 .map(ReadRows.PlanCheck::checkId).collect(java.util.stream.Collectors.toSet());
 
+        // Supersessions first, so a rule the credit restated is not also a candidate for
+        // suppression: the two verbs are mutually exclusive on one row, and resolving a
+        // verdict that asserts both by precedence would be guessing which the model meant.
+        List<Map<String, Object>> varied = supersede(ctx, verdict, known);
+        Set<String> superseded = varied.stream()
+                .map(v -> String.valueOf(v.get("checkId"))).collect(java.util.stream.Collectors.toSet());
+
         List<Map<String, Object>> suppressed = new ArrayList<>();
         ClauseIds ids = idsFor(ctx);
         int n = 0;
         for (Map<String, Object> s : readList(verdict, "suppress")) {
+            if (superseded.contains(str(s.get("checkId")))) {
+                log.warn("Plan asked to both supersede and suppress {} on case {} — the "
+                        + "supersession stands and the suppression is refused",
+                        s.get("checkId"), ctx.caseId());
+                continue;
+            }
             String checkId = str(s.get("checkId"));
             // A check id nobody planned is a hallucination, and acting on it would suppress
             // nothing while reporting that it had. Logged rather than dropped in silence.
@@ -487,7 +645,7 @@ public class PlanStage implements Stage {
         Map<String, Object> override = asMap(verdict.get("gateOverride"));
         boolean runRemaining = decideRunRemaining(gates, verdict, override);
         return decision(gates, runRemaining,
-                nz(str(verdict.get("why"))), suppressed, override.isEmpty() ? null : override,
+                nz(str(verdict.get("why"))), suppressed, varied, override.isEmpty() ? null : override,
                 str(verdict.get(REASONING)));
     }
 
@@ -516,6 +674,7 @@ public class PlanStage implements Stage {
     /** The record of what was decided, in the shape the case column and the workbench read. */
     private Map<String, Object> decision(List<Map<String, Object>> gates, boolean runRemaining,
                                          String why, List<Map<String, Object>> suppressed,
+                                         List<Map<String, Object>> varied,
                                          Map<String, Object> override, String reasoning) {
         boolean failed = gates.stream().anyMatch(g -> "FAIL".equals(g.get("outcome")));
         Map<String, Object> d = new LinkedHashMap<>(Rows.of(
@@ -525,6 +684,10 @@ public class PlanStage implements Stage {
                 "runRemaining", runRemaining,
                 "why", why,
                 "suppressed", suppressed,
+                // What the credit restated rather than excused. A separate key from `suppressed`
+                // because they are different acts: one stopped a check, the other changed what
+                // it compares and left it running.
+                "superseded", varied,
                 "gateOverride", override));
         // Only when there is one. The two paths that decide without asking a model — nothing
         // to weigh, and the model could not be reached — have no working to show, and an
@@ -736,6 +899,63 @@ public class PlanStage implements Stage {
         return out;
     }
 
+    /**
+     * What this presentation actually yielded, as field <em>keys</em> — never as values.
+     *
+     * <p><b>Why keys only.</b> The planner writes conditions; it does not settle them. Handed
+     * values it answers the requirement instead of compiling it, and the answer is a model's
+     * opinion wearing an exact check's clothes. Worse, a condition compiled from what a
+     * document happens to <em>say</em> is a rule that passes by construction — a literal in a
+     * condition must trace to what the credit <em>demands</em>.
+     *
+     * <p><b>Why it exists at all.</b> Without it the planner compiles against fields nobody
+     * extracts, and such a check plans, stores, runs, and returns INCONCLUSIVE for ever while
+     * looking exactly like a check that ran. {@code v_dangling_reference} reports that
+     * afterwards; this is the same knowledge beforehand, where it can still change what gets
+     * written.
+     *
+     * <p>Scoped to the dictionary's own bindings with attestations filtered out, so it offers
+     * the same vocabulary {@link RuleCompiler#vocabulary()} does. A field the extractor
+     * invented is real evidence and reaches the officer, but its key is model-authored and
+     * moves between runs, so a condition naming one would break on the next presentation.
+     *
+     * @return the block, or empty when the dictionary binds no fields at all — in which case
+     *         there is nothing true to say and a heading with nothing under it invites a model
+     *         to fill it in
+     */
+    private String availability(StageContext ctx) {
+        Set<String> presented = docTypesOnCase(ctx);
+
+        Map<String, Set<String>> readByDoc = new LinkedHashMap<>();
+        for (ReadRows.Fact f : cases.facts(ctx.caseId())) {
+            if (f.fieldKey() == null || f.value() == null || f.value().isBlank()) continue;
+            readByDoc.computeIfAbsent(f.docCode(), k -> new LinkedHashSet<>()).add(f.fieldKey());
+        }
+
+        StringBuilder sb = new StringBuilder();
+        for (CheckCatalog.DocTypeDef d : docTypes.all()) {
+            List<String> bound = catalog.bindingsFor(d.code()).stream()
+                    .filter(b -> !b.attestation())
+                    .map(CheckCatalog.FieldBinding::key)
+                    .toList();
+            if (bound.isEmpty()) continue;
+
+            if (!presented.contains(d.code())) {
+                sb.append("  ").append(d.code()).append(" (").append(d.name()).append(")\n")
+                        .append("    not presented\n");
+                continue;
+            }
+            Set<String> read = readByDoc.getOrDefault(d.code(), Set.of());
+            List<String> got = bound.stream().filter(read::contains).toList();
+            List<String> missed = bound.stream().filter(k -> !read.contains(k)).toList();
+
+            sb.append("  ").append(d.code()).append(" (").append(d.name()).append(")\n");
+            if (!got.isEmpty()) sb.append("    read:     ").append(String.join(", ", got)).append('\n');
+            if (!missed.isEmpty()) sb.append("    not read: ").append(String.join(", ", missed)).append('\n');
+        }
+        return sb.toString();
+    }
+
     // =========================================================================
     // Describing the plan to the model
     // =========================================================================
@@ -762,11 +982,39 @@ public class PlanStage implements Stage {
             sb.append("  ").append(c.checkId()).append(" — ").append(c.name())
               .append(" [").append(c.tier().toLowerCase()).append(", cites ")
               .append(nz(c.ruleRef())).append("]\n");
+            // What it actually compares, not only what it is called. A decision about whether
+            // a credit clause bears on a check is a decision about the check's comparisons,
+            // and a title does not carry them: "Bill of lading on-board notation" says
+            // nothing about the fourth row, which is a presentation period.
+            String rows = ConditionTree.parse(c.ruleDef()).describeOrEmpty();
+            if (!rows.isBlank()) sb.append(rows.stripTrailing().indent(6));
         }
         return sb.toString();
     }
 
     /** The terms a decision about this credit turns on. Not the whole case. */
+    /**
+     * Every term the credit states, except the two blocks that are called out by name.
+     *
+     * <p>47A routinely leans on tags it does not restate — "presentation within the validity of
+     * the credit", "shipment as per 44C", "drawn under the credit referenced above". Given 46A
+     * and 47A alone, the reader either guesses at those or gives up on the clause, and both
+     * are worse than telling it what the credit says. The map is already loaded for the two
+     * blocks; this costs one more prompt block and no read.
+     *
+     * <p>Deliberately the parsed tag map rather than {@link #creditTerms(CaseRow)}, whose eight
+     * denormalised columns are a subset chosen for the governing call's own question.
+     */
+    private static String otherCreditTerms(Map<String, Object> credit) {
+        StringBuilder sb = new StringBuilder();
+        credit.forEach((key, value) -> {
+            if (key == null || key.startsWith("_")) return;
+            if ("documents_required".equals(key) || "additional_conditions".equals(key)) return;
+            term(sb, key.replace('_', ' '), value);
+        });
+        return sb.toString();
+    }
+
     private String creditTerms(CaseRow c) {
         StringBuilder sb = new StringBuilder();
         term(sb, "credit reference", c.creditRef());

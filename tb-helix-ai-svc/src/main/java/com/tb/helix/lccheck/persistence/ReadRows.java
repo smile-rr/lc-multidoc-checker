@@ -131,6 +131,14 @@ public final class ReadRows {
             String status,
             String coverage,
             String suppressedBecause,
+            /** The requirement card whose condition replaced one of this check's rows. */
+            String variedBy,
+            /** The credit's own words for the variation. Never null when {@code variedBy} is set. */
+            String variedQuote,
+            /** The row this check carried before the credit varied it, as stored. */
+            String variedFrom,
+            /** Set on a requirement folded into a standing check: it ran under that id. */
+            String mergedInto,
             List<String> docCodes,
             int ordinal) {
 

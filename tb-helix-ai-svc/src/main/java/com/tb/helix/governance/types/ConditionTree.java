@@ -161,6 +161,16 @@ public record ConditionTree(int version, String scope, String message, List<Grou
             return tree != null && problems.isEmpty();
         }
 
+        /**
+         * {@link ConditionTree#describe()}, or nothing when there was no tree to describe.
+         *
+         * <p>A judged check has no condition and a malformed one could not be read; neither is
+         * an error at a call site that is only trying to say what a check compares.
+         */
+        public String describeOrEmpty() {
+            return tree == null ? "" : tree.describe();
+        }
+
         public String why() {
             return String.join("; ", problems);
         }
@@ -342,6 +352,57 @@ public record ConditionTree(int version, String scope, String message, List<Grou
     }
 
     // =========================================================================
+    // Saying what it compares
+    // =========================================================================
+
+    /**
+     * What this condition actually compares, one line per row, unindented.
+     *
+     * <p>For a prompt or a log, never for the browser — the console draws a tree from
+     * {@link #toMap()} and a second rendering it could disagree with is how the two come to
+     * say different things about one rule.
+     *
+     * <p>It exists because the governing call was shown its candidates as <em>titles</em>:
+     * {@code TRANS-20 — Bill of lading on-board notation}. Asked whether a credit clause
+     * about a thirty-day presentation period bears on that, it could only guess — the row it
+     * bears on is the fourth, and nothing on screen said the check had a fourth row or that it
+     * was about presentation dates at all. A decision about a comparison needs the comparison.
+     *
+     * <p>Row ids are deliberately not printed. Which row a credit clause varies is settled by
+     * matching operands in code, not by a model naming one — see the plan stage.
+     */
+    public String describe() {
+        StringBuilder sb = new StringBuilder();
+        boolean firstGroup = true;
+        for (Group g : groups) {
+            if (!firstGroup) {
+                sb.append("OR".equalsIgnoreCase(g.connector()) ? "-- or --" : "-- and --").append('\n');
+            }
+            boolean firstRow = true;
+            for (Row r : g.rows()) {
+                if (!firstRow) sb.append(g.any() ? "or " : "and ");
+                sb.append(describeRow(r)).append('\n');
+                firstRow = false;
+            }
+            firstGroup = false;
+        }
+        return sb.toString();
+    }
+
+    /** One comparison, in the operator's own words. Public so a varied row can be shown. */
+    public static String describeRow(Row r) {
+        Operator op = r.op() == null ? Operator.UNKNOWN : r.op();
+        StringBuilder sb = new StringBuilder(r.left().describe()).append(' ').append(op.label());
+        if (!op.unary()) sb.append(' ').append(r.right().describe());
+        // Only where the operator reads it. Elsewhere it is an author's note, and repeating it
+        // to a model deciding what to run would read as part of the comparison.
+        if (op.usesTol() && r.tol() != null && !r.tol().isBlank()) {
+            sb.append(" (").append(r.tol()).append(')');
+        }
+        return sb.toString();
+    }
+
+    // =========================================================================
     // Writing one back
     // =========================================================================
 
@@ -356,15 +417,7 @@ public record ConditionTree(int version, String scope, String message, List<Grou
         List<Object> out = new ArrayList<>();
         for (Group g : groups) {
             List<Object> rows = new ArrayList<>();
-            for (Row r : g.rows()) {
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put("id", r.id());
-                row.put("op", r.op().wire());
-                row.put("tol", r.tol());
-                row.put("l", side(r.left()));
-                if (!r.op().unary()) row.put("r", side(r.right()));
-                rows.add(row);
-            }
+            for (Row r : g.rows()) rows.add(rowToMap(r));
             Map<String, Object> group = new LinkedHashMap<>();
             group.put("id", g.id());
             group.put("logic", g.any() ? "any" : "all");
@@ -378,6 +431,23 @@ public record ConditionTree(int version, String scope, String message, List<Grou
         if (message != null) tree.put("message", message);
         tree.put("groups", out);
         return tree;
+    }
+
+    /**
+     * One row, as it is stored.
+     *
+     * <p>Public because a row can outlive the tree it was written in: when a credit varies a
+     * standing rule, the row it replaced is kept beside the replacement so an officer can see
+     * that twenty-one became thirty.
+     */
+    public static Map<String, Object> rowToMap(Row r) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", r.id());
+        row.put("op", r.op().wire());
+        row.put("tol", r.tol());
+        row.put("l", side(r.left()));
+        if (!r.op().unary()) row.put("r", side(r.right()));
+        return row;
     }
 
     private static Map<String, Object> side(Operand o) {

@@ -128,4 +128,15 @@ public final class CacheOp {
      */
     public static final String TRANSCRIBE_CREDIT = "transcribe.credit";
     public static final int    TRANSCRIBE_CREDIT_V = 1;
+
+    /**
+     * The wording of a refusal advice, from the grounds an officer confirmed.
+     *
+     * <p>Keyed on those grounds and nothing else. It is the only call in the system that runs
+     * <em>after</em> a person has decided, and it writes rather than concludes — so an entry
+     * is safe to serve whenever the same officer's same decisions come round again, and must
+     * be invalidated the moment any of them changes.
+     */
+    public static final String NARRATE_ADVICE = "narrate.advice";
+    public static final int    NARRATE_ADVICE_V = 1;
 }

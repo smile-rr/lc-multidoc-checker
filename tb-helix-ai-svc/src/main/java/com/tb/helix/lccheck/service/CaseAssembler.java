@@ -1,5 +1,6 @@
 package com.tb.helix.lccheck.service;
 
+import com.tb.helix.governance.types.ConditionTree;
 import com.tb.helix.lccheck.persistence.CaseRow;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.ReadRows;
@@ -131,6 +132,12 @@ public class CaseAssembler {
                 // officer's.
                 c.coverage() == null ? null : lower(c.coverage()).replace('_', '-'),
                 c.suppressedBecause(),
+                c.variedBy(), c.variedQuote(),
+                // Rendered here rather than shipped as a tree: the browser draws a condition
+                // from ComparisonView, and a second shape it would have to learn — for one
+                // line saying what a row used to be — is a second parser to keep in step.
+                variedFrom(c),
+                c.mergedInto(),
                 // Authored where there is an author, derived from the operands otherwise.
                 // A threshold check declares no doc types — it is about the credit and the
                 // covering schedule, which its operands say and nothing else does.
@@ -176,6 +183,24 @@ public class CaseAssembler {
      * would have shown every exact check with no conditions at all and reported nothing
      * wrong.
      */
+    /**
+     * The comparison this check made before the credit varied it, in one line.
+     *
+     * <p>Null where nothing was varied, which is almost every check. Where something was, the
+     * card carries both — a variation an officer cannot see is a variation nobody agreed to,
+     * and "21 calendar days became 30" is a sentence a person can disagree with.
+     */
+    private String variedFrom(ReadRows.PlanCheck c) {
+        Object row = parsed(c.variedFrom());
+        if (row == null) return null;
+        // Wrapped back into a one-row group so the same parser reads it. A row is not a tree,
+        // and giving ConditionTree a second entry point for the one place that holds a bare
+        // row is how a format grows a dialect.
+        ConditionTree tree = ConditionTree.parse(Map.of("groups",
+                List.of(Map.of("id", "was", "logic", "all", "rows", List.of(row))))).tree();
+        return tree == null ? null : tree.describe().strip();
+    }
+
     private Object parsed(String ruleDef) {
         if (ruleDef == null || ruleDef.isBlank()) return null;
         try {

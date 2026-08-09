@@ -102,7 +102,8 @@ public class GovernanceStore {
      */
     public List<Map<String, Object>> checks() {
         return jdbc.query("""
-                SELECT body, tier, gate_eligible, gate_on, has_conditions, operand_docs, comment_count
+                SELECT body, tier, gate_eligible, gate_on, has_conditions, language,
+                       operand_docs, comment_count
                   FROM helix_gov.v_check_list
                  ORDER BY id
                 """, (rs, i) -> {
@@ -111,6 +112,11 @@ public class GovernanceStore {
             c.put("gateEligible", rs.getBoolean("gate_eligible"));
             c.put("gateOn", rs.getBoolean("gate_on"));
             c.put("hasConditions", rs.getBoolean("has_conditions"));
+            // Which language its condition is written in — TREE or EXPRESSION. Served rather
+            // than inferred in the browser from the shape of `rule`, for the same reason
+            // `tier` is: a second opinion about a derivation is how the two come to disagree,
+            // and here the service's answer accounts for a facet the browser cannot see.
+            c.put("language", rs.getString("language"));
             c.put("operandDocs", array(rs.getArray("operand_docs")));
             c.put("commentCount", rs.getInt("comment_count"));
             return c;
@@ -191,6 +197,33 @@ public class GovernanceStore {
     }
 
     /**
+     * What SQL cannot read off a condition, rebuilt from the compiler.
+     *
+     * <p>Wholesale, every time, and never patched: the row is a projection of the rule and the
+     * only safe relationship between the two is "recomputed from". Deleted rather than left
+     * behind when a check stops being an expression, because a stale facet would keep an old
+     * condition's documents alive in {@code operand_docs} — and that feeds gate eligibility.
+     *
+     * @param reads     document and field pairs, as the compiler read them
+     * @param judgement whether any comparison it makes is a reading
+     */
+    public void saveFacet(String checkId, String language, boolean judgement,
+                          List<Map<String, String>> reads) {
+        jdbc.update("""
+                INSERT INTO helix_gov.check_facet (check_id, language, judgement, reads)
+                VALUES (?, ?, ?, ?::jsonb)
+                ON CONFLICT (check_id) DO UPDATE
+                   SET language = EXCLUDED.language, judgement = EXCLUDED.judgement,
+                       reads = EXCLUDED.reads, updated_at = NOW()
+                """, checkId, language, judgement, toJson(reads));
+    }
+
+    /** A check whose condition SQL can read again needs no row here. */
+    public void dropFacet(String checkId) {
+        jdbc.update("DELETE FROM helix_gov.check_facet WHERE check_id = ?", checkId);
+    }
+
+    /**
      * Whether this check runs before anything is read, and what its failure means.
      *
      * <p>Intent on both counts; <em>eligibility</em> is derived separately and can veto the
@@ -214,7 +247,7 @@ public class GovernanceStore {
      */
     public Map<String, Object> gateEligibility(String checkId) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
-                SELECT gate_eligible, gate_on, has_conditions, check_type, operand_docs,
+                SELECT gate_eligible, gate_on, has_conditions, tier, operand_docs,
                        body ->> 'onFail' AS on_fail
                   FROM helix_gov.v_check_list WHERE id = ?
                 """, checkId);
@@ -232,8 +265,14 @@ public class GovernanceStore {
                         : why(r));
     }
 
+    /**
+     * The derived tier and never the authored {@code checkType}, for the reason the tier is
+     * derived at all. An expression check is EXACT and was being told it was an agent; the
+     * author reading that would go looking for a model that is not there, and the real
+     * obstacle — a document nothing can read before the presentation — went unsaid.
+     */
     private String why(Map<String, Object> r) {
-        if (!"PROGRAMMATIC".equals(r.get("check_type"))) {
+        if (!"EXACT".equals(r.get("tier"))) {
             return "An agent reads documents; it cannot run before they are read.";
         }
         if (!Boolean.TRUE.equals(r.get("has_conditions"))) {

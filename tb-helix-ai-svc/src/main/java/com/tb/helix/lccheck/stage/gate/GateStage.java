@@ -11,6 +11,7 @@ import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.lccheck.rule.RuleEvaluator;
 import com.tb.helix.lccheck.service.Comparisons;
 import com.tb.helix.lccheck.service.DocumentTypes;
+import com.tb.helix.lccheck.service.FactWriter;
 import com.tb.helix.lccheck.pipeline.*;
 import com.tb.helix.lccheck.pipeline.StageContext;
 import com.tb.helix.lccheck.types.examination.Origin;
@@ -300,7 +301,8 @@ public class GateStage implements Stage {
      *  edge of the stage, so the engine never sees a persistence row. */
     private List<RuleEvaluator.Fact> readings(StageContext ctx) {
         return cases.facts(ctx.caseId()).stream()
-                .map(f -> new RuleEvaluator.Fact(f.fieldKey(), f.docCode(), f.label(), f.value()))
+                .map(f -> new RuleEvaluator.Fact(f.fieldKey(), f.docCode(), f.label(), f.value(),
+                        FactWriter.MULTI_VALUED.equals(f.flag())))
                 .toList();
     }
 

@@ -9,8 +9,28 @@ package com.tb.helix.governance.types;
  */
 public enum CheckType {
 
-    /** An expression over extracted fields. Deterministic, no model, free. */
+    /** A condition tree over extracted fields. Deterministic, no model, free. */
     PROGRAMMATIC(Tier.EXACT),
+
+    /**
+     * The same determinism, written as an expression a person can read.
+     *
+     * <p>{@link #PROGRAMMATIC} is a tree of groups and rows: authored through a form, and the
+     * form cannot express half of what the language allows — a computed operand renders
+     * read-only in the console because composing one "is an editor of its own". The tree has
+     * no negation and, until recently, no strict inequality, so *"shipped later than the
+     * latest shipment date"* could not be written down at all. And a model asked for nested
+     * operand JSON gets it wrong often enough that the planner's rejections are a real cost.
+     *
+     * <p>So the same comparisons, as {@code {BOL.on_board_date} > {LC.latest_shipment_date}}
+     * — parsed to an abstract tree, checked against the dictionary and a whitelist before it
+     * runs, and evaluated leaf by leaf so the officer still gets a row per comparison.
+     *
+     * <p>Exact, like {@code PROGRAMMATIC}, and for the same reason: no model settles it.
+     *
+     * @see ConditionExpr
+     */
+    EXPRESSION(Tier.EXACT),
 
     /** One structured model call, no tools. */
     AGENT(Tier.JUDGED),

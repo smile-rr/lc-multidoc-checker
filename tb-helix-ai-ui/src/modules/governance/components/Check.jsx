@@ -10,6 +10,7 @@ import { useNewItemFocus } from '@shared/lib/useNewItemFocus'
 import TextField from '@shared/ds/TextField'
 import ExactBody from './ExactBody'
 import JudgedBody from './JudgedBody'
+import ExpressionBody from './ExpressionBody'
 
 // The check card shell. Everything a check has whatever kind it is — id, title,
 // severity, references, which agent it sits in — lives here; the middle of the
@@ -158,9 +159,11 @@ export default function Check({ check }) {
       {/* ---- Rule card ---- */}
       {check.isExact && <ExactBody check={check} />}
 
-      {/* ---- Agent check: which fields and documents it reads ----
-          A rule states its operands in its own rows, so these chips belong to
-          agent checks only. */}
+      {/* ---- Which fields and documents it reads ----
+          A tree states its operands in its own rows, so these chips belong to the
+          two kinds that do not: an agent check, and an expression whose names are
+          text. Both read the documents named here, so the reading comes first and
+          the condition that uses it comes after. */}
       {check.showFieldRows && (
         <>
           <ChipRow
@@ -208,7 +211,12 @@ export default function Check({ check }) {
         </>
       )}
 
+      {/* Below the documents and fields, in one slot: the agent's prose, or the
+          expression's conditions. Never both — an expression card was drawing the
+          agent's rule box underneath its own editor, which is two rules on one card
+          and only one of them is ever run. */}
       {check.showBody && <JudgedBody check={check} />}
+      {check.isExpression && <ExpressionBody check={check} />}
 
       {check.editing && (
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, marginTop: 10 }}>

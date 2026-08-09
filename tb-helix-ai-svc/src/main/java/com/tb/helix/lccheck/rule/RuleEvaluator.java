@@ -3,6 +3,7 @@ package com.tb.helix.lccheck.rule;
 import com.tb.helix.governance.types.ConditionFn;
 import com.tb.helix.governance.types.ConditionTree;
 import com.tb.helix.governance.types.Operator;
+import com.tb.helix.harness.expr.Values;
 
 import org.springframework.stereotype.Component;
 
@@ -49,6 +50,12 @@ import java.util.Set;
 @Component
 public class RuleEvaluator {
 
+    private final ExpressionEvaluator expressions;
+
+    public RuleEvaluator(ExpressionEvaluator expressions) {
+        this.expressions = expressions;
+    }
+
     public enum Outcome { PASS, FAIL, INCONCLUSIVE }
 
     /**
@@ -68,13 +75,18 @@ public class RuleEvaluator {
      *       signal that would get it fixed.
      *   <li><b>UNPARSEABLE</b> — something was read and could not be used as a date or a
      *       number. Both parties can see the value; nobody can compare it.
+     *   <li><b>HUMAN_ONLY</b> — <em>not an absence at all.</em> Everything was read, the
+     *       comparison was made, and a graded condition put the answer beyond what a
+     *       comparison may settle: the rulebook itself says a person must look. Folded into
+     *       UNPARSEABLE it would read as an extraction failure and join a list of fields to
+     *       go and fix, which is a week spent on a field that is working perfectly.
      * </ul>
      *
-     * <p>All three still produce DOUBT, because a check that could not run has not passed.
+     * <p>All four still produce DOUBT, because a check that could not run has not passed.
      * What changes is what the officer is told to do about it — and, over a hundred cases,
      * whether "our reading is weak here" is visible at all.
      */
-    public enum Gap { NOT_PRESENTED, NOT_EXTRACTED, UNPARSEABLE }
+    public enum Gap { NOT_PRESENTED, NOT_EXTRACTED, UNPARSEABLE, HUMAN_ONLY }
 
     /**
      * One reading, as this needs it.
@@ -84,7 +96,20 @@ public class RuleEvaluator {
      * examination is decided. Four values are all a comparison needs — which field, on which
      * document, what it says, and what to call it when explaining itself.
      */
-    public record Fact(String fieldKey, String docCode, String label, String value) {
+    /**
+     * @param multiValued more than one value was read for this field and stored in one cell,
+     *                    because the fact model has nowhere to put the second. Comparing that
+     *                    cell is worse than not comparing it: "SHANGHAI" against
+     *                    '["SHANGHAI","NINGBO"]' is not equal, so the rule reports a
+     *                    discrepancy that does not exist and is indistinguishable from one
+     *                    that does. Such a row is answered INCONCLUSIVE instead.
+     */
+    public record Fact(String fieldKey, String docCode, String label, String value,
+                       boolean multiValued) {
+
+        public Fact(String fieldKey, String docCode, String label, String value) {
+            this(fieldKey, docCode, label, value, false);
+        }
     }
 
     /**
@@ -100,9 +125,16 @@ public class RuleEvaluator {
      * @param resolved whether anything was actually read. False is not an error and not a
      *                 zero: it is the reason the row is INCONCLUSIVE, and the screen prints
      *                 "not extracted" where the value would go.
+     * @param multi    whether more than one value was read for this field and stored in one
+     *                 cell. It is resolved — something was read — and it is not comparable,
+     *                 which is a third state the other two flags cannot express.
      */
     public record Side(String doc, String field, String label, String value,
-                       boolean resolved, boolean literal) {
+                       boolean resolved, boolean literal, boolean multi) {
+
+        Side(String doc, String field, String label, String value, boolean resolved, boolean literal) {
+            this(doc, field, label, value, resolved, literal, false);
+        }
 
         String text() {
             return value == null ? "" : value;
@@ -131,6 +163,10 @@ public class RuleEvaluator {
         RowResult(String id, String op, String label, Outcome outcome,
                   Side left, Side right, String tol, String why) {
             this(id, op, label, outcome, left, right, tol, why, null);
+        }
+
+        public RowResult withGap(Gap gap) {
+            return new RowResult(id, op, label, outcome, left, right, tol, why, gap);
         }
     }
 
@@ -175,7 +211,8 @@ public class RuleEvaluator {
          * bill of lading simply is not there is three restatements of one fact.
          */
         public Gap gap() {
-            for (Gap g : List.of(Gap.NOT_PRESENTED, Gap.NOT_EXTRACTED, Gap.UNPARSEABLE)) {
+            for (Gap g : List.of(Gap.NOT_PRESENTED, Gap.NOT_EXTRACTED, Gap.UNPARSEABLE,
+                                 Gap.HUMAN_ONLY)) {
                 if (rows.stream().anyMatch(r -> r.gap() == g)) return g;
             }
             return null;
@@ -214,6 +251,8 @@ public class RuleEvaluator {
                 case NOT_PRESENTED -> "NOT_PRESENTED";
                 case NOT_EXTRACTED -> "NOT_EXTRACTED";
                 case UNPARSEABLE -> "UNANSWERABLE";
+                // Not an absence at all — see Gap.
+                case HUMAN_ONLY -> "HUMAN_ONLY";
             };
         }
 
@@ -238,6 +277,15 @@ public class RuleEvaluator {
      * @param facts every fact on the case, looked up by (field key, document)
      */
     public Result evaluate(Object rule, List<Fact> facts, Set<String> presented) {
+        // The one place a check's language is decided, so that gate, execute, the finding,
+        // the comparison view and the advice all stay unaware of which one it was written in.
+        // A tree has groups; an expression has `when`, or `clauses` when it is graded.
+        // Nothing else distinguishes them and nothing else needs to.
+        if (rule instanceof java.util.Map<?, ?> m && (m.get("when") != null || m.get("clauses") != null)) {
+            @SuppressWarnings("unchecked")
+            java.util.Map<String, Object> asMap = (java.util.Map<String, Object>) m;
+            return expressions.evaluate(asMap, facts, presented);
+        }
         ConditionTree.Parsed parsed = ConditionTree.parse(rule);
         if (!parsed.ok()) {
             return new Result(Outcome.INCONCLUSIVE, List.of(),
@@ -338,6 +386,22 @@ public class RuleEvaluator {
         if (!left.resolved()) return missing(row.id(), op, label, left, right, tol, left, have);
         if (!right.resolved()) return missing(row.id(), op, label, left, right, tol, right, have);
 
+        // Read, and not comparable. A field that came back with several values is stored as
+        // the JSON of all of them in one cell, because the fact model has nowhere to put the
+        // second — so comparing it finds a difference in our storage and reports it as a
+        // difference in the documents. INCONCLUSIVE is the true answer and sends it to a
+        // person; FAIL would be a discrepancy that does not exist, told confidently.
+        //
+        // After the presence operators deliberately: "is it stated" is answerable, and the
+        // answer is yes. It is only the comparison that cannot be made.
+        Side many = left.multi() ? left : right.multi() ? right : null;
+        if (many != null) {
+            return new RowResult(row.id(), op.wire(), label, Outcome.INCONCLUSIVE, left, right, tol,
+                    many.describe() + " was read with more than one value, which cannot be "
+                            + "compared as it stands: " + many.text(),
+                    Gap.UNPARSEABLE);
+        }
+
         return compare(row.id(), label, op, left, right, tol);
     }
 
@@ -354,7 +418,7 @@ public class RuleEvaluator {
             case MATCHES:  return regex(id, op, label, l, r, tolerance, true);
             case NMATCHES: return regex(id, op, label, l, r, tolerance, false);
 
-            case N_EQ, LTE, GTE, WITHIN_PCT: {
+            case N_EQ, LTE, GTE, LT, GT, WITHIN_PCT: {
                 BigDecimal a = number(l.text());
                 BigDecimal b = number(r.text());
                 if (a == null || b == null) {
@@ -370,12 +434,16 @@ public class RuleEvaluator {
                                     + (tolerance.isBlank() ? "" : " even allowing " + tolerance) + ".");
                     case GTE -> decide(id, op, label, a.compareTo(b) >= 0, l, r, tolerance,
                             l.text() + " is less than " + r.text() + ".");
+                    case LT -> decide(id, op, label, a.compareTo(b) < 0, l, r, tolerance,
+                            l.text() + " is not less than " + r.text() + ".");
+                    case GT -> decide(id, op, label, a.compareTo(b) > 0, l, r, tolerance,
+                            l.text() + " is not more than " + r.text() + ".");
                     default -> decide(id, op, label, withinPercent(a, b, tolerance), l, r, tolerance,
                             l.text() + " is outside the tolerance of " + r.text() + ".");
                 };
             }
 
-            case D_EQ, D_LTE, D_GTE, D_WITHIN: {
+            case D_EQ, D_LTE, D_GTE, D_LT, D_GT, D_WITHIN: {
                 LocalDate a = date(l.text());
                 LocalDate b = date(r.text());
                 if (a == null || b == null) {
@@ -390,6 +458,10 @@ public class RuleEvaluator {
                             l.describe() + " " + a + " is after " + r.describe() + " " + b + ".");
                     case D_GTE -> decide(id, op, label, !a.isBefore(b), l, r, tolerance,
                             l.describe() + " " + a + " is before " + r.describe() + " " + b + ".");
+                    case D_LT -> decide(id, op, label, a.isBefore(b), l, r, tolerance,
+                            l.describe() + " " + a + " is not before " + r.describe() + " " + b + ".");
+                    case D_GT -> decide(id, op, label, a.isAfter(b), l, r, tolerance,
+                            l.describe() + " " + a + " is not after " + r.describe() + " " + b + ".");
                     default -> {
                         Integer days = days(tolerance);
                         if (days == null) {
@@ -496,7 +568,7 @@ public class RuleEvaluator {
                 // on CS was not read" reads like a fragment somebody forgot to finish.
                 fact == null ? sentenceCase(o.field().replace('_', ' ')) : fact.label(),
                 fact == null ? null : fact.value(),
-                got, false);
+                got, false, fact != null && fact.multiValued());
     }
 
     /**
@@ -724,95 +796,16 @@ public class RuleEvaluator {
         return s == null ? "" : s.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
     }
 
-    /**
-     * A number, however the document wrote it.
-     *
-     * <p>Strips a currency code and thousands separators. <b>The comma is not always a
-     * thousands separator</b> — SWIFT writes {@code USD60000,00} for sixty thousand — so a
-     * comma with exactly two digits after it and no dot present is read as the decimal
-     * point. Getting this backwards multiplies a credit by a hundred and every comparison
-     * against it still looks like it worked.
-     */
+    // Both of these moved to `Values`, which the expression engine's caller needs too: a
+    // fact is a string in a column and a comparison of dates is not, so whoever binds a
+    // value has to read it the same way this does. Two readings of USD60000,00 is one of
+    // them multiplying a credit by a hundred.
     private BigDecimal number(String raw) {
-        if (raw == null) return null;
-        String s = raw.replaceAll("[A-Za-z]", "").replaceAll("[^0-9,.\\-]", "").trim();
-        if (s.isEmpty()) return null;
-        if (!s.contains(".") && s.matches(".*,\\d{2}$")) {
-            s = s.replace(".", "").replace(',', '.');
-        } else {
-            s = s.replace(",", "");
-        }
-        try {
-            return new BigDecimal(s);
-        } catch (NumberFormatException e) {
-            return null;
-        }
+        return Values.number(raw);
     }
 
-    /**
-     * A date, however the document wrote it.
-     *
-     * <p>This accepted ISO and nothing else, on the reasonable assumption that extraction
-     * normalises. It does not always: a bill of lading came back as {@code 20 – August –
-     * 2010} — en dashes, spaces, a spelt-out month — and the comparison that decides whether
-     * shipment was in time reported that it could not read a date it had been given. The
-     * value was on the page, we had it in hand, and the check went unanswered on punctuation.
-     *
-     * <p><b>What it deliberately will not do is guess.</b> {@code 03/04/2010} is the third of
-     * April to half the world and the fourth of March to the other half, and no examination
-     * should pick one. An all-numeric ambiguous date yields nothing and the row stays
-     * UNPARSEABLE, which is the honest answer — a wrong date here is a shipment declared late
-     * that was not, or in time when it was not.
-     */
     private LocalDate date(String raw) {
-        if (raw == null) return null;
-        // Dashes an author or a model might use where a hyphen was meant, and the separators
-        // collapsed to one space so every pattern below sees the same shape.
-        String s = raw.trim()
-                .replace('\u2010', '-').replace('\u2011', '-').replace('\u2012', '-')
-                .replace('\u2013', '-').replace('\u2014', '-').replace('\u2212', '-')
-                .replaceAll("[,]", " ")
-                .replaceAll("\\s*-\\s*", " ")
-                .replaceAll("\\s+", " ")
-                .trim();
-        if (s.isEmpty()) return null;
-
-        // ISO first and unchanged — it is what extraction produces when it is working, and
-        // it must not become slower or looser because the fallbacks exist.
-        try {
-            return LocalDate.parse(s.substring(0, Math.min(10, s.length())));
-        } catch (RuntimeException ignored) {
-            // fall through to the written forms
-        }
-
-        for (java.time.format.DateTimeFormatter f : WRITTEN_DATES) {
-            try {
-                return LocalDate.parse(s, f);
-            } catch (RuntimeException ignored) {
-                // try the next
-            }
-        }
-        return null;
-    }
-
-    /**
-     * The unambiguous written forms, and only those.
-     *
-     * <p>Every one of these names its month in letters, which is what makes it safe: there is
-     * no reading of "20 AUGUST 2010" that is not the twentieth of August. Nothing here parses
-     * {@code dd/MM/yyyy} or {@code MM/dd/yyyy}, and nothing should — see {@link #date}.
-     */
-    private static final List<java.time.format.DateTimeFormatter> WRITTEN_DATES = List.of(
-            written("d MMMM yyyy"), written("d MMM yyyy"),
-            written("MMMM d yyyy"), written("MMM d yyyy"),
-            written("yyyy MMMM d"), written("yyyy MMM d"),
-            written("yyyy M d"));
-
-    private static java.time.format.DateTimeFormatter written(String pattern) {
-        return new java.time.format.DateTimeFormatterBuilder()
-                .parseCaseInsensitive()
-                .appendPattern(pattern)
-                .toFormatter(Locale.ENGLISH);
+        return Values.date(raw);
     }
 
     /** The ceiling a value may not exceed, once the author's tolerance is allowed for. */

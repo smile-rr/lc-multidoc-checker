@@ -6,6 +6,7 @@ import com.tb.helix.lccheck.types.examination.Origin;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
@@ -93,6 +94,8 @@ public class CaseStore {
                     rs.getBoolean("added_by_officer"),
                     rs.getString("added_by"), rs.getString("status"),
                     rs.getString("coverage"), rs.getString("suppressed_because"),
+                    rs.getString("varied_by"), rs.getString("varied_quote"),
+                    rs.getString("varied_from"), rs.getString("merged_into"),
                     strings(rs.getArray("doc_codes")), rs.getInt("ordinal"));
 
     private static final org.springframework.jdbc.core.RowMapper<ReadRows.Finding> FINDING =
@@ -562,6 +565,38 @@ public class CaseStore {
                    SET status = 'SKIPPED', suppressed_because = ?, applies_because = ?
                  WHERE case_id = ?::uuid AND check_id = ?
                 """, because, because, caseId, checkId);
+    }
+
+    /**
+     * The credit restated one of this check's comparisons, so it runs on the credit's terms.
+     *
+     * <p>Two rows, one act, one transaction — the standing check takes the new condition and
+     * the requirement card stops running. Split across two calls, a failure between them
+     * leaves either two checks about one fact or none, and both are worse than not having
+     * tried.
+     *
+     * <p>{@code applies_because} is rewritten rather than appended to, because it is the
+     * sentence on the card and the card is now about a varied rule: "UCP 600 art. 14(c), as
+     * varied by :47A:" is what it does, and the reason it was originally selected is no
+     * longer the whole truth about it.
+     */
+    @Transactional
+    public void supersedePlanCheck(String caseId, String checkId, Object newRule,
+                                   Object replacedRow, String requirementId,
+                                   String quote, String because) {
+        jdbc.update("""
+                UPDATE helix_check.lc_plan_check
+                   SET rule_def = ?::jsonb, varied_by = ?, varied_quote = ?,
+                       varied_from = ?::jsonb, applies_because = ?
+                 WHERE case_id = ?::uuid AND check_id = ?
+                """, toJson(newRule), requirementId, quote, toJson(replacedRow), because,
+                caseId, checkId);
+        jdbc.update("""
+                UPDATE helix_check.lc_plan_check
+                   SET status = 'MERGED', merged_into = ?, applies_because = ?
+                 WHERE case_id = ?::uuid AND check_id = ?
+                """, checkId, "Folded into " + checkId + ", which now runs on this credit's terms",
+                caseId, requirementId);
     }
 
     /** The planner's verdict for this case — one document, read whole or not at all. */

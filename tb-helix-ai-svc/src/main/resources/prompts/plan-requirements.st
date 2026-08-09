@@ -75,6 +75,23 @@ Two things a `doc` may say beyond a document code:
                 says "on all documents" — one row, not one row per document you
                 guessed at. Only one side of a row may say "*".
 
+WHAT WAS ACTUALLY READ
+
+One of the blocks below lists, for each document, the field keys this presentation
+yielded and the ones it did not. It is keys only, never values — you are writing
+conditions, not settling them, and a condition compiled from what a document happens
+to say is a rule that passes by construction.
+
+Use it one way. Do not write a condition that reads a field listed under "not read",
+or that names a document listed "not presented". Such a condition compiles, stores,
+runs, and returns "could not be answered" for ever, while looking exactly like a
+check that ran. Where the credit demands something this presentation cannot answer,
+that is a requirement for a person: leave `rule` null and set `notCovered` true.
+
+A field absent from that block entirely is one the dictionary does not bind on that
+document, and is not available either.
+
+
 Write a rule when the requirement compares two things that are both extracted, or
 compares one extracted thing against a value the credit states, or against a value
 the functions can work out. Examples:
@@ -99,9 +116,10 @@ the functions can work out. Examples:
 
 Leave `rule` null when the requirement asks for a judgement — whether a description
 "corresponds", whether two addresses are the same place, whether a document is
-"acceptable" — or when what it names is not in the field list above. Do not reach for
-a near-enough field: a comparison reading a field nothing extracts is rejected, and
-the requirement is judged anyway with a worse explanation attached.
+"acceptable" — when what it names is not in the field list above, or when what it
+names was not read from this presentation. Do not reach for a near-enough field: a
+comparison reading a field nothing extracts is rejected, and the requirement is
+judged anyway with a worse explanation attached.
 
 Be literal about what the credit says. Do not merge two conditions because they are
 related, and do not add market practice the credit did not state.

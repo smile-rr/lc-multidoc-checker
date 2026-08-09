@@ -634,8 +634,10 @@ public class InterpretStage implements Stage {
 
                 Rules:
                 - Copy values exactly as printed. Do not normalise, reformat or convert.
-                - Dates in ISO form (YYYY-MM-DD) only when the printed form is unambiguous;
-                  otherwise copy what is printed.
+                - Dates as eight digits, YYYYMMDD — 20241231 — but only when the printed
+                  form is unambiguous; otherwise copy what is printed. 03/04/2010 is the
+                  third of April to half the world and the fourth of March to the other
+                  half, so it is copied, never resolved.
                 - Amounts with their currency, as shown.
                 - Omit a field entirely rather than guessing. A missing value is a fact an
                   examiner can act on; an invented one is not.

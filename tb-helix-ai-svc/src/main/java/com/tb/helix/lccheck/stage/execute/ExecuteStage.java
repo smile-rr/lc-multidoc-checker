@@ -21,6 +21,7 @@ import com.tb.helix.lccheck.rule.RuleEvaluator;
 import com.tb.helix.lccheck.service.Comparisons;
 import com.tb.helix.lccheck.service.DocumentAttestor;
 import com.tb.helix.lccheck.service.DocumentTypes;
+import com.tb.helix.lccheck.service.FactWriter;
 import com.tb.helix.lccheck.pipeline.*;
 import com.tb.helix.lccheck.pipeline.StageContext;
 import com.tb.helix.lccheck.service.ModelSpend;
@@ -65,6 +66,8 @@ public class ExecuteStage implements Stage {
     private final int concurrency;
     private final int groupSize;
     private final boolean anchors;
+    private final boolean markdown;
+    private final int markdownChars;
 
     /** Where a domain no authored examiner claims is filed. Never dropped, only noted. */
     private static final String UNCLAIMED = "unclaimed";
@@ -78,10 +81,14 @@ public class ExecuteStage implements Stage {
                         ObjectMapper json,
                         @Value("${helix.check.execute.concurrency:3}") int concurrency,
                         @Value("${helix.check.execute.group-size:8}") int groupSize,
-                        @Value("${helix.check.execute.anchors:true}") boolean anchors) {
+                        @Value("${helix.check.execute.anchors:true}") boolean anchors,
+                        @Value("${helix.check.execute.markdown:true}") boolean markdown,
+                        @Value("${helix.check.execute.markdown-chars:6000}") int markdownChars) {
         this.concurrency = concurrency;
         this.groupSize = Math.max(1, groupSize);
         this.anchors = anchors;
+        this.markdown = markdown;
+        this.markdownChars = Math.max(500, markdownChars);
         this.catalog = catalog;
         this.cases = cases;
         this.docTypes = docTypes;
@@ -218,7 +225,6 @@ public class ExecuteStage implements Stage {
         if (plan.isEmpty()) return StepResult.ok(Map.of("checks", 0, "findings", 0));
 
         String factSheet = factSheet(ctx);
-        String factDigest = DerivationKey.sha256Hex(factSheet);
 
         // Read once for the whole stage. Every exact check compares against the same
         // presentation, and fetching it per check was a query per check for a list that
@@ -234,6 +240,7 @@ public class ExecuteStage implements Stage {
 
         // --- what costs nothing ------------------------------------------------
         List<ReadRows.PlanCheck> judged = new ArrayList<>();
+        StringBuilder alreadySettled = new StringBuilder();
         for (ReadRows.PlanCheck check : plan) {
             if (ctx.cancelled()) {
                 open.closeAll();
@@ -247,6 +254,7 @@ public class ExecuteStage implements Stage {
                 judged.add(check);
                 continue;
             }
+            if (!check.human()) settledLine(alreadySettled, check, settled);
             ctx.announce(check.checkId(), check.name());
             run(ctx, check, raised, () -> check.human()
                     ? recordHuman(ctx, check)
@@ -255,18 +263,27 @@ public class ExecuteStage implements Stage {
         }
 
         // --- what needs reading ------------------------------------------------
-        List<Remit> remits = remits(judged);
+        // The comparisons ran first and the examiners were never told what they concluded, so
+        // a model could write "the invoice value is within the credit" onto the record beside
+        // a comparison that settled the opposite — two findings of equal standing, disagreeing.
+        // Identical for every examiner, so it rides the same prefix the fact sheet warms, and
+        // it enters the cache key because a different comparison outcome is a different
+        // question to put to a judge.
+        List<Remit> remits = new ArrayList<>(remits(judged));
+        String sharedDocs = shareDocuments(remits, ctx);
+        Shared shared = new Shared(factSheet, alreadySettled.toString(), sharedDocs,
+                DerivationKey.sha256Hex(factSheet + alreadySettled + sharedDocs));
         if (!remits.isEmpty()) {
             // One group first, alone, then the rest together. Every group's prompt opens with
             // the same fact sheet, so the first call through warms a prefix the others hit —
             // and a provider only has that prefix once a call carrying it has RETURNED.
             // Firing all of them at once would send the same page of facts N times and be
             // billed for it N times, which is the exact mistake the vision path documents.
-            askOne(ctx, remits.get(0), factSheet, factDigest, raised, open, presented);
+            askOne(ctx, remits.get(0), shared, raised, open, presented);
             List<Remit> rest = remits.subList(1, remits.size());
             FanOut.over(rest, concurrency, remit -> {
                 if (ctx.cancelled()) return Boolean.FALSE;
-                askOne(ctx, remit, factSheet, factDigest, raised, open, presented);
+                askOne(ctx, remit, shared, raised, open, presented);
                 return Boolean.TRUE;
             });
         }
@@ -341,26 +358,13 @@ public class ExecuteStage implements Stage {
      */
     private boolean recordExact(StageContext ctx, ReadRows.PlanCheck check, RuleEvaluator.Result result) {
         String checkId = check.checkId();
-        // The rule engine's three outcomes and the officer's three words are the same three
-        // things, which is the whole point of the vocabulary — no translation, no loss.
-        String outcome = switch (result.outcome()) {
-            case FAIL -> "DISCREPANT";
-            case PASS -> "CLEAN";
-            // Not CLEAN. A check that could not be run has not passed, and reporting it as
-            // clean is how an examination comes to claim it looked at something it did not.
-            case INCONCLUSIVE -> "DOUBT";
-        };
-        // Which kind of absence, not merely that there was one. A document nobody lodged is
-        // the beneficiary's problem and points at a missing-document discrepancy; a document
-        // we failed to read is ours, and is the only signal that would get it fixed. Both
-        // used to arrive as "UNANSWERABLE".
-        String reason = result.outcome() == RuleEvaluator.Outcome.INCONCLUSIVE
-                ? switch (result.gap() == null ? RuleEvaluator.Gap.UNPARSEABLE : result.gap()) {
-                    case NOT_PRESENTED -> "NOT_PRESENTED";
-                    case NOT_EXTRACTED -> "NOT_EXTRACTED";
-                    case UNPARSEABLE -> "UNANSWERABLE";
-                  }
-                : null;
+        // Asked of the Result rather than restated here. This was a hand-written copy of both
+        // translations, and a copy is a thing that drifts: it had no arm for the gap the
+        // graded conditions introduced, so it stopped compiling — which is the good ending.
+        // The bad one is a copy that still compiles and quietly answers differently from the
+        // threshold stage about the same rule.
+        String outcome = result.outcomeWord();
+        String reason = result.reasonWord();
 
         var failure = result.firstFailure().orElse(null);
         cases.upsertFinding(ctx.caseId(), Rows.of(
@@ -438,7 +442,8 @@ public class ExecuteStage implements Stage {
      *  edge of the stage, so the engine never sees a persistence row. */
     private List<RuleEvaluator.Fact> readings(StageContext ctx) {
         return cases.facts(ctx.caseId()).stream()
-                .map(f -> new RuleEvaluator.Fact(f.fieldKey(), f.docCode(), f.label(), f.value()))
+                .map(f -> new RuleEvaluator.Fact(f.fieldKey(), f.docCode(), f.label(), f.value(),
+                        FactWriter.MULTI_VALUED.equals(f.flag())))
                 .toList();
     }
 
@@ -462,7 +467,28 @@ public class ExecuteStage implements Stage {
      *              asked, under a plain instruction, because a check nobody claimed is a gap
      *              in the rulebook and not a reason to leave a presentation unexamined
      */
-    private record Remit(CheckCatalog.AgentCard agent, String label, List<ReadRows.PlanCheck> checks) {
+    /**
+     * @param documents the layout markdown of the documents only <em>this</em> remit's checks
+     *                  name. A document more than one remit needs is hoisted into
+     *                  {@link Shared#documents()} instead, so it is sent once and the prefix
+     *                  every examiner shares stays identical.
+     */
+    private record Remit(CheckCatalog.AgentCard agent, String label,
+                         List<ReadRows.PlanCheck> checks, String documents) {
+    }
+
+    /**
+     * Which documents each remit's checks name, and which of them more than one remit wants.
+     *
+     * <p>A check naming nothing applies to the whole presentation, and pulling every document
+     * for it would send the bundle to every examiner — so it names nothing here either.
+     */
+    private static Set<String> docsOf(List<ReadRows.PlanCheck> checks) {
+        Set<String> out = new LinkedHashSet<>();
+        for (ReadRows.PlanCheck c : checks) {
+            if (c.docCodes() != null) out.addAll(c.docCodes());
+        }
+        return out;
     }
 
     /**
@@ -514,10 +540,92 @@ public class ExecuteStage implements Stage {
             for (int i = 0; i < checks.size(); i += groupSize) {
                 List<ReadRows.PlanCheck> batch = checks.subList(i, Math.min(checks.size(), i + groupSize));
                 String label = agent == null ? "Examining what is left" : agent.name();
-                out.add(new Remit(agent, label, batch));
+                out.add(new Remit(agent, label, batch, ""));
             }
         });
         return out;
+    }
+
+    /**
+     * Give each remit the documents only it needs, and return the ones more than one needs.
+     *
+     * <p>The layout markdown is a full page-ordered reading of a document, produced by a model
+     * call already paid for at interpret and, until now, read by nothing but the browser. It is
+     * the only place a table survives intact: a packing list's item lines are folded into one
+     * fact cell, and a goods description reaches a rule as a field where the check is about its
+     * wording.
+     *
+     * <p><b>Why not group by document type instead.</b> Two reasons, and the first is fatal:
+     * UCP examination is cross-document — "does the invoice's goods description correspond with
+     * the credit's" reads two documents, and {@code XD-14} is literally "documents do not
+     * conflict with each other". A group scoped to one document cannot hold a check that reads
+     * two. The second is that it would be worse for the cache, not better: a prefix cache
+     * rewards a common <em>leading</em> run, and grouping by document gives every call a
+     * different opening.
+     *
+     * <p>So grouping stays by remit, and duplication is handled by placement: a document two
+     * remits want is hoisted into the shared prefix and sent once.
+     *
+     * @return the hoisted block, with {@code remits} rewritten in place to carry the rest
+     */
+    private String shareDocuments(List<Remit> remits, StageContext ctx) {
+        if (!markdown || remits.isEmpty()) return "";
+
+        Map<String, String> layout = new LinkedHashMap<>();
+        for (ReadRows.Document d : cases.documents(ctx.caseId())) {
+            if (d.layoutMd() != null && !d.layoutMd().isBlank()) layout.put(d.docCode(), d.layoutMd());
+        }
+        if (layout.isEmpty()) return "";
+
+        Map<String, Integer> wanted = new LinkedHashMap<>();
+        List<Set<String>> perRemit = new ArrayList<>();
+        for (Remit r : remits) {
+            Set<String> mine = new LinkedHashSet<>(docsOf(r.checks()));
+            mine.retainAll(layout.keySet());
+            perRemit.add(mine);
+            for (String code : mine) wanted.merge(code, 1, Integer::sum);
+        }
+
+        Set<String> hoisted = wanted.entrySet().stream()
+                .filter(e -> e.getValue() > 1)
+                .map(Map.Entry::getKey)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+
+        for (int i = 0; i < remits.size(); i++) {
+            Set<String> mine = new LinkedHashSet<>(perRemit.get(i));
+            mine.removeAll(hoisted);
+            Remit r = remits.get(i);
+            remits.set(i, new Remit(r.agent(), r.label(), r.checks(), render(mine, layout)));
+        }
+        return render(hoisted, layout);
+    }
+
+    /**
+     * The documents, capped, and <b>saying so when they are cut</b>.
+     *
+     * <p>The reverse of a bill of lading is three thousand words of carrier's conditions and is
+     * the largest markdown in a typical bundle while answering nothing — so there is a cap. A
+     * silent one would read as "you have been shown the whole document", which is the one thing
+     * evidence must never do.
+     */
+    private String render(Set<String> codes, Map<String, String> layout) {
+        if (codes.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (String code : codes) {
+            String md = layout.get(code);
+            if (md == null) continue;
+            sb.append("--- ").append(docTypes.label(code)).append(" (").append(code).append(")\n");
+            if (md.length() > markdownChars) {
+                sb.append(md, 0, markdownChars)
+                  .append("\n[... this reading is cut here at ").append(markdownChars)
+                  .append(" of ").append(md.length())
+                  .append(" characters. What follows has not been shown to you.]\n");
+            } else {
+                sb.append(md).append('\n');
+            }
+            sb.append('\n');
+        }
+        return sb.toString();
     }
 
     /** The domain a check belongs to, which is how an examiner is found for it. */
@@ -550,7 +658,7 @@ public class ExecuteStage implements Stage {
      * every call differs from the last at character one, a provider's prefix cache matches
      * nothing, and each pays full price for the same page of facts.
      */
-    private void askOne(StageContext ctx, Remit remit, String factSheet, String factDigest,
+    private void askOne(StageContext ctx, Remit remit, Shared shared,
                         AtomicInteger raised, AreaTally open, Set<String> presented) {
         // The examiner, once — not every check in their remit.
         //
@@ -568,7 +676,7 @@ public class ExecuteStage implements Stage {
 
         Map<String, Map<String, Object>> answers;
         try {
-            answers = ask(remit, factSheet, factDigest);
+            answers = ask(remit, shared);
         } catch (RuntimeException e) {
             // The examiner could not be reached. Every check in the group is recorded as
             // failed rather than as clean, and the rest of the plan carries on.
@@ -603,19 +711,26 @@ public class ExecuteStage implements Stage {
     }
 
     /** The call itself, cached on the facts it read and the checks it was asked. */
-    private Map<String, Map<String, Object>> ask(Remit remit, String factSheet, String factDigest) {
+    private Map<String, Map<String, Object>> ask(Remit remit, Shared shared) {
         List<String> ids = remit.checks().stream().map(ReadRows.PlanCheck::checkId).sorted().toList();
 
         PromptContext prompt = PromptContext.create()
                 // Identical on every call this deployment will ever make.
                 .stable("HOW TO ANSWER", prompts.get("examine-checks"))
-                // Identical for every examiner on this case — which is the point.
-                .varying("THE PRESENTATION", factSheet)
+                // Identical for every examiner on this case — which is the point, and which is
+                // why the first group runs alone. Anything per-examiner must stay below this.
+                .shared("THE PRESENTATION", shared.factSheet())
+                .shared("ALREADY SETTLED BY COMPARISON", shared.settled())
+                // Documents more than one examiner needs: sent once, above the boundary.
+                .shared("DOCUMENTS, IN FULL", shared.documents())
+                // Below it, and deliberately — a per-remit block above would give every call a
+                // different prefix and turn the first-group-alone warming into pure latency.
+                .varying("DOCUMENTS ONLY YOUR REMIT NEEDS", remit.documents())
                 .varying("YOUR REMIT", remitOf(remit))
                 // The only part that differs call to call, so it goes last.
                 .varying("THE CHECKS", describe(remit.checks()));
 
-        var key = new DerivationKey(CacheOp.JUDGE_AGENT, CacheOp.JUDGE_AGENT_V, factDigest,
+        var key = new DerivationKey(CacheOp.JUDGE_AGENT, CacheOp.JUDGE_AGENT_V, shared.digest(),
                 (remit.agent() == null ? UNCLAIMED : remit.agent().id()) + ":" + String.join(",", ids),
                 prompt.digest(), models.identity(LlmRole.JUDGE), null, Map.of());
 
@@ -841,6 +956,68 @@ public class ExecuteStage implements Stage {
         return s == null ? "" : s;
     }
 
+    /**
+     * What every examiner on this case is given, byte for byte.
+     *
+     * <p>Together these are the prompt's shared prefix — the run the first group warms and the
+     * rest ride — so they travel as one value rather than as three parameters that a later
+     * change could get out of step with each other.
+     *
+     * @param digest of {@code factSheet} and {@code settled} together, because both are inputs
+     *               to the judgement and a different comparison outcome is a different question
+     */
+    private record Shared(String factSheet, String settled, String documents, String digest) {
+    }
+
+    /**
+     * One line of what a comparison already answered, for the examiners who come after it.
+     *
+     * <p>The outcome, never the working. An examiner is being told what is settled so it does
+     * not answer it a second way — not invited to review a comparison, which it has no
+     * standing to overturn and no evidence to overturn it with.
+     *
+     * <p>The unanswerable lines are the ones that earn the block: "nothing settled this" is
+     * exactly what an examiner should know before forming a view, and it is the only signal
+     * that distinguishes a comparison that held from one that never ran.
+     */
+    private static void settledLine(StringBuilder sb, ReadRows.PlanCheck check,
+                                    RuleEvaluator.Result result) {
+        sb.append("  ").append(check.checkId()).append("  ").append(check.name()).append("  ");
+        if ("DOUBT".equals(result.outcomeWord())) {
+            sb.append("COULD NOT BE ANSWERED");
+            String why = switch (String.valueOf(result.reasonWord())) {
+                case "NOT_PRESENTED" -> " — the document is not in the bundle";
+                case "NOT_EXTRACTED" -> " — a field on it was not read";
+                default -> " — a value could not be used";
+            };
+            sb.append(why);
+        } else {
+            sb.append(result.outcomeWord());
+        }
+        sb.append('\n');
+    }
+
+    /** A reading nothing asked for: real evidence, but not a field any rule can name. */
+    private static boolean offDictionary(ReadRows.Fact f) {
+        return FactWriter.OFF_DICTIONARY.equals(f.flag());
+    }
+
+    /**
+     * Which message stated this credit term, when it was not the credit as issued.
+     *
+     * <p>Only for the credit: on a presented document {@code source} is the page it was read
+     * from, which the {@code [p.N]} anchor already says.
+     *
+     * @return {@code "#3 MT707"} for an amended term, null for a term as issued or a fact that
+     *         is not the credit's
+     */
+    private static String amendment(ReadRows.Fact f, String creditCode) {
+        if (!creditCode.equals(f.docCode())) return null;
+        String from = f.source();
+        if (from == null || from.isBlank() || "the credit".equals(from)) return null;
+        return from;
+    }
+
     /** One credit term, omitted entirely when the credit does not state it. */
     private static void term(StringBuilder sb, String label, Object value) {
         if (value == null || String.valueOf(value).isBlank()) return;
@@ -868,15 +1045,40 @@ public class ExecuteStage implements Stage {
         term(sb, "tenor", c.tenor());
         term(sb, "goods", c.goods());
 
+        // Two signals the sheet used to drop, and both change the answer.
+        //
+        // A reading the extractor found but nobody asked for looked typographically identical
+        // to a dictionary-bound one, so a judge could not tell an authored field from an
+        // invented one — and an invented key is model-authored and moves between runs.
+        //
+        // And a credit term that an amendment moved looked identical to the term as issued.
+        // `IntakeStage` records which message stated it precisely so "an examiner reading a
+        // term that moved wants to know that"; the sheet was where that stopped.
+        List<ReadRows.Fact> facts = cases.facts(ctx.caseId());
+        String creditCode = docTypes.creditCode();
+        boolean anyOffDictionary = facts.stream().anyMatch(ExecuteStage::offDictionary);
+        boolean anyAmended = facts.stream().anyMatch(f -> amendment(f, creditCode) != null);
+
         String current = null;
         sb.append("\nTHE PRESENTATION\n");
-        for (ReadRows.Fact f : cases.facts(ctx.caseId())) {
+        if (anyOffDictionary) {
+            sb.append("  A reading marked (off-dictionary) is one the extractor found on the page "
+                    + "that nothing asked for. It is evidence, and it is not an authored field.\n");
+        }
+        if (anyAmended) {
+            sb.append("  A credit term marked [from …] was stated by that message. A term with no "
+                    + "such mark is the credit as issued.\n");
+        }
+        for (ReadRows.Fact f : facts) {
             String doc = f.docCode();
             if (!doc.equals(current)) {
                 sb.append("  ").append(docTypes.label(doc)).append(" (").append(doc).append(")\n");
                 current = doc;
             }
             sb.append("    ").append(f.label()).append(": ").append(f.value());
+            if (offDictionary(f)) sb.append("   (off-dictionary)");
+            String from = amendment(f, creditCode);
+            if (from != null) sb.append("   [from ").append(from).append(']');
             if (f.page() != null) sb.append("   [p.").append(f.page()).append(']');
             sb.append('\n');
         }

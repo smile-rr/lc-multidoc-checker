@@ -28,6 +28,7 @@ export const createCheck = pick(mock.createCheck, http.createCheck)
 export const deleteCheck = pick(mock.deleteCheck, http.deleteCheck)
 export const saveCheckRule = pick(mock.saveCheckRule, http.saveCheckRule)
 export const setGate = pick(mock.setGate, http.setGate)
+export const tryExpression = pick(mock.tryExpression, http.tryExpression)
 
 // --- Agents ---------------------------------------------------------------
 export const saveAgent = pick(mock.saveAgent, http.saveAgent)

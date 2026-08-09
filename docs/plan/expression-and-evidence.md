@@ -16,10 +16,31 @@ language, and every step is independently revertable.
 | **B** | fact fidelity | prerequisite for trusting any exact check |
 | **C** | the condition language | needs B1; benefits from A2's availability block for its rejection messages |
 
-> **Progress.** A1 is done — `PromptContext` has a `shared` tier and `ExecuteStage`'s fact sheet is
-> on it; the rendered order is unchanged so no cache entry was invalidated. A2 is part-done:
-> `PlanStage.availability()` exists and is wired into both plan calls, and
-> `plan-requirements.st` documents it; `plan-govern.st` still needs the matching paragraph.
+> **Progress. Stages A and D are complete, and B1 with them.** `./gradlew build` (compile +
+> ArchUnit + `MigrationTest`) and `npm run smoke` (30/30) both pass.
+>
+> | | |
+> |---|---|
+> | D1 | `supersede` in the plan agent's vocabulary. `ConditionTree.describe()` renders each exact check's comparisons into `describeChecks`, so the decision is made with the comparisons in view rather than the titles. Row-level, matched on the **left operand** in `PlanStage.supersede()`; refused on no match, on a judged check either side, and on a second claim to one row. `V28` carries `varied_by` / `varied_quote` / `varied_from` / `merged_into` and a `MERGED` status. `CaseStore.supersedePlanCheck` is one transaction. |
+> | D2 | `AdviceNarrator` wires `LlmRole.NARRATE` — declared, mapped, never called — into signoff. It returns wording **by finding ref** and `mt734()` is assembled from the grounds, so "may not add or drop a ground" is structural. Any failure falls back to the stored statements. `helix.check.signoff.narrate`. |
+>
+> **Still open from D1:** the officer does not yet *see* the variation. `PlanCheckView` carries
+> `variedBy` / `variedQuote` / `variedFrom` / `mergedInto` and `CaseAssembler` renders the
+> replaced row, so the data is on the wire — the plan and review screens have not been taught to
+> draw it. `TRANS-20` is still one card carrying four subjects (§12 decision 8).
+>
+> | | |
+> |---|---|
+> | A1 | `PromptContext` has a `SHARED` tier between stable and volatile; `volatileDigest()` covers shared and volatile both. The rendered order is unchanged, so **no cache entry was invalidated**. |
+> | A2 | `PlanStage.availability()` — keys read / not read / not presented, dictionary-bound only, attestations filtered — on both plan calls, documented in `plan-requirements.st` and `plan-govern.st`. |
+> | A3 | `otherCreditTerms()` gives the requirement agent the whole parsed tag map beside 46A/47A. |
+> | A4 | `factSheet()` marks an off-dictionary reading and carries a credit term's amending message. `FactWriter.OFF_DICTIONARY` is now a constant shared by its three readers. |
+> | A4b | `ALREADY SETTLED BY COMPARISON` in the shared tier, and in the cache key. |
+> | A5 | Remit-scoped layout markdown with the hoisting rule and a **stated** cut; `helix.check.execute.markdown` / `markdown-chars`. |
+> | B1 | `FactWriter.MULTI_VALUED`; `RuleEvaluator.Fact.multiValued` → `Side.multi` → INCONCLUSIVE with `Gap.UNPARSEABLE`, after the presence operators so *"is it stated"* still answers. |
+>
+> **Not yet verified against a live run.** Everything above is a clean build and a green smoke;
+> the behaviour needs a bundle from `test/cases/01–03` through to `execute`.
 
 ---
 

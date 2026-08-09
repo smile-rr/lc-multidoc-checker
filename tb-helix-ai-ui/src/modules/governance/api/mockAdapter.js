@@ -113,3 +113,16 @@ export async function deletePrice(family) {
   mockPrices = mockPrices.filter((p) => p.family !== family)
   return { deleted: family }
 }
+
+/**
+ * Deliberately not simulated.
+ *
+ * A mock would be a second implementation of the expression language — its allow list, its
+ * three-valued logic, its verbs — living in the browser, which is the one place none of that
+ * may live. The fixtures are the design for everything else in this module; here the honest
+ * fixture is a sentence saying where the answer comes from.
+ */
+export const tryExpression = async () => ({
+  ok: false,
+  problems: ['Trying a condition out needs the service — the browser does not carry the language.'],
+})
