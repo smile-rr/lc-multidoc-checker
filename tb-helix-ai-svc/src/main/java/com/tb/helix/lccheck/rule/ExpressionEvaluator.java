@@ -7,6 +7,13 @@ import com.tb.helix.harness.expr.ExprResult;
 import com.tb.helix.harness.expr.Values;
 import com.tb.helix.harness.expr.ExpressionEngine;
 
+import com.tb.helix.lccheck.rule.Evidence.Fact;
+import com.tb.helix.lccheck.rule.Evidence.Gap;
+import com.tb.helix.lccheck.rule.Evidence.Outcome;
+import com.tb.helix.lccheck.rule.Evidence.Result;
+import com.tb.helix.lccheck.rule.Evidence.RowResult;
+import com.tb.helix.lccheck.rule.Evidence.Side;
+
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -36,7 +43,7 @@ import java.util.Set;
  * values in one cell, is simply absent from the map, and every comparison reading it is
  * unknown rather than false.
  *
- * <p>The answer is a {@link RuleEvaluator.Result}, the same record the tree language produces,
+ * <p>The answer is a {@link Result}, the same record the tree language produces,
  * so the finding, the comparison view, the review screen and the refusal advice need to know
  * nothing about which language a check was written in.
  */
@@ -56,7 +63,7 @@ public class ExpressionEvaluator {
      * @param presented which documents the bundle actually holds, so a value that is missing
      *                  can say whose problem it is
      */
-    public RuleEvaluator.Result evaluate(Map<String, Object> rule, List<RuleEvaluator.Fact> facts,
+    public Result evaluate(Map<String, Object> rule, List<Fact> facts,
                                          Set<String> presented) {
         return evaluate(rule, facts, presented, Judged.none());
     }
@@ -83,11 +90,11 @@ public class ExpressionEvaluator {
         }
     }
 
-    public RuleEvaluator.Result evaluate(Map<String, Object> rule, List<RuleEvaluator.Fact> facts,
+    public Result evaluate(Map<String, Object> rule, List<Fact> facts,
                                          Set<String> presented, Judged judged) {
         ExpressionRule graded = ExpressionRule.of(rule);
         if (graded == null) {
-            return new RuleEvaluator.Result(RuleEvaluator.Outcome.INCONCLUSIVE, List.of(),
+            return new Result(Outcome.INCONCLUSIVE, List.of(),
                     "This check has no condition to run.", str(rule.get("scope")),
                     str(rule.get("message")));
         }
@@ -106,9 +113,9 @@ public class ExpressionEvaluator {
      * @see ExpressionRule for the syntax, and for why an unanswerable branch stops the table
      *      rather than falling through to the next line
      */
-    private RuleEvaluator.Result walk(ExpressionRule rule, Map<String, RuleEvaluator.Fact> byName,
+    private Result walk(ExpressionRule rule, Map<String, Fact> byName,
                                       Set<String> presented, String message, Judged judged) {
-        List<RuleEvaluator.RowResult> rows = new ArrayList<>();
+        List<RowResult> rows = new ArrayList<>();
         List<String> readings = new ArrayList<>();
         String[] broken = new String[1];
 
@@ -120,7 +127,7 @@ public class ExpressionEvaluator {
             // officer reads what was asked beside what came back.
             if (branch.judged()) {
                 ExpressionRule.Answer said = judged.of(i);
-                rows.add(RuleEvaluator.RowResult.judged(
+                rows.add(RowResult.judged(
                         rule.branches().size() > 1 ? "q" + i : "q",
                         branch.ask(), outcome(said), judged.because().get(i)));
                 readings.add(branch.ask());
@@ -162,11 +169,11 @@ public class ExpressionEvaluator {
         // failure and put a working field on a list of things to fix.
         boolean chosen = decision.verdict() == ExpressionRule.Verdict.DOUBT
                 && !decision.unsettled();
-        return new RuleEvaluator.Result(
+        return new Result(
                 switch (decision.verdict()) {
-                    case CLEAN -> RuleEvaluator.Outcome.PASS;
-                    case DISCREPANT -> RuleEvaluator.Outcome.FAIL;
-                    case DOUBT -> RuleEvaluator.Outcome.INCONCLUSIVE;
+                    case CLEAN -> Outcome.PASS;
+                    case DISCREPANT -> Outcome.FAIL;
+                    case DOUBT -> Outcome.INCONCLUSIVE;
                 },
                 chosen ? humanOnly(rows) : rows,
                 why, rule.scope(), message);
@@ -180,11 +187,11 @@ public class ExpressionEvaluator {
      * the presentations it covers, and a table is never billed for a line the examination
      * would not have reached.
      */
-    public List<Integer> pending(Map<String, Object> rule, List<RuleEvaluator.Fact> facts) {
+    public List<Integer> pending(Map<String, Object> rule, List<Fact> facts) {
         ExpressionRule table = ExpressionRule.of(rule);
         if (table == null || !table.judged()) return List.of();
 
-        Map<String, RuleEvaluator.Fact> byName = index(facts);
+        Map<String, Fact> byName = index(facts);
         return table.pending(i -> {
             ExpressionRule.Branch branch = table.branches().get(i);
             var program = engine.compile(branch.when() == null ? "" : branch.when());
@@ -203,10 +210,10 @@ public class ExpressionEvaluator {
     }
 
     /** Only where nothing was missing — a real gap is the more actionable thing to report. */
-    private static List<RuleEvaluator.RowResult> humanOnly(List<RuleEvaluator.RowResult> rows) {
+    private static List<RowResult> humanOnly(List<RowResult> rows) {
         if (rows.stream().anyMatch(r -> r.gap() != null)) return rows;
-        List<RuleEvaluator.RowResult> out = new ArrayList<>();
-        for (RuleEvaluator.RowResult r : rows) out.add(r.withGap(RuleEvaluator.Gap.HUMAN_ONLY));
+        List<RowResult> out = new ArrayList<>();
+        for (RowResult r : rows) out.add(r.withGap(Gap.HUMAN_ONLY));
         return out;
     }
 
@@ -214,9 +221,9 @@ public class ExpressionEvaluator {
     // Facts to values
     // =========================================================================
 
-    private static Map<String, RuleEvaluator.Fact> index(List<RuleEvaluator.Fact> facts) {
-        Map<String, RuleEvaluator.Fact> out = new LinkedHashMap<>();
-        for (RuleEvaluator.Fact f : facts) {
+    private static Map<String, Fact> index(List<Fact> facts) {
+        Map<String, Fact> out = new LinkedHashMap<>();
+        for (Fact f : facts) {
             if (f.fieldKey() == null || f.docCode() == null) continue;
             out.putIfAbsent(f.docCode() + "." + f.fieldKey(), f);
         }
@@ -231,8 +238,8 @@ public class ExpressionEvaluator {
      *         declared to be. All four are <em>unknown</em>, and the difference between them
      *         is reported on the row rather than guessed at here.
      */
-    private Object valueOf(String name, Map<String, RuleEvaluator.Fact> byName) {
-        RuleEvaluator.Fact fact = byName.get(name);
+    private Object valueOf(String name, Map<String, Fact> byName) {
+        Fact fact = byName.get(name);
         if (fact == null || fact.value() == null || fact.value().isBlank()) return null;
         // A field read with more than one value is stored as the JSON of all of them in one
         // cell, and comparing that finds a difference in our storage rather than in the
@@ -250,19 +257,19 @@ public class ExpressionEvaluator {
     // The answer, in the shape every screen already reads
     // =========================================================================
 
-    private static RuleEvaluator.Outcome outcome(ExpressionRule.Answer a) {
+    private static Outcome outcome(ExpressionRule.Answer a) {
         return switch (a) {
-            case TRUE -> RuleEvaluator.Outcome.PASS;
-            case FALSE -> RuleEvaluator.Outcome.FAIL;
-            case UNKNOWN -> RuleEvaluator.Outcome.INCONCLUSIVE;
+            case TRUE -> Outcome.PASS;
+            case FALSE -> Outcome.FAIL;
+            case UNKNOWN -> Outcome.INCONCLUSIVE;
         };
     }
 
-    private static RuleEvaluator.Outcome outcome(ExprResult.Verdict v) {
+    private static Outcome outcome(ExprResult.Verdict v) {
         return switch (v) {
-            case TRUE -> RuleEvaluator.Outcome.PASS;
-            case FALSE -> RuleEvaluator.Outcome.FAIL;
-            case UNKNOWN -> RuleEvaluator.Outcome.INCONCLUSIVE;
+            case TRUE -> Outcome.PASS;
+            case FALSE -> Outcome.FAIL;
+            case UNKNOWN -> Outcome.INCONCLUSIVE;
         };
     }
 
@@ -272,31 +279,31 @@ public class ExpressionEvaluator {
      *               keys a row by and two rungs both calling their first comparison {@code e0}
      *               is how one of them stops rendering.
      */
-    private List<RuleEvaluator.RowResult> rows(ExprResult answer,
-                                               Map<String, RuleEvaluator.Fact> byName,
+    private List<RowResult> rows(ExprResult answer,
+                                               Map<String, Fact> byName,
                                                Set<String> presented, int clause, int rungs) {
-        List<RuleEvaluator.RowResult> out = new ArrayList<>();
+        List<RowResult> out = new ArrayList<>();
         for (ExprResult.LeafResult leaf : answer.leaves()) {
             List<ExprResult.Operand> ops = leaf.operands();
-            RuleEvaluator.Side left = side(ops.isEmpty() ? null : ops.get(0), byName);
-            RuleEvaluator.Side right = side(ops.size() > 1 ? ops.get(1) : null, byName);
+            Side left = side(ops.isEmpty() ? null : ops.get(0), byName);
+            Side right = side(ops.size() > 1 ? ops.get(1) : null, byName);
             Operator op = operatorFor(leaf.op());
             String id = rungs > 1 ? "c" + clause + "e" + leaf.index() : "e" + leaf.index();
-            out.add(new RuleEvaluator.RowResult(
+            out.add(new RowResult(
                     id, op.wire(), leaf.source(), outcome(leaf.outcome()),
                     left, right, null, leaf.why(), gap(leaf, presented)));
         }
         return out;
     }
 
-    private static RuleEvaluator.Side side(ExprResult.Operand o,
-                                           Map<String, RuleEvaluator.Fact> byName) {
-        if (o == null) return new RuleEvaluator.Side(null, null, null, null, false, false);
+    private static Side side(ExprResult.Operand o,
+                                           Map<String, Fact> byName) {
+        if (o == null) return new Side(null, null, null, null, false, false);
         int dot = o.name().indexOf('.');
         String doc = dot > 0 ? o.name().substring(0, dot) : null;
         String field = dot > 0 ? o.name().substring(dot + 1) : o.name();
-        RuleEvaluator.Fact fact = byName.get(o.name());
-        return new RuleEvaluator.Side(doc, field,
+        Fact fact = byName.get(o.name());
+        return new Side(doc, field,
                 fact != null ? fact.label() : field,
                 Values.show(o.value()),
                 o.resolved(), false, fact != null && fact.multiValued());
@@ -309,20 +316,20 @@ public class ExpressionEvaluator {
      * gets an extraction gap fixed: a document nobody lodged is the beneficiary's omission,
      * while a document that is there and a field we did not read off it is ours.
      */
-    private static RuleEvaluator.Gap gap(ExprResult.LeafResult leaf, Set<String> presented) {
+    private static Gap gap(ExprResult.LeafResult leaf, Set<String> presented) {
         if (leaf.outcome() != ExprResult.Verdict.UNKNOWN) return null;
         for (ExprResult.Operand o : leaf.operands()) {
             if (o.resolved()) continue;
             int dot = o.name().indexOf('.');
             String doc = dot > 0 ? o.name().substring(0, dot) : null;
             if (doc != null && !presented.isEmpty() && !presented.contains(doc)) {
-                return RuleEvaluator.Gap.NOT_PRESENTED;
+                return Gap.NOT_PRESENTED;
             }
-            return RuleEvaluator.Gap.NOT_EXTRACTED;
+            return Gap.NOT_EXTRACTED;
         }
         // Everything was read and it still could not be settled — a value that would not
         // parse, or a verb that could not use what it was given.
-        return RuleEvaluator.Gap.UNPARSEABLE;
+        return Gap.UNPARSEABLE;
     }
 
     /**

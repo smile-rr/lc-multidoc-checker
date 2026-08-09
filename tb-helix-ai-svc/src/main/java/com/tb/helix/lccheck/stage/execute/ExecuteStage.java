@@ -20,6 +20,7 @@ import com.tb.helix.lccheck.persistence.Rows;
 import com.tb.helix.governance.types.ExpressionRule;
 import com.tb.helix.lccheck.rule.ConditionAsker;
 import com.tb.helix.lccheck.rule.ExpressionEvaluator;
+import com.tb.helix.lccheck.rule.Evidence;
 import com.tb.helix.lccheck.rule.RuleEvaluator;
 import com.tb.helix.lccheck.rule.SettleTool;
 import com.tb.helix.lccheck.service.Comparisons;
@@ -241,7 +242,7 @@ public class ExecuteStage implements Stage {
         // Read once for the whole stage. Every exact check compares against the same
         // presentation, and fetching it per check was a query per check for a list that
         // cannot change while the stage runs.
-        List<RuleEvaluator.Fact> facts = readings(ctx);
+        List<Evidence.Fact> facts = readings(ctx);
         // What the bundle actually holds. Without it a rule that read nothing cannot say
         // whether the document was missing or our reading was, and those are different
         // people's problems.
@@ -262,7 +263,7 @@ public class ExecuteStage implements Stage {
             // Evaluated once, here, and the result carried. Asking "does this need a model"
             // by running the rule and then running it again to record the answer is two
             // walks of the same tree for one comparison.
-            RuleEvaluator.Result settled = exactly(check, facts, presented);
+            Evidence.Result settled = exactly(check, facts, presented);
             if (settled == null) {
                 judged.add(check);
                 asking.put(check.checkId(), pendingOf(check, facts));
@@ -317,7 +318,7 @@ public class ExecuteStage implements Stage {
      *
      * @return what the rule engine found, or null when this needs a model
      */
-    private RuleEvaluator.Result exactly(ReadRows.PlanCheck check, List<RuleEvaluator.Fact> facts,
+    private Evidence.Result exactly(ReadRows.PlanCheck check, List<Evidence.Fact> facts,
                                          Set<String> presented) {
         // Nothing on the plan settles this one — the planner said so when it wrote the card.
         // Sending it to a model anyway would buy an opinion on a question already routed to a
@@ -330,7 +331,7 @@ public class ExecuteStage implements Stage {
         // check may cost; this says what it costs on THIS presentation.
         if (!pendingOf(check, facts).isEmpty()) return null;
 
-        RuleEvaluator.Result result = rules.evaluate(parseRule(check.ruleDef()), facts, presented);
+        Evidence.Result result = rules.evaluate(parseRule(check.ruleDef()), facts, presented);
 
         // A check filed as exact whose condition asks for a reading. The catalogue derives
         // this now — a rule using one of the four judgement operators is JUDGED whatever its
@@ -356,7 +357,7 @@ public class ExecuteStage implements Stage {
      * nothing on most presentations.
      */
     @SuppressWarnings("unchecked")
-    private List<Integer> pendingOf(ReadRows.PlanCheck check, List<RuleEvaluator.Fact> facts) {
+    private List<Integer> pendingOf(ReadRows.PlanCheck check, List<Evidence.Fact> facts) {
         if (check.human() || check.ruleDef() == null) return List.of();
         Object rule = parseRule(check.ruleDef());
         return rule instanceof Map<?, ?> m
@@ -364,8 +365,8 @@ public class ExecuteStage implements Stage {
     }
 
     /** Stands in for a card only a person can settle, which has no comparison to report. */
-    private static final RuleEvaluator.Result EMPTY = new RuleEvaluator.Result(
-            RuleEvaluator.Outcome.INCONCLUSIVE, List.of(), null, null, null);
+    private static final Evidence.Result EMPTY = new Evidence.Result(
+            Evidence.Outcome.INCONCLUSIVE, List.of(), null, null, null);
 
     /** Runs one check's settlement, keeping a failure to that check. */
     private void run(StageContext ctx, ReadRows.PlanCheck check, AtomicInteger raised,
@@ -390,7 +391,7 @@ public class ExecuteStage implements Stage {
      * is visible. {@code statementSource} is {@code derived}: nobody drafted this wording,
      * it fell out of the values.
      */
-    private boolean recordExact(StageContext ctx, ReadRows.PlanCheck check, RuleEvaluator.Result result) {
+    private boolean recordExact(StageContext ctx, ReadRows.PlanCheck check, Evidence.Result result) {
         String checkId = check.checkId();
         // Asked of the Result rather than restated here. This was a hand-written copy of both
         // translations, and a copy is a thing that drifts: it had no arm for the gap the
@@ -426,7 +427,7 @@ public class ExecuteStage implements Stage {
                 // Every row, so the officer sees the whole comparison rather than the one
                 // line that broke. This is what an exact check has that a judged one cannot.
                 "comparison", comparisons.of(result),
-                "confidence", result.outcome() == RuleEvaluator.Outcome.INCONCLUSIVE ? "LOW" : "HIGH"));
+                "confidence", result.outcome() == Evidence.Outcome.INCONCLUSIVE ? "LOW" : "HIGH"));
 
         ctx.recordStep(checkId, Map.of("outcome", outcome, "exact", true));
         ctx.emit(HelixEvent.FINDING, Map.of("findingId", "f-" + checkId.toLowerCase(), "outcome", outcome));
@@ -474,9 +475,9 @@ public class ExecuteStage implements Stage {
 
     /** The case's facts, in the shape the evaluator asks for. Mapping happens here, at the
      *  edge of the stage, so the engine never sees a persistence row. */
-    private List<RuleEvaluator.Fact> readings(StageContext ctx) {
+    private List<Evidence.Fact> readings(StageContext ctx) {
         return cases.facts(ctx.caseId()).stream()
-                .map(f -> new RuleEvaluator.Fact(f.fieldKey(), f.docCode(), f.label(), f.value(),
+                .map(f -> new Evidence.Fact(f.fieldKey(), f.docCode(), f.label(), f.value(),
                         FactWriter.MULTI_VALUED.equals(f.flag())))
                 .toList();
     }
@@ -694,7 +695,7 @@ public class ExecuteStage implements Stage {
      */
     private void askOne(StageContext ctx, Remit remit, Shared shared,
                         AtomicInteger raised, AreaTally open, Set<String> presented,
-                        List<RuleEvaluator.Fact> facts, Map<String, List<Integer>> asking) {
+                        List<Evidence.Fact> facts, Map<String, List<Integer>> asking) {
         // The examiner, once — not every check in their remit.
         //
         // Announcing all of them put eight beginnings on the stream in the same instant,
@@ -756,7 +757,7 @@ public class ExecuteStage implements Stage {
                 said.put(i, answers.of(id));
                 because.put(i, answers.because(id));
             }
-            RuleEvaluator.Result settled = rules.evaluate(parseRule(check.ruleDef()), facts,
+            Evidence.Result settled = rules.evaluate(parseRule(check.ruleDef()), facts,
                     presented, new ExpressionEvaluator.Judged(said, because));
             run(ctx, check, raised, () -> recordExact(ctx, check, settled));
             open.done(check);
@@ -783,7 +784,7 @@ public class ExecuteStage implements Stage {
      */
     private ConditionAsker.Answers ask(Remit remit, Shared shared,
                                        List<ConditionAsker.Question> questions,
-                                       List<RuleEvaluator.Fact> facts, Set<String> presented) {
+                                       List<Evidence.Fact> facts, Set<String> presented) {
         if (questions.isEmpty()) return ConditionAsker.Answers.none();
 
         PromptContext prompt = PromptContext.create()
@@ -1055,7 +1056,7 @@ public class ExecuteStage implements Stage {
      * that distinguishes a comparison that held from one that never ran.
      */
     private static void settledLine(StringBuilder sb, ReadRows.PlanCheck check,
-                                    RuleEvaluator.Result result) {
+                                    Evidence.Result result) {
         sb.append("  ").append(check.checkId()).append("  ").append(check.name()).append("  ");
         if ("DOUBT".equals(result.outcomeWord())) {
             sb.append("COULD NOT BE ANSWERED");

@@ -32,11 +32,11 @@ class ExpressionEvaluatorTest {
     private final ExpressionEvaluator evaluator = new ExpressionEvaluator(
             ENGINE, new DictionaryExpressionCompiler(new StubCatalogue(), ENGINE));
 
-    private static RuleEvaluator.Fact fact(String doc, String field, String value) {
-        return new RuleEvaluator.Fact(field, doc, field, value);
+    private static Evidence.Fact fact(String doc, String field, String value) {
+        return new Evidence.Fact(field, doc, field, value);
     }
 
-    private RuleEvaluator.Result run(String when, List<RuleEvaluator.Fact> facts, String... presented) {
+    private Evidence.Result run(String when, List<Evidence.Fact> facts, String... presented) {
         return evaluator.evaluate(Map.of("when", when, "message", "It did not hold."),
                 facts, Set.of(presented));
     }
@@ -54,17 +54,17 @@ class ExpressionEvaluatorTest {
         // dates it is three weeks earlier and the shipment is in time. The two operands are
         // written differently on purpose: the canonical eight digits is what extraction is
         // asked for, and a document still writes what it likes.
-        RuleEvaluator.Result inTime = run("{BOL.on_board_date} <= {LC.latest_shipment_date}", List.of(
+        Evidence.Result inTime = run("{BOL.on_board_date} <= {LC.latest_shipment_date}", List.of(
                 fact("BOL", "on_board_date", "2025-4-9"),
                 fact("LC", "latest_shipment_date", "20250418")));
-        assertThat(inTime.outcome()).isEqualTo(RuleEvaluator.Outcome.PASS);
+        assertThat(inTime.outcome()).isEqualTo(Evidence.Outcome.PASS);
         assertThat(inTime.outcomeWord()).isEqualTo("CLEAN");
 
         // En dashes and a spelt-out month, which a bill of lading really did arrive with.
-        RuleEvaluator.Result late = run("{BOL.on_board_date} <= {LC.latest_shipment_date}", List.of(
+        Evidence.Result late = run("{BOL.on_board_date} <= {LC.latest_shipment_date}", List.of(
                 fact("BOL", "on_board_date", "20 – August – 2010"),
                 fact("LC", "latest_shipment_date", "20100810")));
-        assertThat(late.outcome()).isEqualTo(RuleEvaluator.Outcome.FAIL);
+        assertThat(late.outcome()).isEqualTo(Evidence.Outcome.FAIL);
         assertThat(late.outcomeWord()).isEqualTo("DISCREPANT");
     }
 
@@ -75,7 +75,7 @@ class ExpressionEvaluatorTest {
         assertThat(run("{BOL.on_board_date} <= {LC.latest_shipment_date}", List.of(
                 fact("BOL", "on_board_date", "20250419"),
                 fact("LC", "latest_shipment_date", "20250418"))).outcome())
-                .isEqualTo(RuleEvaluator.Outcome.FAIL);
+                .isEqualTo(Evidence.Outcome.FAIL);
 
         // SWIFT's own six. A century that has to be guessed is one that will be guessed
         // wrong on a credit issued in 1999, so it is not read at all — unknown, never a
@@ -83,36 +83,36 @@ class ExpressionEvaluatorTest {
         assertThat(run("{BOL.on_board_date} <= {LC.latest_shipment_date}", List.of(
                 fact("BOL", "on_board_date", "250419"),
                 fact("LC", "latest_shipment_date", "20250418"))).outcome())
-                .isEqualTo(RuleEvaluator.Outcome.INCONCLUSIVE);
+                .isEqualTo(Evidence.Outcome.INCONCLUSIVE);
 
         // Eight digits that are not a date. 31/12/2024 written the other way round is not
         // silently reinterpreted.
         assertThat(run("{BOL.on_board_date} <= {LC.latest_shipment_date}", List.of(
                 fact("BOL", "on_board_date", "31122024"),
                 fact("LC", "latest_shipment_date", "20250418"))).outcome())
-                .isEqualTo(RuleEvaluator.Outcome.INCONCLUSIVE);
+                .isEqualTo(Evidence.Outcome.INCONCLUSIVE);
     }
 
     @Test
     @DisplayName("an amount compares as an amount, comma decimal and all")
     void amountsAreTyped() {
-        RuleEvaluator.Result r = run("{INV.invoice_value} <= {LC.credit_amount}", List.of(
+        Evidence.Result r = run("{INV.invoice_value} <= {LC.credit_amount}", List.of(
                 fact("INV", "invoice_value", "USD60000,01"),
                 fact("LC", "credit_amount", "USD60000,00")));
-        assertThat(r.outcome()).isEqualTo(RuleEvaluator.Outcome.FAIL);
+        assertThat(r.outcome()).isEqualTo(Evidence.Outcome.FAIL);
     }
 
     @Test
     @DisplayName("a value nobody read is never a discrepancy, and says whose gap it is")
     void absenceSaysWhoseProblemItIs() {
         // The document is in the bundle and we did not read the field off it. Ours.
-        RuleEvaluator.Result ours = run("{BOL.on_board_date} <= {LC.latest_shipment_date}",
+        Evidence.Result ours = run("{BOL.on_board_date} <= {LC.latest_shipment_date}",
                 List.of(fact("LC", "latest_shipment_date", "20250418")), "LC", "BOL");
-        assertThat(ours.outcome()).isEqualTo(RuleEvaluator.Outcome.INCONCLUSIVE);
+        assertThat(ours.outcome()).isEqualTo(Evidence.Outcome.INCONCLUSIVE);
         assertThat(ours.reasonWord()).isEqualTo("NOT_EXTRACTED");
 
         // The document is not in the bundle at all. The presentation's.
-        RuleEvaluator.Result theirs = run("{BOL.on_board_date} <= {LC.latest_shipment_date}",
+        Evidence.Result theirs = run("{BOL.on_board_date} <= {LC.latest_shipment_date}",
                 List.of(fact("LC", "latest_shipment_date", "20250418")), "LC");
         assertThat(theirs.reasonWord()).isEqualTo("NOT_PRESENTED");
     }
@@ -120,19 +120,19 @@ class ExpressionEvaluatorTest {
     @Test
     @DisplayName("a field read with several values is withheld rather than compared")
     void multiValuedIsNotCompared() {
-        RuleEvaluator.Result r = evaluator.evaluate(
+        Evidence.Result r = evaluator.evaluate(
                 Map.of("when", "#same({BOL.port_of_loading}, {LC.port_of_loading})"),
-                List.of(new RuleEvaluator.Fact("port_of_loading", "BOL", "Port of loading",
+                List.of(new Evidence.Fact("port_of_loading", "BOL", "Port of loading",
                                 "[\"SHANGHAI\",\"NINGBO\"]", true),
                         fact("LC", "port_of_loading", "SHANGHAI")),
                 Set.of("LC", "BOL"));
-        assertThat(r.outcome()).isEqualTo(RuleEvaluator.Outcome.INCONCLUSIVE);
+        assertThat(r.outcome()).isEqualTo(Evidence.Outcome.INCONCLUSIVE);
     }
 
     @Test
     @DisplayName("every comparison reaches the officer as a row, in the shared vocabulary")
     void theWorkingIsCarried() {
-        RuleEvaluator.Result r = run(
+        Evidence.Result r = run(
                 "{BOL.on_board_date} <= {LC.latest_shipment_date} and #same({INV.currency}, 'USD')",
                 List.of(fact("BOL", "on_board_date", "20250410"),
                         fact("LC", "latest_shipment_date", "20250418"),
@@ -145,7 +145,7 @@ class ExpressionEvaluatorTest {
         // Written back in the canonical form, whatever the fact held.
         assertThat(r.rows().get(0).left().value()).isEqualTo("20250410");
         assertThat(r.rows().get(0).left().doc()).isEqualTo("BOL");
-        assertThat(r.outcome()).isEqualTo(RuleEvaluator.Outcome.PASS);
+        assertThat(r.outcome()).isEqualTo(Evidence.Outcome.PASS);
     }
 
     @Test
@@ -154,21 +154,21 @@ class ExpressionEvaluatorTest {
         assertThat(run("#sameParty({INV.beneficiary_name}, {LC.beneficiary_name})", List.of(
                 fact("INV", "beneficiary_name", "ACME TRADING LTD."),
                 fact("LC", "beneficiary_name", "Acme Trading Ltd"))).outcome())
-                .isEqualTo(RuleEvaluator.Outcome.PASS);
+                .isEqualTo(Evidence.Outcome.PASS);
 
         // Two names that reduce apart prove nothing — a branch, a trading name, a
         // transliteration all reduce apart and are all the same party.
         assertThat(run("#sameParty({INV.beneficiary_name}, {LC.beneficiary_name})", List.of(
                 fact("INV", "beneficiary_name", "ACME TRADING"),
                 fact("LC", "beneficiary_name", "Zenith Industrial"))).outcome())
-                .isEqualTo(RuleEvaluator.Outcome.INCONCLUSIVE);
+                .isEqualTo(Evidence.Outcome.INCONCLUSIVE);
     }
 
     @Test
     @DisplayName("a condition that stopped compiling is unanswered, never contradicted")
     void anUnreadableConditionIsNotAFailure() {
-        RuleEvaluator.Result r = run("{BOL.on_board_date} >", List.of());
-        assertThat(r.outcome()).isEqualTo(RuleEvaluator.Outcome.INCONCLUSIVE);
+        Evidence.Result r = run("{BOL.on_board_date} >", List.of());
+        assertThat(r.outcome()).isEqualTo(Evidence.Outcome.INCONCLUSIVE);
         assertThat(r.why()).contains("could not be read");
     }
 

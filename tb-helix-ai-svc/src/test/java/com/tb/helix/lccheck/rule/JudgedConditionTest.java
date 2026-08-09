@@ -41,12 +41,12 @@ class JudgedConditionTest {
             ELSE "doubt"
             """);
 
-    private static List<RuleEvaluator.Fact> facts(String invoice, String credit) {
-        return List.of(new RuleEvaluator.Fact("goods_description", "INV", "goods", invoice),
-                new RuleEvaluator.Fact("goods_description", "LC", "goods", credit));
+    private static List<Evidence.Fact> facts(String invoice, String credit) {
+        return List.of(new Evidence.Fact("goods_description", "INV", "goods", invoice),
+                new Evidence.Fact("goods_description", "LC", "goods", credit));
     }
 
-    private RuleEvaluator.Result run(List<RuleEvaluator.Fact> facts,
+    private Evidence.Result run(List<Evidence.Fact> facts,
                                      ExpressionRule.Answer said, String because) {
         return evaluator.evaluate(GOODS, facts, Set.of("LC", "INV"),
                 new ExpressionEvaluator.Judged(Map.of(1, said), Map.of(1, because)));
@@ -78,8 +78,8 @@ class JudgedConditionTest {
             // The credit's description was never read. We do not know that the first branch
             // failed, so we cannot know the question is reached — and paying a model to
             // answer a question the table may never arrive at is spending on a guess.
-            List<RuleEvaluator.Fact> half =
-                    List.of(new RuleEvaluator.Fact("goods_description", "INV", "goods", "COTTON"));
+            List<Evidence.Fact> half =
+                    List.of(new Evidence.Fact("goods_description", "INV", "goods", "COTTON"));
             assertThat(evaluator.pending(GOODS, half)).isEmpty();
             assertThat(evaluator.evaluate(GOODS, half, Set.of("LC", "INV")).outcomeWord())
                     .isEqualTo("DOUBT");
@@ -93,7 +93,7 @@ class JudgedConditionTest {
         @Test
         @DisplayName("true on the question gives that branch's answer, not the model's")
         void trueTakesTheBranch() {
-            RuleEvaluator.Result r = run(facts("COTTON SHIRTS", "SILK SHIRTS"),
+            Evidence.Result r = run(facts("COTTON SHIRTS", "SILK SHIRTS"),
                     ExpressionRule.Answer.TRUE, "The invoice says cotton and the credit silk.");
             assertThat(r.outcomeWord()).isEqualTo("DISCREPANT");
         }
@@ -101,7 +101,7 @@ class JudgedConditionTest {
         @Test
         @DisplayName("false falls to the ELSE, and the ELSE is the author's")
         void falseFallsThrough() {
-            RuleEvaluator.Result r = run(facts("100 PCS COTTON SHIRTS", "COTTON SHIRTS, 100 PIECES"),
+            Evidence.Result r = run(facts("100 PCS COTTON SHIRTS", "COTTON SHIRTS, 100 PIECES"),
                     ExpressionRule.Answer.FALSE, "Same goods, ordered differently.");
             assertThat(r.outcomeWord()).isEqualTo("DOUBT");
         }
@@ -111,7 +111,7 @@ class JudgedConditionTest {
         void silenceIsDoubt() {
             // No entry at all — a garbled reply, a call that failed, a spent budget. Every
             // one of those must land here, and it must land on doubt.
-            RuleEvaluator.Result r = evaluator.evaluate(GOODS,
+            Evidence.Result r = evaluator.evaluate(GOODS,
                     facts("COTTON SHIRTS", "SILK SHIRTS"), Set.of("LC", "INV"),
                     ExpressionEvaluator.Judged.none());
             assertThat(r.outcomeWord()).isEqualTo("DOUBT");
@@ -122,17 +122,17 @@ class JudgedConditionTest {
 
     @Nested
     @DisplayName("the question reaches the officer as evidence")
-    class Evidence {
+    class ReachesTheOfficer {
 
         @Test
         @DisplayName("it is a row, with what was asked and what was said")
         void theQuestionIsARow() {
-            RuleEvaluator.Result r = run(facts("COTTON SHIRTS", "SILK SHIRTS"),
+            Evidence.Result r = run(facts("COTTON SHIRTS", "SILK SHIRTS"),
                     ExpressionRule.Answer.TRUE, "The invoice says cotton and the credit silk.");
 
             // Both branches evaluated: the comparison that did not match, then the question.
             assertThat(r.rows()).hasSize(2);
-            RuleEvaluator.RowResult asked = r.rows().get(1);
+            Evidence.RowResult asked = r.rows().get(1);
             assertThat(asked.label()).contains("beyond the generality art. 14(d) permits");
             assertThat(asked.why()).isEqualTo("The invoice says cotton and the credit silk.");
         }

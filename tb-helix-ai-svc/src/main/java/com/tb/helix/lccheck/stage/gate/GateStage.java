@@ -8,6 +8,7 @@ import com.tb.helix.lccheck.persistence.CaseRow;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.Rows;
+import com.tb.helix.lccheck.rule.Evidence;
 import com.tb.helix.lccheck.rule.RuleEvaluator;
 import com.tb.helix.lccheck.service.Comparisons;
 import com.tb.helix.lccheck.service.DocumentTypes;
@@ -158,7 +159,7 @@ public class GateStage implements Stage {
             // having been read. That constraint is real and it is upheld elsewhere: a gate
             // qualifies only when every operand reads a document marked available before
             // reading. It never needed a second implementation of comparison.
-            RuleEvaluator.Result result = rules.evaluate(parseRule(gate.rule()), readings(ctx), presented(ctx));
+            Evidence.Result result = rules.evaluate(parseRule(gate.rule()), readings(ctx), presented(ctx));
 
             // A finding for every outcome, not only for a failure.
             //
@@ -198,7 +199,7 @@ public class GateStage implements Stage {
                     // comparison read rather than asserted. `tag-31D` was hardcoded, so
                     // the viewer highlighted the expiry line whatever the gate compared.
                     "creditAnchorId", creditAnchor(ctx, quoted),
-                    "confidence", result.outcome() == RuleEvaluator.Outcome.INCONCLUSIVE
+                    "confidence", result.outcome() == Evidence.Outcome.INCONCLUSIVE
                             ? "LOW" : "HIGH"));
             log.info("Threshold check {} on case {}: {} — {}",
                     gate.id(), ctx.caseId(), result.outcomeWord(), result.why());
@@ -257,7 +258,7 @@ public class GateStage implements Stage {
      * there was. That held while there was one. The moment a bank authors a second gate the
      * composed sentence is about the wrong thing, and it is the sentence that goes out.
      */
-    private String statement(RuleEvaluator.Result result) {
+    private String statement(Evidence.Result result) {
         String raise = result.raise();
         return raise == null ? null : raise.toUpperCase(java.util.Locale.ROOT);
     }
@@ -269,9 +270,9 @@ public class GateStage implements Stage {
      * credit field came from, so the anchor is already known and does not have to be mapped
      * from a field key to a tag in a table that would need maintaining.
      */
-    private String creditAnchor(StageContext ctx, RuleEvaluator.RowResult failure) {
+    private String creditAnchor(StageContext ctx, Evidence.RowResult failure) {
         if (failure == null) return null;
-        for (var side : new RuleEvaluator.Side[] { failure.right(), failure.left() }) {
+        for (var side : new Evidence.Side[] { failure.right(), failure.left() }) {
             if (side == null || side.doc() == null || side.field() == null) continue;
             for (ReadRows.Fact f : cases.facts(ctx.caseId())) {
                 if (side.doc().equals(f.docCode()) && side.field().equals(f.fieldKey())
@@ -299,9 +300,9 @@ public class GateStage implements Stage {
 
     /** The case's facts, in the shape the evaluator asks for. Mapping happens here, at the
      *  edge of the stage, so the engine never sees a persistence row. */
-    private List<RuleEvaluator.Fact> readings(StageContext ctx) {
+    private List<Evidence.Fact> readings(StageContext ctx) {
         return cases.facts(ctx.caseId()).stream()
-                .map(f -> new RuleEvaluator.Fact(f.fieldKey(), f.docCode(), f.label(), f.value(),
+                .map(f -> new Evidence.Fact(f.fieldKey(), f.docCode(), f.label(), f.value(),
                         FactWriter.MULTI_VALUED.equals(f.flag())))
                 .toList();
     }

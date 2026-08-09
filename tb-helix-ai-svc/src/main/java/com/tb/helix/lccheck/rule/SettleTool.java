@@ -5,6 +5,8 @@ import com.tb.helix.harness.expr.ExprResult;
 import com.tb.helix.harness.expr.ExpressionEngine;
 import com.tb.helix.harness.llm.tool.ToolSpec;
 
+import com.tb.helix.lccheck.rule.Evidence.Fact;
+
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
@@ -44,9 +46,9 @@ public class SettleTool {
      * @param facts     every fact on the case, as the evaluator indexes them
      * @param presented which documents the bundle holds, so an absence can say whose it is
      */
-    public ToolSpec forCase(List<RuleEvaluator.Fact> facts, Set<String> presented) {
-        Map<String, RuleEvaluator.Fact> byName = new LinkedHashMap<>();
-        for (RuleEvaluator.Fact f : facts) {
+    public ToolSpec forCase(List<Fact> facts, Set<String> presented) {
+        Map<String, Fact> byName = new LinkedHashMap<>();
+        for (Fact f : facts) {
             if (f.fieldKey() != null && f.docCode() != null) {
                 byName.putIfAbsent(f.docCode() + "." + f.fieldKey(), f);
             }
@@ -96,7 +98,7 @@ public class SettleTool {
                 """ + rules.vocabulary();
     }
 
-    private String settle(String condition, Map<String, RuleEvaluator.Fact> byName,
+    private String settle(String condition, Map<String, Fact> byName,
                           Set<String> presented) {
         if (condition == null || condition.isBlank()) {
             return "There is no condition here to settle.";
@@ -110,7 +112,7 @@ public class SettleTool {
 
         Map<String, Object> values = new LinkedHashMap<>();
         for (String name : checked.program().names()) {
-            RuleEvaluator.Fact fact = byName.get(name);
+            Fact fact = byName.get(name);
             // Never bound when it was not read, and never bound when the fact holds several
             // values in one cell — the same rule the evaluator enforces, for the same reason.
             if (fact == null || fact.value() == null || fact.value().isBlank()
@@ -132,10 +134,10 @@ public class SettleTool {
 
     /** Which value was missing, and whose gap that is — the same distinction a finding draws. */
     private static String missing(ExpressionRules.Checked checked,
-                                  Map<String, RuleEvaluator.Fact> byName, Set<String> presented) {
+                                  Map<String, Fact> byName, Set<String> presented) {
         StringBuilder sb = new StringBuilder();
         for (String name : checked.program().names()) {
-            RuleEvaluator.Fact fact = byName.get(name);
+            Fact fact = byName.get(name);
             if (fact != null && fact.value() != null && !fact.value().isBlank()
                     && !fact.multiValued()) {
                 continue;

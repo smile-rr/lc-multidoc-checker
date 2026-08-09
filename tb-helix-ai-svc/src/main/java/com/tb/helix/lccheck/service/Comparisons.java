@@ -2,6 +2,7 @@ package com.tb.helix.lccheck.service;
 
 import com.tb.helix.governance.types.ConditionTree;
 import com.tb.helix.governance.types.Operator;
+import com.tb.helix.lccheck.rule.Evidence;
 import com.tb.helix.lccheck.rule.RuleEvaluator;
 import com.tb.helix.lccheck.types.examination.ComparisonView;
 
@@ -79,7 +80,7 @@ public class Comparisons {
     }
 
     /** What the rule engine settled, as the officer will read it. */
-    public ComparisonView of(RuleEvaluator.Result result) {
+    public ComparisonView of(Evidence.Result result) {
         List<ComparisonView.Line> rows = result.rows().stream()
                 .map(r -> new ComparisonView.Line(
                         r.id(),
@@ -112,7 +113,7 @@ public class Comparisons {
         return COMPUTED.equals(doc) ? "Worked out from the presentation" : docTypes.label(doc);
     }
 
-    private ComparisonView.Side side(RuleEvaluator.Side s) {
+    private ComparisonView.Side side(Evidence.Side s) {
         if (s == null) return null;
         return new ComparisonView.Side(
                 s.doc(),

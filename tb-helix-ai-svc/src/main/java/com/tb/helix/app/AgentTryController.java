@@ -6,6 +6,7 @@ import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.rule.ConditionAsker;
 import com.tb.helix.lccheck.rule.ExpressionEvaluator;
+import com.tb.helix.lccheck.rule.Evidence;
 import com.tb.helix.lccheck.rule.RuleEvaluator;
 import com.tb.helix.lccheck.rule.SettleTool;
 import com.tb.helix.lccheck.service.FactWriter;
@@ -83,7 +84,7 @@ public class AgentTryController {
             return Map.of("ok", false, "problems", List.of("No case " + ref + "."));
         }
 
-        List<RuleEvaluator.Fact> facts = facts(caseId);
+        List<Evidence.Fact> facts = facts(caseId);
         Set<String> presented = presented(caseId);
         Map<String, Object> rule = Map.of("v", 3, "source", source);
 
@@ -107,7 +108,7 @@ public class AgentTryController {
             because.put(q.branch(), answers.because(q.id()));
         }
 
-        RuleEvaluator.Result result = expressions.evaluate(rule, facts, presented,
+        Evidence.Result result = expressions.evaluate(rule, facts, presented,
                 new ExpressionEvaluator.Judged(byBranch, because));
 
         Map<String, Object> out = new LinkedHashMap<>();
@@ -162,13 +163,13 @@ public class AgentTryController {
         }).toList();
     }
 
-    private ToolSpec tool(List<RuleEvaluator.Fact> facts, Set<String> presented) {
+    private ToolSpec tool(List<Evidence.Fact> facts, Set<String> presented) {
         return settle.forCase(facts, presented);
     }
 
-    private List<RuleEvaluator.Fact> facts(String caseId) {
+    private List<Evidence.Fact> facts(String caseId) {
         return cases.facts(caseId).stream()
-                .map(f -> new RuleEvaluator.Fact(f.fieldKey(), f.docCode(), f.label(), f.value(),
+                .map(f -> new Evidence.Fact(f.fieldKey(), f.docCode(), f.label(), f.value(),
                         FactWriter.MULTI_VALUED.equals(f.flag())))
                 .toList();
     }
@@ -180,9 +181,9 @@ public class AgentTryController {
     }
 
     /** The fact sheet, plainly. The run builds a richer one; this is the same shape. */
-    private static String presentation(List<RuleEvaluator.Fact> facts) {
+    private static String presentation(List<Evidence.Fact> facts) {
         StringBuilder sb = new StringBuilder("THE PRESENTATION\n\n");
-        for (RuleEvaluator.Fact f : facts) {
+        for (Evidence.Fact f : facts) {
             sb.append("  ").append(f.docCode()).append('.').append(f.fieldKey())
               .append("  ").append(f.value() == null ? "—" : f.value()).append('\n');
         }

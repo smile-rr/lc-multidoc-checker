@@ -51,19 +51,19 @@ class GradedExpressionTest {
                     ELSE "discrepancy"
                     """);
 
-    private RuleEvaluator.Result run(String presented, String expiry, String availableWith) {
+    private Evidence.Result run(String presented, String expiry, String availableWith) {
         Map<String, String> given = new LinkedHashMap<>();
         given.put("CS.presentation_date", presented);
         given.put("LC.expiry_date", expiry);
         given.put("LC.available_with", availableWith);
 
-        List<RuleEvaluator.Fact> facts = given.entrySet().stream()
+        List<Evidence.Fact> facts = given.entrySet().stream()
                 .filter(e -> e.getValue() != null)
                 .map(e -> {
                     int dot = e.getKey().indexOf('.');
                     String doc = e.getKey().substring(0, dot);
                     String field = e.getKey().substring(dot + 1);
-                    return new RuleEvaluator.Fact(field, doc, field, e.getValue());
+                    return new Evidence.Fact(field, doc, field, e.getValue());
                 })
                 .toList();
         return evaluator.evaluate(EXPIRY, facts, Set.of("LC", "CS"));
@@ -76,7 +76,7 @@ class GradedExpressionTest {
         @Test
         @DisplayName("before the expiry date is clean")
         void inTime() {
-            RuleEvaluator.Result r = run("20250417", "20250418", "BY NEGOTIATION");
+            Evidence.Result r = run("20250417", "20250418", "BY NEGOTIATION");
             assertThat(r.outcomeWord()).isEqualTo("CLEAN");
             // One branch matched, so only its comparison is evidence.
             assertThat(r.rows()).hasSize(1);
@@ -119,8 +119,8 @@ class GradedExpressionTest {
         @Test
         @DisplayName("the covering schedule not presented at all is the presentation's gap")
         void notPresentedIsTheirs() {
-            RuleEvaluator.Result r = evaluator.evaluate(EXPIRY,
-                    List.of(new RuleEvaluator.Fact("expiry_date", "LC", "expiry_date", "20250418")),
+            Evidence.Result r = evaluator.evaluate(EXPIRY,
+                    List.of(new Evidence.Fact("expiry_date", "LC", "expiry_date", "20250418")),
                     Set.of("LC"));
             assertThat(r.outcomeWord()).isEqualTo("DOUBT");
             assertThat(r.reasonWord()).isEqualTo("NOT_PRESENTED");
@@ -129,7 +129,7 @@ class GradedExpressionTest {
         @Test
         @DisplayName("a date nobody read is a doubt, and says whose gap it is")
         void anUnreadDateIsOurs() {
-            RuleEvaluator.Result r = run(null, "20250418", "BY NEGOTIATION");
+            Evidence.Result r = run(null, "20250418", "BY NEGOTIATION");
             assertThat(r.outcomeWord()).isEqualTo("DOUBT");
             // NOT_EXTRACTED, because the covering schedule is a document we hold. It is the
             // only signal that ever gets an extractor fixed.
@@ -144,9 +144,9 @@ class GradedExpressionTest {
             Map<String, Object> judged = Map.of("v", 3, "source",
                     "WHEN {CS.presentation_date} <= {LC.expiry_date}  THEN \"clean\"\n"
                             + "ELSE \"doubt\"");
-            RuleEvaluator.Result r = evaluator.evaluate(judged, List.of(
-                    new RuleEvaluator.Fact("presentation_date", "CS", "presentation_date", "20250419"),
-                    new RuleEvaluator.Fact("expiry_date", "LC", "expiry_date", "20250418")),
+            Evidence.Result r = evaluator.evaluate(judged, List.of(
+                    new Evidence.Fact("presentation_date", "CS", "presentation_date", "20250419"),
+                    new Evidence.Fact("expiry_date", "LC", "expiry_date", "20250418")),
                     Set.of("LC", "CS"));
             assertThat(r.outcomeWord()).isEqualTo("DOUBT");
             assertThat(r.reasonWord()).isEqualTo("HUMAN_ONLY");
