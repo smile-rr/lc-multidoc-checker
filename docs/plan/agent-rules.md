@@ -223,33 +223,65 @@ already report through `check_facet`, so C-4 simplifies that view rather than co
 |---|---|---|
 | 1 | One tool with a validate/run mode, or `check_condition` and `settle` separately? | one tool. The planner's "would this compile" is `settle` with no facts, and two names for one thing is how they drift |
 | 2 | May a natural condition read `{DOC.field}` inside its prose, substituted before the ask? | yes — "the goods description `{INV.goods_description}` states a different product" saves the examiner a lookup and pins the question to what we actually read |
-| 3 | Does `agent:try` run against a real case's facts, or only typed values? | typed values first. A case picker is a second feature and the panel is meant to be simple |
+| 3 | ~~Does `agent:try` run against a real case?~~ | **settled — yes, a real case; see §11 for what it reads** |
 | 4 | Is a table with **no** natural condition still an agent check? | no — derive it. A table whose conditions all compile is EXACT and costs nothing, whatever the author typed. Same narrowing `tier` already applies |
 | 5 | Where does the natural condition's answer live for audit? | `lc_finding.comparison`, as a row with the question as its label and the examiner's answer as its outcome — so one evidence view serves both kinds |
 | 6 | What does the examiner return per condition? | `{id, answer, because}` — the answer settles the walk, `because` is one sentence and becomes the row's `why`. Nothing else: a model asked for more writes an outcome into it |
-| 7 | Can a standing agent check ask an open-ended question at all? | see below — this is the one that changes what the seed holds |
+| 7 | ~~Can a standing agent check ask an open-ended question?~~ | **settled — no; see §10. The catalogue holds what we know, the run mints what the credit imposes** |
+| 8 | Should the `reads: documents` flag be derived rather than authored? | authored. Nothing can tell from prose whether a question needs the wording, and guessing wrong is either a wrong answer or a bill nobody asked for |
 
 ---
 
-## 10. The check that may not survive as a standing table
+## 10. What the catalogue holds, and what the run mints
 
-`A0001` (additional conditions, `:47A:`) is today: *"read {Additional conditions} one condition
-at a time and decide what, if anything, evidences each."* Its conditions are **not fixed** —
-they are whatever this credit happens to impose, and a standing table cannot enumerate them.
+Settled, and it draws a line the catalogue did not have before.
 
-Two ways out, and they are genuinely different products:
+**The catalogue holds standing agent checks — the ones we know from experience.** Goods
+description against the credit, documents not conflicting with each other, a signature given
+in a stated capacity. They are common to every credit, they are worth writing once, and a
+table can enumerate their conditions because the conditions do not change.
 
-- **It is the planner's, not the catalogue's.** `:47A:` is already read into requirement cards
-  by `PlanStage.requirements`; each card becomes its own one-condition table, exact where the
-  planner could compile it and natural where it could not. `A0001` then disappears from the
-  seed. This is the cleaner story and it is why §8 C-2 matters.
-- **It stays, as one broad question.** `WHEN "every condition in :47A: is evidenced by a
-  document in this presentation" THEN "clean" ELSE "doubt"` — honest, but it collapses N
-  conditions into one answer, so an officer is told "something in 47A is not evidenced"
-  without being told which.
+**`:47A:` is not one of those.** Its conditions are whatever this credit imposes, so they are
+read at plan time into **requirement cards**, one per condition, each its own one-condition
+table — exact where `RuleCompiler` could compile it, natural where it could not. An officer is
+then told *which* condition of 47A is unevidenced rather than that something in it is.
 
-The first is right. It is recorded here because it means the seed loses a check rather than
-gaining one, which is not what "implement agent rules" sounds like it should do.
+So `A0001` leaves the seed. That is the correct direction and it is worth saying plainly,
+because "implement agent rules" sounds like the catalogue should grow.
+
+It also makes §8 C-2 load-bearing rather than tidy-up: **the planner has to be able to write a
+table** before 47A requirements can carry a natural condition at all. Today it compiles to a
+tree or gives up, and "gives up" is where every unevidenced 47A condition currently lands.
+
+---
+
+## 11. What a check reads is authored, not chosen in the panel
+
+The Try panel runs against a **real case**. Its inputs are the case's own — and what the
+examiner is given is *normally the document fields*, with the document text only where a
+condition actually needs to read wording.
+
+The important part is **where that choice lives**. It cannot be a control in the Try panel
+alone: a panel that can add the document text while the run does not is a panel that answers a
+question the examination never asks, and it fails in the direction of "it worked when I tested
+it" — the same failure §1a exists to prevent.
+
+So it is **authored on the check**, one flag:
+
+| | given to the examiner | cost |
+|---|---|---|
+| default | the shared fact sheet, the credit's terms, the marks | already paid for |
+| `reads: documents` | plus the layout markdown of the documents this check names, capped | the expensive carrier |
+
+Markdown is opt-in for the reason [`evidence-and-agents.md`](../architecture/evidence-and-agents.md)
+§3.1 gives: a bill of lading's reverse is the largest markdown in a typical bundle and answers
+nothing. A check that compares fields should never pay for it; a check that asks whether two
+goods descriptions describe one product cannot answer without it.
+
+The panel **shows** the flag and may toggle it to experiment, saying plainly that the stored
+check is what the run obeys.
+
+---
 
 ---
 
@@ -258,5 +290,9 @@ gaining one, which is not what "implement agent rules" sounds like it should do.
 1. **§2 pre-walk + §1 the model answers conditions** — backend only, no UI. This is where the
    correctness lives.
 2. **§3 the `settle` tool.**
-3. **§6 `agent:try`** and **§7 the card** together — the card is unusable without the endpoint.
-4. **§8 C-1 and C-2**, then C-3/C-4 as a separate change.
+3. **§6 `agent:try`** and **§7 the card** together — the card is unusable without the endpoint,
+   and §11's flag lands with them.
+4. **§8 C-1 and C-2.** C-2 is where 47A requirement cards gain a natural condition, so §10 is
+   not finished until it is done.
+5. **§8 C-3 and C-4** — deleting the tree — as its own change, after C-2 has run against a real
+   case.
