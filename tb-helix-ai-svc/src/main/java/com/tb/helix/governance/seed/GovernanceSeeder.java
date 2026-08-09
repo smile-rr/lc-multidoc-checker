@@ -127,7 +127,7 @@ public class GovernanceSeeder implements ApplicationRunner {
 
         String id = String.valueOf(check.get("id"));
         List<String> problems = new ArrayList<>(table.problems());
-        boolean judgement = false;
+        boolean judgement = table.judged();
         List<Map<String, String>> reads = new ArrayList<>();
         for (String source : table.sources()) {
             ExpressionRules.Checked checked = expressions.check(source);

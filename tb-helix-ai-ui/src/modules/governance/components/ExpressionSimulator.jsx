@@ -22,7 +22,10 @@ import Icon from '@shared/ds/Icon'
 export default function ExpressionSimulator({ sim, framed = true }) {
   if (!sim.available) return <Unavailable framed={framed} />
 
-  const body = (
+  // A table that asks a question is tried against a real case, because a question is about
+  // what a document says and only a presentation says anything. Same panel, one Run, one
+  // answer — what differs is what it reads and that it costs money.
+  const body = sim.asks ? <Agent sim={sim} framed={framed} /> : (
     <div style={{ padding: framed ? '0 0 12px' : 0 }}>
       {sim.reads.length === 0 ? (
         <div style={hint}>Write a check above and the values it reads appear here.</div>
@@ -43,16 +46,8 @@ export default function ExpressionSimulator({ sim, framed = true }) {
         {!framed && sim.outcome ? <Outcome outcome={sim.outcome} /> : null}
       </div>
 
-      {sim.problems.length > 0 ? (
-        <ul style={problems}>
-          {sim.problems.map((p, i) => <li key={i}>{p}</li>)}
-        </ul>
-      ) : null}
+      <Problems sim={sim} />
 
-      {/* One answer. The per-branch, per-comparison breakdown was here and was noise: an
-          author asks "what would this report", and every line above the one that decided is
-          a line they have to read past to find out. The examination still records the whole
-          working on the finding, which is where evidence belongs. */}
       {sim.decided ? (
         <div style={answer}>
           <code style={reading}>{sim.decided.reading}</code>
@@ -86,6 +81,90 @@ function Unavailable({ framed }) {
     </div>
   )
 }
+
+function Problems({ sim }) {
+  if (!sim.problems.length) return null
+  return <ul style={problems}>{sim.problems.map((p, i) => <li key={i}>{p}</li>)}</ul>
+}
+
+/**
+ * The same panel for a check that asks a question, and three differences that matter.
+ *
+ * It runs against a **real case**, because a question is about what a document says. It
+ * **costs money**, so the button says so and the answer says how much was asked and by which
+ * model — an authoring aid that quietly bills is one nobody trusts twice. And it shows the
+ * **comparisons the examiner asked for**, which is how an author sees whether their question
+ * is doing work or duplicating one they could have written exactly.
+ */
+function Agent({ sim, framed }) {
+  return (
+    <div style={{ padding: framed ? '0 0 12px' : 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <select value={sim.caseId} onChange={sim.onCase} style={casePick}>
+          <option value="">Choose a case…</option>
+          {sim.cases.map((c) => (
+            <option key={c.caseId} value={c.caseId}>
+              {c.caseId} · {c.beneficiary || c.reference}
+            </option>
+          ))}
+        </select>
+        <button
+          onClick={sim.onRunAgent}
+          disabled={sim.busy || !sim.caseId}
+          style={runBtn(sim.busy || !sim.caseId)}
+        >
+          {sim.busy ? 'Asking…' : 'Run — calls the model'}
+        </button>
+        {sim.outcome ? <Outcome outcome={sim.outcome} /> : null}
+      </div>
+
+      <Problems sim={sim} />
+
+      {sim.asked === 0 ? (
+        <div style={hint}>
+          Nothing was asked — a comparison settled it before any question was reached, so this
+          run cost nothing.
+        </div>
+      ) : null}
+
+      {sim.conditions.map((c, i) => (
+        <div key={i} style={{ marginTop: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 7 }}>
+            <Outcome outcome={ANSWER[c.answer] || 'DOUBT'} />
+            <span style={{ fontSize: 11.5, color: 'var(--me-ink)' }}>{c.ask}</span>
+          </div>
+          {c.because ? <div style={{ ...hint, paddingLeft: 2 }}>{c.because}</div> : null}
+        </div>
+      ))}
+
+      {sim.toolCalls.length > 0 ? (
+        <div style={{ marginTop: 12 }}>
+          <div style={hint}>it settled these exactly</div>
+          {sim.toolCalls.map((t, i) => (
+            <div key={i} style={toolRow}>
+              <code style={toolSource}>{String(t.arguments?.condition ?? '')}</code>
+              <span style={{ fontSize: 11, color: 'var(--me-grey-70)', flexShrink: 0 }}>
+                {String(t.result || '').split(' — ')[0]}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {sim.model ? (
+        <div style={{ ...hint, marginTop: 10 }}>
+          {sim.exhausted ? 'The budget ran out before an answer — nothing here is a conclusion. ' : ''}
+          {sim.asked} condition{sim.asked === 1 ? '' : 's'} asked · {sim.model}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+// What the examiner said about ONE condition, in the same three words as everything else, so
+// nothing on the screen has to be translated. It is not what the check reports — that is the
+// table's, and it is shown beside the Run button.
+const ANSWER = { TRUE: 'DISCREPANT', FALSE: 'CLEAN', UNKNOWN: 'DOUBT' }
 
 function Row({ r }) {
   return (
@@ -137,5 +216,8 @@ const simHeader = { width: '100%', display: 'flex', alignItems: 'center', gap: 6
 const hint = { fontSize: 11.5, color: 'var(--me-grey-50)', padding: '4px 0' }
 const reading = { fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--me-ink)', overflowWrap: 'anywhere' }
 const answer = { display: 'flex', flexDirection: 'column', gap: 2, marginTop: 10, fontSize: 11 }
+const casePick = { fontFamily: 'inherit', fontSize: 12, padding: '4px 7px', borderRadius: 7, border: '1px solid var(--me-grey-20)', background: '#fff', cursor: 'pointer', maxWidth: 250 }
+const toolRow = { display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0' }
+const toolSource = { flex: 1, minWidth: 0, fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--me-ink)', overflowWrap: 'anywhere' }
 const problems = { margin: '9px 0 0', paddingLeft: 18, fontSize: 11.5, color: 'var(--status-error)', lineHeight: 1.6 }
 const runBtn = (disabled) => ({ fontSize: 12, fontWeight: 600, padding: '4px 14px', borderRadius: 7, border: '1px solid var(--me-grey-20)', background: disabled ? 'var(--me-grey-08)' : '#fff', color: disabled ? 'var(--me-grey-50)' : 'var(--me-ink)', cursor: disabled ? 'default' : 'pointer' })

@@ -1654,6 +1654,16 @@
       "v": 3,
       "scope": "Every presentation",
       "source": "WHEN {CS.presentation_date} <= {LC.expiry_date}  THEN \"clean\"\nELSE \"discrepancy\""
+    },
+    "A0001": {
+      "v": 3,
+      "scope": "Every presentation",
+      "source": "WHEN \"every condition stated in the credit's additional conditions is evidenced\n      by a document in this presentation\"                                       THEN \"clean\"\nELSE \"doubt\""
+    },
+    "A0002": {
+      "v": 3,
+      "scope": "Every presentation",
+      "source": "WHEN \"the goods description, the named parties and the shipment particulars on the\n      invoice, the bill of lading and the credit can all be true of one shipment.\n      Data need not be identical, but must not conflict — UCP 600 art. 14(d)\"   THEN \"clean\"\nELSE \"discrepancy\""
     }
   },
   "books": [

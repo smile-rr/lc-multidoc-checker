@@ -955,8 +955,13 @@
       ],
       "citedAs": "practice",
       "severity": "MAJOR",
-      "checkType": "AGENTIC",
-      "suggestion": "Split non-documentary conditions into their own assertion so they are reported as notes."
+      "checkType": "EXPRESSION",
+      "suggestion": "A holding position, and it should not survive. :47A: conditions are whatever THIS credit imposes, so a standing table cannot enumerate them — asked as one question it tells an officer that something in 47A is unevidenced without telling them which. The right answer is a requirement card per condition, minted at plan time, which needs the planner to write tables (docs/plan/agent-rules.md §8 C-2). Until then this is here so 47A is not uncovered, and it answers doubt rather than discrepancy because one unanswered question across N conditions is not grounds for a refusal.",
+      "rule": {
+        "v": 3,
+        "scope": "Every presentation",
+        "source": "WHEN \"every condition stated in the credit's additional conditions is evidenced\n      by a document in this presentation\"                                       THEN \"clean\"\nELSE \"doubt\""
+      }
     },
     {
       "id": "A0002",
@@ -969,7 +974,7 @@
       "domain": "Goods & pricing",
       "citedAs": "practice",
       "severity": "CRITICAL",
-      "checkType": "AGENT",
+      "checkType": "EXPRESSION",
       "suggestion": "Was authored as a comparison over four rows, three of which used an operator that is a judgement. The catalogue now derives that and files it here; the wording above is what those rows were reaching for.",
       "docs": [
         "INV",
@@ -980,7 +985,12 @@
         "goods_description",
         "beneficiary_name",
         "applicant_name"
-      ]
+      ],
+      "rule": {
+        "v": 3,
+        "scope": "Every presentation",
+        "source": "WHEN \"the goods description, the named parties and the shipment particulars on the\n      invoice, the bill of lading and the credit can all be true of one shipment.\n      Data need not be identical, but must not conflict — UCP 600 art. 14(d)\"   THEN \"clean\"\nELSE \"discrepancy\""
+      }
     },
     {
       "id": "C0001",

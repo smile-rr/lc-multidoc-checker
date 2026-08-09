@@ -55,6 +55,14 @@ export const setGate = (id, on, onFail) =>
 export const tryExpression = (source, values) =>
   api.post(`${base}/checks/expression:try`, { source, values })
 
+// A check with a question in it cannot be tried against typed values: the question is about
+// what a document says, and only a real presentation says anything. So this one takes a case,
+// and it spends money — which is why the console has to say so before it is pressed.
+export const tryAgent = (source, caseId) =>
+  api.post(`${base}/checks/agent:try`, { source, caseId })
+
+export const agentCases = () => api.get(`${base}/checks/agent:cases`)
+
 // --- Agents ---------------------------------------------------------------
 export const saveAgent = (agent) => api.patch(`${base}/agents/${encodeURIComponent(agent.id)}`, agent)
 export const createAgent = (agent) => api.post(`${base}/agents`, agent)

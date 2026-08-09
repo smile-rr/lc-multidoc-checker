@@ -58,13 +58,40 @@ public class ExpressionEvaluator {
      */
     public RuleEvaluator.Result evaluate(Map<String, Object> rule, List<RuleEvaluator.Fact> facts,
                                          Set<String> presented) {
+        return evaluate(rule, facts, presented, Judged.none());
+    }
+
+    /**
+     * What an examiner said about the conditions a comparison could not settle.
+     *
+     * <p>Supplied by the caller because asking costs money and deciding whether to spend it is
+     * the stage's business, not this one's. Absent — which is every expression check and every
+     * agent check whose questions were never reached — a question is simply unanswered, and an
+     * unanswered condition stops the table at doubt.
+     *
+     * @param answer  by branch index
+     * @param because by branch index, one sentence for the evidence row
+     */
+    public record Judged(Map<Integer, ExpressionRule.Answer> answer, Map<Integer, String> because) {
+
+        public static Judged none() {
+            return new Judged(Map.of(), Map.of());
+        }
+
+        ExpressionRule.Answer of(int branch) {
+            return answer.getOrDefault(branch, ExpressionRule.Answer.UNKNOWN);
+        }
+    }
+
+    public RuleEvaluator.Result evaluate(Map<String, Object> rule, List<RuleEvaluator.Fact> facts,
+                                         Set<String> presented, Judged judged) {
         ExpressionRule graded = ExpressionRule.of(rule);
         if (graded == null) {
             return new RuleEvaluator.Result(RuleEvaluator.Outcome.INCONCLUSIVE, List.of(),
                     "This check has no condition to run.", str(rule.get("scope")),
                     str(rule.get("message")));
         }
-        return walk(graded, index(facts), presented, str(rule.get("message")));
+        return walk(graded, index(facts), presented, str(rule.get("message")), judged);
     }
 
     /**
@@ -80,13 +107,26 @@ public class ExpressionEvaluator {
      *      rather than falling through to the next line
      */
     private RuleEvaluator.Result walk(ExpressionRule rule, Map<String, RuleEvaluator.Fact> byName,
-                                      Set<String> presented, String message) {
+                                      Set<String> presented, String message, Judged judged) {
         List<RuleEvaluator.RowResult> rows = new ArrayList<>();
         List<String> readings = new ArrayList<>();
         String[] broken = new String[1];
 
         ExpressionRule.Decision decision = rule.decide(i -> {
             ExpressionRule.Branch branch = rule.branches().get(i);
+
+            // A question is settled by whoever was asked, and its row is the question itself.
+            // Rendered like any comparison, so one evidence view serves both kinds and an
+            // officer reads what was asked beside what came back.
+            if (branch.judged()) {
+                ExpressionRule.Answer said = judged.of(i);
+                rows.add(RuleEvaluator.RowResult.judged(
+                        rule.branches().size() > 1 ? "q" + i : "q",
+                        branch.ask(), outcome(said), judged.because().get(i)));
+                readings.add(branch.ask());
+                return said;
+            }
+
             var program = engine.compile(branch.when() == null ? "" : branch.when());
             if (!program.ok()) {
                 // Refused at authoring and refused again here, because a field can be unbound
@@ -130,6 +170,36 @@ public class ExpressionEvaluator {
                 },
                 chosen ? humanOnly(rows) : rows,
                 why, rule.scope(), message);
+    }
+
+    /**
+     * Which questions this table still needs answered, before anything is asked.
+     *
+     * <p>Every comparison is settled here, for free. A branch that matches ends it and nothing
+     * is asked at all — so a table whose cheap deterministic case comes first costs nothing on
+     * the presentations it covers, and a table is never billed for a line the examination
+     * would not have reached.
+     */
+    public List<Integer> pending(Map<String, Object> rule, List<RuleEvaluator.Fact> facts) {
+        ExpressionRule table = ExpressionRule.of(rule);
+        if (table == null || !table.judged()) return List.of();
+
+        Map<String, RuleEvaluator.Fact> byName = index(facts);
+        return table.pending(i -> {
+            ExpressionRule.Branch branch = table.branches().get(i);
+            var program = engine.compile(branch.when() == null ? "" : branch.when());
+            if (!program.ok()) return ExpressionRule.Answer.UNKNOWN;
+            Map<String, Object> values = new LinkedHashMap<>();
+            for (String name : program.names()) {
+                Object typed = valueOf(name, byName);
+                if (typed != null) values.put(name, typed);
+            }
+            return switch (engine.run(branch.when(), values).verdict()) {
+                case TRUE -> ExpressionRule.Answer.TRUE;
+                case FALSE -> ExpressionRule.Answer.FALSE;
+                case UNKNOWN -> ExpressionRule.Answer.UNKNOWN;
+            };
+        });
     }
 
     /** Only where nothing was missing — a real gap is the more actionable thing to report. */
@@ -179,6 +249,14 @@ public class ExpressionEvaluator {
     // =========================================================================
     // The answer, in the shape every screen already reads
     // =========================================================================
+
+    private static RuleEvaluator.Outcome outcome(ExpressionRule.Answer a) {
+        return switch (a) {
+            case TRUE -> RuleEvaluator.Outcome.PASS;
+            case FALSE -> RuleEvaluator.Outcome.FAIL;
+            case UNKNOWN -> RuleEvaluator.Outcome.INCONCLUSIVE;
+        };
+    }
 
     private static RuleEvaluator.Outcome outcome(ExprResult.Verdict v) {
         return switch (v) {

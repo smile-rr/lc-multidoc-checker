@@ -384,7 +384,7 @@ export const initialState = {
   // because a condition being tried is a condition being tried whether or not it is
   // anybody's rule yet — and two copies of "what came back" is how the page and the card
   // come to disagree about the same expression.
-  simSource: null,
+  simSource: null, simCases: null, simCase: '',
   // The item created by the last "new …" click. Cancel on it means "don't
   // create it" rather than "undo my typing", so it is tracked separately from
   // the edit snapshot.
@@ -698,6 +698,32 @@ export function deriveVals(state, setState) {
     if (t === 'DATE') return '20250418'
     if (t === 'AMOUNT' || t === 'INTEGER') return '60000.00'
     return 'leave empty for “not read”'
+  }
+
+  /** Whether this table asks a question, which is what makes it an agent check. */
+  const asksAQuestion = (source) => /\bWHEN\b[^\n]*?"\s*[^"]*[A-Za-z]/i.test(
+    String(source || '').replace(/"(clean|doubt|discrepancy)"/gi, ''))
+
+  const runAgent = (id, source, caseId) => {
+    setState((st) => ({ simBusy: { ...st.simBusy, [id]: true } }))
+    gov.tryAgent(source, caseId)
+      .then((r) => setState((st) => ({
+        simBusy: { ...st.simBusy, [id]: false },
+        simResult: { ...st.simResult, [id]: {
+          outcome: r.ok ? r.outcome : null,
+          asked: r.asked ?? 0,
+          exhausted: !!r.exhausted,
+          model: r.model || null,
+          conditions: r.conditions || [],
+          toolCalls: r.toolCalls || [],
+          rows: r.rows || [],
+          problems: r.problems || [],
+        } },
+      })))
+      .catch(() => setState((st) => ({
+        simBusy: { ...st.simBusy, [id]: false },
+        simResult: { ...st.simResult, [id]: { problems: ['The service could not be reached.'], conditions: [], toolCalls: [], rows: [] } },
+      })))
   }
 
   const runExpression = (id, source, values) => {
@@ -1058,6 +1084,19 @@ export function deriveVals(state, setState) {
           open: !!S.simOpen[chk.id],
           onToggle: () => setState((st) => ({ simOpen: { ...st.simOpen, [chk.id]: !st.simOpen[chk.id] } })),
           busy: !!S.simBusy[chk.id],
+          // A table that asks a question cannot be tried against typed values — the question
+          // is about what a document says, and only a presentation says anything.
+          asks: asksAQuestion(rule.source),
+          cases: S.simCases || [],
+          caseId: S.simCase || '',
+          onCase: (ev) => setState({ simCase: ev.target.value }),
+          onRunAgent: () => runAgent(chk.id, rule.source, S.simCase),
+          asked: result?.asked ?? null,
+          exhausted: !!result?.exhausted,
+          model: result?.model || null,
+          conditions: result?.conditions || [],
+          toolCalls: result?.toolCalls || [],
+          rows: result?.rows || [],
           reads: names.map((n) => ({
             name: n,
             label: (expressionReads().find((r) => r.name === n) || {}).label,

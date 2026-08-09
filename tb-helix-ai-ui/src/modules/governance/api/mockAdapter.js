@@ -126,3 +126,12 @@ export const tryExpression = async () => ({
   ok: false,
   problems: ['Trying a condition out needs the service — the browser does not carry the language.'],
 })
+
+// Deliberately refused rather than faked. A fixture answer here would be a second examiner
+// with different opinions, and the fixture's would be the one nobody checked.
+export const tryAgent = async () => ({
+  ok: false,
+  problems: ['Trying a check that asks a question needs the service and a real case.'],
+})
+
+export const agentCases = async () => []

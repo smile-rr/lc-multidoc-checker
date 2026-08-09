@@ -292,7 +292,14 @@ SELECT c.id,
             THEN 'EXACT' ELSE 'JUDGED' END                        AS tier,
        (c.has_judgement_op OR COALESCE(f.judgement, FALSE))       AS has_judgement_op,
        (o.docs || COALESCE(f.docs, '{}'))                         AS operand_docs,
-       (o.row_count > 0 OR COALESCE(f.read_count, 0) > 0)         AS has_conditions,
+       -- A FACET IS ITSELF EVIDENCE OF A CONDITION.
+       --
+       -- Counting what a rule READS is right for a tree, whose rows are operands, and
+       -- wrong for a table whose condition is a question an examiner answers: that reads
+       -- no field at all, so counting reads called it conditionless and it drew as a card
+       -- somebody had not finished — never planned, never run. The facet exists only
+       -- because the rule compiled, so its existence is the answer.
+       (o.row_count > 0 OR f.check_id IS NOT NULL)                 AS has_conditions,
        COALESCE(f.language, 'TREE')                               AS language,
        -- AN AGENT CHECK CAN NEVER BE A THRESHOLD CHECK.
        --

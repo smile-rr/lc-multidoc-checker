@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useLayoutEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { initialState, deriveVals, loadCatalog } from './store'
-import { loadAll } from './api/governanceApi'
+import { loadAll, agentCases } from './api/governanceApi'
 import { isApi } from '@shared/lib/dataSource'
 import { Z } from '@shared/ds/z'
 import ConfirmDialog from '@shared/ds/ConfirmDialog'
@@ -54,6 +54,16 @@ export default function GovernanceModule() {
   }, [])
 
   const [state, setRaw] = useState(() => ({ ...initialState, section: validSection(urlSection) }))
+
+  // Cases to try a check that asks a question against. Fetched once and never blocking: a
+  // console that could not author a rule because a case list was slow would be the tail
+  // wagging the dog.
+  useEffect(() => {
+    if (!isApi) return
+    let live = true
+    agentCases().then((cs) => { if (live) setRaw((p) => ({ ...p, simCases: cs })) }).catch(() => {})
+    return () => { live = false }
+  }, [])
   const setState = (partial) =>
     setRaw((prev) => ({ ...prev, ...(typeof partial === 'function' ? partial(prev) : partial) }))
   const v = deriveVals(state, setState)

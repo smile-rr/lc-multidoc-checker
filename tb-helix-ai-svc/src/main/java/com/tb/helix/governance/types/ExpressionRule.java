@@ -76,8 +76,37 @@ import java.util.regex.Pattern;
  */
 public record ExpressionRule(String source, String scope, List<Branch> branches, Verdict otherwise) {
 
-    /** One {@code WHEN … THEN …}. */
-    public record Branch(String when, Verdict then) {
+    /**
+     * One {@code WHEN … THEN …}.
+     *
+     * <p>A condition is either a comparison the engine settles, or a <b>question an examiner
+     * answers</b> — written as a quoted string, and the only thing in the language that is not
+     * evaluated. Both are conditions and both feed the same walk; what differs is who says
+     * whether they hold.
+     *
+     * <pre>
+     *   WHEN {INV.currency} == {LC.currency}                  THEN "clean"   ← the engine
+     *   WHEN "the goods are described differently"            THEN "doubt"   ← an examiner
+     * </pre>
+     *
+     * @param when the SpEL condition, or null when this is a question
+     * @param ask  the question, or null when this is a comparison
+     */
+    public record Branch(String when, Verdict then, String ask) {
+
+        public Branch(String when, Verdict then) {
+            this(when, then, null);
+        }
+
+        /** Whether settling this needs a reader rather than a comparison. */
+        public boolean judged() {
+            return ask != null;
+        }
+
+        /** What it says, either way, for anything that shows it to a person. */
+        public String text() {
+            return ask != null ? ask : when;
+        }
     }
 
     /** What one condition came to. The engine's three values, named from here so this type
@@ -187,7 +216,7 @@ public record ExpressionRule(String source, String scope, List<Branch> branches,
         List<Branch> branches = new ArrayList<>();
         int end = 0;
         while (m.find()) {
-            branches.add(new Branch(m.group(1).trim(), Verdict.of(quoted(m, 2))));
+            branches.add(branch(m.group(1).trim(), Verdict.of(quoted(m, 2))));
             end = m.end();
         }
 
@@ -196,6 +225,26 @@ public record ExpressionRule(String source, String scope, List<Branch> branches,
         Matcher e = ELSE.matcher(source.substring(Math.min(end, source.length())));
         Verdict otherwise = e.find() ? Verdict.of(quoted(e, 1)) : null;
         return new ExpressionRule(source, scope, List.copyOf(branches), otherwise);
+    }
+
+    /**
+     * A condition that is <em>entirely</em> a quoted string is a question; anything else is a
+     * comparison.
+     *
+     * <p>Entirely, and that is what makes it unambiguous. SpEL's own literal is single-quoted
+     * and a double-quoted one may still appear inside a comparison — {@code #same({A.b}, "x")}
+     * is a comparison whose second operand happens to be written that way, and it does not
+     * begin with a quote.
+     */
+    private static Branch branch(String condition, Verdict then) {
+        String c = condition.trim();
+        if (c.length() >= 2 && c.charAt(0) == '"' && c.charAt(c.length() - 1) == '"') {
+            // Collapsed to one line: a question wrapped across three lines in the editor is
+            // one sentence, and the line breaks are the author's margin, not the model's.
+            String ask = c.substring(1, c.length() - 1).replaceAll("\\s+", " ").trim();
+            return new Branch(null, then, ask.isEmpty() ? null : ask);
+        }
+        return new Branch(c, then, null);
     }
 
     private static String quoted(Matcher m, int first) {
@@ -220,8 +269,8 @@ public record ExpressionRule(String source, String scope, List<Branch> branches,
         for (int i = 0; i < branches.size(); i++) {
             Branch b = branches.get(i);
             String at = "WHEN " + (i + 1);
-            if (b.when() == null || b.when().isBlank()) {
-                out.add("There is nothing to compare in " + at + ".");
+            if (b.text() == null || b.text().isBlank()) {
+                out.add("There is nothing to settle in " + at + ".");
             }
             if (b.then() == null) {
                 out.add(at + " does not say what it answers. THEN takes \"clean\", \"doubt\" "
@@ -235,10 +284,55 @@ public record ExpressionRule(String source, String scope, List<Branch> branches,
         return out;
     }
 
-    /** Every condition in the table, for a caller that compiles them one at a time. */
+    /**
+     * Every condition the ENGINE settles, for a caller that compiles them one at a time.
+     *
+     * <p>A question is not here and must not be: it is prose, it would fail to compile, and
+     * refusing a check because its question is not valid SpEL would make the whole feature
+     * unusable.
+     */
     public List<String> sources() {
-        return branches.stream().map(Branch::when)
+        return branches.stream().filter(b -> !b.judged()).map(Branch::when)
                 .filter(s -> s != null && !s.isBlank()).toList();
+    }
+
+    /** Whether any condition needs a reader. Derived — an author does not declare this. */
+    public boolean judged() {
+        return branches.stream().anyMatch(Branch::judged);
+    }
+
+    /**
+     * Which questions could still be reached, given what the engine can already settle.
+     *
+     * <p>Run before any model call. Every comparison is settled; a branch that matches ends
+     * it and nothing is asked at all, and a comparison that cannot be settled ends it too.
+     * What comes back is the questions that a walk might actually arrive at — so a table is
+     * never billed for a line the examination would not have reached.
+     *
+     * <p>A question is treated as <em>possibly not matching</em> while collecting, because
+     * assuming the other way would hide every question below the first one.
+     *
+     * @param settle answers a comparison; never called for a question
+     * @return branch indices needing an answer, in order. Empty means the table is already
+     *         decided and {@link #decide} will say what it came to.
+     */
+    public List<Integer> pending(java.util.function.IntFunction<Answer> settle) {
+        List<Integer> out = new ArrayList<>();
+        for (int i = 0; i < branches.size(); i++) {
+            if (branches.get(i).judged()) {
+                out.add(i);
+                continue;
+            }
+            switch (settle.apply(i)) {
+                // Settled here; nothing below is reached, and nothing above it was a question
+                // that was not already collected.
+                case TRUE, UNKNOWN -> {
+                    return out;
+                }
+                case FALSE -> { }
+            }
+        }
+        return out;
     }
 
     // =========================================================================
@@ -305,7 +399,9 @@ public record ExpressionRule(String source, String scope, List<Branch> branches,
     public String print() {
         StringBuilder sb = new StringBuilder();
         for (Branch b : branches) {
-            sb.append("WHEN ").append(b.when()).append("\n  THEN \"")
+            // A question goes back inside its quotes; that is what makes it a question.
+            String cond = b.judged() ? "\"" + b.ask() + "\"" : b.when();
+            sb.append("WHEN ").append(cond).append("\n  THEN \"")
               .append(b.then() == null ? "doubt" : b.then().word()).append("\"\n");
         }
         return sb.append("ELSE \"")

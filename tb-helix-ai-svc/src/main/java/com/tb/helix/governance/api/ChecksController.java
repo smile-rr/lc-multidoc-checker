@@ -75,7 +75,11 @@ public class ChecksController {
             // are reported together so an author fixes one thing rather than discovering the
             // second only after fixing the first.
             List<String> problems = new ArrayList<>(table.problems());
-            boolean judgement = false;
+            // A table with a question is JUDGED however it was typed — that is the whole
+            // of what "agent check" now means, and it is derived rather than declared for
+            // the reason `tier` always has been: a stored opinion about a derivation is a
+            // thing that comes to disagree with it.
+            boolean judgement = table.judged();
             List<Map<String, String>> reads = new ArrayList<>();
             for (String source : table.sources()) {
                 ExpressionRules.Checked checked = expressions.check(source);

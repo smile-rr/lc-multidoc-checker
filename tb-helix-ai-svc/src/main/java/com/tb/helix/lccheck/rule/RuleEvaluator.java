@@ -165,6 +165,19 @@ public class RuleEvaluator {
             this(id, op, label, outcome, left, right, tol, why, null);
         }
 
+        /**
+         * A question an examiner answered, as a row.
+         *
+         * <p>The same record a comparison produces, so one evidence view serves both and an
+         * officer is not asked to read two shapes. There are no operands: the question IS the
+         * label, and {@code why} is the sentence naming what was read.
+         */
+        public static RowResult judged(String id, String question, Outcome outcome, String why) {
+            Side none = new Side(null, null, null, null, false, false, false);
+            return new RowResult(id, Operator.UNKNOWN.wire(), question, outcome, none, none,
+                    null, why, outcome == Outcome.INCONCLUSIVE ? Gap.HUMAN_ONLY : null);
+        }
+
         public RowResult withGap(Gap gap) {
             return new RowResult(id, op, label, outcome, left, right, tol, why, gap);
         }
