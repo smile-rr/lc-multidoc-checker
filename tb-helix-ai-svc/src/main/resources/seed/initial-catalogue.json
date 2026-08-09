@@ -999,49 +999,16 @@
         "UCP600 Art.18"
       ],
       "rule": {
-        "scope": "Every presentation with a commercial invoice",
-        "groups": [
-          {
-            "id": "g1",
-            "rows": [
-              {
-                "l": {
-                  "doc": "INV",
-                  "field": "invoice_value"
-                },
-                "r": {
-                  "doc": "LC",
-                  "field": "credit_amount"
-                },
-                "id": "r1",
-                "op": "lte",
-                "tol": "5% tolerance"
-              },
-              {
-                "l": {
-                  "doc": "INV",
-                  "field": "currency"
-                },
-                "r": {
-                  "doc": "LC",
-                  "field": "currency"
-                },
-                "id": "r2",
-                "op": "eq",
-                "tol": ""
-              }
-            ],
-            "logic": "all"
-          }
-        ],
-        "message": "The invoice value exceeds the credit amount, or is in the wrong currency."
+        "v": 3,
+        "scope": "Every presentation",
+        "source": "WHEN #present({LC.tolerance_percent})\n     and #atMost({INV.invoice_value}, {LC.credit_amount}, {LC.tolerance_percent})\n     and #same({INV.currency}, {LC.currency})                    THEN \"clean\"\nWHEN #absent({LC.tolerance_percent})\n     and {INV.invoice_value} <= {LC.credit_amount}\n     and #same({INV.currency}, {LC.currency})                    THEN \"clean\"\nELSE \"discrepancy\""
       },
       "title": "Invoice value within the credit amount",
       "domain": "Goods & pricing",
       "citedAs": "practice",
       "severity": "MAJOR",
-      "checkType": "PROGRAMMATIC",
-      "suggestion": "Add a row for unit price against the credit once pricing is extracted.",
+      "checkType": "EXPRESSION",
+      "suggestion": "The credit's own tolerance where it states one, and none where it does not. The tree this replaced carried a flat '5% tolerance' note on the row, which read as an instruction and was a comment: the operator ran a strict comparison and the five per cent was never applied. UCP 600 art. 30(b)'s allowance is on quantity rather than on value, so nothing is granted here that the credit did not grant.",
       "docs": [
         "INV",
         "LC"
@@ -1066,46 +1033,14 @@
       ],
       "citedAs": "practice",
       "severity": "MAJOR",
-      "checkType": "PROGRAMMATIC",
-      "suggestion": "Where the credit is available by mixed payment, each portion wants its own row against the draft that covers it.",
+      "checkType": "EXPRESSION",
+      "suggestion": "UCP 600 art. 6(d)(ii): the place of the bank with which the credit is available is the place for presentation. This reads place_of_expiry against where the schedule says the documents were lodged. available_with is the METHOD — sight, acceptance, negotiation, deferred payment — and is only checked for presence, because a credit that does not say how it is available cannot be presented under at all.",
       "gate": true,
       "onFail": "CONTINUE",
       "rule": {
+        "v": 3,
         "scope": "Every presentation",
-        "groups": [
-          {
-            "id": "g1",
-            "logic": "all",
-            "rows": [
-              {
-                "id": "r1",
-                "op": "eq",
-                "tol": "",
-                "l": {
-                  "doc": "CS",
-                  "field": "place_of_presentation"
-                },
-                "r": {
-                  "doc": "LC",
-                  "field": "place_of_expiry"
-                }
-              },
-              {
-                "id": "r2",
-                "op": "present",
-                "tol": "",
-                "l": {
-                  "doc": "LC",
-                  "field": "available_with"
-                },
-                "r": {
-                  "literal": ""
-                }
-              }
-            ]
-          }
-        ],
-        "message": "The documents were presented somewhere other than the place the credit expires, or the credit does not say where it is available."
+        "source": "WHEN #same({CS.place_of_presentation}, {LC.place_of_expiry})\n     and #present({LC.available_with})                           THEN \"clean\"\nELSE \"discrepancy\""
       }
     },
     {
@@ -1114,7 +1049,7 @@
       "body": "",
       "domain": "Documents required",
       "severity": "MAJOR",
-      "checkType": "PROGRAMMATIC",
+      "checkType": "EXPRESSION",
       "citedAs": "practice",
       "refs": [
         "ISBP821 A.corrections"
@@ -1127,30 +1062,11 @@
         "corrections_authenticated"
       ],
       "rule": {
-        "scope": "A bill of lading carrying a correction",
-        "groups": [
-          {
-            "id": "g1",
-            "logic": "all",
-            "rows": [
-              {
-                "id": "r1",
-                "op": "oneof",
-                "tol": "",
-                "l": {
-                  "doc": "BOL",
-                  "field": "corrections_authenticated"
-                },
-                "r": {
-                  "literal": "YES, NA"
-                }
-              }
-            ]
-          }
-        ],
-        "message": "A correction on the bill of lading is not authenticated by its issuer."
+        "v": 3,
+        "scope": "Every presentation",
+        "source": "WHEN \"every correction on the bill of lading is authenticated by whoever issued\n      the document, or there are no corrections at all — UCP 600 art. 3, ISBP 821 SectionA\"  THEN \"clean\"\nELSE \"discrepancy\""
       },
-      "suggestion": "ISBP 821 exempts corrections on documents issued by the beneficiary, other than a draft — which is why the invoice and the beneficiary's certificates are not operands. The certificate of origin and the insurance document want the same check; copy this one per document rather than adding rows to it, so an unpresented document does not turn the whole check inconclusive."
+      "suggestion": "A QUESTION, and not by choice. corrections_authenticated is a DOC_ATTESTATION: it is read off the page by the attest pass into lc_mark, and no condition language reads marks. The expression compiler refuses to name it, which is the right refusal — the tree this replaced named it happily and could only ever come back unsettled, looking exactly like a check that ran. Until the language can read a mark, an examiner answers it."
     },
     {
       "id": "C0004",
@@ -1158,7 +1074,7 @@
       "body": "",
       "domain": "Transport",
       "severity": "CRITICAL",
-      "checkType": "PROGRAMMATIC",
+      "checkType": "EXPRESSION",
       "citedAs": "practice",
       "refs": [
         "UCP600 Art.20",
@@ -1173,42 +1089,11 @@
         "signed_capacity"
       ],
       "rule": {
-        "scope": "Any presentation including a bill of lading",
-        "groups": [
-          {
-            "id": "g1",
-            "logic": "all",
-            "rows": [
-              {
-                "id": "r1",
-                "op": "eq",
-                "tol": "",
-                "l": {
-                  "doc": "BOL",
-                  "field": "signed"
-                },
-                "r": {
-                  "literal": "YES"
-                }
-              },
-              {
-                "id": "r2",
-                "op": "present",
-                "tol": "",
-                "l": {
-                  "doc": "BOL",
-                  "field": "signed_capacity"
-                },
-                "r": {
-                  "literal": ""
-                }
-              }
-            ]
-          }
-        ],
-        "message": "The bill of lading is unsigned, or the signature does not state the capacity it was given in."
+        "v": 3,
+        "scope": "Every presentation",
+        "source": "WHEN \"the transport document is signed, and the signature states the capacity it\n      was given in - carrier, master, or a named agent for one of them (UCP 600 art. 20(a)(i))\"  THEN \"clean\"\nELSE \"discrepancy\""
       },
-      "suggestion": "A signature naming a company but no capacity — 'ABC Shipping' with no 'as carrier' or 'as agent for' — is the common form of this. UCP 600 art. 3 makes a printed chop a signature, so do not raise this merely because nothing was handwritten."
+      "suggestion": "A QUESTION for the same reason as C0003: signed and signed_capacity are attestations, read into lc_mark by the pass that looks at the page rather than at its text. Note that art. 20(a)(i) wants the capacity stated and not merely a signature — 'there is a signature and I cannot read whose it is' is not the same statement as 'this document is unsigned', and only the second is a discrepancy."
     },
     {
       "id": "C0005",
@@ -1221,42 +1106,9 @@
         "UCP600 Art.20"
       ],
       "rule": {
-        "scope": "When a marine bill of lading is presented",
-        "groups": [
-          {
-            "id": "g1",
-            "rows": [
-              {
-                "l": {
-                  "doc": "BOL",
-                  "field": "port_of_loading"
-                },
-                "r": {
-                  "doc": "LC",
-                  "field": "port_of_loading"
-                },
-                "id": "r1",
-                "op": "eq",
-                "tol": ""
-              },
-              {
-                "l": {
-                  "doc": "BOL",
-                  "field": "port_of_discharge"
-                },
-                "r": {
-                  "doc": "LC",
-                  "field": "port_of_discharge"
-                },
-                "id": "r2",
-                "op": "eq",
-                "tol": ""
-              }
-            ],
-            "logic": "all"
-          }
-        ],
-        "message": "The bill of lading's ports do not agree with the credit."
+        "v": 3,
+        "scope": "Every presentation",
+        "source": "WHEN #same({BOL.port_of_loading}, {LC.port_of_loading})\n     and #same({BOL.port_of_discharge}, {LC.port_of_discharge})  THEN \"clean\"\nELSE \"discrepancy\""
       },
       "title": "Bill of lading ports agree with the credit",
       "domain": "Transport",
@@ -1266,8 +1118,8 @@
       ],
       "citedAs": "practice",
       "severity": "CRITICAL",
-      "checkType": "PROGRAMMATIC",
-      "suggestion": "Held four subjects at once. The shipment date moved to SHIP-44C and the twenty-one day presentation period to PRES-14C — the latter was cited as art. 20 here, which does not govern it. Still to add: charter-party bills of lading, which are examined under art. 22."
+      "checkType": "EXPRESSION",
+      "suggestion": "Both ports, compared as text with case and spacing folded away. Still to add: charter-party bills of lading, which are examined under art. 22."
     },
     {
       "id": "E0001",

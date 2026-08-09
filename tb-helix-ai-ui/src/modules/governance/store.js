@@ -184,7 +184,13 @@ export const checkTypeOf = (c) => (c && TIERS[c.checkType] ? c.checkType : 'AGEN
  * Local derivation survives only as the fallback for mock mode, where there is no service
  * to ask.
  */
-export const typeOf = (c) => (c && c.language === 'EXPRESSION' ? 'expression'
+export const typeOf = (c) => (c && c.language === 'EXPRESSION'
+  // A table is an Agent check when it asks a question and an Expression check when it does
+  // not — and `tier` is where that is decided, by the service, from the conditions rather
+  // than from what anybody typed. Reading only `language` here called every table an
+  // Expression check and left the Agent tab reading zero while two agent checks sat in the
+  // list under the wrong badge.
+  ? ((c.tier === 'JUDGED' || c.tier === 'judged') ? 'judged' : 'expression')
   : c && (c.tier === 'EXACT' || c.tier === 'exact') ? 'exact'
   : c && (c.tier === 'JUDGED' || c.tier === 'judged') ? 'judged'
   : TIERS[checkTypeOf(c)].tier)
@@ -199,6 +205,14 @@ export const typeOf = (c) => (c && c.language === 'EXPRESSION' ? 'expression'
  */
 export const kindOf = (c, hasConditions) => (c && c.language === 'EXPRESSION' ? 'expression'
   : hasConditions ? 'exact' : typeOf(c))
+
+/**
+ * Which BODY to draw, which is not the same question as which KIND it is.
+ *
+ * An agent check and an expression check are one card — one editor, one table, one Try
+ * panel — because the only thing that differs is who settles a condition. `typeOf` says
+ * which badge and which tab; this says which editor. They disagree on purpose.
+ */
 
 /** Comparison or Expression: settled without a model, whichever way it was written. */
 export const isComparison = (kind) => kind === 'exact' || kind === 'expression'
@@ -654,7 +668,28 @@ export function deriveVals(state, setState) {
   const beforeReadingDocs = () => new Set((S.dictDocs ?? seedDocTypes()).filter((d) => d.beforeReading).map((d) => d.key))
 
   function gateEligibility(c) {
+    // THE SERVICE'S ANSWER, when there is one.
+    //
+    // `gate_eligible` is derived in `v_check_list` from the DERIVED tier and the documents
+    // the conditions read — for a tree from its operand rows, for a table from its facet.
+    // Re-deriving it here walked tree rows and nothing else, so an expression check was
+    // ineligible in the browser while the service had already made it a gate: the console
+    // showing one thing and the run doing another, which is the exact failure the note
+    // above `typeOf` records for `tier`.
+    //
+    // The local walk survives only as the fallback for mock mode, where there is no service.
+    if (c && c.gateEligible !== undefined) {
+      return c.gateEligible
+        ? { ok: true, why: 'Every operand comes from the credit or the covering schedule, so this can run before anything is examined.' }
+        : { ok: false, why: c.gateWhy || 'It reads a document that is not available until the presentation has been read.' }
+    }
+
     const kind = kindOf(c, hasConditions(c))
+    if (kind === 'expression') {
+      // Mock only. A table's operands are text, and parsing them here would be a second
+      // implementation of the language — so the fixture is trusted and nothing is guessed.
+      return { ok: false, why: 'Whether this can run first is the service\'s answer, and it could not be reached.' }
+    }
     if (kind !== 'exact') return { ok: false, why: 'Only a comparison can run first — an agent cannot read documents before they are read.' }
     const rule = ruleOf(c.id)
     const rows = (rule.groups ?? []).flatMap((g) => g.rows ?? [])
@@ -1076,6 +1111,10 @@ export function deriveVals(state, setState) {
         source: rule.source || '',
         onChange: (v) => write({ source: v }),
         missing: editing && isBlank(rule.source),
+        // Offered whenever the check is settled by comparison — a table that asks a question
+        // costs a model call, and a gate exists to decide whether reading is worth paying
+        // for, so gating on one spends the money the gate is there to save.
+        canGate: kind === 'expression' && typeOf(c) !== 'judged',
         reads: expressionReads(),
         verbs: expressionVerbs(),
         grammar: expressionGrammar(),
