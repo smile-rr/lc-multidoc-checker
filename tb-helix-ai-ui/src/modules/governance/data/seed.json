@@ -1678,7 +1678,7 @@
     "E0001": {
       "v": 3,
       "scope": "Every presentation",
-      "source": "WHEN {CS.presentation_date} <= {LC.expiry_date}  THEN \"clean\"\nELSE \"discrepancy\""
+      "source": "WHEN #matches({LC.place_of_presentation}, 'ANY\\s*BANK')\n     and {CS.presentation_date} <= {LC.expiry_date}                THEN \"clean\"\nWHEN #notMatches({LC.place_of_presentation}, 'ANY\\s*BANK')\n     and {CS.presentation_date} <= {LC.expiry_date}                THEN \"doubt\"\nELSE \"discrepancy\""
     },
     "A0001": {
       "v": 3,

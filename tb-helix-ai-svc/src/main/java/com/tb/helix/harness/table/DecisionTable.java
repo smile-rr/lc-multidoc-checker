@@ -28,12 +28,19 @@ import java.util.regex.Pattern;
  * <h2>Two levels: three keywords here, SpEL underneath</h2>
  *
  * <pre>
- *   WHEN #matches({LC.available_with}, 'ANY\\s*BANK')
- *        and {CS.presentation_date} &lt;= {LC.expiry_date}                THEN "clean"
- *   WHEN #notMatches({LC.available_with}, 'ANY\\s*BANK')
- *        and {CS.presentation_date} &lt;= #datePlus({LC.expiry_date}, 5)  THEN "doubt"
+ *   WHEN #matches({LC.place_of_presentation}, 'ANY\\s*BANK')
+ *        and {CS.presentation_date} &lt;= {LC.expiry_date}     THEN "clean"
+ *   WHEN #notMatches({LC.place_of_presentation}, 'ANY\\s*BANK')
+ *        and {CS.presentation_date} &lt;= {LC.expiry_date}     THEN "doubt"
  *   ELSE "discrepancy"
  * </pre>
+ *
+ * <p>That is {@code E0001}, and the example is the check rather than an illustration of one.
+ * Two things it got wrong while it was only an illustration, both worth keeping visible:
+ * it read {@code available_with}, which is the <em>method</em> — sight, acceptance,
+ * negotiation — and could never have matched {@code ANY BANK}; and it allowed the restricted
+ * case five days, a number with no article behind it. What the restricted case actually
+ * needs is not more days but a person, which is what {@code "doubt"} says.
  *
  * <p>The order of the branches decides; the order <em>within</em> a condition does not. The
  * fold is symmetric, so {@code unknown and false} is false exactly as {@code false and
