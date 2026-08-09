@@ -1082,7 +1082,12 @@ export function deriveVals(state, setState) {
     const preview = (body.split('\n').find((l) => l.trim()) || '').replace(/[{}]/g, '')
 
     // ---- card type ---------------------------------------------------------
-    const meta = CARD_TYPES[kind]
+    //
+    // WHICH KIND it is, not which body it draws. `kind` answers the second question and
+    // returns `expression` for every table — which is all of them now — so the badge said
+    // Expression on an agent check while the filter tab beside it, which asks `typeOf`,
+    // counted the same check as an Agent. Two answers to one question, on one screen.
+    const meta = CARD_TYPES[typeOf(c)]
     // A rule states its operands in its own rows, so the chip rows and the
     // plain-language body belong to judged rules only.
     const showFieldRows = !isExact
@@ -1545,10 +1550,13 @@ export function deriveVals(state, setState) {
         else keys.sort((a, b) => (a === 'Not in an agent' ? 1 : b === 'Not in an agent' ? -1 : a.localeCompare(b)))
         return keys.map((k) => ({ key: k, name: k, count: buckets.get(k).length, checks: buckets.get(k) }))
       })()
+  // Comparison is retired, so its tab is offered only where one still exists — a filter
+  // that can only ever read zero is a control that teaches nothing.
   const typeFilters = [
     { id: 'all', label: 'All' },
-    { id: 'exact', label: 'Comparison' },
     { id: 'judged', label: 'Agent' },
+    { id: 'expression', label: 'Expression' },
+    ...(matchedChecks.some((c) => typeOf(c) === 'exact') ? [{ id: 'exact', label: 'Comparison' }] : []),
   ].map((t) => ({
     ...t,
     count: t.id === 'all' ? matchedChecks.length : matchedChecks.filter((c) => typeOf(c) === t.id).length,
@@ -1605,7 +1613,7 @@ export function deriveVals(state, setState) {
     const t = valueOf(c, 'title'); const sv = valueOf(c, 'severity') || 'MAJOR'; const rf = (valueOf(c, 'refs') || []).join(', ')
     const kind = kindOf(c, hasConditions(c))
     const bd = kind === 'exact' ? ruleMd(c) : valueOf(c, 'body') || ''
-    return `${CARD_TYPES[kind].label.toUpperCase()} RULE: ${c.id} — ${t}\nSeverity: ${sv}\n\n${bd}${rf ? '\n\nReference: ' + rf : ''}`
+    return `${CARD_TYPES[typeOf(c)].label.toUpperCase()} RULE: ${c.id} — ${t}\nSeverity: ${sv}\n\n${bd}${rf ? '\n\nReference: ' + rf : ''}`
   }).join('\n\n---\n\n')
   const usedByArt = (code) => allChecks().filter((c) => (valueOf(c, 'refs') || []).includes(code)).length
   const books = S.books || seedBooks()
