@@ -38,14 +38,10 @@ export default function ExpressionBody({ check }) {
         </Menu>
       </div>
 
-      {/* A table settled without a model can run before anything is read, so it can be a
-          threshold check — and until now the only place to say so was inside the tree body,
-          which is the card being retired. When it cannot be one the control stays, disabled,
-          with the reason showing: an author who wants a gate needs to know what would make
-          one, and a control that vanishes teaches nothing. */}
-      {e.canGate ? (
-        <div style={gateWrap}><GateSwitch check={check} /></div>
-      ) : null}
+      {/* One flag, one row. A table settled without a model can run before anything is
+          read, so it can be a threshold check; when it cannot, the control stays disabled
+          with the reason in the space the select would have taken. */}
+      {e.canGate ? <GateSwitch check={check} /> : null}
 
       <div style={{ borderRadius: 8, ...(e.missing ? warnRing : null) }}>
         <RuleEditor
@@ -96,7 +92,6 @@ export function ExpressionHelp({ onClose, grammar }) {
   )
 }
 
-const gateWrap = { border: '1px solid var(--me-grey-15)', borderRadius: 10, overflow: 'hidden', marginBottom: 10 }
 const railRow = { display: 'flex', alignItems: 'center', marginBottom: 4 }
 const helpBtn = { width: 22, height: 22, borderRadius: 6, border: '1px solid var(--me-grey-15)', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--me-grey-70)', fontSize: 12, fontWeight: 700 }
 const closeBtn = { background: 'none', border: 'none', cursor: 'pointer', color: 'var(--me-grey-50)', display: 'flex', padding: 2, marginRight: -2 }
