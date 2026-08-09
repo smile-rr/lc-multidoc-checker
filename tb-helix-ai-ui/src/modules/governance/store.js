@@ -467,6 +467,14 @@ function hl(text) {
   return out
 }
 
+// An article's own id. At module scope because the unsaved-work test below has to
+// find an article long before the Library's own view-model is built.
+const aidOf = (x) => (x.aid != null ? x.aid : x.code)
+
+// Equal by value. Used to decide whether an open editor holds a CHANGE or only a
+// caret, so the shapes it compares are always small and always JSON.
+const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+
 // ============================================================================
 // deriveVals — takes the current state + a merging setState and returns the
 // full view-model object consumed by the React section components.
@@ -547,9 +555,60 @@ export function deriveVals(state, setState) {
   // you, because one of those loses typing and the other commits something
   // half-written.
   const pendingId = S.editingId || S.artEditingId || S.createdId || null
+
+  // ---- the slot is held by a CHANGE, not by a caret -------------------------
+  //
+  // Opening an editor and changing something were the same event. Clicking a title to
+  // read it, clicking into the table to see where a line wraps, or clicking in on the way
+  // to Try it all filled the slot — so "New …" went dead, a banner appeared, and leaving
+  // the screen asked whether to throw away changes nobody had made.
+  //
+  // That dialog is the expensive part. A confirm that fires when nothing is at stake
+  // teaches the habit of dismissing it unread, and then it is worth nothing on the one
+  // occasion something IS at stake. It has to be rare to be read.
+  //
+  // Every edit takes a snapshot when it starts, and this compares what is there now
+  // against it. The comparison is made by the SAME function that took the snapshot
+  // (`checkSnapOf`, `ruleSnapOf`, `artSnapOf`), so the two cannot come to disagree about
+  // which properties count — a second list of "the fields that matter" is how a genuine
+  // edit ends up looking clean.
+  //
+  // Where there is no snapshot to compare against, the answer is DIRTY. An unnecessary
+  // confirm costs a click; a missing one costs an afternoon.
+  const findArticle = (id) => {
+    for (const b of (S.books || seedBooks())) {
+      const a = b.articles.find((x) => aidOf(x) === id)
+      if (a) return a
+    }
+    return null
+  }
+
+  const dirtyOf = (id) => {
+    const snap = S.editSnap[id]
+    const c = allChecks().find((x) => x.id === id)
+    if (c) {
+      // Both halves are snapshotted together when the edit opens, so neither being
+      // absent means this slot was filled by something that did not go through
+      // `takeSnap` — and what that was is not knowable from here.
+      if (snap === undefined || S.ruleSnap[id] === undefined) return true
+      return !same(checkSnapOf(c), snap) || !same(ruleSnapOf(id), S.ruleSnap[id])
+    }
+    const row = dictFieldList.find((x) => x.id === id) || dictDocList.find((x) => x.id === id)
+    if (row) return snap === undefined || !same(row, snap)
+    const art = findArticle(id)
+    // An article that has never been written is unsaved by definition — there is
+    // nothing behind it to go back to.
+    if (art) return !!art.isNew || snap === undefined || !same(artSnapOf(art), snap)
+    return true
+  }
+
+  // A thing this session created is always unsaved: discarding it does not restore an
+  // earlier value, it removes the record. That is worth a question even when untouched.
+  const isPending = () => !!pendingId && (S.createdId === pendingId || dirtyOf(pendingId))
+
   // An add while something is pending is not a mistake to scold — it is someone
   // who lost track of where the unfinished thing is. So it takes them there.
-  const guard = (fn) => (...args) => { if (pendingId) { focusItem(pendingId); return } fn(...args) }
+  const guard = (fn) => (...args) => { if (isPending()) { focusItem(pendingId); return } fn(...args) }
 
   // Throw away whatever holds the slot, whichever kind of thing it is. A record
   // that this edit created goes entirely; one that already existed goes back to
@@ -566,10 +625,12 @@ export function deriveVals(state, setState) {
     if (st.extraChecks.some((c) => c.id === id) || CHECKS.some((c) => c.id === id)) {
       const ov = { ...st.overrides }
       if (created) delete ov[id]
-      else if (snap !== undefined) ov[id] = snap
+      else if (snap !== undefined) ov[id] = keepCommitted(st.overrides[id], snap)
       else delete ov[id]
       const rules = { ...st.rules }
-      if (created) delete rules[id]
+      // `null` is a card that had no rule when the edit opened, and putting one back
+      // would leave a table behind on a card that never had one.
+      if (created || rsnap === null) delete rules[id]
       else if (rsnap !== undefined) rules[id] = rsnap
       return { ...patch, overrides: ov, rules, extraChecks: created ? st.extraChecks.filter((c) => c.id !== id) : st.extraChecks }
     }
@@ -581,7 +642,14 @@ export function deriveVals(state, setState) {
     // a book, or an article inside one
     const bs = st.books || seedBooks()
     if (bs.some((b) => b.id === id)) return { ...patch, books: created ? bs.filter((b) => b.id !== id) : bs, activeBookId: created ? (bs[0] ? bs[0].id : null) : st.activeBookId }
-    return { ...patch, books: bs.map((b) => ({ ...b, articles: b.articles.filter((a) => !(aidOf(a) === id && a.isNew)) })) }
+    // An article edits in place, so Cancel has to put the text back. It only removed a
+    // NEW one before and left an edited one rewritten — which made the Library the one
+    // tab where "discard changes" discarded nothing.
+    return { ...patch, books: bs.map((b) => ({ ...b, articles: b.articles.flatMap((a) => {
+      if (aidOf(a) !== id) return [a]
+      if (a.isNew) return []
+      return [snap ? { ...a, ...snap } : a]
+    }) })) }
   })
 
   // Leaving an unfinished edit asks. It used to happen silently — you clicked
@@ -590,6 +658,10 @@ export function deriveVals(state, setState) {
   // they were writing may not be saveable yet.
   const confirmLeave = (proceed) => {
     if (!pendingId) { proceed(); return }
+    // Nothing was changed, so there is nothing to decide. The slot is released anyway —
+    // the editor closes rather than following you to the next screen, and because the
+    // values are identical, releasing it puts nothing back.
+    if (!isPending()) { discardPending(); proceed(); return }
     requestConfirm({
       title: 'Leave without saving?',
       message: `${pendingLabel} has changes that have not been saved. Leaving now throws them away.`,
@@ -606,6 +678,49 @@ export function deriveVals(state, setState) {
   const valueOf = (c, field) => {
     const o = S.overrides[c.id]
     return o && o[field] !== undefined ? o[field] : c[field]
+  }
+
+  // ---- what an open edit is holding ----------------------------------------
+  //
+  // One definition each, used BOTH to take the snapshot when an edit opens and to test
+  // whether anything has changed since. Two definitions would eventually differ by one
+  // property, and the property they differ by is the one whose edit is silently lost.
+  //
+  // `gate` and `onFail` are deliberately absent. They are written through to the service
+  // the moment they are pressed (`gov.setGate`), so they are neither unsaved work nor
+  // Cancel's to undo — see `onToggleGate`.
+  const checkSnapOf = (c) => {
+    const dflt = CHECK_DEFAULTS[c.id] || {}
+    return {
+      title: valueOf(c, 'title'),
+      severity: (valueOf(c, 'severity') || 'MAJOR').toUpperCase(),
+      refs: [...(valueOf(c, 'refs') || [])],
+      body: valueOf(c, 'body') || '',
+      fields: [...(valueOf(c, 'fields') || dflt.fields || [])],
+      docs: [...(valueOf(c, 'docs') || dflt.docs || [])],
+    }
+  }
+
+  /** The rule as the editor sees it — a tree, a table, or `null` for a card with neither. */
+  const ruleSnapOf = (id) => {
+    const raw = S.rules[id] ?? RULE_SEEDS[id]
+    return raw == null ? null : JSON.parse(JSON.stringify(normaliseRule(raw)))
+  }
+
+  const artSnapOf = (a) => ({ code: a.code || '', title: a.title || '', read: a.read || '' })
+
+  /**
+   * Restoring an override without undoing what was already committed.
+   *
+   * The snapshot holds what an author was typing. The gate flag is not that — pressing it
+   * sends it, so Cancel must leave it where it landed rather than reverting the card to a
+   * state the service no longer agrees with.
+   */
+  const keepCommitted = (live, snap) => {
+    const out = { ...snap }
+    if (live && live.gate !== undefined) out.gate = live.gate
+    if (live && live.onFail !== undefined) out.onFail = live.onFail
+    return out
   }
   const bookDesc = (code) => {
     const b = REF_BOOK.find((x) => x.code === code)
@@ -1036,11 +1151,15 @@ export function deriveVals(state, setState) {
     const inAgent = ctx === 'agent'
     // What Cancel puts back. The rule travels with it — without that, undoing an
     // edit restored the title and left the conditions rewritten.
-    const snapNow = { title, severity, refs: [...refs], body, fields: [...fields], docs: [...docs] }
-    const snapRule = isExact ? JSON.parse(JSON.stringify(rule)) : null
+    // Taken by the same functions that test for a change, so the two can never disagree.
+    // The rule is snapshotted for EVERY kind now: an expression card took none, so Cancel
+    // on one restored the title and left the table rewritten — the exact failure the
+    // comment above describes, on the card where the table is the whole check.
+    const snapNow = checkSnapOf(c)
+    const snapRule = ruleSnapOf(c.id)
     const takeSnap = (s) => ({
       editSnap: s.editSnap[c.id] !== undefined ? s.editSnap : { ...s.editSnap, [c.id]: snapNow },
-      ruleSnap: !isExact || s.ruleSnap[c.id] !== undefined ? s.ruleSnap : { ...s.ruleSnap, [c.id]: snapRule },
+      ruleSnap: s.ruleSnap[c.id] !== undefined ? s.ruleSnap : { ...s.ruleSnap, [c.id]: snapRule },
     })
     const startEdit = () => {
       if (S.editingId === c.id) return
@@ -1123,6 +1242,12 @@ export function deriveVals(state, setState) {
         reads: expressionReads(),
         verbs: expressionVerbs(),
         grammar: expressionGrammar(),
+        // Trying a check is READING it, and nothing here writes to the rule. The panel's
+        // whole state — which case, what was typed, what came back, whether it is open —
+        // lives under its own keys and is never stored, so opening Try, running it and
+        // walking away leaves the card exactly as it was found. Nothing below may call
+        // `write` or `startEdit`: an authoring aid that marks a check as edited turns
+        // every look into a decision about unsaved changes.
         sim: {
           available: isApi,
           open: !!S.simOpen[chk.id],
@@ -1286,8 +1411,12 @@ export function deriveVals(state, setState) {
             // Sent on its own rather than folded into the next save: a gate is the one
             // property whose truth the service can refuse, and the author should learn
             // that when they press it.
+            //
+            // And because it is sent, it does NOT open the edit slot. It used to, which
+            // meant a flag that was already committed left the card claiming unsaved
+            // changes — offering to discard something no Cancel could reach.
             gov.setGate(c.id, !isGateOn, onFail).catch(() => {})
-            setState((st) => ({ overrides: { ...st.overrides, [c.id]: { ...st.overrides[c.id], gate: !isGateOn } }, editingId: st.editingId ?? c.id }))
+            setState((st) => ({ overrides: { ...st.overrides, [c.id]: { ...st.overrides[c.id], gate: !isGateOn } } }))
           }
         : null,
       // What a failure *means*, which is the author's own judgement and the half of
@@ -1301,8 +1430,10 @@ export function deriveVals(state, setState) {
       // presentation is not.
       onFail,
       onSetOnFail: (next) => {
+        // Committed on the press, like the flag beside it — so it stays out of the edit
+        // slot too.
         gov.setGate(c.id, isGateOn, next).catch(() => {})
-        setState((st) => ({ overrides: { ...st.overrides, [c.id]: { ...st.overrides[c.id], onFail: next } }, editingId: st.editingId ?? c.id }))
+        setState((st) => ({ overrides: { ...st.overrides, [c.id]: { ...st.overrides[c.id], onFail: next } } }))
       },
       typeLabel: meta.label, typeIcon: meta.icon, typeColor: meta.color, typeBg: meta.bg, typeHint: meta.hint,
       showFieldRows,
@@ -1428,11 +1559,13 @@ export function deriveVals(state, setState) {
         const snap = s.editSnap[c.id]
         const ov = { ...s.overrides }
         if (snap === undefined) delete ov[c.id]
-        else ov[c.id] = snap
+        else ov[c.id] = keepCommitted(s.overrides[c.id], snap)
         const es = { ...s.editSnap }; delete es[c.id]
         const rules = { ...s.rules }
         const rs = { ...s.ruleSnap }
-        if (isExact && rs[c.id] !== undefined) rules[c.id] = rs[c.id]
+        // Every kind, not just the tree — an expression card's table is the check.
+        if (rs[c.id] === null) delete rules[c.id]
+        else if (rs[c.id] !== undefined) rules[c.id] = rs[c.id]
         delete rs[c.id]
         return { editingId: null, createdId: null, refsOpenId: null, helpOpenId: null, operandOpen: null, overrides: ov, editSnap: es, rules, ruleSnap: rs }
       }),
@@ -1620,7 +1753,6 @@ export function deriveVals(state, setState) {
   const setBooks = (fn) => setState((s) => ({ books: fn(s.books || seedBooks()) }))
   const active = books.find((b) => b.id === S.activeBookId) || books[0] || { id: '', title: '', subtitle: '', articles: [] }
   const deleteBook = (id) => setState((s) => { const bs = (s.books || seedBooks()).filter((b) => b.id !== id); return { books: bs, activeBookId: s.activeBookId === id ? (bs[0] ? bs[0].id : null) : s.activeBookId } })
-  const aidOf = (x) => (x.aid != null ? x.aid : x.code)
   const deleteArticle = (bookId, aid) => {
     gov.deleteArticle(aid).catch(() => {})
     setBooks((bs) => bs.map((b) => (b.id === bookId ? { ...b, articles: b.articles.filter((x) => aidOf(x) !== aid) } : b)))
@@ -1641,7 +1773,13 @@ export function deriveVals(state, setState) {
       read: a.read || 'Reading text not yet added — click to write it.', editRead: a.read || '', usedByLabel: n + (n === 1 ? ' check' : ' checks'), isNew: !!a.isNew, editing, notEditing: !editing,
       isNew: !!a.isNew,
       cancelLabel: a.isNew ? 'Discard' : 'Cancel',
-      onEdit: () => confirmLeave(() => setState({ artEditingId: aid })),
+      // Snapshotted on the way in, like every other editor in the console. Without one
+      // there was nothing for Cancel to put back and nothing to compare against, so the
+      // Library both lost the revert and asked to discard an article nobody had touched.
+      onEdit: () => confirmLeave(() => setState((st) => ({
+        artEditingId: aid,
+        editSnap: st.editSnap[aid] !== undefined ? st.editSnap : { ...st.editSnap, [aid]: artSnapOf(a) },
+      }))),
       onChangeCode: (e) => patch('code', e.target.value),
       onChangeTitle: (e) => patch('title', e.target.value),
       onChangeRead: (e) => patch('read', e.target.value),
@@ -1649,11 +1787,22 @@ export function deriveVals(state, setState) {
         const saved = { ...a, code: (a.code || '').trim(), title: (a.title || '').trim(), read: (a.read || '').trim(), isNew: false }
         setBooks((bs) => bs.map((b) => (b.id === bookId ? { ...b, articles: b.articles.map((x) => (aidOf(x) === aid ? saved : x)) } : b)))
         gov.saveArticle({ ...saved, bookId }).catch(() => {})
-        setState({ artEditingId: null })
+        setState((st) => { const es = { ...st.editSnap }; delete es[aid]; return { artEditingId: null, editSnap: es } })
       },
       // Discard on an article that was never written removes it, the same rule
       // the check cards follow: Cancel reverts, Discard un-creates.
-      onCancel: () => { if (a.isNew) deleteArticle(bookId, aid); setState({ artEditingId: null }) },
+      onCancel: () => {
+        if (a.isNew) { deleteArticle(bookId, aid); setState({ artEditingId: null }); return }
+        setState((st) => {
+          const es = { ...st.editSnap }; const snap = es[aid]; delete es[aid]
+          return {
+            artEditingId: null, editSnap: es,
+            books: (st.books || seedBooks()).map((b) => (b.id === bookId
+              ? { ...b, articles: b.articles.map((x) => (aidOf(x) === aid && snap ? { ...x, ...snap } : x)) }
+              : b)),
+          }
+        })
+      },
       onDelete: () => requestConfirm({ title: 'Delete article?', message: `“${a.title}” will be removed from this book.`, confirmLabel: 'Delete article', onConfirm: () => deleteArticle(bookId, aid) }),
     }
   }
@@ -1698,8 +1847,17 @@ export function deriveVals(state, setState) {
   const dictEdit = (id, snap) => {
     const editing = S.editingId === id
     const created = S.createdId === id
-    const start = () => { if (S.editingId !== id) setState((st) => ({ editingId: id, editSnap: st.editSnap[id] !== undefined ? st.editSnap : { ...st.editSnap, [id]: snap } })) }
-    return { editing, created, locked: !!S.editingId && !editing, start }
+    const take = (st) => ({ editingId: id, editSnap: st.editSnap[id] !== undefined ? st.editSnap : { ...st.editSnap, [id]: snap } })
+    // The same way in as a check card: if another row holds the slot, ask — and if that
+    // row was only clicked into, it is released without a question.
+    const start = () => {
+      if (S.editingId === id) return
+      if (S.editingId) { confirmLeave(() => setState(take)); return }
+      setState(take)
+    }
+    // Locked by an UNSAVED row, not by a row somebody clicked. Every other row on the
+    // page used to go read-only the moment you put a caret in one of them.
+    return { editing, created, locked: !editing && isPending(), start }
   }
   const dictClose = (extra) => setState((st) => { const es = { ...st.editSnap }; delete es[extra.id]; return { editingId: null, createdId: null, editSnap: es, dictDocPickerId: null } })
 
@@ -2001,8 +2159,10 @@ export function deriveVals(state, setState) {
     search: S.search, setSearch: (e) => setState({ search: e.target.value }),
     exportHref: encodeURIComponent(exportMd),
     typeFilters,
-    addBlocked: !!pendingId,
-    pending: pendingId ? { id: pendingId, label: pendingLabel, onGo: () => focusItem(pendingId) } : null,
+    // Blocked by unsaved work, never by an open caret — the banner and the dead "New …"
+    // button are the same claim the confirm makes, and they have to agree with it.
+    addBlocked: isPending(),
+    pending: isPending() ? { id: pendingId, label: pendingLabel, onGo: () => focusItem(pendingId) } : null,
     checkSortCol,
     checkGroups,
     checkGroupBy: groupBy,

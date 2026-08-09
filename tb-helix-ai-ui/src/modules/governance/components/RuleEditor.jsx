@@ -232,8 +232,14 @@ const lengthCap = (max) => EditorState.transactionFilter.of((tr) => (tr.newDoc.l
  * @param reads what a condition may read, from the service. Not the dictionary's field NAMES,
  *   which is what the prose editor completes: an expression names DOCUMENT.field.
  */
-export default function RuleEditor({ value, onChange, onFocus, fields = [], maxLength = 1200,
-                                     language = 'prose', reads = [], verbs = [] }) {
+// One empty array, not a fresh one per render. A default of `[]` in the signature is a new
+// array every time, which broke the `useMemo` below on every keystroke — including
+// keystrokes in the Try boxes, which are nowhere near this editor — and reconfigured the
+// whole CodeMirror instance for nothing.
+const NONE = []
+
+export default function RuleEditor({ value, onChange, onFocus, fields = NONE, maxLength = 1200,
+                                     language = 'prose', reads = NONE, verbs = NONE }) {
   const isExpr = language === 'expression'
   const extensions = useMemo(
     () => (isExpr
