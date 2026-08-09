@@ -12,7 +12,6 @@ import AgentDetail from './sections/AgentDetail'
 import Dictionary from './sections/Dictionary'
 import Library from './sections/Library'
 import Prices from './sections/Prices'
-import Simulator from './sections/Simulator'
 import ReviewPanel from './components/ReviewPanel'
 import CatalogNotice from './components/CatalogNotice'
 import ImportModal from './modals/ImportModal'
@@ -194,7 +193,6 @@ export default function GovernanceModule() {
         {v.isAgentDetail && <AgentDetail v={v} />}
         {v.isDictionary && <Dictionary v={v} />}
         {v.isLibrary && <Library v={v} />}
-        {v.isSimulator && <Simulator v={v} />}
         {v.isPrices && <Prices requestConfirm={v.requestConfirm} />}
       </div>
 

@@ -1,7 +1,7 @@
-import Icon from '@shared/ds/Icon'
 import { Menu } from '@shared/ds/Menu'
 import RuleEditor from './RuleEditor'
 import ExpressionSimulator from './ExpressionSimulator'
+import ExpressionHelp from './ExpressionHelp'
 import GateSwitch from './GateSwitch'
 
 /**
@@ -30,11 +30,17 @@ export default function ExpressionBody({ check }) {
           open={check.helpOpen}
           onClose={check.onToggleHelp}
           align="right"
-          width={420}
-          maxHeight={470}
+          width={560}
+          maxHeight={560}
           trigger={<button onClick={check.onToggleHelp} title="How to write this" style={helpBtn}>?</button>}
         >
-          <ExpressionHelp onClose={check.onToggleHelp} grammar={e.grammar} />
+          <ExpressionHelp
+            onClose={check.onToggleHelp}
+            grammar={e.grammar}
+            verbs={e.verbs}
+            reads={e.reads}
+            samples={e.samples}
+          />
         </Menu>
       </div>
 
@@ -67,34 +73,7 @@ export default function ExpressionBody({ check }) {
   )
 }
 
-/**
- * How to write one — the SERVICE's own text, verbatim.
- *
- * The table's syntax and the condition language beneath it, in one string, because an author
- * reads them together. The same string is given to a model writing checks, so an author and
- * the planner cannot come to believe different things about what is allowed. Exported because
- * the Simulator page needs the identical text; a second copy would be a second thing to keep
- * in step.
- */
-export function ExpressionHelp({ onClose, grammar }) {
-  return (
-    <div style={{ padding: '6px 8px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 9 }}>
-        <div style={{ flex: 1, fontSize: 12.5, fontWeight: 700 }}>Writing a check</div>
-        {onClose ? (
-          <button onClick={onClose} title="Close" style={closeBtn}><Icon name="x" size={15} /></button>
-        ) : null}
-      </div>
-      <pre style={grammarText}>
-        {grammar || 'The language is described by the service, and it could not be reached.'}
-      </pre>
-    </div>
-  )
-}
-
 const railRow = { display: 'flex', alignItems: 'center', marginBottom: 4 }
 const helpBtn = { width: 22, height: 22, borderRadius: 6, border: '1px solid var(--me-grey-15)', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--me-grey-70)', fontSize: 12, fontWeight: 700 }
-const closeBtn = { background: 'none', border: 'none', cursor: 'pointer', color: 'var(--me-grey-50)', display: 'flex', padding: 2, marginRight: -2 }
-const grammarText = { margin: 0, whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: 11, lineHeight: 1.55, color: 'var(--me-grey)' }
 const warnRing = { boxShadow: '0 0 0 1px var(--status-warning)', background: 'var(--status-warning-bg, #fff8ee)' }
 const warnText = { fontSize: 11, color: 'var(--status-warning)', paddingLeft: 2 }

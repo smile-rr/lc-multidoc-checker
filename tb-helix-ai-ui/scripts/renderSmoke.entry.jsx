@@ -17,6 +17,7 @@ import CostDrawer from '@modules/lc-check/components/CostDrawer'
 import AskDrawer from '@modules/lc-check/components/AskDrawer'
 import RunLogPanel from '@modules/lc-check/components/RunLogPanel'
 import CheckDetail from '@modules/governance/sections/CheckDetail'
+import ExpressionHelp from '@modules/governance/components/ExpressionHelp'
 import { initialState, deriveVals } from '@modules/governance/store'
 
 const ROUTES = [
@@ -27,8 +28,10 @@ const ROUTES = [
   '/governance/agents',
   '/governance/dictionary',
   '/governance/library',
-  '/governance/simulator',
   '/governance/prices',
+  // Retired: trying a check happens on the check now. Kept as a target because a
+  // bookmark to it has to land on Checks rather than on a blank screen.
+  '/governance/simulator',
   '/nonsense',
 ]
 
@@ -193,8 +196,8 @@ function stageCases(value, tag) {
  * markup in the module lives. `E0001` is the graded expiry check: two conditions, two
  * different verdicts, and the only fixture that exercises the ladder editor.
  */
-function openCheck(id) {
-  let state = { ...initialState, section: 'checks', activeCheckId: id }
+function openCheck(id, extra) {
+  let state = { ...initialState, section: 'checks', activeCheckId: id, ...extra }
   const setState = (partial) => {
     state = { ...state, ...(typeof partial === 'function' ? partial(state) : partial) }
   }
@@ -217,15 +220,54 @@ export function run() {
     }
   }
 
-  for (const [name, id] of [['governance expression card', 'E0001'],
-                            ['governance comparison card', 'AVAIL-41A'],
-                            ['governance agent card', 'XD-14']]) {
+  for (const [name, id, extra] of [['governance expression card', 'E0001'],
+                                   ['governance comparison card', 'AVAIL-41A'],
+                                   ['governance agent card', 'XD-14']]) {
     try {
       const html = renderToString(
         <StaticRouter location="/governance/checks">
-          <CheckDetail v={openCheck(id)} />
+          <CheckDetail v={openCheck(id, extra)} />
         </StaticRouter>,
       )
+      results.push({ name, ok: true, bytes: html.length })
+    } catch (err) {
+      results.push({ name, ok: false, error: `${err.message}\n${(err.stack || '').split('\n').slice(1, 5).join('\n')}` })
+    }
+  }
+
+  // The help panel, rendered directly.
+  //
+  // Going through the card would not reach it: `Menu` portals from an effect, and an
+  // effect does not run under SSR — so opening it in state renders exactly the bytes the
+  // closed card renders, which is a target that passes by drawing nothing. Four tabs, one
+  // at a time, because only the selected one is mounted.
+  //
+  // The vocabulary is the service's and there is none under mock, so it is supplied here.
+  // That is test data, not a second description of the language: what it is proving is
+  // that a verb, a value and a sample each find their group and draw a row.
+  const HELP = {
+    grammar: 'A check is a table. The first WHEN whose condition is true decides it.\n\n'
+      + '  WHEN <condition>   THEN "clean"\n  ELSE "discrepancy"\n\n'
+      + 'There is no `not`, and that is not an omission.\n\nVERBS\n  #same(a, b)  — cut here',
+    verbs: [
+      { name: 'same', arity: 2, returns: 'BOOLEAN', judgement: false, about: 'two texts are the same' },
+      { name: 'present', arity: 1, returns: 'BOOLEAN', judgement: false, about: 'this was read at all' },
+      { name: 'sumOf', arity: -1, returns: 'VALUE', judgement: false, about: 'amounts added together' },
+      { name: 'sameParty', arity: 2, returns: 'BOOLEAN', judgement: true, about: 'one party — proves yes, never no' },
+    ],
+    reads: [
+      { name: 'LC.expiry_date', docLabel: 'Letter of credit', label: 'Expiry date', valueType: 'DATE' },
+      { name: 'INV.invoice_value', docLabel: 'Commercial invoice', label: 'Invoice value', valueType: 'AMOUNT' },
+    ],
+    samples: [
+      { id: 'E0001', title: 'Presented before the credit expired', asks: false,
+        source: 'WHEN {CS.presentation_date} <= {LC.expiry_date}  THEN "clean"\nELSE "discrepancy"' },
+    ],
+  }
+  for (const tab of ['shape', 'verbs', 'values', 'rules']) {
+    const name = `governance expression help · ${tab}`
+    try {
+      const html = renderToString(<ExpressionHelp {...HELP} startTab={tab} onClose={() => {}} />)
       results.push({ name, ok: true, bytes: html.length })
     } catch (err) {
       results.push({ name, ok: false, error: `${err.message}\n${(err.stack || '').split('\n').slice(1, 5).join('\n')}` })

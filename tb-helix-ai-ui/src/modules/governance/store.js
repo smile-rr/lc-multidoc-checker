@@ -14,8 +14,8 @@ import seed from './data/seed.json'
 import { operatorGroups, operatorLabel, operatorUnary, operatorLiteralRight, operatorUsesTol, describeOperand, ANY_DOCUMENT, expressionReads, expressionVerbs, expressionGrammar } from '@shared/lib/operators'
 import { hydrateSeed } from './api/hydrate'
 import * as gov from './api/governanceApi'
-// The simulator answers from the service. Under the mock source there is nothing to ask,
-// and offering a button that cannot work is worse than not offering one.
+// Try answers from the service. Under the mock source there is nothing to ask, and
+// offering a button that cannot work is worse than not offering one.
 import { isApi } from '@shared/lib/dataSource.js'
 
 // Fills `seed` in place from the service, before anything below reads it.
@@ -394,11 +394,10 @@ export const initialState = {
   // session: these are not the rule and are never stored — a value somebody used to
   // understand a condition is not evidence about any case.
   simValues: {}, simResult: {}, simOpen: {}, simBusy: {},
-  // The Simulator page's own condition. It shares the state above under one reserved key,
-  // because a condition being tried is a condition being tried whether or not it is
-  // anybody's rule yet — and two copies of "what came back" is how the page and the card
-  // come to disagree about the same expression.
-  simSource: null, simCases: null, simCase: '',
+  // Which case a question is tried against. One choice for the session rather than one per
+  // card: an author comparing how two checks read the same presentation should not have to
+  // pick it twice.
+  simCases: null, simCase: '',
   // The item created by the last "new …" click. Cancel on it means "don't
   // create it" rather than "undo my typing", so it is tracked separately from
   // the edit snapshot.
@@ -898,74 +897,6 @@ export function deriveVals(state, setState) {
       })))
   }
 
-  /**
-   * The Simulator page: a condition nobody has saved, tried against values nobody read.
-   *
-   * The card's panel can only try the rule it is attached to, which is the wrong shape for
-   * the two things this is actually for — working out how to write a condition before there
-   * is a check to hang it on, and reproducing what a stored one did on a presentation that
-   * surprised somebody. Both want the expression itself to be an input.
-   *
-   * It runs through the same `runExpression` and renders through the same component as the
-   * card, under the reserved key below. Two paths to one answer is how a page and a card
-   * come to disagree about the same expression.
-   */
-  const SIM_KEY = '__simulator'
-
-  const simulatorVM = () => {
-    const source = S.simSource ?? exprBlank().source
-    const result = S.simResult[SIM_KEY] || null
-    const names = result?.reads?.length ? result.reads : localNames(source)
-    const typed = S.simValues[SIM_KEY] || {}
-
-    return {
-      source,
-      onChange: (v) => setState({ simSource: v }),
-      reads: expressionReads(),
-      verbs: expressionVerbs(),
-      grammar: expressionGrammar(),
-      // Every stored table, so a saved check can be reproduced rather than retyped —
-      // retyping it is how the thing under test stops being the thing that ran.
-      samples: allChecks()
-        .filter((c) => typeOf(c) === 'expression')
-        .map((c) => {
-          const rule = normaliseRule(S.rules[c.id] || RULE_SEEDS[c.id] || exprBlank())
-          return { id: c.id, title: valueOf(c, 'title'), source: rule.source || '' }
-        })
-        .filter((x) => x.source),
-      onLoad: (src) => setState({ simSource: src, simResult: { ...S.simResult, [SIM_KEY]: null } }),
-      sim: {
-        available: isApi,
-        open: true,
-        onToggle: () => {},
-        busy: !!S.simBusy[SIM_KEY],
-        reads: names.map((n) => ({
-          name: n,
-          label: (expressionReads().find((r) => r.name === n) || {}).label,
-          hint: hintFor(n),
-          value: typed[n] ?? '',
-          onChange: (ev) => setState((st) => ({
-            simValues: { ...st.simValues, [SIM_KEY]: { ...(st.simValues[SIM_KEY] || {}), [n]: ev.target.value } },
-          })),
-        })),
-        outcome: result?.outcome || null,
-          // One answer. `decidedBy` is the branch that matched, or null when the table fell
-          // through — and a table stopped by a value nobody read is neither, so it says so.
-          decided: (() => {
-            if (!result?.outcome) return null
-            const at = result.unsettled
-              ? `stopped at WHEN ${(result.rungs || []).length} — a value it reads was not given`
-              : result.decidedBy == null ? 'no condition matched, so ELSE'
-              : `WHEN ${result.decidedBy + 1} matched`
-            const r = (result.rungs || [])[result.decidedBy ?? (result.rungs || []).length - 1]
-            return { at, reading: r?.reading || '' }
-          })(),
-        problems: result?.problems || [],
-        onRun: () => runExpression(SIM_KEY, source, S.simValues[SIM_KEY] || {}),
-      },
-    }
-  }
-
   const setRule = (id, fn) => setState((s) => ({ rules: { ...s.rules, [id]: fn(normaliseRule(s.rules[id] || RULE_SEEDS[id])) } }))
   const mapGroups = (rule, gid, fn) => ({ ...rule, groups: rule.groups.map((g) => (g.id === gid ? fn(g) : g)) })
   // Which fields a rule reads — so the dictionary can tell how often a field is
@@ -1242,6 +1173,28 @@ export function deriveVals(state, setState) {
         reads: expressionReads(),
         verbs: expressionVerbs(),
         grammar: expressionGrammar(),
+        // Every other stored table, shown in the help as worked examples.
+        //
+        // The Simulator page had a picker for loading one of these into a scratch editor;
+        // that page is gone, because trying a check belongs on the check. What it was
+        // genuinely good for survives here — seeing how somebody else wrote one — and it
+        // is better placed, because a reference is what an author wanted, not a copy to
+        // edit. Nothing is written down twice: an example here IS a check in the
+        // catalogue, so it cannot be an example of a rule that has since been rewritten.
+        //
+        // Ordered so the ones written the way THIS card is written come first. An author
+        // on an agent check wants to see how a question is worded; one on an expression
+        // check wants a comparison. Both are here either way — a table that asks and a
+        // table that compares are the same table, and seeing the other kind is half of
+        // learning where the line falls.
+        samples: allChecks()
+          .filter((x) => x.id !== chk.id && !S.inactiveIds[x.id])
+          .map((x) => {
+            const r = normaliseRule(S.rules[x.id] || RULE_SEEDS[x.id] || {})
+            return { id: x.id, title: valueOf(x, 'title'), source: r.source || '', asks: asksAQuestion(r.source) }
+          })
+          .filter((x) => x.source)
+          .sort((a, b) => (a.asks === b.asks ? 0 : a.asks === asksAQuestion(rule.source) ? -1 : 1)),
         // Trying a check is READING it, and nothing here writes to the rule. The panel's
         // whole state — which case, what was typed, what came back, whether it is open —
         // lives under its own keys and is never stored, so opening Try, running it and
@@ -2078,7 +2031,6 @@ export function deriveVals(state, setState) {
   return {
     isChecks: section === 'checks' && !checkDetail, isCheckDetail: !!checkDetail, checkDetail,
     isAgentsList: section === 'agents' && view === 'list' && !checkDetail, isAgentDetail: section === 'agents' && view === 'detail' && !checkDetail, isLibrary: section === 'library' && !checkDetail, isDictionary: section === 'dictionary' && !checkDetail, isPrices: section === 'prices' && !checkDetail,
-    isSimulator: section === 'simulator' && !checkDetail, simulator: simulatorVM(),
     goAgents: () => confirmLeave(() => setState({ section: 'agents', view: 'list', panel: null, activeCheckId: null, dictDetail: null })),
     goChecks: () => confirmLeave(() => setState({ section: 'checks', panel: null, activeCheckId: null, dictDetail: null })),
     goLibrary: () => confirmLeave(() => setState({ section: 'library', panel: null, activeCheckId: null, dictDetail: null })),

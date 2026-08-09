@@ -15,18 +15,15 @@ import Icon from '@shared/ds/Icon'
  * compiles the conditions, walks them, and answers with an outcome per comparison; this puts
  * them on the page. A copy of that judgement in the browser would be a second place for it to
  * be wrong, and the wrong one is the one nobody notices.
- *
- * @param framed the card's collapsible panel. The page owns its own heading and shows the
- *   body outright, because a simulator you have to open is a simulator you have not run.
  */
-export default function ExpressionSimulator({ sim, framed = true }) {
-  if (!sim.available) return <Unavailable framed={framed} />
+export default function ExpressionSimulator({ sim }) {
+  if (!sim.available) return <Unavailable />
 
   // A table that asks a question is tried against a real case, because a question is about
   // what a document says and only a presentation says anything. Same panel, one Run, one
   // answer — what differs is what it reads and that it costs money.
-  const body = sim.asks ? <Agent sim={sim} framed={framed} /> : (
-    <div style={{ padding: framed ? '0 0 12px' : 0 }}>
+  const body = sim.asks ? <Agent sim={sim} /> : (
+    <div style={{ padding: '0 0 12px' }}>
       {sim.reads.length === 0 ? (
         <div style={hint}>Write a check above and the values it reads appear here.</div>
       ) : (
@@ -43,7 +40,6 @@ export default function ExpressionSimulator({ sim, framed = true }) {
         >
           {sim.busy ? 'Running…' : 'Run'}
         </button>
-        {!framed && sim.outcome ? <Outcome outcome={sim.outcome} /> : null}
       </div>
 
       <Problems sim={sim} />
@@ -56,8 +52,6 @@ export default function ExpressionSimulator({ sim, framed = true }) {
       ) : null}
     </div>
   )
-
-  if (!framed) return body
 
   return (
     <div style={simWrap}>
@@ -74,9 +68,9 @@ export default function ExpressionSimulator({ sim, framed = true }) {
 
 // Said rather than hidden. Under the fixtures there is no service to compile anything, and a
 // simulator that silently draws nothing reads as a broken screen.
-function Unavailable({ framed }) {
+function Unavailable() {
   return (
-    <div style={{ ...(framed ? simWrap : {}), padding: framed ? '9px 0' : 0, fontSize: 11.5, color: 'var(--me-grey-50)' }}>
+    <div style={{ ...simWrap, padding: '9px 0', fontSize: 11.5, color: 'var(--me-grey-50)' }}>
       Trying a condition needs the service.
     </div>
   )
@@ -96,9 +90,9 @@ function Problems({ sim }) {
  * **comparisons the examiner asked for**, which is how an author sees whether their question
  * is doing work or duplicating one they could have written exactly.
  */
-function Agent({ sim, framed }) {
+function Agent({ sim }) {
   return (
-    <div style={{ padding: framed ? '0 0 12px' : 0 }}>
+    <div style={{ padding: '0 0 12px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <select value={sim.caseId} onChange={sim.onCase} style={casePick}>
           <option value="">Choose a case…</option>
