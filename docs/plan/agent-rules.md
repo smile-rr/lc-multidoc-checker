@@ -6,7 +6,15 @@ An agent check becomes the **same WHEN/THEN/ELSE table** an expression check alr
 only difference is that a condition may be written in **natural language** where no comparison
 can settle it, and those conditions are answered by an examiner instead of by the engine.
 
-One authoring model, one walk, one set of three answers. The Comparison card retires.
+One authoring model, one walk, one set of three answers.
+
+**Every check answers the same three words** — `clean`, `doubt`, `discrepancy` — whichever kind
+it is. What differs between an expression check and an agent check is not the output and not
+the shape: it is only **how a condition gets settled**, by comparison or by reading. That is
+the whole of the distinction, and it is why they are the same card.
+
+The Comparison card retires. Agent *governance* — the `helix_gov` examiners, their domains,
+behaviour and articles — is untouched by this.
 
 ```
 WHEN #same({INV.currency}, {LC.currency})
@@ -41,6 +49,29 @@ That is the whole design. It follows that:
 
 Today an agent check hands prose to a model and takes back whatever it says. The difference
 is the difference between evidence and an opinion.
+
+---
+
+## 1a. One system prompt, and it is used in both places
+
+The contract in §1 has to be stated to the examiner, and stated **once**:
+
+> You are answering conditions, not deciding outcomes. For each condition you are given,
+> answer `true`, `false`, or `unknown` where the documents do not let you say. What the check
+> reports is decided from your answers by the rulebook, not by you. Never name an outcome.
+
+`resources/prompts/agent-conditions.st`, re-read on every `get()` so it is hashed into the
+derivation cache key like every other prompt — edit it and the cached answers invalidate
+themselves.
+
+**The same string is used by `agent:try` and by the examination.** This is the rule the
+expression card already follows for `grammar()`: an author, the console's help, and the model
+all read one text. A try panel running against a different prompt from the run is a try panel
+that lies, and it lies in the direction of "it worked when I tested it".
+
+It is a *resource*, not a governance document. An examiner's remit — domains, how to read,
+which articles — stays authored in `helix_gov` and is layered underneath this; the contract
+above is the harness's and is not an author's to vary.
 
 ---
 
@@ -195,6 +226,30 @@ already report through `check_facet`, so C-4 simplifies that view rather than co
 | 3 | Does `agent:try` run against a real case's facts, or only typed values? | typed values first. A case picker is a second feature and the panel is meant to be simple |
 | 4 | Is a table with **no** natural condition still an agent check? | no — derive it. A table whose conditions all compile is EXACT and costs nothing, whatever the author typed. Same narrowing `tier` already applies |
 | 5 | Where does the natural condition's answer live for audit? | `lc_finding.comparison`, as a row with the question as its label and the examiner's answer as its outcome — so one evidence view serves both kinds |
+| 6 | What does the examiner return per condition? | `{id, answer, because}` — the answer settles the walk, `because` is one sentence and becomes the row's `why`. Nothing else: a model asked for more writes an outcome into it |
+| 7 | Can a standing agent check ask an open-ended question at all? | see below — this is the one that changes what the seed holds |
+
+---
+
+## 10. The check that may not survive as a standing table
+
+`A0001` (additional conditions, `:47A:`) is today: *"read {Additional conditions} one condition
+at a time and decide what, if anything, evidences each."* Its conditions are **not fixed** —
+they are whatever this credit happens to impose, and a standing table cannot enumerate them.
+
+Two ways out, and they are genuinely different products:
+
+- **It is the planner's, not the catalogue's.** `:47A:` is already read into requirement cards
+  by `PlanStage.requirements`; each card becomes its own one-condition table, exact where the
+  planner could compile it and natural where it could not. `A0001` then disappears from the
+  seed. This is the cleaner story and it is why §8 C-2 matters.
+- **It stays, as one broad question.** `WHEN "every condition in :47A: is evidenced by a
+  document in this presentation" THEN "clean" ELSE "doubt"` — honest, but it collapses N
+  conditions into one answer, so an officer is told "something in 47A is not evidenced"
+  without being told which.
+
+The first is right. It is recorded here because it means the seed loses a check rather than
+gaining one, which is not what "implement agent rules" sounds like it should do.
 
 ---
 
