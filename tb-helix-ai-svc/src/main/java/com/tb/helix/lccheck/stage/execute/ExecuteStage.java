@@ -17,7 +17,11 @@ import com.tb.helix.lccheck.persistence.CaseRow;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.Rows;
+import com.tb.helix.governance.types.ExpressionRule;
+import com.tb.helix.lccheck.rule.ConditionAsker;
+import com.tb.helix.lccheck.rule.ExpressionEvaluator;
 import com.tb.helix.lccheck.rule.RuleEvaluator;
+import com.tb.helix.lccheck.rule.SettleTool;
 import com.tb.helix.lccheck.service.Comparisons;
 import com.tb.helix.lccheck.service.DocumentAttestor;
 import com.tb.helix.lccheck.service.DocumentTypes;
@@ -57,6 +61,9 @@ public class ExecuteStage implements Stage {
     private final CaseStore cases;
     private final DocumentTypes docTypes;
     private final RuleEvaluator rules;
+    private final ExpressionEvaluator expressions;
+    private final ConditionAsker asker;
+    private final SettleTool settle;
     private final Comparisons comparisons;
     private final DocumentAttestor attestor;
     private final Prompts prompts;
@@ -76,7 +83,9 @@ public class ExecuteStage implements Stage {
     private static final String CREDIT_DOMAIN = "Additional conditions";
 
     public ExecuteStage(CheckCatalog catalog, CaseStore cases, DocumentTypes docTypes,
-                        RuleEvaluator rules, Comparisons comparisons, DocumentAttestor attestor,
+                        RuleEvaluator rules, ExpressionEvaluator expressions,
+                        ConditionAsker asker, SettleTool settle,
+                        Comparisons comparisons, DocumentAttestor attestor,
                         LlmGateway models, DerivationCache cache, Prompts prompts,
                         ObjectMapper json,
                         @Value("${helix.check.execute.concurrency:3}") int concurrency,
@@ -93,6 +102,9 @@ public class ExecuteStage implements Stage {
         this.cases = cases;
         this.docTypes = docTypes;
         this.rules = rules;
+        this.expressions = expressions;
+        this.asker = asker;
+        this.settle = settle;
         this.comparisons = comparisons;
         this.attestor = attestor;
         this.prompts = prompts;
@@ -240,6 +252,7 @@ public class ExecuteStage implements Stage {
 
         // --- what costs nothing ------------------------------------------------
         List<ReadRows.PlanCheck> judged = new ArrayList<>();
+        Map<String, List<Integer>> asking = new LinkedHashMap<>();
         StringBuilder alreadySettled = new StringBuilder();
         for (ReadRows.PlanCheck check : plan) {
             if (ctx.cancelled()) {
@@ -252,6 +265,7 @@ public class ExecuteStage implements Stage {
             RuleEvaluator.Result settled = exactly(check, facts, presented);
             if (settled == null) {
                 judged.add(check);
+                asking.put(check.checkId(), pendingOf(check, facts));
                 continue;
             }
             if (!check.human()) settledLine(alreadySettled, check, settled);
@@ -279,11 +293,11 @@ public class ExecuteStage implements Stage {
             // and a provider only has that prefix once a call carrying it has RETURNED.
             // Firing all of them at once would send the same page of facts N times and be
             // billed for it N times, which is the exact mistake the vision path documents.
-            askOne(ctx, remits.get(0), shared, raised, open, presented);
+            askOne(ctx, remits.get(0), shared, raised, open, presented, facts, asking);
             List<Remit> rest = remits.subList(1, remits.size());
             FanOut.over(rest, concurrency, remit -> {
                 if (ctx.cancelled()) return Boolean.FALSE;
-                askOne(ctx, remit, shared, raised, open, presented);
+                askOne(ctx, remit, shared, raised, open, presented, facts, asking);
                 return Boolean.TRUE;
             });
         }
@@ -309,7 +323,12 @@ public class ExecuteStage implements Stage {
         // Sending it to a model anyway would buy an opinion on a question already routed to a
         // person, and bill for it. There is no comparison to run and none is needed.
         if (check.human()) return EMPTY;
-        if (!"EXACT".equals(check.tier()) || check.ruleDef() == null) return null;
+        if (check.ruleDef() == null) return null;
+        // Not the TIER. What decides whether a model is needed is whether this table has a
+        // question a walk could actually arrive at — so a check filed JUDGED whose cheap
+        // comparison matches first is settled here, free, and never asked. Tier says what a
+        // check may cost; this says what it costs on THIS presentation.
+        if (!pendingOf(check, facts).isEmpty()) return null;
 
         RuleEvaluator.Result result = rules.evaluate(parseRule(check.ruleDef()), facts, presented);
 
@@ -327,6 +346,21 @@ public class ExecuteStage implements Stage {
                     check.checkId(), check.tier());
         }
         return result;
+    }
+
+    /**
+     * The questions this check still needs an examiner for, given what the engine settles.
+     *
+     * <p>Empty for a tree, for a card routed to a person, and — the case worth having — for a
+     * table whose comparison already answered. That last one is why an agent check costs
+     * nothing on most presentations.
+     */
+    @SuppressWarnings("unchecked")
+    private List<Integer> pendingOf(ReadRows.PlanCheck check, List<RuleEvaluator.Fact> facts) {
+        if (check.human() || check.ruleDef() == null) return List.of();
+        Object rule = parseRule(check.ruleDef());
+        return rule instanceof Map<?, ?> m
+                ? expressions.pending((Map<String, Object>) m, facts) : List.of();
     }
 
     /** Stands in for a card only a person can settle, which has no comparison to report. */
@@ -659,7 +693,8 @@ public class ExecuteStage implements Stage {
      * nothing, and each pays full price for the same page of facts.
      */
     private void askOne(StageContext ctx, Remit remit, Shared shared,
-                        AtomicInteger raised, AreaTally open, Set<String> presented) {
+                        AtomicInteger raised, AreaTally open, Set<String> presented,
+                        List<RuleEvaluator.Fact> facts, Map<String, List<Integer>> asking) {
         // The examiner, once — not every check in their remit.
         //
         // Announcing all of them put eight beginnings on the stream in the same instant,
@@ -674,9 +709,26 @@ public class ExecuteStage implements Stage {
         String key = "checks:" + (remit.agent() == null ? UNCLAIMED : remit.agent().id());
         ctx.announce(key, remit.label());
 
-        Map<String, Map<String, Object>> answers;
+        // Every question across this examiner's checks, in one request. The id carries the
+        // check it belongs to, so an answer is matched back to what it answered rather than
+        // to a position in a list the model is free to reorder.
+        List<ConditionAsker.Question> questions = new ArrayList<>();
+        for (ReadRows.PlanCheck check : remit.checks()) {
+            List<Integer> branches = asking.getOrDefault(check.checkId(), List.of());
+            Object rule = parseRule(check.ruleDef());
+            ExpressionRule table = rule instanceof Map<?, ?> m
+                    ? ExpressionRule.of(asMap(m)) : null;
+            if (table == null) continue;
+            for (int i : branches) {
+                questions.add(new ConditionAsker.Question(
+                        check.checkId() + "#" + (i + 1), check.checkId(), i,
+                        table.branches().get(i).ask()));
+            }
+        }
+
+        ConditionAsker.Answers answers;
         try {
-            answers = ask(remit, shared);
+            answers = ask(remit, shared, questions, facts, presented);
         } catch (RuntimeException e) {
             // The examiner could not be reached. Every check in the group is recorded as
             // failed rather than as clean, and the rest of the plan carries on.
@@ -693,57 +745,79 @@ public class ExecuteStage implements Stage {
         }
 
         for (ReadRows.PlanCheck check : remit.checks()) {
-            // An answer that names no check it belongs to is not evidence about any of them.
-            // Absent means DOUBT, never CLEAN — `record` already resolves an unreadable
-            // verdict that way, and this hands it one.
-            Map<String, Object> answer = answers.getOrDefault(check.checkId(), Map.of());
-            if (answer.isEmpty()) {
-                log.info("Examiner {} returned nothing for {} on case {}",
-                        remit.label(), check.checkId(), ctx.caseId());
+            // The table decides, from the answers. Not the model — it answered conditions,
+            // and a condition it did not answer is unknown, which stops the table at doubt.
+            // So an unreadable reply, a failed call and a spent budget all land on doubt and
+            // none of them can produce a discrepancy.
+            Map<Integer, ExpressionRule.Answer> said = new LinkedHashMap<>();
+            Map<Integer, String> because = new LinkedHashMap<>();
+            for (int i : asking.getOrDefault(check.checkId(), List.of())) {
+                String id = check.checkId() + "#" + (i + 1);
+                said.put(i, answers.of(id));
+                because.put(i, answers.because(id));
             }
-            run(ctx, check, raised, () -> record(ctx, check, answer, presented));
+            RuleEvaluator.Result settled = rules.evaluate(parseRule(check.ruleDef()), facts,
+                    presented, new ExpressionEvaluator.Judged(said, because));
+            run(ctx, check, raised, () -> recordExact(ctx, check, settled));
             open.done(check);
         }
         ctx.recordStep(key, Map.of(
                 "examiner", remit.label(),
                 "checks", remit.checks().size(),
-                "answered", answers.size()));
+                "conditions", questions.size(),
+                "answered", answers.answers().size()));
     }
 
-    /** The call itself, cached on the facts it read and the checks it was asked. */
-    private Map<String, Map<String, Object>> ask(Remit remit, Shared shared) {
-        List<String> ids = remit.checks().stream().map(ReadRows.PlanCheck::checkId).sorted().toList();
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> asMap(Map<?, ?> m) {
+        return (Map<String, Object>) m;
+    }
+
+    /**
+     * The call itself, cached on the facts it read and the conditions it was asked.
+     *
+     * <p>The layering is the cost decision and is not free to drift. Blocks 1 and 2 are
+     * byte-identical for every examiner on this case, which is why the first group runs alone
+     * and the rest ride the prefix it warms; anything per-remit must stay below them, or every
+     * call gets a different prefix and the warming becomes pure latency.
+     */
+    private ConditionAsker.Answers ask(Remit remit, Shared shared,
+                                       List<ConditionAsker.Question> questions,
+                                       List<RuleEvaluator.Fact> facts, Set<String> presented) {
+        if (questions.isEmpty()) return ConditionAsker.Answers.none();
 
         PromptContext prompt = PromptContext.create()
                 // Identical on every call this deployment will ever make.
-                .stable("HOW TO ANSWER", prompts.get("examine-checks"))
+                .stable("HOW TO ANSWER", prompts.get("agent-conditions"))
                 // Identical for every examiner on this case — which is the point, and which is
                 // why the first group runs alone. Anything per-examiner must stay below this.
                 .shared("THE PRESENTATION", shared.factSheet())
                 .shared("ALREADY SETTLED BY COMPARISON", shared.settled())
                 // Documents more than one examiner needs: sent once, above the boundary.
                 .shared("DOCUMENTS, IN FULL", shared.documents())
-                // Below it, and deliberately — a per-remit block above would give every call a
-                // different prefix and turn the first-group-alone warming into pure latency.
+                // Below it, and deliberately.
                 .varying("DOCUMENTS ONLY YOUR REMIT NEEDS", remit.documents())
                 .varying("YOUR REMIT", remitOf(remit))
                 // The only part that differs call to call, so it goes last.
-                .varying("THE CHECKS", describe(remit.checks()));
+                .varying("THE CONDITIONS", ConditionAsker.conditions(questions));
 
+        List<String> ids = questions.stream().map(ConditionAsker.Question::id).sorted().toList();
         var key = new DerivationKey(CacheOp.JUDGE_AGENT, CacheOp.JUDGE_AGENT_V, shared.digest(),
                 (remit.agent() == null ? UNCLAIMED : remit.agent().id()) + ":" + String.join(",", ids),
                 prompt.digest(), models.identity(LlmRole.JUDGE), null, Map.of());
 
         var hit = cache.computeIfAbsent(key, Map.class, () -> {
-            var result = models.complete(TextRequest.json(
-                    LlmRole.JUDGE, prompts.get("examine-system"), prompt.render()));
-            return new DerivationCache.Entry<>(parse(result.content()), null,
-                    result.rawResponse(), ModelSpend.of(result.usage(), result.model()));
+            ConditionAsker.Answers answers =
+                    asker.ask(questions, prompt.render(), settle.forCase(facts, presented));
+            // Stored as the answers, not as a conversation. What is worth keeping is what was
+            // said about each condition; replaying the transcript would cache a shape that
+            // changes whenever the tool loop does.
+            return new DerivationCache.Entry<>(answers.toMap(), null, null, null);
         });
 
         @SuppressWarnings("unchecked")
         Map<String, Object> out = (Map<String, Object>) hit.value();
-        return byCheckId(out);
+        return ConditionAsker.Answers.fromMap(out);
     }
 
     /** What this examiner is told they are doing, and what they answer to. */

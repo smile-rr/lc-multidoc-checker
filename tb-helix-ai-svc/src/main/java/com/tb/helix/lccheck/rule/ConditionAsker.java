@@ -111,6 +111,40 @@ public class ConditionAsker {
         static Answers none(String why) {
             return new Answers(Map.of(), List.of(), true, null);
         }
+
+        /** Nothing to ask, which is not the same as nothing answered. */
+        public static Answers none() {
+            return new Answers(Map.of(), List.of(), false, null);
+        }
+
+        /**
+         * What is worth keeping in the derivation cache: what was said about each condition.
+         *
+         * <p>Not the conversation. A cached transcript would be a shape that changes whenever
+         * the tool loop does, and every stored entry would have to be re-read by whichever
+         * version happened to load it.
+         */
+        public Map<String, Object> toMap() {
+            Map<String, Object> out = new LinkedHashMap<>();
+            answers.forEach((id, a) -> out.put(id, Map.of(
+                    "answer", a.answer().name(),
+                    "because", a.because() == null ? "" : a.because())));
+            return out;
+        }
+
+        @SuppressWarnings("unchecked")
+        public static Answers fromMap(Map<String, Object> stored) {
+            Map<String, Answered> out = new LinkedHashMap<>();
+            stored.forEach((id, v) -> {
+                if (!(v instanceof Map<?, ?> m)) return;
+                ExpressionRule.Answer a = answerOf(String.valueOf(((Map<String, Object>) m).get("answer")));
+                if (a == null) return;
+                Object why = ((Map<String, Object>) m).get("because");
+                out.put(id, new Answered(a, why == null || String.valueOf(why).isBlank()
+                        ? null : String.valueOf(why)));
+            });
+            return new Answers(out, List.of(), false, null);
+        }
     }
 
     /**
@@ -122,23 +156,38 @@ public class ConditionAsker {
      */
     public Answers ask(List<Question> questions, String presentation, String remit,
                        ToolSpec settle) {
-        if (questions.isEmpty()) {
-            return new Answers(Map.of(), List.of(), false, null);
-        }
-
+        if (questions.isEmpty()) return new Answers(Map.of(), List.of(), false, null);
         StringBuilder user = new StringBuilder(presentation == null ? "" : presentation);
         if (remit != null && !remit.isBlank()) {
             user.append("\n\nYOUR REMIT\n\n").append(remit);
         }
-        user.append("\n\nTHE CONDITIONS\n\n");
+        return ask(questions, user + "\n\n" + conditions(questions), settle);
+    }
+
+    /** The conditions block, so a caller assembling its own prompt puts it where it belongs. */
+    public static String conditions(List<Question> questions) {
+        StringBuilder sb = new StringBuilder();
         for (Question q : questions) {
-            user.append(q.id()).append("  ").append(q.ask()).append('\n');
+            sb.append(q.id()).append("  ").append(q.ask()).append('\n');
         }
+        return sb.toString();
+    }
+
+    /**
+     * The call itself, given a prompt somebody else assembled.
+     *
+     * <p>Used by the examination, which builds its prompt through {@code PromptContext} so the
+     * stable and shared blocks come first and every examiner rides one warmed prefix. Passing
+     * it the pieces and letting this concatenate them would put a per-remit block above the
+     * shared one, and the first-group-alone warming would become pure latency for no saving.
+     */
+    public Answers ask(List<Question> questions, String user, ToolSpec settle) {
+        if (questions.isEmpty()) return new Answers(Map.of(), List.of(), false, null);
 
         ToolResult result;
         try {
             result = llm.loop(new ToolRequest(LlmRole.JUDGE, prompts.get("agent-conditions"),
-                    user.toString(), List.of(settle), maxIterations, Map.of()));
+                    user, List.of(settle), maxIterations, Map.of()));
         } catch (RuntimeException e) {
             // A call that failed is not an answer. Every question stays unknown, the table
             // stops at doubt, and the officer is told rather than shown a guess.

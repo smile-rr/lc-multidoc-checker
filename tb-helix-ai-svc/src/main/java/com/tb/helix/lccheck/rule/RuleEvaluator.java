@@ -290,6 +290,24 @@ public class RuleEvaluator {
      * @param facts every fact on the case, looked up by (field key, document)
      */
     public Result evaluate(Object rule, List<Fact> facts, Set<String> presented) {
+        return evaluate(rule, facts, presented, ExpressionEvaluator.Judged.none());
+    }
+
+    /**
+     * @param judged what an examiner said about the conditions a comparison could not settle.
+     *               Empty for a tree and for every table that never needed asking.
+     */
+    @SuppressWarnings("unchecked")
+    public Result evaluate(Object rule, List<Fact> facts, Set<String> presented,
+                           ExpressionEvaluator.Judged judged) {
+        if (rule instanceof java.util.Map<?, ?> m
+                && (m.get("when") != null || m.get("clauses") != null || m.get("source") != null)) {
+            return expressions.evaluate((java.util.Map<String, Object>) m, facts, presented, judged);
+        }
+        return evaluate(rule, facts, presented);
+    }
+
+    private Result evaluateTree(Object rule, List<Fact> facts, Set<String> presented) {
         // The one place a check's language is decided, so that gate, execute, the finding,
         // the comparison view and the advice all stay unaware of which one it was written in.
         // A tree has groups; an expression has `when`, or `clauses` when it is graded.
