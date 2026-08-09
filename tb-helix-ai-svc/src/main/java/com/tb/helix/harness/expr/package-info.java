@@ -44,6 +44,16 @@
  * {@link com.tb.helix.harness.expr.VerbSpec} is registered by the module that understands it,
  * the same arrangement {@code ToolSpec} uses and for the same reason.
  *
+ * <h2>One condition at a time, and nothing above it</h2>
+ *
+ * <p>This settles <em>one</em> condition. What decides which condition to ask next, and what a
+ * check answers when one holds, is {@link com.tb.helix.harness.table.DecisionTable} — a layer
+ * up, and one this package must never learn about. The split is what keeps the refusals here
+ * intact: {@code a ? b : c} and {@code a ?: b} are rejected by the grammar because either can
+ * turn "nothing was read" into a confident answer, so branching happens <em>above</em> the
+ * engine rather than inside it. A table is also answered by an examiner, not only by this, and
+ * nothing here should be able to tell the difference.
+ *
  * <h2>The one import rule</h2>
  *
  * <p>This is the only package that may import {@code org.springframework.expression}, and the

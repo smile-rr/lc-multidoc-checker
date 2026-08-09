@@ -2,7 +2,7 @@ package com.tb.helix.governance.seed;
 
 import com.tb.helix.governance.persistence.GovernanceStore;
 import com.tb.helix.governance.spi.ExpressionRules;
-import com.tb.helix.governance.types.ExpressionRule;
+import com.tb.helix.harness.table.DecisionTable;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -121,8 +121,8 @@ public class GovernanceSeeder implements ApplicationRunner {
         store.saveCheck(check);
 
         @SuppressWarnings("unchecked")
-        ExpressionRule table = check.get("rule") instanceof Map<?, ?> m
-                ? ExpressionRule.of((Map<String, Object>) m) : null;
+        DecisionTable table = check.get("rule") instanceof Map<?, ?> m
+                ? DecisionTable.of((Map<String, Object>) m) : null;
         if (table == null) return;
 
         String id = String.valueOf(check.get("id"));

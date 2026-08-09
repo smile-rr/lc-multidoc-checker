@@ -36,6 +36,34 @@ public interface ExpressionEngine {
      */
     ExprResult run(String source, Map<String, Object> values);
 
+    /**
+     * Settle it against whatever a lookup can answer for the names it actually reads.
+     *
+     * <p>The same run, with the binding done here instead of three times above. Every caller
+     * was writing the identical four lines — compile, ask the program which names it reads,
+     * look each one up, <b>put it only if something came back</b> — and the third of those
+     * lines is the one that must never be got wrong: a name bound to null is not the same as
+     * a name left out, because Spring's comparator ranks null below every value and would
+     * settle a comparison on a date nobody read.
+     *
+     * <p>A rule reads a fact, a console reads a box somebody typed into, an examiner's tool
+     * reads the case in front of it. Three lookups, one binding rule.
+     *
+     * @param lookup returns the value for a name, or {@code null} for "not read". Called once
+     *               per distinct name the compiled expression needs, and never for a name it
+     *               does not.
+     */
+    default ExprResult run(String source, java.util.function.Function<String, Object> lookup) {
+        ExprProgram p = compile(source);
+        if (!p.ok()) return ExprResult.broken(p.problems());
+        Map<String, Object> values = new java.util.LinkedHashMap<>();
+        for (String name : p.names()) {
+            Object v = lookup.apply(name);
+            if (v != null) values.put(name, v);
+        }
+        return run(source, values);
+    }
+
     /** The verbs an expression may call — the engine's own and every one registered with it. */
     List<VerbSpec> verbs();
 

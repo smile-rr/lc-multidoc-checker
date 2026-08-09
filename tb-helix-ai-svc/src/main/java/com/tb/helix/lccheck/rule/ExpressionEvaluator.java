@@ -1,7 +1,7 @@
 package com.tb.helix.lccheck.rule;
 
 import com.tb.helix.governance.spi.ExpressionRules;
-import com.tb.helix.governance.types.ExpressionRule;
+import com.tb.helix.harness.table.DecisionTable;
 import com.tb.helix.governance.types.Operator;
 import com.tb.helix.harness.expr.ExprResult;
 import com.tb.helix.harness.expr.Values;
@@ -79,20 +79,20 @@ public class ExpressionEvaluator {
      * @param answer  by branch index
      * @param because by branch index, one sentence for the evidence row
      */
-    public record Judged(Map<Integer, ExpressionRule.Answer> answer, Map<Integer, String> because) {
+    public record Judged(Map<Integer, DecisionTable.Answer> answer, Map<Integer, String> because) {
 
         public static Judged none() {
             return new Judged(Map.of(), Map.of());
         }
 
-        ExpressionRule.Answer of(int branch) {
-            return answer.getOrDefault(branch, ExpressionRule.Answer.UNKNOWN);
+        DecisionTable.Answer of(int branch) {
+            return answer.getOrDefault(branch, DecisionTable.Answer.UNKNOWN);
         }
     }
 
     public Result evaluate(Map<String, Object> rule, List<Fact> facts,
                                          Set<String> presented, Judged judged) {
-        ExpressionRule graded = ExpressionRule.of(rule);
+        DecisionTable graded = DecisionTable.of(rule);
         if (graded == null) {
             return new Result(Outcome.INCONCLUSIVE, List.of(),
                     "This check has no condition to run.", str(rule.get("scope")),
@@ -110,23 +110,23 @@ public class ExpressionEvaluator {
      * decided contribute nothing — they were never run, and a row for a comparison nobody
      * made is the kind of evidence that gets a refusal overturned.
      *
-     * @see ExpressionRule for the syntax, and for why an unanswerable branch stops the table
+     * @see DecisionTable for the syntax, and for why an unanswerable branch stops the table
      *      rather than falling through to the next line
      */
-    private Result walk(ExpressionRule rule, Map<String, Fact> byName,
+    private Result walk(DecisionTable rule, Map<String, Fact> byName,
                                       Set<String> presented, String message, Judged judged) {
         List<RowResult> rows = new ArrayList<>();
         List<String> readings = new ArrayList<>();
         String[] broken = new String[1];
 
-        ExpressionRule.Decision decision = rule.decide(i -> {
-            ExpressionRule.Branch branch = rule.branches().get(i);
+        DecisionTable.Decision decision = rule.decide(i -> {
+            DecisionTable.Branch branch = rule.branches().get(i);
 
             // A question is settled by whoever was asked, and its row is the question itself.
             // Rendered like any comparison, so one evidence view serves both kinds and an
             // officer reads what was asked beside what came back.
             if (branch.judged()) {
-                ExpressionRule.Answer said = judged.of(i);
+                DecisionTable.Answer said = judged.of(i);
                 rows.add(RowResult.judged(
                         rule.branches().size() > 1 ? "q" + i : "q",
                         branch.ask(), outcome(said), judged.because().get(i)));
@@ -140,23 +140,13 @@ public class ExpressionEvaluator {
                 // after a check is written. Never a match and never a failure: a condition
                 // that cannot be read has not been contradicted by the documents.
                 broken[0] = program.why();
-                return ExpressionRule.Answer.UNKNOWN;
+                return DecisionTable.Answer.UNKNOWN;
             }
 
-            Map<String, Object> values = new LinkedHashMap<>();
-            for (String name : program.names()) {
-                Object typed = valueOf(name, byName);
-                if (typed != null) values.put(name, typed);
-            }
-
-            ExprResult answer = engine.run(branch.when(), values);
+            ExprResult answer = engine.run(branch.when(), name -> valueOf(name, byName));
             rows.addAll(rows(answer, byName, presented, i, rule.branches().size()));
             readings.add(answer.reading());
-            return switch (answer.verdict()) {
-                case TRUE -> ExpressionRule.Answer.TRUE;
-                case FALSE -> ExpressionRule.Answer.FALSE;
-                case UNKNOWN -> ExpressionRule.Answer.UNKNOWN;
-            };
+            return answer(answer.verdict());
         });
 
         String why = broken[0] != null
@@ -167,7 +157,7 @@ public class ExpressionEvaluator {
         // which: HUMAN_ONLY rather than a gap, because everything was read and every
         // comparison was made. Reported as "unanswerable" it would look like an extraction
         // failure and put a working field on a list of things to fix.
-        boolean chosen = decision.verdict() == ExpressionRule.Verdict.DOUBT
+        boolean chosen = decision.verdict() == DecisionTable.Verdict.DOUBT
                 && !decision.unsettled();
         return new Result(
                 switch (decision.verdict()) {
@@ -188,25 +178,33 @@ public class ExpressionEvaluator {
      * would not have reached.
      */
     public List<Integer> pending(Map<String, Object> rule, List<Fact> facts) {
-        ExpressionRule table = ExpressionRule.of(rule);
+        DecisionTable table = DecisionTable.of(rule);
         if (table == null || !table.judged()) return List.of();
 
         Map<String, Fact> byName = index(facts);
         return table.pending(i -> {
-            ExpressionRule.Branch branch = table.branches().get(i);
+            DecisionTable.Branch branch = table.branches().get(i);
             var program = engine.compile(branch.when() == null ? "" : branch.when());
-            if (!program.ok()) return ExpressionRule.Answer.UNKNOWN;
-            Map<String, Object> values = new LinkedHashMap<>();
-            for (String name : program.names()) {
-                Object typed = valueOf(name, byName);
-                if (typed != null) values.put(name, typed);
-            }
-            return switch (engine.run(branch.when(), values).verdict()) {
-                case TRUE -> ExpressionRule.Answer.TRUE;
-                case FALSE -> ExpressionRule.Answer.FALSE;
-                case UNKNOWN -> ExpressionRule.Answer.UNKNOWN;
-            };
+            if (!program.ok()) return DecisionTable.Answer.UNKNOWN;
+            return answer(engine.run(branch.when(), name -> valueOf(name, byName)).verdict());
         });
+    }
+
+    /**
+     * The engine's verdict as the table's answer.
+     *
+     * <p>Written once here rather than at each of the three walks. It is <b>not</b> evidence
+     * that the two enums should be one: a branch is settled by a comparison <em>or by an
+     * examiner</em>, and {@link ConditionAsker} produces the same three values with no engine
+     * anywhere near it. Naming the table's answer after the expression engine's verdict would
+     * be a lie the first time a model answered one.
+     */
+    private static DecisionTable.Answer answer(ExprResult.Verdict verdict) {
+        return switch (verdict) {
+            case TRUE -> DecisionTable.Answer.TRUE;
+            case FALSE -> DecisionTable.Answer.FALSE;
+            case UNKNOWN -> DecisionTable.Answer.UNKNOWN;
+        };
     }
 
     /** Only where nothing was missing — a real gap is the more actionable thing to report. */
@@ -257,7 +255,7 @@ public class ExpressionEvaluator {
     // The answer, in the shape every screen already reads
     // =========================================================================
 
-    private static Outcome outcome(ExpressionRule.Answer a) {
+    private static Outcome outcome(DecisionTable.Answer a) {
         return switch (a) {
             case TRUE -> Outcome.PASS;
             case FALSE -> Outcome.FAIL;

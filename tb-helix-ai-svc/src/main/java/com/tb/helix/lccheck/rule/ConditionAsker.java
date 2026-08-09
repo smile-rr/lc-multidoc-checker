@@ -1,6 +1,6 @@
 package com.tb.helix.lccheck.rule;
 
-import com.tb.helix.governance.types.ExpressionRule;
+import com.tb.helix.harness.table.DecisionTable;
 import com.tb.helix.harness.llm.LlmGateway;
 import com.tb.helix.harness.llm.LlmRole;
 import com.tb.helix.harness.llm.LlmText;
@@ -28,7 +28,7 @@ import java.util.Map;
  *
  * <p>This is the whole of the contract and everything else follows from it. The model is given
  * a list of questions with ids and returns true / false / unknown for each; the outcome is
- * worked out from those answers by {@link ExpressionRule#decide}, which is the same walk an
+ * worked out from those answers by {@link DecisionTable#decide}, which is the same walk an
  * expression check uses. So:
  *
  * <ul>
@@ -85,7 +85,7 @@ public class ConditionAsker {
      * @param because one sentence naming what was read. Shown to the officer beside the
      *                question, so it is evidence rather than commentary.
      */
-    public record Answered(ExpressionRule.Answer answer, String because) {
+    public record Answered(DecisionTable.Answer answer, String because) {
     }
 
     /**
@@ -98,9 +98,9 @@ public class ConditionAsker {
     public record Answers(Map<String, Answered> answers, List<ToolSpec.Call> toolCalls,
                           boolean exhausted, String model) {
 
-        public ExpressionRule.Answer of(String id) {
+        public DecisionTable.Answer of(String id) {
             Answered a = answers.get(id);
-            return a == null ? ExpressionRule.Answer.UNKNOWN : a.answer();
+            return a == null ? DecisionTable.Answer.UNKNOWN : a.answer();
         }
 
         public String because(String id) {
@@ -137,7 +137,7 @@ public class ConditionAsker {
             Map<String, Answered> out = new LinkedHashMap<>();
             stored.forEach((id, v) -> {
                 if (!(v instanceof Map<?, ?> m)) return;
-                ExpressionRule.Answer a = answerOf(String.valueOf(((Map<String, Object>) m).get("answer")));
+                DecisionTable.Answer a = answerOf(String.valueOf(((Map<String, Object>) m).get("answer")));
                 if (a == null) return;
                 Object why = ((Map<String, Object>) m).get("because");
                 out.put(id, new Answered(a, why == null || String.valueOf(why).isBlank()
@@ -219,7 +219,7 @@ public class ConditionAsker {
             JsonNode root = json.readTree(LlmText.extractJson(content));
             for (JsonNode node : root.isArray() ? root : List.of(root)) {
                 String id = node.path("id").asText(null);
-                ExpressionRule.Answer answer = answerOf(node.path("answer").asText(null));
+                DecisionTable.Answer answer = answerOf(node.path("answer").asText(null));
                 if (id == null || answer == null) continue;
                 String because = node.path("because").asText("");
                 out.put(id, new Answered(answer, because.isBlank() ? null : because));
@@ -231,19 +231,19 @@ public class ConditionAsker {
     }
 
     /** Anything that is not one of the three words is not an answer. */
-    private static ExpressionRule.Answer answerOf(String word) {
+    private static DecisionTable.Answer answerOf(String word) {
         if (word == null) return null;
         return switch (word.trim().toLowerCase(java.util.Locale.ROOT)) {
-            case "true", "yes" -> ExpressionRule.Answer.TRUE;
-            case "false", "no" -> ExpressionRule.Answer.FALSE;
-            case "unknown", "unsure", "cannot say" -> ExpressionRule.Answer.UNKNOWN;
+            case "true", "yes" -> DecisionTable.Answer.TRUE;
+            case "false", "no" -> DecisionTable.Answer.FALSE;
+            case "unknown", "unsure", "cannot say" -> DecisionTable.Answer.UNKNOWN;
             default -> null;
         };
     }
 
     /** The questions a table still needs answered, given what the engine already settled. */
-    public static List<Question> pending(String checkId, ExpressionRule rule,
-                                         java.util.function.IntFunction<ExpressionRule.Answer> settle) {
+    public static List<Question> pending(String checkId, DecisionTable rule,
+                                         java.util.function.IntFunction<DecisionTable.Answer> settle) {
         List<Question> out = new ArrayList<>();
         for (int i : rule.pending(settle)) {
             out.add(new Question(checkId.toLowerCase(java.util.Locale.ROOT) + "-c" + (i + 1),

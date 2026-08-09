@@ -2,7 +2,7 @@ package com.tb.helix.lccheck.rule;
 
 import com.tb.helix.governance.expression.DictionaryExpressionCompiler;
 import com.tb.helix.governance.spi.CheckCatalog;
-import com.tb.helix.governance.types.ExpressionRule;
+import com.tb.helix.harness.table.DecisionTable;
 import com.tb.helix.harness.expr.SpelExpressionEngine;
 
 import org.junit.jupiter.api.DisplayName;
@@ -47,7 +47,7 @@ class JudgedConditionTest {
     }
 
     private Evidence.Result run(List<Evidence.Fact> facts,
-                                     ExpressionRule.Answer said, String because) {
+                                     DecisionTable.Answer said, String because) {
         return evaluator.evaluate(GOODS, facts, Set.of("LC", "INV"),
                 new ExpressionEvaluator.Judged(Map.of(1, said), Map.of(1, because)));
     }
@@ -94,7 +94,7 @@ class JudgedConditionTest {
         @DisplayName("true on the question gives that branch's answer, not the model's")
         void trueTakesTheBranch() {
             Evidence.Result r = run(facts("COTTON SHIRTS", "SILK SHIRTS"),
-                    ExpressionRule.Answer.TRUE, "The invoice says cotton and the credit silk.");
+                    DecisionTable.Answer.TRUE, "The invoice says cotton and the credit silk.");
             assertThat(r.outcomeWord()).isEqualTo("DISCREPANT");
         }
 
@@ -102,7 +102,7 @@ class JudgedConditionTest {
         @DisplayName("false falls to the ELSE, and the ELSE is the author's")
         void falseFallsThrough() {
             Evidence.Result r = run(facts("100 PCS COTTON SHIRTS", "COTTON SHIRTS, 100 PIECES"),
-                    ExpressionRule.Answer.FALSE, "Same goods, ordered differently.");
+                    DecisionTable.Answer.FALSE, "Same goods, ordered differently.");
             assertThat(r.outcomeWord()).isEqualTo("DOUBT");
         }
 
@@ -128,7 +128,7 @@ class JudgedConditionTest {
         @DisplayName("it is a row, with what was asked and what was said")
         void theQuestionIsARow() {
             Evidence.Result r = run(facts("COTTON SHIRTS", "SILK SHIRTS"),
-                    ExpressionRule.Answer.TRUE, "The invoice says cotton and the credit silk.");
+                    DecisionTable.Answer.TRUE, "The invoice says cotton and the credit silk.");
 
             // Both branches evaluated: the comparison that did not match, then the question.
             assertThat(r.rows()).hasSize(2);
@@ -140,7 +140,7 @@ class JudgedConditionTest {
         @Test
         @DisplayName("a question wrapped across lines is one sentence")
         void lineBreaksAreTheAuthorsMargin() {
-            ExpressionRule rule = ExpressionRule.parse(String.valueOf(GOODS.get("source")), null);
+            DecisionTable rule = DecisionTable.parse(String.valueOf(GOODS.get("source")), null);
             assertThat(rule.branches().get(1).ask())
                     .isEqualTo("the invoice describes a different product from the "
                             + "credit, beyond the generality art. 14(d) permits");
@@ -156,7 +156,7 @@ class JudgedConditionTest {
         void anOperandIsNotAQuestion() {
             // The condition does not BEGIN with a quote, so it is a comparison whose second
             // operand happens to be written that way.
-            ExpressionRule rule = ExpressionRule.parse(
+            DecisionTable rule = DecisionTable.parse(
                     "WHEN #same({INV.currency}, \"USD\")  THEN \"clean\"\nELSE \"discrepancy\"", null);
             assertThat(rule.branches()).singleElement()
                     .satisfies(b -> assertThat(b.judged()).isFalse());
@@ -166,7 +166,7 @@ class JudgedConditionTest {
         @Test
         @DisplayName("a question is never sent to the compiler")
         void questionsAreNotCompiled() {
-            ExpressionRule rule = ExpressionRule.parse(String.valueOf(GOODS.get("source")), null);
+            DecisionTable rule = DecisionTable.parse(String.valueOf(GOODS.get("source")), null);
             // Only the comparison. Refusing a check because its question is not valid SpEL
             // would make the whole feature unusable.
             assertThat(rule.sources()).singleElement().asString().contains("#same");
@@ -177,11 +177,11 @@ class JudgedConditionTest {
         @Test
         @DisplayName("a question survives a round trip through print")
         void roundTrip() {
-            ExpressionRule rule = ExpressionRule.parse(String.valueOf(GOODS.get("source")), null);
-            ExpressionRule again = ExpressionRule.parse(rule.print(), null);
+            DecisionTable rule = DecisionTable.parse(String.valueOf(GOODS.get("source")), null);
+            DecisionTable again = DecisionTable.parse(rule.print(), null);
             assertThat(again.branches()).hasSize(2);
             assertThat(again.branches().get(1).ask()).isEqualTo(rule.branches().get(1).ask());
-            assertThat(again.otherwise()).isEqualTo(ExpressionRule.Verdict.DOUBT);
+            assertThat(again.otherwise()).isEqualTo(DecisionTable.Verdict.DOUBT);
         }
     }
 

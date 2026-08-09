@@ -23,7 +23,7 @@ import java.util.Optional;
  * before either engine existed. Neither owns them.
  *
  * <p>Nesting them in one carrier rather than scattering six top-level records follows what
- * {@code ConditionTree}, {@code ExprProgram} and {@code ExpressionRule} already do: types that
+ * {@code ConditionTree}, {@code ExprProgram} and {@code DecisionTable} already do: types that
  * are only ever read together are read together. Nothing else changed — the records, their
  * javadoc and their behaviour are as they were.
  *

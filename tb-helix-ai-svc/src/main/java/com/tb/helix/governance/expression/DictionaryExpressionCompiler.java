@@ -2,7 +2,7 @@ package com.tb.helix.governance.expression;
 
 import com.tb.helix.governance.spi.CheckCatalog;
 import com.tb.helix.governance.spi.ExpressionRules;
-import com.tb.helix.governance.types.ExpressionRule;
+import com.tb.helix.harness.table.DecisionTable;
 import com.tb.helix.governance.types.RuleProblems;
 import com.tb.helix.harness.expr.ExprProgram;
 import com.tb.helix.harness.expr.ExpressionEngine;
@@ -264,6 +264,6 @@ public class DictionaryExpressionCompiler implements ExpressionRules {
      */
     @Override
     public String grammar() {
-        return ExpressionRule.SYNTAX + "\n" + engine.grammar();
+        return DecisionTable.SYNTAX + "\n" + engine.grammar();
     }
 }

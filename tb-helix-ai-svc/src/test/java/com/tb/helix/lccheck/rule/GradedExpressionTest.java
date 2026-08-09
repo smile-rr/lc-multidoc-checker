@@ -2,7 +2,7 @@ package com.tb.helix.lccheck.rule;
 
 import com.tb.helix.governance.expression.DictionaryExpressionCompiler;
 import com.tb.helix.governance.spi.CheckCatalog;
-import com.tb.helix.governance.types.ExpressionRule;
+import com.tb.helix.harness.table.DecisionTable;
 import com.tb.helix.harness.expr.SpelExpressionEngine;
 
 import org.junit.jupiter.api.DisplayName;
@@ -160,19 +160,19 @@ class GradedExpressionTest {
         @Test
         @DisplayName("stops at the first WHEN that matches, and runs no line below it")
         void firstMatchWins() {
-            ExpressionRule rule = table("""
+            DecisionTable rule = table("""
                     WHEN {a.b} <= {a.b} THEN "clean"
                     WHEN {a.b} <= {a.b} THEN "discrepancy"
                     WHEN {a.b} <= {a.b} THEN "doubt"
                     ELSE "discrepancy"
                     """);
             List<Integer> asked = new java.util.ArrayList<>();
-            ExpressionRule.Decision d = rule.decide(i -> {
+            DecisionTable.Decision d = rule.decide(i -> {
                 asked.add(i);
-                return i == 1 ? ExpressionRule.Answer.TRUE : ExpressionRule.Answer.FALSE;
+                return i == 1 ? DecisionTable.Answer.TRUE : DecisionTable.Answer.FALSE;
             });
             assertThat(asked).containsExactly(0, 1);
-            assertThat(d.verdict()).isEqualTo(ExpressionRule.Verdict.DISCREPANT);
+            assertThat(d.verdict()).isEqualTo(DecisionTable.Verdict.DISCREPANT);
             assertThat(d.matched()).isEqualTo(1);
         }
 
@@ -181,12 +181,12 @@ class GradedExpressionTest {
         void unknownDoesNotFallThrough() {
             // This is the one place SQL is wrong for an examination. Postgres answers the
             // ELSE here; a date nobody read would be reported as a confident discrepancy.
-            ExpressionRule rule = table("""
+            DecisionTable rule = table("""
                     WHEN {a.b} <= {a.b} THEN "clean"
                     ELSE "discrepancy"
                     """);
-            ExpressionRule.Decision d = rule.decide(i -> ExpressionRule.Answer.UNKNOWN);
-            assertThat(d.verdict()).isEqualTo(ExpressionRule.Verdict.DOUBT);
+            DecisionTable.Decision d = rule.decide(i -> DecisionTable.Answer.UNKNOWN);
+            assertThat(d.verdict()).isEqualTo(DecisionTable.Verdict.DOUBT);
             assertThat(d.unsettled()).isTrue();
             assertThat(d.matched()).isNull();
         }
@@ -194,12 +194,12 @@ class GradedExpressionTest {
         @Test
         @DisplayName("nothing matched is the ELSE, and that is not a doubt")
         void theFallbackIsAnAnswer() {
-            ExpressionRule rule = table("""
+            DecisionTable rule = table("""
                     WHEN {a.b} <= {a.b} THEN "clean"
                     ELSE "discrepancy"
                     """);
-            ExpressionRule.Decision d = rule.decide(i -> ExpressionRule.Answer.FALSE);
-            assertThat(d.verdict()).isEqualTo(ExpressionRule.Verdict.DISCREPANT);
+            DecisionTable.Decision d = rule.decide(i -> DecisionTable.Answer.FALSE);
+            assertThat(d.verdict()).isEqualTo(DecisionTable.Verdict.DISCREPANT);
             assertThat(d.unsettled()).isFalse();
         }
 
@@ -218,27 +218,27 @@ class GradedExpressionTest {
             // A condition's own literals are single-quoted because SpEL says so, and the
             // table's answer is double-quoted so the two can never be confused. Both are
             // accepted on the way in so nobody's paste is rejected over quote style.
-            ExpressionRule rule = table("WHEN {a.b} <= {a.b} THEN 'clean'\nELSE 'doubt'");
+            DecisionTable rule = table("WHEN {a.b} <= {a.b} THEN 'clean'\nELSE 'doubt'");
             assertThat(rule.branches()).singleElement()
-                    .extracting(ExpressionRule.Branch::then)
-                    .isEqualTo(ExpressionRule.Verdict.CLEAN);
-            assertThat(rule.otherwise()).isEqualTo(ExpressionRule.Verdict.DOUBT);
+                    .extracting(DecisionTable.Branch::then)
+                    .isEqualTo(DecisionTable.Verdict.CLEAN);
+            assertThat(rule.otherwise()).isEqualTo(DecisionTable.Verdict.DOUBT);
             assertThat(rule.print()).contains("THEN \"clean\"").contains("ELSE \"doubt\"");
         }
 
         @Test
         @DisplayName("a rule stored before the table existed still opens")
         void olderShapesStillRead() {
-            ExpressionRule one = ExpressionRule.of(Map.of("when", "{LC.expiry_date} <= {LC.expiry_date}"));
+            DecisionTable one = DecisionTable.of(Map.of("when", "{LC.expiry_date} <= {LC.expiry_date}"));
             assertThat(one.branches()).singleElement()
-                    .extracting(ExpressionRule.Branch::then)
-                    .isEqualTo(ExpressionRule.Verdict.CLEAN);
-            assertThat(one.otherwise()).isEqualTo(ExpressionRule.Verdict.DISCREPANT);
+                    .extracting(DecisionTable.Branch::then)
+                    .isEqualTo(DecisionTable.Verdict.CLEAN);
+            assertThat(one.otherwise()).isEqualTo(DecisionTable.Verdict.DISCREPANT);
             assertThat(one.problems()).isEmpty();
         }
 
-        private ExpressionRule table(String source) {
-            return ExpressionRule.parse(source, "Every presentation");
+        private DecisionTable table(String source) {
+            return DecisionTable.parse(source, "Every presentation");
         }
     }
 

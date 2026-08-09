@@ -2,7 +2,7 @@ package com.tb.helix.governance.api;
 
 import com.tb.helix.governance.persistence.GovernanceStore;
 import com.tb.helix.governance.spi.ExpressionRules;
-import com.tb.helix.governance.types.ExpressionRule;
+import com.tb.helix.harness.table.DecisionTable;
 import com.tb.helix.harness.expr.ExprResult;
 import com.tb.helix.harness.expr.ExpressionEngine;
 import com.tb.helix.harness.expr.Values;
@@ -68,7 +68,7 @@ public class ChecksController {
         // the problems and saves anyway. Text has no half-built state — an expression that
         // does not compile is one somebody stopped typing in the middle of, and storing it
         // would give the plan a check that can never run and no way to notice.
-        ExpressionRule table = ExpressionRule.of(rule);
+        DecisionTable table = DecisionTable.of(rule);
         if (table != null) {
             // The table's own structure first — every WHEN has a THEN, and there is an
             // ELSE — then each condition against the dictionary. Both are refusals, and both
@@ -131,7 +131,7 @@ public class ChecksController {
         // The whole table, which is the interesting case: the same values come out clean,
         // doubt or discrepancy depending on which WHEN matched, and an author who could only
         // try one branch at a time could never see that.
-        ExpressionRule rule = ExpressionRule.of(body);
+        DecisionTable rule = DecisionTable.of(body);
         if (rule == null) return Map.of("ok", false, "problems", List.of("There is no condition here."));
 
         List<String> problems = new ArrayList<>(rule.problems());
@@ -162,14 +162,10 @@ public class ChecksController {
         // The same walk an examination makes, asked of the same type. Re-deciding it here from
         // the per-clause verdicts would be a second opinion about what a graded check means.
         List<Map<String, Object>> rungs = new ArrayList<>();
-        ExpressionRule.Decision decision = rule.decide(i -> {
-            ExpressionRule.Branch branch = rule.branches().get(i);
+        DecisionTable.Decision decision = rule.decide(i -> {
+            DecisionTable.Branch branch = rule.branches().get(i);
             ExprResult r = engine.run(branch.when(), values);
-            ExpressionRule.Answer answer = switch (r.verdict()) {
-                case TRUE -> ExpressionRule.Answer.TRUE;
-                case FALSE -> ExpressionRule.Answer.FALSE;
-                case UNKNOWN -> ExpressionRule.Answer.UNKNOWN;
-            };
+            DecisionTable.Answer answer = answer(r.verdict());
 
             Map<String, Object> rung = new LinkedHashMap<>();
             rung.put("index", i);
@@ -177,7 +173,7 @@ public class ChecksController {
             // What this branch answers if it matches, and whether it did. Two different
             // things: a branch can match and answer "clean", or not match at all.
             rung.put("then", branch.then() == null ? null : branch.then().name());
-            rung.put("matched", answer == ExpressionRule.Answer.TRUE);
+            rung.put("matched", answer == DecisionTable.Answer.TRUE);
             rung.put("outcome", outcomeOf(branch, answer).name());
             rung.put("reading", r.reading() == null ? "" : r.reading());
             // Every comparison in the examination's own three words, decided HERE. The
@@ -215,12 +211,29 @@ public class ChecksController {
      * outcome of a line that never applied. One that could not be answered is the DOUBT that
      * stopped the table.
      */
-    private static ExpressionRule.Verdict outcomeOf(ExpressionRule.Branch branch,
-                                                    ExpressionRule.Answer answer) {
+    /**
+     * The engine's verdict as the table's answer.
+     *
+     * <p>The same three lines exist in {@code ExpressionEvaluator}, and they stay two copies
+     * on purpose: this module may not see lc-check, and contorting the layering so one
+     * three-arm switch could be shared would cost more than the switch. What is <b>not</b>
+     * duplicated is the walk itself — both call {@link DecisionTable#decide}, which is the
+     * part that has to agree.
+     */
+    private static DecisionTable.Answer answer(ExprResult.Verdict verdict) {
+        return switch (verdict) {
+            case TRUE -> DecisionTable.Answer.TRUE;
+            case FALSE -> DecisionTable.Answer.FALSE;
+            case UNKNOWN -> DecisionTable.Answer.UNKNOWN;
+        };
+    }
+
+    private static DecisionTable.Verdict outcomeOf(DecisionTable.Branch branch,
+                                                    DecisionTable.Answer answer) {
         return switch (answer) {
-            case TRUE -> branch.then() == null ? ExpressionRule.Verdict.DOUBT : branch.then();
-            case FALSE -> ExpressionRule.Verdict.CLEAN;
-            case UNKNOWN -> ExpressionRule.Verdict.DOUBT;
+            case TRUE -> branch.then() == null ? DecisionTable.Verdict.DOUBT : branch.then();
+            case FALSE -> DecisionTable.Verdict.CLEAN;
+            case UNKNOWN -> DecisionTable.Verdict.DOUBT;
         };
     }
 
@@ -234,14 +247,14 @@ public class ChecksController {
      * table never found.
      */
     private static Map<String, Object> leaf(ExprResult.LeafResult l,
-                                            ExpressionRule.Branch branch,
-                                            ExpressionRule.Answer answer) {
-        ExpressionRule.Answer contributed = switch (l.outcome()) {
-            case TRUE -> ExpressionRule.Answer.TRUE;
-            case UNKNOWN -> ExpressionRule.Answer.UNKNOWN;
+                                            DecisionTable.Branch branch,
+                                            DecisionTable.Answer answer) {
+        DecisionTable.Answer contributed = switch (l.outcome()) {
+            case TRUE -> DecisionTable.Answer.TRUE;
+            case UNKNOWN -> DecisionTable.Answer.UNKNOWN;
             // A false leaf only carries the branch's answer when it is why the branch failed.
-            case FALSE -> answer == ExpressionRule.Answer.TRUE
-                    ? ExpressionRule.Answer.TRUE : ExpressionRule.Answer.FALSE;
+            case FALSE -> answer == DecisionTable.Answer.TRUE
+                    ? DecisionTable.Answer.TRUE : DecisionTable.Answer.FALSE;
         };
         Map<String, Object> out = leaf(l);
         out.put("outcome", outcomeOf(branch, contributed).name());

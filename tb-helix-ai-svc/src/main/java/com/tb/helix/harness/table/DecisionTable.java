@@ -1,4 +1,4 @@
-package com.tb.helix.governance.types;
+package com.tb.helix.harness.table;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -74,7 +74,7 @@ import java.util.regex.Pattern;
  * @param branches  in order; the first whose condition is true decides
  * @param otherwise what the table answers when no branch matched
  */
-public record ExpressionRule(String source, String scope, List<Branch> branches, Verdict otherwise) {
+public record DecisionTable(String source, String scope, List<Branch> branches, Verdict otherwise) {
 
     /**
      * One {@code WHEN … THEN …}.
@@ -174,7 +174,7 @@ public record ExpressionRule(String source, String scope, List<Branch> branches,
      * read so nothing already authored has to be migrated by hand.
      */
     @SuppressWarnings("unchecked")
-    public static ExpressionRule of(Map<String, Object> rule) {
+    public static DecisionTable of(Map<String, Object> rule) {
         if (rule == null) return null;
         String scope = text(rule.get("scope"));
 
@@ -196,20 +196,20 @@ public record ExpressionRule(String source, String scope, List<Branch> branches,
                         c.get("grade") != null ? c.get("grade") : c.get("outcome")));
                 out.add(new Branch(when, Verdict.CLEAN));
                 if (out.size() == list.size() && v != null) {
-                    return new ExpressionRule(null, scope, List.copyOf(out), v);
+                    return new DecisionTable(null, scope, List.copyOf(out), v);
                 }
             }
             return out.isEmpty() ? null
-                    : new ExpressionRule(null, scope, List.copyOf(out), Verdict.DISCREPANT);
+                    : new DecisionTable(null, scope, List.copyOf(out), Verdict.DISCREPANT);
         }
 
         String when = text(rule.get("when"));
-        return when == null ? null : new ExpressionRule(null, scope,
+        return when == null ? null : new DecisionTable(null, scope,
                 List.of(new Branch(when, Verdict.CLEAN)), Verdict.DISCREPANT);
     }
 
     /** The table, exactly as written. */
-    public static ExpressionRule parse(String source, String scope) {
+    public static DecisionTable parse(String source, String scope) {
         if (source == null || source.isBlank()) return null;
 
         Matcher m = WHEN_THEN.matcher(source);
@@ -224,7 +224,7 @@ public record ExpressionRule(String source, String scope, List<Branch> branches,
         // appearing inside a branch condition cannot be taken for the table's fallback.
         Matcher e = ELSE.matcher(source.substring(Math.min(end, source.length())));
         Verdict otherwise = e.find() ? Verdict.of(quoted(e, 1)) : null;
-        return new ExpressionRule(source, scope, List.copyOf(branches), otherwise);
+        return new DecisionTable(source, scope, List.copyOf(branches), otherwise);
     }
 
     /**

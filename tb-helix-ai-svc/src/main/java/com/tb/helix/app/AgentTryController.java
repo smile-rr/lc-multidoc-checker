@@ -1,6 +1,6 @@
 package com.tb.helix.app;
 
-import com.tb.helix.governance.types.ExpressionRule;
+import com.tb.helix.harness.table.DecisionTable;
 import com.tb.helix.harness.llm.tool.ToolSpec;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.ReadRows;
@@ -33,7 +33,7 @@ import java.util.Set;
  * <h2>It is the same path the run takes</h2>
  *
  * <p>The same pre-walk, the same prompt, the same {@code settle} tool bound to the same facts,
- * the same parse, the same {@link ExpressionRule#decide}. Nothing here is a rehearsal of the
+ * the same parse, the same {@link DecisionTable#decide}. Nothing here is a rehearsal of the
  * examination written twice — a try panel that runs its own version of the check answers a
  * question the examination never asks, and it fails in the direction of "it worked when I
  * tested it".
@@ -65,7 +65,7 @@ public class AgentTryController {
     @PostMapping("/agent:try")
     public Map<String, Object> tryAgent(@RequestBody Map<String, Object> body) {
         String source = String.valueOf(body.getOrDefault("source", ""));
-        ExpressionRule table = ExpressionRule.parse(source, null);
+        DecisionTable table = DecisionTable.parse(source, null);
         if (table == null) {
             return Map.of("ok", false, "problems", List.of("There is no check here."));
         }
@@ -101,7 +101,7 @@ public class AgentTryController {
                 ? new ConditionAsker.Answers(Map.of(), List.of(), false, null)
                 : asker.ask(questions, presentation(facts), null, tool(facts, presented));
 
-        Map<Integer, ExpressionRule.Answer> byBranch = new LinkedHashMap<>();
+        Map<Integer, DecisionTable.Answer> byBranch = new LinkedHashMap<>();
         Map<Integer, String> because = new LinkedHashMap<>();
         for (ConditionAsker.Question q : questions) {
             byBranch.put(q.branch(), answers.of(q.id()));

@@ -17,7 +17,7 @@ import com.tb.helix.lccheck.persistence.CaseRow;
 import com.tb.helix.lccheck.persistence.CaseStore;
 import com.tb.helix.lccheck.persistence.ReadRows;
 import com.tb.helix.lccheck.persistence.Rows;
-import com.tb.helix.governance.types.ExpressionRule;
+import com.tb.helix.harness.table.DecisionTable;
 import com.tb.helix.lccheck.rule.ConditionAsker;
 import com.tb.helix.lccheck.rule.ExpressionEvaluator;
 import com.tb.helix.lccheck.rule.Evidence;
@@ -717,8 +717,8 @@ public class ExecuteStage implements Stage {
         for (ReadRows.PlanCheck check : remit.checks()) {
             List<Integer> branches = asking.getOrDefault(check.checkId(), List.of());
             Object rule = parseRule(check.ruleDef());
-            ExpressionRule table = rule instanceof Map<?, ?> m
-                    ? ExpressionRule.of(asMap(m)) : null;
+            DecisionTable table = rule instanceof Map<?, ?> m
+                    ? DecisionTable.of(asMap(m)) : null;
             if (table == null) continue;
             for (int i : branches) {
                 questions.add(new ConditionAsker.Question(
@@ -750,7 +750,7 @@ public class ExecuteStage implements Stage {
             // and a condition it did not answer is unknown, which stops the table at doubt.
             // So an unreadable reply, a failed call and a spent budget all land on doubt and
             // none of them can produce a discrepancy.
-            Map<Integer, ExpressionRule.Answer> said = new LinkedHashMap<>();
+            Map<Integer, DecisionTable.Answer> said = new LinkedHashMap<>();
             Map<Integer, String> because = new LinkedHashMap<>();
             for (int i : asking.getOrDefault(check.checkId(), List.of())) {
                 String id = check.checkId() + "#" + (i + 1);

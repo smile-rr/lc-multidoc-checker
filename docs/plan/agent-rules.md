@@ -37,7 +37,7 @@ say", and the table decides.**
 
 That is the whole design. It follows that:
 
-- the walk is `ExpressionRule.decide` — the same code, for both kinds of card, so an agent
+- the walk is `DecisionTable.decide` — the same code, for both kinds of card, so an agent
   check and an expression check cannot come to mean different things;
 - every natural condition has its own recorded answer, so a finding says *which* question the
   examiner answered and how, not merely that a model concluded something;

@@ -8,6 +8,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static com.tngtech.archunit.library.Architectures.layeredArchitecture;
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 /**
@@ -166,6 +167,27 @@ class ArchitectureTest {
                 .because("an expression parser is safe only while exactly one package can "
                         + "reach it; everything above that seam speaks ExpressionEngine")
                 .allowEmptyShould(true)
+                .check(classes);
+    }
+
+    @Test
+    @DisplayName("the decision table depends on nothing but the JDK")
+    void theTableStaysPlainJava() {
+        // What the move out of governance.types bought, stated so it cannot quietly be given
+        // back. A table is a string cut into branches and a walk over them; it settles
+        // nothing itself and asks a caller to settle each condition. The moment it needs an
+        // injected collaborator — a catalogue, a logger, a Spring anything — something that
+        // is not the table's business has been put inside it, and lifting it into another
+        // product stops being a copy.
+        //
+        // Stated against every package rather than a list of forbidden ones: the point is
+        // not that Spring in particular is unwelcome, it is that NOTHING is.
+        classes()
+                .that().resideInAPackage("com.tb.helix.harness.table..")
+                .should().onlyDependOnClassesThat()
+                .resideInAnyPackage("com.tb.helix.harness.table..", "java..")
+                .because("a decision table is data and a walk over it; a collaborator inside "
+                        + "one is something that does not belong to it")
                 .check(classes);
     }
 
@@ -415,6 +437,10 @@ class ArchitectureTest {
                 // that rule would match no classes and pass green — reporting an expression
                 // parser as contained while it is free to be constructed anywhere.
                 "com.tb.helix.harness.expr",
+                // Named by the plain-Java rule above, and by nothing else. Misspelt, that
+                // rule would check no classes and pass — reporting a table with no
+                // collaborators while one had been injected into it.
+                "com.tb.helix.harness.table",
                 // The dictionary half of checking an expression. Its own package because the
                 // two halves move at different speeds: the grammar changes with the engine,
                 // the dictionary whenever somebody binds a field.
