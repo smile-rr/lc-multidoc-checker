@@ -72,9 +72,17 @@ export const CONCERNS = {
 //
 // The catalogue's own checks are numbered by the kind of thing they are:
 //
-//     A0001   an agent check      — an examiner reads and answers
-//     C0001   a comparison        — the tree editor, rows of operands
-//     E0001   an expression       — a condition written as text
+//     A0001   asks a question    — an examiner reads a document and answers it
+//     E0001   does not           — every condition is settled by comparison
+//
+// TWO LETTERS, BECAUSE THERE ARE TWO KINDS
+//
+// `C` was the third: a comparison, built as rows of operands in a form. That
+// editor is retired and its checks are tables like every other, so C names
+// nothing and is not issued. Five ids carried it and were renumbered while none
+// had produced a finding — three compare (E0004–E0006) and two turned out to ask
+// questions, because the fields they read are attestations no condition language
+// can reach (A0003, A0004).
 //
 // This is a different trade from the concern-anchor form below, and worth being
 // explicit about which one it makes. `DATE-31D` is self-describing: it says both
@@ -85,11 +93,14 @@ export const CONCERNS = {
 //
 // TWO THINGS THAT FOLLOW, AND ARE NOT NEGOTIABLE
 //
-//   · The letter is what the check was when it was written, and it is never
-//     rewritten. A check that gains a judgement operator becomes JUDGED and
-//     still keeps its `C`. An id on a refusal notice from two years ago has to
-//     resolve, and the kind is served — `tier` and `language` — so nothing has
-//     to read it out of the id anyway.
+//   · The letter is assigned when the check is written and is not rewritten
+//     once the check has produced a finding. An id on a refusal notice from two
+//     years ago has to resolve, so a check that later gains a question keeps
+//     its `E` — and the badge, which comes from the served `tier`, is what says
+//     the truth. Nothing reads the kind out of the id.
+//
+//     Which is why the C renumbering above was done when it was: before any of
+//     them had run. After that the id would have had to stay wrong.
 //   · The planner's namespace is unaffected. What separates authored ids from
 //     planner-minted ones is the CLAUSE SUFFIX, not the prefix: an authored id
 //     never carries a dot and `REQ-46A.1` always does. Both schemes below hold
@@ -107,9 +118,10 @@ const PATTERN = /^([A-Z]{2,6})-([A-Z0-9]{1,6})(?:\.(\d{1,2}))?$/
 const KIND_PATTERN = /^([ACE])(\d{3,5})$/
 
 export const KINDS = {
-  A: 'Agent — an examiner reads the documents and answers',
-  C: 'Comparison — rows of operands, built in the form',
-  E: 'Expression — a condition written as text',
+  A: 'Agent — a condition an examiner reads the documents to answer',
+  E: 'Expression — every condition settled by comparison',
+  // Retired with the form editor. Parsed so an old id still resolves; never issued.
+  C: 'Comparison — retired; these are tables now',
 }
 
 /**

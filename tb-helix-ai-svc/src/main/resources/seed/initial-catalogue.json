@@ -993,58 +993,7 @@
       }
     },
     {
-      "id": "C0001",
-      "body": "",
-      "refs": [
-        "UCP600 Art.18"
-      ],
-      "rule": {
-        "v": 3,
-        "scope": "Every presentation",
-        "source": "WHEN #present({LC.tolerance_percent})\n     and #atMost({INV.invoice_value}, {LC.credit_amount}, {LC.tolerance_percent})\n     and #same({INV.currency}, {LC.currency})                    THEN \"clean\"\nWHEN #absent({LC.tolerance_percent})\n     and {INV.invoice_value} <= {LC.credit_amount}\n     and #same({INV.currency}, {LC.currency})                    THEN \"clean\"\nELSE \"discrepancy\""
-      },
-      "title": "Invoice value within the credit amount",
-      "domain": "Goods & pricing",
-      "citedAs": "practice",
-      "severity": "MAJOR",
-      "checkType": "EXPRESSION",
-      "suggestion": "The credit's own tolerance where it states one, and none where it does not. The tree this replaced carried a flat '5% tolerance' note on the row, which read as an instruction and was a comment: the operator ran a strict comparison and the five per cent was never applied. UCP 600 art. 30(b)'s allowance is on quantity rather than on value, so nothing is granted here that the credit did not grant.",
-      "docs": [
-        "INV",
-        "LC"
-      ]
-    },
-    {
-      "id": "C0002",
-      "body": "",
-      "docs": [
-        "LC",
-        "CS"
-      ],
-      "refs": [
-        "UCP600 Art.6"
-      ],
-      "title": "Presented where the credit is available",
-      "domain": "Time & availability",
-      "fields": [
-        "place_of_expiry",
-        "place_of_presentation",
-        "available_with"
-      ],
-      "citedAs": "practice",
-      "severity": "MAJOR",
-      "checkType": "EXPRESSION",
-      "suggestion": "UCP 600 art. 6(d)(ii): the place of the bank with which the credit is available is the place for presentation. This reads place_of_expiry against where the schedule says the documents were lodged. available_with is the METHOD — sight, acceptance, negotiation, deferred payment — and is only checked for presence, because a credit that does not say how it is available cannot be presented under at all.",
-      "gate": true,
-      "onFail": "CONTINUE",
-      "rule": {
-        "v": 3,
-        "scope": "Every presentation",
-        "source": "WHEN #same({CS.place_of_presentation}, {LC.place_of_expiry})\n     and #present({LC.available_with})                           THEN \"clean\"\nELSE \"discrepancy\""
-      }
-    },
-    {
-      "id": "C0003",
+      "id": "A0003",
       "title": "Corrections are authenticated",
       "body": "",
       "domain": "Documents required",
@@ -1069,7 +1018,7 @@
       "suggestion": "A QUESTION, and not by choice. corrections_authenticated is a DOC_ATTESTATION: it is read off the page by the attest pass into lc_mark, and no condition language reads marks. The expression compiler refuses to name it, which is the right refusal — the tree this replaced named it happily and could only ever come back unsettled, looking exactly like a check that ran. Until the language can read a mark, an examiner answers it."
     },
     {
-      "id": "C0004",
+      "id": "A0004",
       "title": "Transport document signed, with capacity",
       "body": "",
       "domain": "Transport",
@@ -1093,33 +1042,7 @@
         "scope": "Every presentation",
         "source": "WHEN \"the transport document is signed, and the signature states the capacity it\n      was given in - carrier, master, or a named agent for one of them (UCP 600 art. 20(a)(i))\"  THEN \"clean\"\nELSE \"discrepancy\""
       },
-      "suggestion": "A QUESTION for the same reason as C0003: signed and signed_capacity are attestations, read into lc_mark by the pass that looks at the page rather than at its text. Note that art. 20(a)(i) wants the capacity stated and not merely a signature — 'there is a signature and I cannot read whose it is' is not the same statement as 'this document is unsigned', and only the second is a discrepancy."
-    },
-    {
-      "id": "C0005",
-      "body": "",
-      "docs": [
-        "BOL",
-        "LC"
-      ],
-      "refs": [
-        "UCP600 Art.20"
-      ],
-      "rule": {
-        "v": 3,
-        "scope": "Every presentation",
-        "source": "WHEN #same({BOL.port_of_loading}, {LC.port_of_loading})\n     and #same({BOL.port_of_discharge}, {LC.port_of_discharge})  THEN \"clean\"\nELSE \"discrepancy\""
-      },
-      "title": "Bill of lading ports agree with the credit",
-      "domain": "Transport",
-      "fields": [
-        "port_of_loading",
-        "port_of_discharge"
-      ],
-      "citedAs": "practice",
-      "severity": "CRITICAL",
-      "checkType": "EXPRESSION",
-      "suggestion": "Both ports, compared as text with case and spacing folded away. Still to add: charter-party bills of lading, which are examined under art. 22."
+      "suggestion": "A QUESTION for the same reason as A0003: signed and signed_capacity are attestations, read into lc_mark by the pass that looks at the page rather than at its text. Note that art. 20(a)(i) wants the capacity stated and not merely a signature — 'there is a signature and I cannot read whose it is' is not the same statement as 'this document is unsigned', and only the second is a discrepancy."
     },
     {
       "id": "E0001",
@@ -1148,7 +1071,7 @@
       "citedAs": "practice",
       "severity": "CRITICAL",
       "checkType": "EXPRESSION",
-      "suggestion": "Expiry is expiry. UCP 600 art. 6(d)(i): documents must be presented on or before the expiry date, and art. 6(d)(ii) makes the place for presentation that of the bank with which the credit is available — so the covering schedule's date IS the counter date, and there is no transit to allow for. Nothing here is a matter of degree.\n\nThe one thing that can overturn a failure is art. 29(a): where the expiry date falls on a day the bank at the place for presentation is closed, the last day rolls to the first following banking day. We hold no banking calendar for that place, so a presentation one or two days past an expiry that fell on a weekend or holiday may still be compliant — check the calendar before refusing, and note that art. 29(b) requires the covering schedule to state that the presentation was made within the extended period.\n\nWHERE the documents were presented is a different question and belongs to C0002 (Presented where the credit is available). It reads place_of_presentation; note that available_with is the METHOD — sight, acceptance, negotiation, deferred payment — and never the bank."
+      "suggestion": "Expiry is expiry. UCP 600 art. 6(d)(i): documents must be presented on or before the expiry date, and art. 6(d)(ii) makes the place for presentation that of the bank with which the credit is available — so the covering schedule's date IS the counter date, and there is no transit to allow for. Nothing here is a matter of degree.\n\nThe one thing that can overturn a failure is art. 29(a): where the expiry date falls on a day the bank at the place for presentation is closed, the last day rolls to the first following banking day. We hold no banking calendar for that place, so a presentation one or two days past an expiry that fell on a weekend or holiday may still be compliant — check the calendar before refusing, and note that art. 29(b) requires the covering schedule to state that the presentation was made within the extended period.\n\nWHERE the documents were presented is a different question and belongs to E0005 (Presented where the credit is available). It reads place_of_presentation; note that available_with is the METHOD — sight, acceptance, negotiation, deferred payment — and never the bank."
     },
     {
       "id": "E0002",
@@ -1203,6 +1126,83 @@
       "severity": "CRITICAL",
       "checkType": "EXPRESSION",
       "suggestion": "Twenty-one calendar days after the date of shipment unless the credit states its own period, which is why the condition has two branches keyed on whether presentation_period was read. Expiry is NOT tested here — art. 14(c) also requires presentation before expiry, and DATE-31D is where that is answered, so a presentation that is both late and expired is two grounds and not one ground counted twice."
+    },
+    {
+      "id": "E0004",
+      "body": "",
+      "refs": [
+        "UCP600 Art.18"
+      ],
+      "rule": {
+        "v": 3,
+        "scope": "Every presentation",
+        "source": "WHEN #present({LC.tolerance_percent})\n     and #atMost({INV.invoice_value}, {LC.credit_amount}, {LC.tolerance_percent})\n     and #same({INV.currency}, {LC.currency})                    THEN \"clean\"\nWHEN #absent({LC.tolerance_percent})\n     and {INV.invoice_value} <= {LC.credit_amount}\n     and #same({INV.currency}, {LC.currency})                    THEN \"clean\"\nELSE \"discrepancy\""
+      },
+      "title": "Invoice value within the credit amount",
+      "domain": "Goods & pricing",
+      "citedAs": "practice",
+      "severity": "MAJOR",
+      "checkType": "EXPRESSION",
+      "suggestion": "The credit's own tolerance where it states one, and none where it does not. The tree this replaced carried a flat '5% tolerance' note on the row, which read as an instruction and was a comment: the operator ran a strict comparison and the five per cent was never applied. UCP 600 art. 30(b)'s allowance is on quantity rather than on value, so nothing is granted here that the credit did not grant.",
+      "docs": [
+        "INV",
+        "LC"
+      ]
+    },
+    {
+      "id": "E0005",
+      "body": "",
+      "docs": [
+        "LC",
+        "CS"
+      ],
+      "refs": [
+        "UCP600 Art.6"
+      ],
+      "title": "Presented where the credit is available",
+      "domain": "Time & availability",
+      "fields": [
+        "place_of_expiry",
+        "place_of_presentation",
+        "available_with"
+      ],
+      "citedAs": "practice",
+      "severity": "MAJOR",
+      "checkType": "EXPRESSION",
+      "suggestion": "UCP 600 art. 6(d)(ii): the place of the bank with which the credit is available is the place for presentation. This reads place_of_expiry against where the schedule says the documents were lodged. available_with is the METHOD — sight, acceptance, negotiation, deferred payment — and is only checked for presence, because a credit that does not say how it is available cannot be presented under at all.",
+      "gate": true,
+      "onFail": "CONTINUE",
+      "rule": {
+        "v": 3,
+        "scope": "Every presentation",
+        "source": "WHEN #same({CS.place_of_presentation}, {LC.place_of_expiry})\n     and #present({LC.available_with})                           THEN \"clean\"\nELSE \"discrepancy\""
+      }
+    },
+    {
+      "id": "E0006",
+      "body": "",
+      "docs": [
+        "BOL",
+        "LC"
+      ],
+      "refs": [
+        "UCP600 Art.20"
+      ],
+      "rule": {
+        "v": 3,
+        "scope": "Every presentation",
+        "source": "WHEN #same({BOL.port_of_loading}, {LC.port_of_loading})\n     and #same({BOL.port_of_discharge}, {LC.port_of_discharge})  THEN \"clean\"\nELSE \"discrepancy\""
+      },
+      "title": "Bill of lading ports agree with the credit",
+      "domain": "Transport",
+      "fields": [
+        "port_of_loading",
+        "port_of_discharge"
+      ],
+      "citedAs": "practice",
+      "severity": "CRITICAL",
+      "checkType": "EXPRESSION",
+      "suggestion": "Both ports, compared as text with case and spacing folded away. Still to add: charter-party bills of lading, which are examined under art. 22."
     }
   ],
   "books": [

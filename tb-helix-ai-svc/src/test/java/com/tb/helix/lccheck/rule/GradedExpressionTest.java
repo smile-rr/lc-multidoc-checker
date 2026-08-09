@@ -102,7 +102,7 @@ class GradedExpressionTest {
         @Test
         @DisplayName("how the credit is available does not bear on it")
         void availabilityIsADifferentQuestion() {
-            // WHERE documents may be presented is art. 6(d)(ii) and belongs to C0002. This
+            // WHERE documents may be presented is art. 6(d)(ii) and belongs to E0005. This
             // condition once read `available_with` to decide it — a field the dictionary
             // defines as the METHOD, sight or acceptance or negotiation, never the bank.
             for (String method : List.of("BY NEGOTIATION", "BY PAYMENT", "BY ACCEPTANCE")) {

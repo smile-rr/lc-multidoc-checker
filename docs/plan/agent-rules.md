@@ -203,7 +203,7 @@ Ordered, because the middle step is the one with a dependency nobody expects.
 
 | | | |
 |---|---|---|
-| C-1 | Migrate `C0001`–`C0005` to expression tables | mechanical; each is rows of operands with one operator |
+| C-1 | Migrate `E0004`–`E0006` and `A0003`–`A0004` to expression tables | mechanical; each is rows of operands with one operator |
 | C-2 | **Teach the planner to compile into a table** | `PlanStage.requirements` compiles `:46A:`/`:47A:` into `ConditionTree` today. Trees cannot be removed while the planner mints them |
 | C-3 | Delete the tree authoring UI | `ExactBody.jsx`, operand pickers, `Operator`/`ConditionFn` served vocabulary, `shared/lib/operators.js` |
 | C-4 | Delete the tree engine | `ConditionTree`, `RuleCompiler`, the tree half of `RuleEvaluator`, `v_check_list`'s operand SQL |
